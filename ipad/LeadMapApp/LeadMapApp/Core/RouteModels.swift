@@ -48,6 +48,12 @@ struct PositionSamplesBatchPayload: Encodable, Sendable {
 /// Response: `{ inserted: N }`.
 struct PositionSamplesBatchResponse: Decodable, Sendable {
     let inserted: Int
+    let projectId: String
+
+    enum CodingKeys: String, CodingKey {
+        case inserted
+        case projectId = "project_id"
+    }
 }
 
 // ============================================================
@@ -85,7 +91,8 @@ struct RouteStopDTO: Codable, Hashable, Identifiable, Sendable {
 /// Planlagt daglig rute — hentes via `/my-route`.
 struct RouteAssignmentDTO: Codable, Hashable, Identifiable, Sendable {
     let id: UUID
-    let orgId: UUID?
+    let organizationId: UUID?
+    let projectId: String
     let userId: String
     let routeDate: String   // YYYY-MM-DD
     let name: String
@@ -97,7 +104,8 @@ struct RouteAssignmentDTO: Codable, Hashable, Identifiable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id
-        case orgId = "org_id"
+        case organizationId = "organization_id"
+        case projectId = "project_id"
         case userId = "user_id"
         case routeDate = "route_date"
         case name
@@ -112,6 +120,9 @@ struct RouteAssignmentDTO: Codable, Hashable, Identifiable, Sendable {
 /// Faktisk besøk-log per stopp. `wasOnRoute = deviationFromPlannedM < 200`.
 struct RouteVisitDTO: Codable, Hashable, Identifiable, Sendable {
     let id: UUID
+    let organizationId: UUID?
+    let projectId: String
+    let assignmentId: UUID
     let stopLeadId: String
     let arrivedAt: String?
     let leftAt: String?
@@ -123,6 +134,9 @@ struct RouteVisitDTO: Codable, Hashable, Identifiable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id
+        case organizationId = "organization_id"
+        case projectId = "project_id"
+        case assignmentId = "assignment_id"
         case stopLeadId = "stop_lead_id"
         case arrivedAt = "arrived_at"
         case leftAt = "left_at"
@@ -151,6 +165,7 @@ struct RouteProgressDTO: Codable, Hashable, Sendable {
 
 /// Full response fra `/my-route`.
 struct MyRouteResponse: Decodable, Sendable {
+    let projectId: String
     let assignment: RouteAssignmentDTO?
     let visits: [RouteVisitDTO]
     let progress: RouteProgressDTO
@@ -158,6 +173,7 @@ struct MyRouteResponse: Decodable, Sendable {
     let etaNextMin: Int?
 
     enum CodingKeys: String, CodingKey {
+        case projectId = "project_id"
         case assignment
         case visits
         case progress
@@ -204,7 +220,13 @@ struct NearbyTeamMemberDTO: Codable, Hashable, Identifiable, Sendable {
 }
 
 struct NearbyTeamResponse: Decodable, Sendable {
+    let projectId: String
     let members: [NearbyTeamMemberDTO]
+
+    enum CodingKeys: String, CodingKey {
+        case projectId = "project_id"
+        case members
+    }
 }
 
 // ============================================================
@@ -251,6 +273,7 @@ struct AdherenceSummary: Codable, Hashable, Sendable {
 
 /// Full rapport-svar (`/adherence-report`).
 struct RouteAdherenceReportDTO: Decodable, Sendable {
+    let projectId: String
     let userId: String
     let from: String
     let to: String
@@ -259,6 +282,7 @@ struct RouteAdherenceReportDTO: Decodable, Sendable {
     let daily: [AdherenceDailyRow]
 
     enum CodingKeys: String, CodingKey {
+        case projectId = "project_id"
         case userId = "user_id"
         case from
         case to
@@ -310,9 +334,17 @@ struct TeamAdherenceSummary: Codable, Hashable, Sendable {
 }
 
 struct TeamAdherenceReportDTO: Decodable, Sendable {
+    let projectId: String
     let date: String
     let members: [TeamAdherenceMemberRow]
     let summary: TeamAdherenceSummary
+
+    enum CodingKeys: String, CodingKey {
+        case projectId = "project_id"
+        case date
+        case members
+        case summary
+    }
 }
 
 // ============================================================
@@ -426,17 +458,5 @@ struct LogRouteVisitPayload: Encodable, Sendable {
         case actualLat = "actual_lat"
         case actualLon = "actual_lon"
         case notes
-    }
-}
-
-struct CreateLeadAtPositionPayload: Encodable, Sendable {
-    let lat: Double
-    let lon: Double
-    let orgId: String?
-
-    enum CodingKeys: String, CodingKey {
-        case lat
-        case lon
-        case orgId = "org_id"
     }
 }

@@ -11,6 +11,12 @@ export interface LeadNoteRow {
   updatedAt: string;
 }
 
+export interface LeadCollaborationScope {
+  leadId: string;
+  organizationId: string;
+  projectId: string;
+}
+
 function mapNote(row: any): LeadNoteRow {
   return {
     id: String(row.id),
@@ -24,37 +30,42 @@ function mapNote(row: any): LeadNoteRow {
   };
 }
 
-export async function leadExistsInOrganization(
+export async function leadExistsInProject(
   pool: Pool,
-  leadId: string,
-  organizationId: string,
+  scope: LeadCollaborationScope,
 ): Promise<boolean> {
   const result = await pool.query(
     `SELECT 1 FROM crm_customers
-      WHERE id = $1::uuid AND organization_id = $2::uuid
+      WHERE id = $1::uuid
+        AND organization_id = $2::uuid
+        AND project_id = $3
         AND archived_at IS NULL
       LIMIT 1`,
-    [leadId, organizationId],
+    [scope.leadId, scope.organizationId, scope.projectId],
   );
   return result.rows.length > 0;
 }
 
 export async function listLeadNotes(
   pool: Pool,
-  opts: { leadId: string; organizationId: string },
+  opts: LeadCollaborationScope,
 ): Promise<LeadNoteRow[]> {
   const result = await pool.query(
     `SELECT n.id::text, n.lead_id::text, n.author_user_id,
             NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS author_name,
             u.email AS author_email, n.body, n.pinned, n.created_at, n.updated_at
        FROM leadgrid_lead_notes n
-       JOIN crm_customers c ON c.id = n.lead_id AND c.organization_id = n.organization_id
+       JOIN crm_customers c
+         ON c.id = n.lead_id
+        AND c.organization_id = n.organization_id
+        AND c.project_id = n.project_id
        LEFT JOIN users u ON u.id = n.author_user_id
       WHERE n.organization_id = $1::uuid
-        AND n.lead_id = $2::uuid
+        AND n.project_id = $2
+        AND n.lead_id = $3::uuid
         AND n.deleted_at IS NULL
       ORDER BY n.pinned DESC, n.created_at DESC`,
-    [opts.organizationId, opts.leadId],
+    [opts.organizationId, opts.projectId, opts.leadId],
   );
   return result.rows.map(mapNote);
 }
@@ -64,6 +75,7 @@ export async function createLeadNote(
   opts: {
     leadId: string;
     organizationId: string;
+    projectId: string;
     authorUserId: string;
     body: string;
     pinned: boolean;
@@ -76,15 +88,23 @@ export async function createLeadNote(
     await client.query("BEGIN");
     const inserted = await client.query(
       `INSERT INTO leadgrid_lead_notes
-         (organization_id, lead_id, author_user_id, body, pinned)
-       SELECT $1::uuid, c.id, $3, $4, $5
+         (organization_id, project_id, lead_id, author_user_id, body, pinned)
+       SELECT $1::uuid, $2, c.id, $4, $5, $6
          FROM crm_customers c
-        WHERE c.id = $2::uuid
+        WHERE c.id = $3::uuid
           AND c.organization_id = $1::uuid
+          AND c.project_id = $2
           AND c.archived_at IS NULL
        RETURNING id::text, lead_id::text, author_user_id, body, pinned,
                  created_at, updated_at`,
-      [opts.organizationId, opts.leadId, opts.authorUserId, body, opts.pinned],
+      [
+        opts.organizationId,
+        opts.projectId,
+        opts.leadId,
+        opts.authorUserId,
+        body,
+        opts.pinned,
+      ],
     );
     if (!inserted.rows.length) {
       await client.query("ROLLBACK");
@@ -98,7 +118,12 @@ export async function createLeadNote(
         opts.leadId,
         opts.authorUserId,
         body.slice(0, 500),
-        JSON.stringify({ noteId: inserted.rows[0].id, pinned: opts.pinned }),
+        JSON.stringify({
+          noteId: inserted.rows[0].id,
+          pinned: opts.pinned,
+          organizationId: opts.organizationId,
+          projectId: opts.projectId,
+        }),
       ],
     );
     const author = await client.query(
@@ -119,21 +144,25 @@ export async function createLeadNote(
 
 export async function setLeadFavorite(
   pool: Pool,
-  opts: { leadId: string; organizationId: string; userId: string; favorite: boolean },
+  opts: LeadCollaborationScope & { userId: string; favorite: boolean },
 ): Promise<boolean | null> {
-  if (!(await leadExistsInOrganization(pool, opts.leadId, opts.organizationId))) return null;
+  if (!(await leadExistsInProject(pool, opts))) return null;
   if (opts.favorite) {
     await pool.query(
-      `INSERT INTO leadgrid_lead_favorites (organization_id, lead_id, user_id)
-       VALUES ($1::uuid, $2::uuid, $3)
+      `INSERT INTO leadgrid_lead_favorites
+         (organization_id, project_id, lead_id, user_id)
+       VALUES ($1::uuid, $2, $3::uuid, $4)
        ON CONFLICT (organization_id, lead_id, user_id) DO NOTHING`,
-      [opts.organizationId, opts.leadId, opts.userId],
+      [opts.organizationId, opts.projectId, opts.leadId, opts.userId],
     );
   } else {
     await pool.query(
       `DELETE FROM leadgrid_lead_favorites
-        WHERE organization_id = $1::uuid AND lead_id = $2::uuid AND user_id = $3`,
-      [opts.organizationId, opts.leadId, opts.userId],
+        WHERE organization_id = $1::uuid
+          AND project_id = $2
+          AND lead_id = $3::uuid
+          AND user_id = $4`,
+      [opts.organizationId, opts.projectId, opts.leadId, opts.userId],
     );
   }
   return opts.favorite;

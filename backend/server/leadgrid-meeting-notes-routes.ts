@@ -14,10 +14,12 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
-import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
+import { loadAccessibleLeadgridLead } from "./leadgrid-lead-access.js";
+import { resolveEffectivePermissions } from "./lead-map-permission-routes.js";
 import {
   transcribeAudio,
   processMeetingNote,
+  type MeetingNoteProcessingScope,
 } from "./leadgrid-meeting-notes-service.js";
 import { emitWebhook } from "./webhook-emitter.js";
 import {
@@ -46,85 +48,191 @@ function getSession(
   return null;
 }
 
-async function resolveOrgIdSmart(
-  req: Request,
+type MeetingNotePermission =
+  | "meeting_notes.create"
+  | "meeting_notes.view"
+  | "meeting_notes.delete";
+
+async function authorizeLead(
   pool: Pool,
   userId: string,
-): Promise<string | null> {
-  const explicit = req.body?.organization_id ?? req.query?.organization_id;
-  if (typeof explicit === "string" && explicit.length > 0) return explicit;
-  // Avled fra lead-id i params
-  const leadId = req.params?.id;
-  if (typeof leadId === "string" && leadId.length > 0) {
-    try {
-      const r = await pool.query<{ organization_id: string | null }>(
-        `SELECT cp.organization_id::text
-           FROM crm_customers c
-           LEFT JOIN leadgrid_projects cp ON cp.id = c.project_id
-          WHERE c.id = $1::uuid LIMIT 1`,
-        [leadId],
-      );
-      if (r.rows[0]?.organization_id) return r.rows[0].organization_id;
-    } catch {
-      /* ignore */
-    }
-  }
-  // Brukerens default-org
-  try {
-    const r = await pool.query<{ organization_id: string }>(
-      `SELECT organization_id::text
-         FROM organization_members
-        WHERE user_id = $1
-        ORDER BY CASE role
-          WHEN 'admin' THEN 1
-          WHEN 'salgssjef' THEN 2
-          ELSE 3
-        END, joined_at ASC
-        LIMIT 1`,
-      [userId],
-    );
-    return r.rows[0]?.organization_id ?? null;
-  } catch {
+  leadId: string,
+  permission: MeetingNotePermission,
+  res: Response,
+): Promise<MeetingNoteProcessingScope | null> {
+  const lead = await loadAccessibleLeadgridLead(pool, { leadId, userId });
+  if (!lead) {
+    res.status(404).json({ error: "ikke_funnet" });
     return null;
   }
+  const access = await resolveEffectivePermissions(
+    pool,
+    lead.organizationId,
+    userId,
+  );
+  if (!access.role || !access.permissions.has(permission)) {
+    res.status(403).json({
+      error: "mangler_tillatelse",
+      required: permission,
+    });
+    return null;
+  }
+  return {
+    noteId: "",
+    leadId: lead.id,
+    organizationId: lead.organizationId,
+    projectId: lead.projectId,
+  };
+}
+
+async function loadMeetingNoteScope(
+  pool: Pool,
+  noteId: string,
+): Promise<MeetingNoteProcessingScope | null> {
+  const result = await pool.query<{
+    id: string;
+    lead_id: string;
+    organization_id: string;
+    project_id: string;
+  }>(
+    `SELECT mn.id::text,
+            mn.lead_id::text,
+            mn.organization_id::text,
+            lead.project_id::text
+       FROM lead_meeting_notes mn
+       JOIN crm_customers lead
+         ON lead.id = mn.lead_id
+        AND lead.organization_id = mn.organization_id
+      WHERE mn.id = $1::uuid
+        AND lead.project_id IS NOT NULL
+      LIMIT 1`,
+    [noteId],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    noteId: row.id,
+    leadId: row.lead_id,
+    organizationId: row.organization_id,
+    projectId: row.project_id,
+  };
+}
+
+async function authorizeMeetingNote(
+  pool: Pool,
+  userId: string,
+  noteId: string,
+  permission: MeetingNotePermission,
+  res: Response,
+): Promise<MeetingNoteProcessingScope | null> {
+  const persisted = await loadMeetingNoteScope(pool, noteId);
+  if (!persisted) {
+    res.status(404).json({ error: "ikke_funnet" });
+    return null;
+  }
+  const accessible = await authorizeLead(
+    pool,
+    userId,
+    persisted.leadId,
+    permission,
+    res,
+  );
+  if (!accessible) return null;
+  if (
+    accessible.leadId !== persisted.leadId ||
+    accessible.organizationId !== persisted.organizationId ||
+    accessible.projectId !== persisted.projectId
+  ) {
+    res.status(404).json({ error: "ikke_funnet" });
+    return null;
+  }
+  return persisted;
+}
+
+async function markMeetingNoteFailed(
+  pool: Pool,
+  scope: MeetingNoteProcessingScope,
+  errorMessage: string,
+): Promise<void> {
+  await pool.query(
+    `UPDATE lead_meeting_notes
+        SET processing_status='failed',
+            error_message=$1,
+            processed_at=NOW()
+      WHERE id=$2::uuid
+        AND lead_id=$3::uuid
+        AND organization_id=$4::uuid
+        AND EXISTS (
+          SELECT 1
+            FROM crm_customers lead
+           WHERE lead.id = lead_meeting_notes.lead_id
+             AND lead.organization_id = lead_meeting_notes.organization_id
+             AND lead.project_id = $5
+        )`,
+    [
+      errorMessage.slice(0, 500),
+      scope.noteId,
+      scope.leadId,
+      scope.organizationId,
+      scope.projectId,
+    ],
+  );
 }
 
 export function registerLeadgridMeetingNotesRoutes(deps: Deps): void {
   const { app, pool, activeSessions } = deps;
-  const common = { pool, activeSessions, resolveOrgId: resolveOrgIdSmart };
-  const permCreate = requireLeadMapPermission("meeting_notes.create", common);
-  const permView = requireLeadMapPermission("meeting_notes.view", common);
-  const permDelete = requireLeadMapPermission("meeting_notes.delete", common);
 
   // ─── Upload audio (base64 i body) ─────────────────────────────────
   app.post(
     "/api/leadgrid/leads/:id/meeting-notes/upload-audio",
-    permCreate,
     async (req: Request, res: Response) => {
       const session = getSession(req, activeSessions);
       if (!session) {
         res.status(401).json({ error: "Innlogging kreves" });
         return;
       }
-      const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-      if (!orgId) {
-        res.status(400).json({ error: "mangler_organization_id" });
-        return;
-      }
       const b = parseOr400(uploadAudioBody, req.body, res);
       if (!b) return;
       const leadId = req.params.id;
       try {
+        const authorized = await authorizeLead(
+          pool,
+          session.userId,
+          leadId,
+          "meeting_notes.create",
+          res,
+        );
+        if (!authorized) return;
         const buf = Buffer.from(b.audio_base64, "base64");
         const insert = await pool.query<{ id: string }>(
           `INSERT INTO lead_meeting_notes
              (lead_id, organization_id, user_id, source,
               audio_duration_seconds, processing_status)
-           VALUES ($1::uuid, $2::uuid, $3, 'voice_memo', $4, 'transcribing')
+           SELECT lead.id, lead.organization_id, $4, 'voice_memo', $5,
+                  'transcribing'
+             FROM crm_customers lead
+            WHERE lead.id = $1::uuid
+              AND lead.organization_id = $2::uuid
+              AND lead.project_id = $3
            RETURNING id::text`,
-          [leadId, orgId, session.userId, b.duration_seconds ?? null],
+          [
+            authorized.leadId,
+            authorized.organizationId,
+            authorized.projectId,
+            session.userId,
+            b.duration_seconds ?? null,
+          ],
         );
-        const noteId = insert.rows[0].id;
+        const noteId = insert.rows[0]?.id;
+        if (!noteId) {
+          res.status(404).json({ error: "ikke_funnet" });
+
+          return;
+        }
+        const noteScope: MeetingNoteProcessingScope = {
+          ...authorized,
+          noteId,
+        };
 
         // Respons FØR tung prosessering. setImmediate sikrer at HTTP-svaret
         // er sendt før Whisper/Claude starter — frigjør request-tråden.
@@ -148,53 +256,68 @@ export function registerLeadgridMeetingNotesRoutes(deps: Deps): void {
               }
             }
             if (tx) {
-              await pool.query(
+              const updated = await pool.query(
                 `UPDATE lead_meeting_notes
                     SET transcript=$1, transcript_language=$2
-                  WHERE id=$3::uuid`,
-                [tx.transcript, tx.language, noteId],
+                  WHERE id=$3::uuid
+                    AND lead_id=$4::uuid
+                    AND organization_id=$5::uuid
+                    AND EXISTS (
+                      SELECT 1
+                        FROM crm_customers lead
+                       WHERE lead.id = lead_meeting_notes.lead_id
+                         AND lead.organization_id = lead_meeting_notes.organization_id
+                         AND lead.project_id = $6
+                    )`,
+                [
+                  tx.transcript,
+                  tx.language,
+                  noteScope.noteId,
+                  noteScope.leadId,
+                  noteScope.organizationId,
+                  noteScope.projectId,
+                ],
               );
-              await processMeetingNote(pool, noteId);
+              if (updated.rowCount !== 1) return;
+              const processed = await processMeetingNote(pool, noteScope);
+              if (!processed) return;
               // Webhook ved completion — best-effort, blokker ikke loggen.
               try {
                 void emitWebhook(
                   pool,
                   "meeting_note.processed",
-                  { meeting_note_id: noteId, lead_id: leadId },
-                  orgId,
+                  {
+                    meeting_note_id: noteScope.noteId,
+                    lead_id: noteScope.leadId,
+                  },
+                  noteScope.organizationId,
                 );
               } catch (whErr) {
                 console.warn("[meeting-notes] webhook emit feilet:", whErr);
               }
             } else {
-              await pool.query(
-                `UPDATE lead_meeting_notes
-                    SET processing_status='failed',
-                        error_message='Whisper feilet 3 ganger',
-                        processed_at=NOW()
-                  WHERE id=$1::uuid`,
-                [noteId],
+              await markMeetingNoteFailed(
+                pool,
+                noteScope,
+                "Whisper feilet 3 ganger",
               );
             }
           } catch (err) {
             console.error("[meeting-notes] bakgrunns-prosess feilet:", err);
-            await pool
-              .query(
-                `UPDATE lead_meeting_notes
-                    SET processing_status='failed',
-                        error_message=$1,
-                        processed_at=NOW()
-                  WHERE id=$2::uuid`,
-                [String(err).slice(0, 500), noteId],
-              )
-              .catch(() => {});
+            await markMeetingNoteFailed(pool, noteScope, String(err)).catch(
+              () => {},
+            );
           }
         });
 
         // 202 Accepted = semantisk korrekt: jobben er akseptert, ikke ferdig.
-        res.status(202).json({ meeting_note_id: noteId, status: "transcribing" });
+        res
+          .status(202)
+          .json({ meeting_note_id: noteId, status: "transcribing" });
       } catch (err) {
-        res.status(500).json({ error: "upload_failed", detail: "internal_error" });
+        res
+          .status(500)
+          .json({ error: "upload_failed", detail: "internal_error" });
       }
     },
   );
@@ -202,65 +325,86 @@ export function registerLeadgridMeetingNotesRoutes(deps: Deps): void {
   // ─── Manuell tekst-input (uten audio) ─────────────────────────────
   app.post(
     "/api/leadgrid/leads/:id/meeting-notes/from-text",
-    permCreate,
     async (req: Request, res: Response) => {
       const session = getSession(req, activeSessions);
       if (!session) {
         res.status(401).json({ error: "Innlogging kreves" });
         return;
       }
-      const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-      if (!orgId) {
-        res.status(400).json({ error: "mangler_organization_id" });
-        return;
-      }
       const b = parseOr400(fromTextBody, req.body, res);
       if (!b) return;
       const leadId = req.params.id;
       try {
+        const authorized = await authorizeLead(
+          pool,
+          session.userId,
+          leadId,
+          "meeting_notes.create",
+          res,
+        );
+        if (!authorized) return;
         const insert = await pool.query<{ id: string }>(
           `INSERT INTO lead_meeting_notes
              (lead_id, organization_id, user_id, source,
               transcript, transcript_language, processing_status)
-           VALUES ($1::uuid, $2::uuid, $3, 'manual', $4, $5, 'analyzing')
+           SELECT lead.id, lead.organization_id, $4, 'manual', $5, $6,
+                  'analyzing'
+             FROM crm_customers lead
+            WHERE lead.id = $1::uuid
+              AND lead.organization_id = $2::uuid
+              AND lead.project_id = $3
            RETURNING id::text`,
-          [leadId, orgId, session.userId, b.transcript, b.language],
+          [
+            authorized.leadId,
+            authorized.organizationId,
+            authorized.projectId,
+            session.userId,
+            b.transcript,
+            b.language,
+          ],
         );
-        const noteId = insert.rows[0].id;
+        const noteId = insert.rows[0]?.id;
+        if (!noteId) {
+          res.status(404).json({ error: "ikke_funnet" });
+          return;
+        }
+        const noteScope: MeetingNoteProcessingScope = {
+          ...authorized,
+          noteId,
+        };
 
         // Frigjør request-tråden FØR Claude. setImmediate sikrer at HTTP-svar
         // er på vei før analyse starter.
         setImmediate(async () => {
           try {
-            await processMeetingNote(pool, noteId);
+            const processed = await processMeetingNote(pool, noteScope);
+            if (!processed) return;
             try {
               void emitWebhook(
                 pool,
                 "meeting_note.processed",
-                { meeting_note_id: noteId, lead_id: leadId },
-                orgId,
+                {
+                  meeting_note_id: noteScope.noteId,
+                  lead_id: noteScope.leadId,
+                },
+                noteScope.organizationId,
               );
             } catch (whErr) {
               console.warn("[meeting-notes] webhook emit feilet:", whErr);
             }
           } catch (err) {
             console.error("[meeting-notes] analyse feilet:", err);
-            await pool
-              .query(
-                `UPDATE lead_meeting_notes
-                    SET processing_status='failed',
-                        error_message=$1,
-                        processed_at=NOW()
-                  WHERE id=$2::uuid`,
-                [String(err).slice(0, 500), noteId],
-              )
-              .catch(() => {});
+            await markMeetingNoteFailed(pool, noteScope, String(err)).catch(
+              () => {},
+            );
           }
         });
 
         res.status(202).json({ meeting_note_id: noteId, status: "analyzing" });
       } catch (err) {
-        res.status(500).json({ error: "create_failed", detail: "internal_error" });
+        res
+          .status(500)
+          .json({ error: "create_failed", detail: "internal_error" });
       }
     },
   );
@@ -268,23 +412,43 @@ export function registerLeadgridMeetingNotesRoutes(deps: Deps): void {
   // ─── List notes for lead ─────────────────────────────────────────
   app.get(
     "/api/leadgrid/leads/:id/meeting-notes",
-    permView,
     async (req: Request, res: Response) => {
+      const session = getSession(req, activeSessions);
+      if (!session) {
+        res.status(401).json({ error: "Innlogging kreves" });
+        return;
+      }
       try {
-        const r = await pool.query(
-          `SELECT id::text, source, summary, action_items, decisions,
-                  next_steps, topics, participants, confidence,
-                  processing_status, error_message,
-                  created_at, processed_at,
-                  transcript_language, audio_duration_seconds
-             FROM lead_meeting_notes
-            WHERE lead_id = $1::uuid
-            ORDER BY created_at DESC LIMIT 50`,
-          [req.params.id],
+        const lead = await authorizeLead(
+          pool,
+          session.userId,
+          req.params.id,
+          "meeting_notes.view",
+          res,
         );
-        res.json({ notes: r.rows });
+        if (!lead) return;
+        const result = await pool.query(
+          `SELECT mn.id::text, mn.source, mn.summary, mn.action_items,
+                  mn.decisions, mn.next_steps, mn.topics, mn.participants,
+                  mn.confidence, mn.processing_status, mn.error_message,
+                  mn.created_at, mn.processed_at, mn.transcript_language,
+                  mn.audio_duration_seconds
+             FROM lead_meeting_notes mn
+             JOIN crm_customers scoped_lead
+               ON scoped_lead.id = mn.lead_id
+              AND scoped_lead.organization_id = mn.organization_id
+            WHERE mn.lead_id = $1::uuid
+              AND mn.organization_id = $2::uuid
+              AND scoped_lead.project_id = $3
+            ORDER BY mn.created_at DESC
+            LIMIT 50`,
+          [lead.leadId, lead.organizationId, lead.projectId],
+        );
+        res.json({ notes: result.rows });
       } catch (err) {
-        res.status(500).json({ error: "list_failed", detail: "internal_error" });
+        res
+          .status(500)
+          .json({ error: "list_failed", detail: "internal_error" });
       }
     },
   );
@@ -292,22 +456,43 @@ export function registerLeadgridMeetingNotesRoutes(deps: Deps): void {
   // ─── Detail ──────────────────────────────────────────────────────
   app.get(
     "/api/leadgrid/meeting-notes/:id",
-    permView,
     async (req: Request, res: Response) => {
+      const session = getSession(req, activeSessions);
+      if (!session) {
+        res.status(401).json({ error: "Innlogging kreves" });
+        return;
+      }
       try {
-        const r = await pool.query(
-          `SELECT id::text, lead_id::text, source, transcript, summary,
-                  action_items, decisions, next_steps, topics, participants,
-                  confidence, processing_status, error_message,
-                  created_at, processed_at
-             FROM lead_meeting_notes WHERE id = $1::uuid LIMIT 1`,
-          [req.params.id],
+        const scope = await authorizeMeetingNote(
+          pool,
+          session.userId,
+          req.params.id,
+          "meeting_notes.view",
+          res,
         );
-        if (!r.rows.length) {
+        if (!scope) return;
+        const result = await pool.query(
+          `SELECT mn.id::text, mn.lead_id::text, mn.source, mn.transcript,
+                  mn.summary, mn.action_items, mn.decisions, mn.next_steps,
+                  mn.topics, mn.participants, mn.confidence,
+                  mn.processing_status, mn.error_message, mn.created_at,
+                  mn.processed_at
+             FROM lead_meeting_notes mn
+             JOIN crm_customers scoped_lead
+               ON scoped_lead.id = mn.lead_id
+              AND scoped_lead.organization_id = mn.organization_id
+            WHERE mn.id = $1::uuid
+              AND mn.lead_id = $2::uuid
+              AND mn.organization_id = $3::uuid
+              AND scoped_lead.project_id = $4
+            LIMIT 1`,
+          [scope.noteId, scope.leadId, scope.organizationId, scope.projectId],
+        );
+        if (!result.rows.length) {
           res.status(404).json({ error: "ikke_funnet" });
           return;
         }
-        res.json({ note: r.rows[0] });
+        res.json({ note: result.rows[0] });
       } catch (err) {
         res.status(500).json({ error: "get_failed", detail: "internal_error" });
       }
@@ -317,21 +502,50 @@ export function registerLeadgridMeetingNotesRoutes(deps: Deps): void {
   // ─── Re-process (kjør Claude på nytt mot eksisterende transcript) ──
   app.post(
     "/api/leadgrid/meeting-notes/:id/reprocess",
-    permCreate,
     async (req: Request, res: Response) => {
+      const session = getSession(req, activeSessions);
+      if (!session) {
+        res.status(401).json({ error: "Innlogging kreves" });
+        return;
+      }
       try {
-        await pool.query(
+        const scope = await authorizeMeetingNote(
+          pool,
+          session.userId,
+          req.params.id,
+          "meeting_notes.create",
+          res,
+        );
+        if (!scope) return;
+        const updated = await pool.query(
           `UPDATE lead_meeting_notes
               SET processing_status='analyzing', error_message=NULL
-            WHERE id=$1::uuid`,
-          [req.params.id],
+            WHERE id=$1::uuid
+              AND lead_id=$2::uuid
+              AND organization_id=$3::uuid
+              AND EXISTS (
+                SELECT 1
+                  FROM crm_customers scoped_lead
+                 WHERE scoped_lead.id = lead_meeting_notes.lead_id
+                   AND scoped_lead.organization_id = lead_meeting_notes.organization_id
+                   AND scoped_lead.project_id = $4
+              )
+          RETURNING id`,
+          [scope.noteId, scope.leadId, scope.organizationId, scope.projectId],
         );
-        void processMeetingNote(pool, req.params.id).catch((err) =>
-          console.warn("[meeting-notes] reprosess feilet:", err),
-        );
+        if (!updated.rows.length) {
+          res.status(404).json({ error: "ikke_funnet" });
+          return;
+        }
+        void processMeetingNote(pool, scope).catch(async (err) => {
+          console.warn("[meeting-notes] reprosess feilet:", err);
+          await markMeetingNoteFailed(pool, scope, String(err)).catch(() => {});
+        });
         res.json({ status: "analyzing" });
       } catch (err) {
-        res.status(500).json({ error: "reprocess_failed", detail: "internal_error" });
+        res
+          .status(500)
+          .json({ error: "reprocess_failed", detail: "internal_error" });
       }
     },
   );
@@ -339,16 +553,45 @@ export function registerLeadgridMeetingNotesRoutes(deps: Deps): void {
   // ─── Delete ──────────────────────────────────────────────────────
   app.delete(
     "/api/leadgrid/meeting-notes/:id",
-    permDelete,
     async (req: Request, res: Response) => {
+      const session = getSession(req, activeSessions);
+      if (!session) {
+        res.status(401).json({ error: "Innlogging kreves" });
+        return;
+      }
       try {
-        await pool.query(
-          `DELETE FROM lead_meeting_notes WHERE id=$1::uuid`,
-          [req.params.id],
+        const scope = await authorizeMeetingNote(
+          pool,
+          session.userId,
+          req.params.id,
+          "meeting_notes.delete",
+          res,
         );
+        if (!scope) return;
+        const deleted = await pool.query(
+          `DELETE FROM lead_meeting_notes
+            WHERE id=$1::uuid
+              AND lead_id=$2::uuid
+              AND organization_id=$3::uuid
+              AND EXISTS (
+                SELECT 1
+                  FROM crm_customers scoped_lead
+                 WHERE scoped_lead.id = lead_meeting_notes.lead_id
+                   AND scoped_lead.organization_id = lead_meeting_notes.organization_id
+                   AND scoped_lead.project_id = $4
+              )
+          RETURNING id`,
+          [scope.noteId, scope.leadId, scope.organizationId, scope.projectId],
+        );
+        if (!deleted.rows.length) {
+          res.status(404).json({ error: "ikke_funnet" });
+          return;
+        }
         res.json({ ok: true });
       } catch (err) {
-        res.status(500).json({ error: "delete_failed", detail: "internal_error" });
+        res
+          .status(500)
+          .json({ error: "delete_failed", detail: "internal_error" });
       }
     },
   );

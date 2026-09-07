@@ -24,11 +24,11 @@ import { randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import Anthropic from "@anthropic-ai/sdk";
-import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 import {
-  assertAnyEntitled,
+  assertAnyEntitledForOrganization,
   LEADBOOK_AI_STRUKTUR_FEATURE_KEYS,
 } from "./leadgrid-entitlement-guard.js";
+import { loadAccessibleLeadgridProject } from "./leadgrid-project-access.js";
 import { sendAPNs } from "./lead-map-apns-client.js";
 import { withAIQuota } from "./leadgrid-ai-queue.js";
 
@@ -88,8 +88,8 @@ export interface LeadbookExamplesRoutesDeps {
 }
 
 const EXAMPLES_FEATURE_KEYS = ["leadbookEksempler"];
-const WRITE_ROLES = new Set(["admin", "salgssjef", "teamleder", "kvalitet"]);
-const FEEDBACK_ROLES = new Set(["admin", "salgssjef", "teamleder"]);
+const WRITE_ROLES = new Set(["owner", "admin", "salgssjef", "teamleder", "kvalitet"]);
+const FEEDBACK_ROLES = new Set(["owner", "admin", "salgssjef", "teamleder"]);
 const VALID_STATUS = new Set(["draft", "published", "archived"]);
 const VALID_OUTCOME = new Set(["won", "lost", "ongoing"]);
 const VALID_CHANNEL = new Set(["field", "telephone", "email", "video"]);
@@ -97,21 +97,6 @@ const VALID_DIMENSIONS = new Set([
   "autoritet", "klarhet", "troverdighet", "trygghet", "fremdrift",
 ]);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-async function orgRole(
-  pool: Pool, orgId: string, userId: string,
-): Promise<string | null> {
-  try {
-    const r = await pool.query<{ role: string }>(
-      `SELECT role FROM organization_members
-        WHERE organization_id = $1::uuid AND user_id = $2 LIMIT 1`,
-      [orgId, userId],
-    );
-    return r.rows[0]?.role ?? null;
-  } catch {
-    return null;
-  }
-}
 
 function str(v: unknown, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
@@ -155,6 +140,16 @@ function optionalBoundedInteger(
 function validClientActionId(value: unknown): string | null {
   const id = str(value).trim();
   return id && UUID_RE.test(id) ? id : null;
+}
+
+function leadbookExampleDeepLink(
+  exampleId: string,
+  projectId: string,
+  organizationId: string,
+): string {
+  return `leadgrid://leadbook/examples/${encodeURIComponent(exampleId)}`
+    + `?projectId=${encodeURIComponent(projectId)}`
+    + `&organizationId=${encodeURIComponent(organizationId)}`;
 }
 
 type ExampleCursor = { createdAt: string; id: string };
@@ -213,22 +208,54 @@ export function registerLeadgridLeadbookExamplesRoutes(
 ): void {
   const { app, pool, requireUserSession } = deps;
 
-  // Felles inngangsvakt: sesjon + org + entitlement. Returnerer null hvis
-  // et svar alt er sendt.
+  // Felles inngangsvakt: sesjon + eksplisitt prosjekt-ACL + prosjektets org
+  // + entitlement. Organisasjon utledes aldri fra første medlemskap.
   async function guard(
     req: Request, res: Response,
-  ): Promise<{ session: SessionUser; orgId: string; role: string | null } | null> {
+  ): Promise<{
+    session: SessionUser; orgId: string; projectId: string; role: string | null;
+  } | null> {
     const session = requireUserSession(req, res);
     if (!session) return null;
-    const orgId = await resolveOrgIdForUser(pool, session.userId);
-    if (!orgId) {
-      res.status(400).json({ error: "ingen_organisasjon" });
+    const projectId = str(
+      req.body?.projectId ?? req.body?.project_id
+        ?? req.query.projectId ?? req.query.project_id,
+    ).trim();
+    if (!projectId || projectId.length > 255 || /[\u0000-\u001f\u007f]/.test(projectId)) {
+      res.status(400).json({ error: "project_id_required" });
       return null;
     }
-    const ok = await assertAnyEntitled(pool, session.userId, EXAMPLES_FEATURE_KEYS, res);
+    let project;
+    try {
+      project = await loadAccessibleLeadgridProject(pool, projectId, session.userId);
+    } catch (error) {
+      console.warn("[leadbook-examples] project scope failed:", (error as Error).message);
+      res.status(500).json({ error: "project_scope_failed" });
+      return null;
+    }
+    if (!project) {
+      res.status(404).json({ error: "project_not_found" });
+      return null;
+    }
+    const claimedOrgId = str(
+      req.body?.organizationId ?? req.body?.organization_id
+        ?? req.query.organizationId ?? req.query.organization_id,
+    ).trim();
+    if (claimedOrgId
+        && claimedOrgId.toLowerCase() !== project.organizationId.toLowerCase()) {
+      res.status(409).json({ error: "organization_project_mismatch" });
+      return null;
+    }
+    const ok = await assertAnyEntitledForOrganization(
+      pool, project.organizationId, EXAMPLES_FEATURE_KEYS, res,
+    );
     if (!ok) return null;
-    const role = await orgRole(pool, orgId, session.userId);
-    return { session, orgId, role };
+    return {
+      session,
+      orgId: project.organizationId,
+      projectId: project.id,
+      role: project.memberRole || null,
+    };
   }
 
   // ── GET /api/leadgrid/leadbook/examples ───────────────────────────
@@ -256,19 +283,20 @@ export function registerLeadgridLeadbookExamplesRoutes(
                 created_by_name, created_at, updated_at, source_consent_id,
                 delete_requested_at, anonymized_at
            FROM leadbook_examples
-          WHERE organization_id = $1 AND status <> 'archived'
+          WHERE organization_id = $1 AND project_id = $2 AND status <> 'archived'
             AND (
               status = 'published'
-              OR $2
-              OR (status = 'draft' AND seller_user_id = $3)
+              OR $3
+              OR (status = 'draft' AND seller_user_id = $4)
             )
             AND (
-              $4::timestamptz IS NULL
-              OR (created_at, id) < ($4::timestamptz, $5::uuid)
+              $5::timestamptz IS NULL
+              OR (created_at, id) < ($5::timestamptz, $6::uuid)
             )
           ORDER BY created_at DESC, id DESC
-          LIMIT $6`,
-        [g.orgId, isLeder, g.session.userId, cursor?.createdAt ?? null, cursor?.id ?? null, limit + 1],
+          LIMIT $7`,
+        [g.orgId, g.projectId, isLeder, g.session.userId,
+         cursor?.createdAt ?? null, cursor?.id ?? null, limit + 1],
       );
       const hasMore = r.rows.length > limit;
       const page = r.rows.slice(0, limit);
@@ -283,9 +311,10 @@ export function registerLeadgridLeadbookExamplesRoutes(
           `SELECT example_id, SUM(view_count)::int AS views_total,
                   COUNT(*)::int AS viewers
              FROM leadbook_example_views
-            WHERE example_id = ANY($1::uuid[])
+            WHERE organization_id = $1 AND project_id = $2
+              AND example_id = ANY($3::uuid[])
             GROUP BY example_id`,
-          [ids],
+          [g.orgId, g.projectId, ids],
         );
         views = Object.fromEntries(vr.rows.map((row) => [
           row.example_id,
@@ -293,6 +322,7 @@ export function registerLeadgridLeadbookExamplesRoutes(
         ]));
       }
       return res.json({
+        projectId: g.projectId,
         examples: page.map((row) => ({
           ...row,
           views_total: views[row.id]?.views_total ?? null,
@@ -316,31 +346,38 @@ export function registerLeadgridLeadbookExamplesRoutes(
   // ── GET /api/leadgrid/leadbook/examples/:id ──────────────────────
   // Full detail for one visible example. Keeps transcript and coaching
   // dialogue out of the collection response.
-  app.get("/api/leadgrid/leadbook/examples/:id([0-9a-fA-F-]{36})", async (req, res) => {
+  app.get("/api/leadgrid/leadbook/examples/:id", async (req, res, next) => {
+    const exampleId = str(req.params.id).trim();
+    // Keep this route compatible with Express 4 and 5. Static GET routes
+    // such as /examples/ai-usage are registered later and must fall through.
+    if (!UUID_RE.test(exampleId)) {
+      next();
+      return;
+    }
     const g = await guard(req, res);
     if (!g) return;
     const isLeder = g.role != null && WRITE_ROLES.has(g.role);
     try {
       const result = await pool.query(
         `SELECT * FROM leadbook_examples
-          WHERE id = $1::uuid AND organization_id = $2
+          WHERE id = $1::uuid AND organization_id = $2 AND project_id = $3
             AND status <> 'archived'
             AND (
               status = 'published'
-              OR $3
-              OR (status = 'draft' AND seller_user_id = $4)
+              OR $4
+              OR (status = 'draft' AND seller_user_id = $5)
             )
           LIMIT 1`,
-        [req.params.id, g.orgId, isLeder, g.session.userId],
+        [exampleId, g.orgId, g.projectId, isLeder, g.session.userId],
       );
       const example = result.rows[0];
       if (!example) return res.status(404).json({ error: "ikke_funnet" });
 
       const feedbackResult = await pool.query(
         `SELECT * FROM leadbook_example_feedback
-          WHERE example_id = $1::uuid AND organization_id = $2
+          WHERE example_id = $1::uuid AND organization_id = $2 AND project_id = $3
           ORDER BY created_at ASC`,
-        [req.params.id, g.orgId],
+        [exampleId, g.orgId, g.projectId],
       );
       const feedbackIds = feedbackResult.rows.map((row) => row.id);
       let replies: Record<string, unknown[]> = {};
@@ -348,8 +385,9 @@ export function registerLeadgridLeadbookExamplesRoutes(
         const replyResult = await pool.query(
           `SELECT * FROM leadbook_feedback_replies
             WHERE feedback_id = ANY($1::uuid[]) AND organization_id = $2
+              AND project_id = $3
             ORDER BY created_at ASC`,
-          [feedbackIds, g.orgId],
+          [feedbackIds, g.orgId, g.projectId],
         );
         replies = replyResult.rows.reduce((acc: Record<string, unknown[]>, row) => {
           (acc[row.feedback_id] ??= []).push(row);
@@ -357,6 +395,7 @@ export function registerLeadgridLeadbookExamplesRoutes(
         }, {});
       }
       return res.json({
+        projectId: g.projectId,
         example: {
           ...example,
           feedback: feedbackResult.rows.map((row) => ({
@@ -397,7 +436,7 @@ export function registerLeadgridLeadbookExamplesRoutes(
       ? `date_trunc('year', NOW()) - (NOW() - date_trunc('year', NOW()))`
       : `NOW() - INTERVAL '${days * 2} days'`;
     const base = `FROM leadbook_examples
-    WHERE organization_id = $1 AND status = 'published'`;
+    WHERE organization_id = $1 AND project_id = $2 AND status = 'published'`;
     const totalsSelect = `SELECT COUNT(*)::int AS examples,
           COUNT(*) FILTER (WHERE outcome = 'won')::int AS won,
           COUNT(*) FILTER (WHERE outcome = 'lost')::int AS lost,
@@ -408,12 +447,12 @@ export function registerLeadgridLeadbookExamplesRoutes(
         await Promise.all([
           pool.query(
             `${totalsSelect} ${base} AND created_at >= ${fromExpr}`,
-            [g.orgId],
+            [g.orgId, g.projectId],
           ),
           pool.query(
             `${totalsSelect} ${base}
               AND created_at >= ${prevFromExpr} AND created_at < ${fromExpr}`,
-            [g.orgId],
+            [g.orgId, g.projectId],
           ),
           pool.query(
             `SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
@@ -421,7 +460,7 @@ export function registerLeadgridLeadbookExamplesRoutes(
                     ROUND(AVG(pondus_score) FILTER (WHERE pondus_score > 0))::int AS avg_pondus
                ${base} AND created_at >= ${fromExpr}
               GROUP BY 1 ORDER BY 1`,
-            [g.orgId],
+            [g.orgId, g.projectId],
           ),
           pool.query(
             `SELECT COALESCE(NULLIF(TRIM(seller_name), ''),
@@ -432,7 +471,7 @@ export function registerLeadgridLeadbookExamplesRoutes(
                     COUNT(*) FILTER (WHERE outcome = 'lost')::int AS lost
                ${base} AND created_at >= ${fromExpr}
               GROUP BY 1 ORDER BY count DESC, avg_pondus DESC NULLS LAST LIMIT 10`,
-            [g.orgId],
+            [g.orgId, g.projectId],
           ),
           pool.query(
             `SELECT featured_dimension AS dimension,
@@ -441,7 +480,7 @@ export function registerLeadgridLeadbookExamplesRoutes(
                ${base} AND created_at >= ${fromExpr}
                 AND featured_dimension IS NOT NULL AND featured_dimension <> ''
               GROUP BY 1 ORDER BY count DESC`,
-            [g.orgId],
+            [g.orgId, g.projectId],
           ),
           pool.query(
             `SELECT channel, COUNT(*)::int AS count,
@@ -449,31 +488,37 @@ export function registerLeadgridLeadbookExamplesRoutes(
                     COUNT(*) FILTER (WHERE outcome = 'lost')::int AS lost
                ${base} AND created_at >= ${fromExpr}
               GROUP BY 1 ORDER BY count DESC`,
-            [g.orgId],
+            [g.orgId, g.projectId],
           ),
           pool.query(
             `SELECT id, title, summary, outcome, pondus_score
                ${base} AND created_at >= ${fromExpr} AND pondus_score > 0
               ORDER BY pondus_score DESC LIMIT 1`,
-            [g.orgId],
+            [g.orgId, g.projectId],
           ),
           pool.query(
             `SELECT id, title, summary, outcome, pondus_score
                ${base} AND created_at >= ${fromExpr} AND pondus_score > 0
               ORDER BY pondus_score ASC LIMIT 1`,
-            [g.orgId],
+            [g.orgId, g.projectId],
           ),
           pool.query(
             `SELECT COUNT(*)::int AS count
                FROM leadbook_example_feedback f
-               JOIN leadbook_examples e ON e.id = f.example_id
-              WHERE e.organization_id = $1 AND f.created_at >= ${fromExpr}`,
-            [g.orgId],
+               JOIN leadbook_examples e
+                 ON e.id = f.example_id
+                AND e.organization_id = f.organization_id
+                AND e.project_id = f.project_id
+              WHERE e.organization_id = $1 AND e.project_id = $2
+                AND f.organization_id = $1 AND f.project_id = $2
+                AND f.created_at >= ${fromExpr}`,
+            [g.orgId, g.projectId],
           ),
         ]);
       const topRow = top.rows[0] ?? null;
       const bottomRow = bottom.rows[0] ?? null;
       return res.json({
+        projectId: g.projectId,
         period,
         totals: {
           ...(totals.rows[0] ?? {}),
@@ -556,7 +601,7 @@ Regler: transcript skal gjengi samtalen som replikker — bruk teksten ordrett d
 
 Rå notater:
 ${raw.slice(0, 12_000)}`;
-      const msg = await withAIQuota("claude", null, () =>
+      const msg = await withAIQuota("claude", g.orgId, () =>
         client.messages.create({
           model: "claude-sonnet-4-6",
           max_tokens: 3000,
@@ -580,10 +625,10 @@ ${raw.slice(0, 12_000)}`;
           : null;
         await pool.query(
           `INSERT INTO leadbook_ai_usage
-             (id, organization_id, user_id, user_name, feature, model,
+             (id, organization_id, project_id, user_id, user_name, feature, model,
               input_chars, input_tokens, output_tokens, cost_usd)
-           VALUES ($1,$2,$3,$4,'structure',$5,$6,$7,$8,$9)`,
-          [randomUUID(), g.orgId, g.session.userId, g.session.name ?? "",
+           VALUES ($1,$2,$3,$4,$5,'structure',$6,$7,$8,$9,$10)`,
+          [randomUUID(), g.orgId, g.projectId, g.session.userId, g.session.name ?? "",
            "claude-sonnet-4-6", raw.length, inTok, outTok, cost],
         );
       } catch (e) {
@@ -644,7 +689,7 @@ ${raw.slice(0, 12_000)}`;
 
 Formulering:
 ${text.slice(0, 2000)}`;
-      const msg = await withAIQuota("claude", null, () =>
+      const msg = await withAIQuota("claude", g.orgId, () =>
         client.messages.create({
           model: "claude-sonnet-4-6",
           max_tokens: 500,
@@ -666,10 +711,10 @@ ${text.slice(0, 2000)}`;
           : null;
         await pool.query(
           `INSERT INTO leadbook_ai_usage
-             (id, organization_id, user_id, user_name, feature, model,
+             (id, organization_id, project_id, user_id, user_name, feature, model,
               input_chars, input_tokens, output_tokens, cost_usd)
-           VALUES ($1,$2,$3,$4,'strengthen',$5,$6,$7,$8,$9)`,
-          [randomUUID(), g.orgId, g.session.userId, g.session.name ?? "",
+           VALUES ($1,$2,$3,$4,$5,'strengthen',$6,$7,$8,$9,$10)`,
+          [randomUUID(), g.orgId, g.projectId, g.session.userId, g.session.name ?? "",
            "claude-sonnet-4-6", text.length, inTok, outTok, cost],
         );
       } catch (e) {
@@ -728,7 +773,7 @@ ${text.slice(0, 2000)}`;
 
 Innvending${category ? ` (kategori: ${category})` : ""}:
 ${objection.slice(0, 500)}`;
-      const msg = await withAIQuota("claude", null, () =>
+      const msg = await withAIQuota("claude", g.orgId, () =>
         client.messages.create({
           model: "claude-sonnet-4-6",
           max_tokens: 400,
@@ -750,10 +795,10 @@ ${objection.slice(0, 500)}`;
           : null;
         await pool.query(
           `INSERT INTO leadbook_ai_usage
-             (id, organization_id, user_id, user_name, feature, model,
+             (id, organization_id, project_id, user_id, user_name, feature, model,
               input_chars, input_tokens, output_tokens, cost_usd)
-           VALUES ($1,$2,$3,$4,'objection',$5,$6,$7,$8,$9)`,
-          [randomUUID(), g.orgId, g.session.userId, g.session.name ?? "",
+           VALUES ($1,$2,$3,$4,$5,'objection',$6,$7,$8,$9,$10)`,
+          [randomUUID(), g.orgId, g.projectId, g.session.userId, g.session.name ?? "",
            "claude-sonnet-4-6", objection.length, inTok, outTok, cost],
         );
       } catch (e) {
@@ -786,17 +831,18 @@ ${objection.slice(0, 500)}`;
                 COALESCE(SUM(input_tokens),0)::int AS input_tokens,
                 COALESCE(SUM(output_tokens),0)::int AS output_tokens,
                 COALESCE(SUM(cost_usd),0) AS cost_usd
-           FROM leadbook_ai_usage WHERE organization_id = $1`,
-        [g.orgId],
+           FROM leadbook_ai_usage
+          WHERE organization_id = $1 AND project_id = $2`,
+        [g.orgId, g.projectId],
       );
       const month = await pool.query<{
         calls: number; cost_usd: string;
       }>(
         `SELECT COUNT(*)::int AS calls, COALESCE(SUM(cost_usd),0) AS cost_usd
            FROM leadbook_ai_usage
-          WHERE organization_id = $1
+          WHERE organization_id = $1 AND project_id = $2
             AND created_at >= date_trunc('month', now())`,
-        [g.orgId],
+        [g.orgId, g.projectId],
       );
       const byUser = await pool.query<{
         user_name: string; calls: number; cost_usd: string;
@@ -804,11 +850,11 @@ ${objection.slice(0, 500)}`;
         `SELECT user_name, COUNT(*)::int AS calls,
                 COALESCE(SUM(cost_usd),0) AS cost_usd
            FROM leadbook_ai_usage
-          WHERE organization_id = $1
+          WHERE organization_id = $1 AND project_id = $2
           GROUP BY user_name
           ORDER BY SUM(cost_usd) DESC NULLS LAST
           LIMIT 25`,
-        [g.orgId],
+        [g.orgId, g.projectId],
       );
       // Per FUNKSJON: kunden ser nøyaktig hva AI-forbruket går til
       // (møtebrief, etterarbeid, Canvas-analyse, anbud-score, …).
@@ -818,13 +864,14 @@ ${objection.slice(0, 500)}`;
         `SELECT feature, COUNT(*)::int AS calls,
                 COALESCE(SUM(cost_usd),0) AS cost_usd
            FROM leadbook_ai_usage
-          WHERE organization_id = $1
+          WHERE organization_id = $1 AND project_id = $2
           GROUP BY feature
           ORDER BY SUM(cost_usd) DESC NULLS LAST
           LIMIT 25`,
-        [g.orgId],
+        [g.orgId, g.projectId],
       );
       return res.json({
+        projectId: g.projectId,
         total: totals.rows[0],
         this_month: month.rows[0],
         by_user: byUser.rows,
@@ -906,10 +953,9 @@ ${objection.slice(0, 500)}`;
     if (customerLabel == null || industry == null || sellerName == null || summary == null) {
       return res.status(400).json({ error: "felt_for_langt" });
     }
-    const requestedStatus = str(b.status, "draft");
-    const status = isLeder && VALID_STATUS.has(requestedStatus)
-      ? requestedStatus
-      : "draft";
+    // Creation is always private. Publishing is a separate, audited transition
+    // that atomically anonymizes before any project member can read the row.
+    const status = "draft";
     const outcome = VALID_OUTCOME.has(str(b.outcome)) ? str(b.outcome) : "won";
     const channel = normalizedChannel(b.channel);
     if (!channel) return res.status(400).json({ error: "ugyldig_kanal" });
@@ -941,9 +987,10 @@ ${objection.slice(0, 500)}`;
       if (consentId) {
         const consent = await pool.query<{ customer_label: string }>(
           `SELECT customer_label FROM leadbook_recording_consents
-            WHERE id = $1::uuid AND organization_id = $2 AND user_id = $3
+            WHERE id = $1::uuid AND organization_id = $2
+              AND project_id = $3 AND user_id = $4
             LIMIT 1`,
-          [consentId, g.orgId, g.session.userId],
+          [consentId, g.orgId, g.projectId, g.session.userId],
         );
         if (!consent.rows[0]) {
           return res.status(400).json({ error: "ugyldig_source_consent" });
@@ -953,19 +1000,19 @@ ${objection.slice(0, 500)}`;
       const id = randomUUID();
       const inserted = await pool.query<{ id: string }>(
         `INSERT INTO leadbook_examples
-           (id, organization_id, status, title, customer_label, industry,
+           (id, organization_id, project_id, status, title, customer_label, industry,
             outcome, channel, duration_sec, seller_user_id, seller_name,
             happened_on, pondus_score, featured_dimension, dimension_scores,
             key_learnings, alternative_phrasings, transcript, key_moments,
             deal_value_nok, summary, created_by, created_by_name,
             source_consent_id, creation_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
-                 $15::jsonb,$16::jsonb,$17::jsonb,$18::jsonb,$19::jsonb,$20,$21,$22,$23,$24,$25)
-         ON CONFLICT (organization_id, creation_id)
-           WHERE creation_id IS NOT NULL DO NOTHING
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
+                 $16::jsonb,$17::jsonb,$18::jsonb,$19::jsonb,$20::jsonb,$21,$22,$23,$24,$25,$26)
+         ON CONFLICT (organization_id, project_id, creation_id)
+           WHERE project_id IS NOT NULL AND creation_id IS NOT NULL DO NOTHING
          RETURNING id`,
         [
-          id, g.orgId, status, title,
+          id, g.orgId, g.projectId, status, title,
           customerLabel || consentCustomer, industry, outcome, channel,
           duration.value,
           (consentId || !isLeder) ? g.session.userId : (str(b.seller_user_id) || g.session.userId),
@@ -983,13 +1030,22 @@ ${objection.slice(0, 500)}`;
           consentId, creationId,
         ],
       );
-      if (inserted.rows[0]) return res.status(201).json({ id: inserted.rows[0].id });
+      if (inserted.rows[0]) {
+        return res.status(201).json({
+          id: inserted.rows[0].id, status: "draft", projectId: g.projectId,
+        });
+      }
       const existing = await pool.query<{ id: string }>(
         `SELECT id FROM leadbook_examples
-          WHERE organization_id = $1 AND creation_id = $2::uuid LIMIT 1`,
-        [g.orgId, creationId],
+          WHERE organization_id = $1 AND project_id = $2
+            AND creation_id = $3::uuid LIMIT 1`,
+        [g.orgId, g.projectId, creationId],
       );
-      if (existing.rows[0]) return res.status(200).json({ id: existing.rows[0].id });
+      if (existing.rows[0]) {
+        return res.status(200).json({
+          id: existing.rows[0].id, status: "draft", projectId: g.projectId,
+        });
+      }
       throw new Error("idempotent create returned no row");
     } catch (err) {
       console.warn("[leadbook-examples] create failed:", (err as Error).message);
@@ -999,6 +1055,9 @@ ${objection.slice(0, 500)}`;
 
   // ── PATCH /api/leadgrid/leadbook/examples/:id — rediger/publiser ──
   app.patch("/api/leadgrid/leadbook/examples/:id", async (req, res) => {
+    if (!UUID_RE.test(str(req.params.id).trim())) {
+      return res.status(400).json({ error: "ugyldig_example_id" });
+    }
     const g = await guard(req, res);
     if (!g) return;
     if (g.role == null || !WRITE_ROLES.has(g.role)) {
@@ -1054,7 +1113,14 @@ ${objection.slice(0, 500)}`;
     if (b.dimension_scores !== undefined) push("dimension_scores", JSON.stringify(b.dimension_scores ?? {}));
     if (b.key_learnings !== undefined) push("key_learnings", JSON.stringify(jsonArr(b.key_learnings)));
     if (b.alternative_phrasings !== undefined) push("alternative_phrasings", JSON.stringify(jsonArr(b.alternative_phrasings)));
-    if (b.transcript !== undefined) push("transcript", JSON.stringify(jsonArr(b.transcript)));
+    if (b.transcript !== undefined) {
+      const transcript = jsonArr(b.transcript);
+      const transcriptJSON = JSON.stringify(transcript);
+      if (transcript.length > 5000 || Buffer.byteLength(transcriptJSON, "utf8") > 1_000_000) {
+        return res.status(413).json({ error: "transkript_for_stort" });
+      }
+      push("transcript", transcriptJSON);
+    }
     if (b.key_moments !== undefined) push("key_moments", JSON.stringify(jsonArr(b.key_moments)));
     if (b.deal_value_nok !== undefined) {
       const value = optionalBoundedInteger(b.deal_value_nok, 0, Number.MAX_SAFE_INTEGER);
@@ -1068,79 +1134,89 @@ ${objection.slice(0, 500)}`;
     }
     if (sets.length === 0) return res.status(400).json({ error: "ingenting_aa_oppdatere" });
     push("updated_at", new Date());
-    vals.push(req.params.id, g.orgId);
+    vals.push(req.params.id, g.orgId, g.projectId);
     try {
-      // Publiserings-deteksjon (2026-07-17, «Ukens samtale»): les gammel
-      // status FØR update så vi kun varsler på draft→published-overgangen.
-      const publishing = b.status === "published";
-      let oldStatus: string | null = null;
-      if (publishing) {
-        const prev = await pool.query<{ status: string }>(
+      const client = await pool.connect();
+      let didPublish = false;
+      try {
+        await client.query("BEGIN");
+        const previous = await client.query<{ status: string }>(
           `SELECT status FROM leadbook_examples
-            WHERE id = $1::uuid AND organization_id = $2 LIMIT 1`,
-          [req.params.id, g.orgId],
+            WHERE id = $1::uuid AND organization_id = $2 AND project_id = $3
+            LIMIT 1 FOR UPDATE`,
+          [req.params.id, g.orgId, g.projectId],
         );
-        oldStatus = prev.rows[0]?.status ?? null;
+        const oldStatus = previous.rows[0]?.status ?? null;
+        if (oldStatus == null) {
+          await client.query("ROLLBACK");
+          return res.status(404).json({ error: "ikke_funnet" });
+        }
+
+        const updated = await client.query<{
+          id: string;
+          status: string;
+          transcript: unknown;
+          customer_label: string;
+        }>(
+          `UPDATE leadbook_examples SET ${sets.join(", ")}
+            WHERE id = $${vals.length - 2}::uuid
+              AND organization_id = $${vals.length - 1}
+              AND project_id = $${vals.length}
+            RETURNING id, status, transcript, customer_label`,
+          vals,
+        );
+        const row = updated.rows[0];
+        if (!row) throw new Error("patch lost locked Leadbook row");
+
+        // Sanitize inside the same transaction that makes the row visible.
+        // This also protects edits to an already-published transcript.
+        if (row.status === "published") {
+          const anonymized = await client.query(
+            `UPDATE leadbook_examples
+                SET transcript = $1::jsonb,
+                    customer_label = $2,
+                    anonymized_at = COALESCE(anonymized_at, NOW()),
+                    updated_at = NOW()
+              WHERE id = $3::uuid AND organization_id = $4 AND project_id = $5
+              RETURNING id`,
+            [JSON.stringify(anonymizeTranscript(row.transcript)),
+             anonymizeText(row.customer_label ?? ""), row.id,
+             g.orgId, g.projectId],
+          );
+          if ((anonymized.rowCount ?? 0) !== 1) {
+            throw new Error("anonymization lost locked Leadbook row");
+          }
+        }
+
+        didPublish = oldStatus !== "published" && row.status === "published";
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
       }
 
-      const r = await pool.query(
-        `UPDATE leadbook_examples SET ${sets.join(", ")}
-          WHERE id = $${vals.length - 1}::uuid AND organization_id = $${vals.length}
-          RETURNING id`,
-        vals,
-      );
-      if (r.rowCount === 0) return res.status(404).json({ error: "ikke_funnet" });
-
-      // §6 anonymisering — regex-sikkerhetsnett på draft→published (kjøres
-      // ALLTID her, uavhengig av om appen alt gjorde et on-device LLM-pass
-      // FØR denne PATCH-en). Best effort — feiler aldri selve publiseringen.
-      if (publishing && oldStatus !== "published") {
-        anonymizeOnPublish(g.orgId, req.params.id)
-          .catch((e) => console.warn(
-            "[leadbook-examples] anonymize feilet:", (e as Error).message));
+      // The row is already anonymized at commit. A retry observes published
+      // and therefore cannot duplicate the transition notification.
+      if (didPublish) {
+        notifyOrgOfPublish(g.orgId, g.projectId, req.params.id, g.session.userId)
+          .catch((error) => console.warn(
+            "[leadbook-examples] publish-notify feilet:",
+            (error as Error).message,
+          ));
       }
-
-      // «Ukens samtale»-digest: nytt publisert eksempel → varsle hele
-      // org-en (unntatt publisereren). Best effort — velter aldri patchen.
-      if (publishing && oldStatus !== "published") {
-        notifyOrgOfPublish(g.orgId, req.params.id, g.session.userId)
-          .catch((e) => console.warn(
-            "[leadbook-examples] publish-notify feilet:", (e as Error).message));
-      }
-      return res.json({ ok: true });
+      return res.json({ ok: true, projectId: g.projectId });
     } catch (err) {
       console.warn("[leadbook-examples] patch failed:", (err as Error).message);
       return res.status(500).json({ error: "patch_failed" });
     }
   });
 
-  /// §6 anonymisering — kjøres på draft→published. Maskerer transcript
-  /// (per replikk) + customer_label; summary/key_learnings er ledernes
-  /// egne kuraterte tekst, ikke rå kunde-sitat — røres ikke.
-  async function anonymizeOnPublish(orgId: string, exampleId: string): Promise<void> {
-    const row = await pool.query<{ transcript: unknown; customer_label: string }>(
-      `SELECT transcript, customer_label FROM leadbook_examples
-        WHERE id = $1::uuid AND organization_id = $2 LIMIT 1`,
-      [exampleId, orgId],
-    );
-    const r = row.rows[0];
-    if (!r) return;
-    await pool.query(
-      `UPDATE leadbook_examples
-          SET transcript = $1::jsonb, customer_label = $2, anonymized_at = NOW()
-        WHERE id = $3::uuid AND organization_id = $4`,
-      [
-        JSON.stringify(anonymizeTranscript(r.transcript)),
-        anonymizeText(r.customer_label ?? ""),
-        exampleId, orgId,
-      ],
-    );
-  }
-
   /// Publiserings-varsel til alle org-medlemmer: «Ny vinnersamtale fra
   /// Marte — 340K, sterk på Trygghet». Kjøres asynkront etter patch-svaret.
   async function notifyOrgOfPublish(
-    orgId: string, exampleId: string, publisherUserId: string,
+    orgId: string, projectId: string, exampleId: string, publisherUserId: string,
   ): Promise<void> {
     const ex = await pool.query<{
       title: string; outcome: string; seller_name: string;
@@ -1148,8 +1224,9 @@ ${objection.slice(0, 500)}`;
     }>(
       `SELECT title, outcome, seller_name, deal_value_nok, featured_dimension
          FROM leadbook_examples
-        WHERE id = $1::uuid AND organization_id = $2 LIMIT 1`,
-      [exampleId, orgId],
+        WHERE id = $1::uuid AND organization_id = $2 AND project_id = $3
+        LIMIT 1`,
+      [exampleId, orgId, projectId],
     );
     const row = ex.rows[0];
     if (!row) return;
@@ -1172,16 +1249,56 @@ ${objection.slice(0, 500)}`;
     const body = parts.length > 0
       ? `«${row.title}» — ${parts.join(", ")}`
       : `«${row.title}»`;
-    const deepLink = `leadgrid://leadbook/examples/${exampleId}`;
+    const deepLink = leadbookExampleDeepLink(exampleId, projectId, orgId);
 
     const members = await pool.query<{ user_id: string }>(
-      `SELECT user_id FROM organization_members
-        WHERE organization_id = $1::uuid AND user_id <> $2`,
-      [orgId, publisherUserId],
+      `WITH project_row AS (
+         SELECT id, organization_id, created_by
+           FROM leadgrid_projects
+          WHERE id = $2 AND organization_id = $1::uuid
+       ), eligible AS (
+         SELECT created_by AS user_id FROM project_row
+         UNION
+         SELECT member.user_id
+           FROM project_row project
+           JOIN leadgrid_project_members member
+             ON member.organization_id = project.organization_id
+            AND member.project_id = project.id
+         UNION
+         SELECT org_member.user_id
+           FROM project_row project
+           JOIN organization_members org_member
+             ON org_member.organization_id = project.organization_id
+          WHERE NOT EXISTS (
+                  SELECT 1 FROM leadgrid_user_permission_overrides denied
+                   WHERE denied.organization_id = project.organization_id
+                     AND denied.user_id = org_member.user_id
+                     AND denied.permission_key = 'projects.view_all'
+                     AND denied.effect = 'revoke'
+                )
+            AND (
+              org_member.role = 'admin'
+              OR EXISTS (
+                SELECT 1 FROM role_permissions defaults
+                 WHERE defaults.role = org_member.role
+                   AND defaults.permission_key = 'projects.view_all'
+              )
+              OR EXISTS (
+                SELECT 1 FROM leadgrid_user_permission_overrides granted
+                 WHERE granted.organization_id = project.organization_id
+                   AND granted.user_id = org_member.user_id
+                   AND granted.permission_key = 'projects.view_all'
+                   AND granted.effect = 'grant'
+              )
+            )
+       )
+       SELECT DISTINCT user_id FROM eligible
+        WHERE user_id IS NOT NULL AND user_id <> $3`,
+      [orgId, projectId, publisherUserId],
     );
-    for (const m of members.rows) {
+    for (const member of members.rows) {
       await notifyUser(
-        m.user_id, orgId, publisherUserId,
+        member.user_id, orgId, projectId, publisherUserId,
         "leadbook_example_published", title, body, deepLink,
         { example_id: exampleId },
       );
@@ -1192,32 +1309,37 @@ ${objection.slice(0, 500)}`;
   // Visnings-registrering (alle medlemmer): upsert m/ teller. Appen
   // kaller når detail-sheeten åpnes i ekte modus.
   app.post("/api/leadgrid/leadbook/examples/:id/view", async (req, res) => {
+    const exampleId = str(req.params.id).trim();
+    if (!UUID_RE.test(exampleId)) {
+      return res.status(400).json({ error: "ugyldig_example_id" });
+    }
     const g = await guard(req, res);
     if (!g) return;
     const isLeder = g.role != null && WRITE_ROLES.has(g.role);
     try {
       const ex = await pool.query(
         `SELECT id FROM leadbook_examples
-          WHERE id = $1::uuid AND organization_id = $2
+          WHERE id = $1::uuid AND organization_id = $2 AND project_id = $3
             AND status <> 'archived'
             AND (
               status = 'published'
-              OR $3
-              OR (status = 'draft' AND seller_user_id = $4)
+              OR $4
+              OR (status = 'draft' AND seller_user_id = $5)
             )
           LIMIT 1`,
-        [req.params.id, g.orgId, isLeder, g.session.userId],
+        [exampleId, g.orgId, g.projectId, isLeder, g.session.userId],
       );
       if (ex.rowCount === 0) return res.status(404).json({ error: "ikke_funnet" });
       await pool.query(
-        `INSERT INTO leadbook_example_views (example_id, organization_id, user_id)
-         VALUES ($1::uuid, $2, $3)
+        `INSERT INTO leadbook_example_views
+           (example_id, organization_id, project_id, user_id)
+         VALUES ($1::uuid, $2, $3, $4)
          ON CONFLICT (example_id, user_id)
          DO UPDATE SET view_count = leadbook_example_views.view_count + 1,
                        last_viewed_at = now()`,
-        [req.params.id, g.orgId, g.session.userId],
+        [exampleId, g.orgId, g.projectId, g.session.userId],
       );
-      return res.json({ ok: true });
+      return res.json({ ok: true, projectId: g.projectId });
     } catch (err) {
       console.warn("[leadbook-examples] view failed:", (err as Error).message);
       return res.status(500).json({ error: "view_failed" });
@@ -1226,6 +1348,10 @@ ${objection.slice(0, 500)}`;
 
   // ── DELETE — arkiver (soft) ───────────────────────────────────────
   app.delete("/api/leadgrid/leadbook/examples/:id", async (req, res) => {
+    const exampleId = str(req.params.id).trim();
+    if (!UUID_RE.test(exampleId)) {
+      return res.status(400).json({ error: "ugyldig_example_id" });
+    }
     const g = await guard(req, res);
     if (!g) return;
     if (g.role == null || !WRITE_ROLES.has(g.role)) {
@@ -1234,11 +1360,12 @@ ${objection.slice(0, 500)}`;
     try {
       const r = await pool.query(
         `UPDATE leadbook_examples SET status = 'archived', updated_at = now()
-          WHERE id = $1::uuid AND organization_id = $2 RETURNING id`,
-        [req.params.id, g.orgId],
+          WHERE id = $1::uuid AND organization_id = $2 AND project_id = $3
+          RETURNING id`,
+        [exampleId, g.orgId, g.projectId],
       );
       if (r.rowCount === 0) return res.status(404).json({ error: "ikke_funnet" });
-      return res.json({ ok: true });
+      return res.json({ ok: true, projectId: g.projectId });
     } catch (err) {
       console.warn("[leadbook-examples] delete failed:", (err as Error).message);
       return res.status(500).json({ error: "delete_failed" });
@@ -1247,6 +1374,10 @@ ${objection.slice(0, 500)}`;
 
   // ── POST /:id/feedback — leder-tilbakemelding på samtalen ─────────
   app.post("/api/leadgrid/leadbook/examples/:id/feedback", async (req, res) => {
+    const exampleId = str(req.params.id).trim();
+    if (!UUID_RE.test(exampleId)) {
+      return res.status(400).json({ error: "ugyldig_example_id" });
+    }
     const g = await guard(req, res);
     if (!g) return;
     if (g.role == null || !FEEDBACK_ROLES.has(g.role)) {
@@ -1273,23 +1404,24 @@ ${objection.slice(0, 500)}`;
         id: string; title: string; seller_user_id: string | null;
       }>(
         `SELECT id, title, seller_user_id FROM leadbook_examples
-          WHERE id = $1::uuid AND organization_id = $2 LIMIT 1`,
-        [req.params.id, g.orgId],
+          WHERE id = $1::uuid AND organization_id = $2 AND project_id = $3
+          LIMIT 1`,
+        [exampleId, g.orgId, g.projectId],
       );
       const example = ex.rows[0];
       if (!example) return res.status(404).json({ error: "ikke_funnet" });
       const id = randomUUID();
       const inserted = await pool.query<{ id: string }>(
         `INSERT INTO leadbook_example_feedback
-           (id, example_id, organization_id, author_user_id, author_name,
+           (id, example_id, organization_id, project_id, author_user_id, author_name,
             author_role, dimension, body, transcript_index, at_sec,
             client_action_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-         ON CONFLICT (organization_id, client_action_id)
-           WHERE client_action_id IS NOT NULL DO NOTHING
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         ON CONFLICT (organization_id, project_id, client_action_id)
+           WHERE project_id IS NOT NULL AND client_action_id IS NOT NULL DO NOTHING
          RETURNING id`,
         [
-          id, req.params.id, g.orgId,
+          id, exampleId, g.orgId, g.projectId,
           g.session.userId, g.session.name ?? "",
           g.role, dimension, body, transcriptIndex, atSec, clientActionId,
         ],
@@ -1297,10 +1429,13 @@ ${objection.slice(0, 500)}`;
       if (!inserted.rows[0]) {
         const existing = await pool.query<{ id: string }>(
           `SELECT id FROM leadbook_example_feedback
-            WHERE organization_id = $1 AND client_action_id = $2::uuid LIMIT 1`,
-          [g.orgId, clientActionId],
+            WHERE organization_id = $1 AND project_id = $2
+              AND client_action_id = $3::uuid LIMIT 1`,
+          [g.orgId, g.projectId, clientActionId],
         );
-        if (existing.rows[0]) return res.status(200).json({ id: existing.rows[0].id });
+        if (existing.rows[0]) {
+          return res.status(200).json({ id: existing.rows[0].id, projectId: g.projectId });
+        }
         throw new Error("idempotent feedback returned no row");
       }
 
@@ -1314,50 +1449,15 @@ ${objection.slice(0, 500)}`;
         const title = `Tilbakemelding fra ${g.session.name || "leder"}`;
         const excerpt = body.length > 120 ? `${body.slice(0, 117)}…` : body;
         const notifBody = `«${example.title}»: ${excerpt}`;
-        const deepLink = `leadgrid://leadbook/examples/${example.id}`;
-        try {
-          await pool.query(
-            `INSERT INTO notification_events
-               (recipient_user_id, organization_id, event_type, title, body,
-                triggered_by_user_id, deep_link, meta, email_sent)
-             VALUES ($1, $2, 'leadbook_example_feedback', $3, $4, $5, $6, $7::jsonb, FALSE)`,
-            [
-              sellerId, g.orgId, title, notifBody,
-              g.session.userId, deepLink,
-              JSON.stringify({ example_id: example.id, dimension, at_sec: atSec }),
-            ],
-          );
-        } catch (e) {
-          console.warn("[leadbook-examples] notif in_app feilet:", (e as Error).message);
-        }
-        try {
-          const tokRes = await pool.query<{ token: string }>(
-            `SELECT token FROM notification_device_tokens
-              WHERE user_id = $1 AND platform = 'apns' AND enabled = TRUE`,
-            [sellerId],
-          );
-          for (const t of tokRes.rows) {
-            const r = await sendAPNs(t.token, title, notifBody, {
-              customData: {
-                event_type: "leadbook_example_feedback",
-                deep_link: deepLink,
-              },
-            });
-            if (r.sent) break;
-            if (r.shouldDisableToken) {
-              await pool.query(
-                `UPDATE notification_device_tokens SET enabled = FALSE
-                  WHERE token = $1 AND user_id = $2`,
-                [t.token, sellerId],
-              ).catch(() => {});
-            }
-          }
-        } catch (e) {
-          console.warn("[leadbook-examples] notif apns feilet:", (e as Error).message);
-        }
+        await notifyUser(
+          sellerId, g.orgId, g.projectId, g.session.userId,
+          "leadbook_example_feedback", title, notifBody,
+          leadbookExampleDeepLink(example.id, g.projectId, g.orgId),
+          { example_id: example.id, dimension, at_sec: atSec },
+        );
       }
 
-      return res.status(201).json({ id });
+      return res.status(201).json({ id, projectId: g.projectId });
     } catch (err) {
       console.warn("[leadbook-examples] feedback failed:", (err as Error).message);
       return res.status(500).json({ error: "feedback_failed" });
@@ -1371,18 +1471,34 @@ ${objection.slice(0, 500)}`;
   /// Delt varslings-helper (in-app + APNs, best effort) — samme pipeline
   /// som lead-tildeling; feil velter aldri hovedoperasjonen.
   async function notifyUser(
-    recipientUserId: string, orgId: string, triggeredBy: string,
+    recipientUserId: string, orgId: string, projectId: string, triggeredBy: string,
     eventType: string, title: string, notifBody: string, deepLink: string,
     meta: Record<string, unknown>,
   ): Promise<void> {
+    let recipientProject;
+    try {
+      recipientProject = await loadAccessibleLeadgridProject(
+        pool, projectId, recipientUserId,
+      );
+    } catch (error) {
+      console.warn(
+        "[leadbook-examples] recipient project ACL failed:",
+        (error as Error).message,
+      );
+      return;
+    }
+    if (!recipientProject
+        || recipientProject.organizationId.toLowerCase() !== orgId.toLowerCase()) {
+      return;
+    }
     try {
       await pool.query(
         `INSERT INTO notification_events
-           (recipient_user_id, organization_id, event_type, title, body,
+           (recipient_user_id, organization_id, project_id, event_type, title, body,
             triggered_by_user_id, deep_link, meta, email_sent)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, FALSE)`,
-        [recipientUserId, orgId, eventType, title, notifBody,
-         triggeredBy, deepLink, JSON.stringify(meta)],
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, FALSE)`,
+        [recipientUserId, orgId, projectId, eventType, title, notifBody,
+         triggeredBy, deepLink, JSON.stringify({ ...meta, project_id: projectId })],
       );
     } catch (e) {
       console.warn("[leadbook-examples] notif in_app feilet:", (e as Error).message);
@@ -1395,7 +1511,12 @@ ${objection.slice(0, 500)}`;
       );
       for (const t of tokRes.rows) {
         const r = await sendAPNs(t.token, title, notifBody, {
-          customData: { event_type: eventType, deep_link: deepLink },
+          customData: {
+            event_type: eventType,
+            organization_id: orgId,
+            project_id: projectId,
+            deep_link: deepLink,
+          },
         });
         if (r.sent) break;
         if (r.shouldDisableToken) {
@@ -1422,22 +1543,30 @@ ${objection.slice(0, 500)}`;
         `SELECT f.*, e.title AS example_title, e.outcome AS example_outcome,
                 e.status AS example_status
            FROM leadbook_example_feedback f
-           JOIN leadbook_examples e ON e.id = f.example_id
+           JOIN leadbook_examples e
+             ON e.id = f.example_id
+            AND e.organization_id = f.organization_id
+            AND e.project_id = f.project_id
           WHERE f.organization_id = $1
-            AND e.seller_user_id = $2
+            AND f.project_id = $2
+            AND e.organization_id = $1
+            AND e.project_id = $2
+            AND e.seller_user_id = $3
             AND e.status <> 'archived'
           ORDER BY f.created_at DESC
           LIMIT 200`,
-        [g.orgId, g.session.userId],
+        [g.orgId, g.projectId, g.session.userId],
       );
       const fbIds = r.rows.map((row) => row.id);
       let replies: Record<string, unknown[]> = {};
       if (fbIds.length > 0) {
         const rr = await pool.query(
           `SELECT * FROM leadbook_feedback_replies
-            WHERE feedback_id = ANY($1::uuid[]) AND organization_id = $2
+            WHERE feedback_id = ANY($1::uuid[])
+              AND organization_id = $2
+              AND project_id = $3
             ORDER BY created_at ASC`,
-          [fbIds, g.orgId],
+          [fbIds, g.orgId, g.projectId],
         );
         replies = rr.rows.reduce((acc: Record<string, unknown[]>, row) => {
           (acc[row.feedback_id] ??= []).push(row);
@@ -1446,6 +1575,7 @@ ${objection.slice(0, 500)}`;
       }
       const unread = r.rows.filter((row) => row.read_at == null).length;
       return res.json({
+        projectId: g.projectId,
         feedback: r.rows.map((row) => ({ ...row, replies: replies[row.id] ?? [] })),
         unread,
       });
@@ -1459,6 +1589,10 @@ ${objection.slice(0, 500)}`;
   // Lest-kvittering — KUN eksempelets selger kan markere som lest
   // (kvitteringen betyr «selgeren har sett den», ikke «noen åpnet den»).
   app.post("/api/leadgrid/leadbook/feedback/:id/read", async (req, res) => {
+    const feedbackId = str(req.params.id).trim();
+    if (!UUID_RE.test(feedbackId)) {
+      return res.status(400).json({ error: "ugyldig_feedback_id" });
+    }
     const g = await guard(req, res);
     if (!g) return;
     try {
@@ -1466,13 +1600,18 @@ ${objection.slice(0, 500)}`;
         `UPDATE leadbook_example_feedback f
             SET read_at = COALESCE(f.read_at, now())
            FROM leadbook_examples e
-          WHERE f.id = $1::uuid AND f.organization_id = $2
-            AND e.id = f.example_id AND e.seller_user_id = $3
+          WHERE f.id = $1::uuid
+            AND f.organization_id = $2
+            AND f.project_id = $3
+            AND e.id = f.example_id
+            AND e.organization_id = $2
+            AND e.project_id = $3
+            AND e.seller_user_id = $4
           RETURNING f.id`,
-        [req.params.id, g.orgId, g.session.userId],
+        [feedbackId, g.orgId, g.projectId, g.session.userId],
       );
       if (r.rowCount === 0) return res.status(404).json({ error: "ikke_funnet" });
-      return res.json({ ok: true });
+      return res.json({ ok: true, projectId: g.projectId });
     } catch (err) {
       console.warn("[leadbook-examples] read failed:", (err as Error).message);
       return res.status(500).json({ error: "read_failed" });
@@ -1484,6 +1623,10 @@ ${objection.slice(0, 500)}`;
   // varsles (selger svarer → forfatteren av tilbakemeldingen; leder
   // svarer → selgeren).
   app.post("/api/leadgrid/leadbook/feedback/:id/replies", async (req, res) => {
+    const feedbackId = str(req.params.id).trim();
+    if (!UUID_RE.test(feedbackId)) {
+      return res.status(400).json({ error: "ugyldig_feedback_id" });
+    }
     const g = await guard(req, res);
     if (!g) return;
     const b = (req.body ?? {}) as Record<string, unknown>;
@@ -1503,9 +1646,17 @@ ${objection.slice(0, 500)}`;
         `SELECT f.id, f.author_user_id, f.example_id,
                 e.seller_user_id, e.title AS example_title
            FROM leadbook_example_feedback f
-           JOIN leadbook_examples e ON e.id = f.example_id
-          WHERE f.id = $1::uuid AND f.organization_id = $2 LIMIT 1`,
-        [req.params.id, g.orgId],
+           JOIN leadbook_examples e
+             ON e.id = f.example_id
+            AND e.organization_id = f.organization_id
+            AND e.project_id = f.project_id
+          WHERE f.id = $1::uuid
+            AND f.organization_id = $2
+            AND f.project_id = $3
+            AND e.organization_id = $2
+            AND e.project_id = $3
+          LIMIT 1`,
+        [feedbackId, g.orgId, g.projectId],
       );
       const row = fb.rows[0];
       if (!row) return res.status(404).json({ error: "ikke_funnet" });
@@ -1519,23 +1670,26 @@ ${objection.slice(0, 500)}`;
       const id = randomUUID();
       const inserted = await pool.query<{ id: string }>(
         `INSERT INTO leadbook_feedback_replies
-           (id, feedback_id, organization_id, author_user_id, author_name,
-            author_role, body, client_action_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-         ON CONFLICT (organization_id, client_action_id)
-           WHERE client_action_id IS NOT NULL DO NOTHING
+           (id, feedback_id, organization_id, project_id, author_user_id,
+            author_name, author_role, body, client_action_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         ON CONFLICT (organization_id, project_id, client_action_id)
+           WHERE project_id IS NOT NULL AND client_action_id IS NOT NULL DO NOTHING
          RETURNING id`,
-        [id, req.params.id, g.orgId, g.session.userId,
+        [id, req.params.id, g.orgId, g.projectId, g.session.userId,
          g.session.name ?? "", isSeller ? "selger" : (g.role ?? ""), body,
          clientActionId],
       );
       if (!inserted.rows[0]) {
         const existing = await pool.query<{ id: string }>(
           `SELECT id FROM leadbook_feedback_replies
-            WHERE organization_id = $1 AND client_action_id = $2::uuid LIMIT 1`,
-          [g.orgId, clientActionId],
+            WHERE organization_id = $1 AND project_id = $2
+              AND client_action_id = $3::uuid LIMIT 1`,
+          [g.orgId, g.projectId, clientActionId],
         );
-        if (existing.rows[0]) return res.status(200).json({ id: existing.rows[0].id });
+        if (existing.rows[0]) {
+          return res.status(200).json({ id: existing.rows[0].id, projectId: g.projectId });
+        }
         throw new Error("idempotent reply returned no row");
       }
 
@@ -1544,8 +1698,10 @@ ${objection.slice(0, 500)}`;
         await pool.query(
           `UPDATE leadbook_example_feedback
               SET read_at = COALESCE(read_at, now())
-            WHERE id = $1::uuid`,
-          [req.params.id],
+            WHERE id = $1::uuid
+              AND organization_id = $2
+              AND project_id = $3`,
+          [req.params.id, g.orgId, g.projectId],
         ).catch(() => {});
       }
 
@@ -1553,15 +1709,15 @@ ${objection.slice(0, 500)}`;
       if (recipient && recipient !== g.session.userId) {
         const excerpt = body.length > 120 ? `${body.slice(0, 117)}…` : body;
         await notifyUser(
-          recipient, g.orgId, g.session.userId,
+          recipient, g.orgId, g.projectId, g.session.userId,
           "leadbook_feedback_reply",
           `Svar fra ${g.session.name || (isSeller ? "selger" : "leder")}`,
           `«${row.example_title}»: ${excerpt}`,
-          `leadgrid://leadbook/examples/${row.example_id}`,
+          leadbookExampleDeepLink(row.example_id, g.projectId, g.orgId),
           { example_id: row.example_id, feedback_id: row.id },
         );
       }
-      return res.status(201).json({ id });
+      return res.status(201).json({ id, projectId: g.projectId });
     } catch (err) {
       console.warn("[leadbook-examples] reply failed:", (err as Error).message);
       return res.status(500).json({ error: "reply_failed" });

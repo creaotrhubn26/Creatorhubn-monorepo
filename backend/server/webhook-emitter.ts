@@ -87,6 +87,8 @@ async function enqueueRetry(
   pool: Pool,
   args: {
     subscriptionId: string;
+    organizationId: string;
+    projectId: string | null;
     eventKey: string;
     payload: unknown;
     deliveryId: string;
@@ -97,13 +99,16 @@ async function enqueueRetry(
   try {
     await pool.query(
       `INSERT INTO webhook_delivery_queue
-         (subscription_id, event_key, payload, delivery_id, status,
+         (subscription_id, organization_id, project_id, event_key, payload,
+          delivery_id, status,
           attempts, last_attempt_at, last_status_code, last_error,
           next_retry_at)
-       VALUES ($1::uuid, $2, $3::jsonb, $4::uuid, 'failed',
-               1, NOW(), $5, $6, NOW() + INTERVAL '5 minutes')`,
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5::jsonb, $6::uuid, 'failed',
+               1, NOW(), $7, $8, NOW() + INTERVAL '5 minutes')`,
       [
         args.subscriptionId,
+        args.organizationId,
+        args.projectId,
         args.eventKey,
         JSON.stringify(args.payload),
         args.deliveryId,
@@ -141,6 +146,8 @@ async function deliverOne(
   sub: SubscriptionRow,
   eventKey: string,
   payload: unknown,
+  organizationId: string,
+  projectId: string | null,
 ): Promise<void> {
   const deliveryId = randomUUID();
   const ts = Date.now();
@@ -173,6 +180,8 @@ async function deliverOne(
       await updateSubscriptionStatus(pool, sub.id, resp.status, false);
       await enqueueRetry(pool, {
         subscriptionId: sub.id,
+        organizationId,
+        projectId,
         eventKey,
         payload,
         deliveryId,
@@ -186,6 +195,8 @@ async function deliverOne(
     await updateSubscriptionStatus(pool, sub.id, 0, false);
     await enqueueRetry(pool, {
       subscriptionId: sub.id,
+      organizationId,
+      projectId,
       eventKey,
       payload,
       deliveryId,
@@ -204,12 +215,45 @@ export async function emitWebhook(
   eventKey: string,
   payload: unknown,
   organizationId: string,
+  projectId?: string | null,
 ): Promise<void> {
   try {
+    // New project-aware call sites pass projectId explicitly. Preserve the
+    // scope already carried by older event payloads until every legacy caller
+    // has moved to the fifth argument; never silently replace it with NULL.
+    const payloadProjectId =
+      payload !== null &&
+      typeof payload === "object" &&
+      !Array.isArray(payload) &&
+      typeof (payload as Record<string, unknown>).project_id === "string"
+        ? String((payload as Record<string, unknown>).project_id)
+        : null;
+    const resolvedProjectId = projectId === undefined ? payloadProjectId : projectId;
     await ensureEventTypeKnown(pool, eventKey);
     const subs = await fetchSubscriptions(pool, organizationId, eventKey);
     if (subs.length === 0) return;
-    await Promise.all(subs.map((s) => deliverOne(pool, s, eventKey, payload)));
+    const scopedPayload =
+      payload !== null &&
+      typeof payload === "object" &&
+      !Array.isArray(payload)
+        ? {
+            ...(payload as Record<string, unknown>),
+            organization_id: organizationId,
+            project_id: resolvedProjectId,
+          }
+        : payload;
+    await Promise.all(
+      subs.map((subscription) =>
+        deliverOne(
+          pool,
+          subscription,
+          eventKey,
+          scopedPayload,
+          organizationId,
+          resolvedProjectId,
+        ),
+      ),
+    );
   } catch (err) {
     console.warn("[webhook-emitter] emitWebhook failed:", err);
   }

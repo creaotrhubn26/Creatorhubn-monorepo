@@ -32,6 +32,7 @@
 import type { Pool } from "pg";
 import { runUrlResearch as defaultRunUrlResearch } from "./leadgrid-url-research-routes.js";
 import { leadgridRealtime, broadcastLeadCreated } from "./leadgrid-realtime.js";
+import { loadAccessibleLeadgridProject } from "./leadgrid-project-access.js";
 
 // =====================================================================
 // Konfigurasjon
@@ -120,6 +121,10 @@ interface ProcessOptions {
   backoff?: (attempt: number) => number;
 }
 
+interface RetrySingleItemOptions extends ProcessOptions {
+  expectedScope: { organizationId: string; projectId: string };
+}
+
 // =====================================================================
 // Helpers
 // =====================================================================
@@ -127,13 +132,19 @@ interface ProcessOptions {
 async function loadBatchItems(
   pool: Pool,
   batchId: string,
+  scope?: { organizationId: string; projectId: string },
 ): Promise<BatchItem[]> {
   const r = await pool.query<BatchItem>(
-    `SELECT id::text, url, draft_lead_id::text, status
-       FROM leadgrid_url_research_items
-      WHERE batch_id = $1::uuid AND status = 'pending'
-      ORDER BY order_index ASC`,
-    [batchId],
+    `SELECT item.id::text, item.url, item.draft_lead_id::text, item.status
+       FROM leadgrid_url_research_items item
+       JOIN crm_customers lead
+         ON lead.id = item.draft_lead_id
+        AND ($2::uuid IS NULL OR lead.organization_id = $2::uuid)
+        AND ($3::text IS NULL OR lead.project_id = $3)
+      WHERE item.batch_id = $1::uuid
+        AND item.status = 'pending'
+      ORDER BY item.order_index ASC`,
+    [batchId, scope?.organizationId ?? null, scope?.projectId ?? null],
   );
   return r.rows;
 }
@@ -152,16 +163,25 @@ async function isBatchCancelled(
 async function getBatchOrgAndUser(
   pool: Pool,
   batchId: string,
-): Promise<{ orgId: string | null; userId: string | null }> {
-  const r = await pool.query<{ organization_id: string | null; created_by: string }>(
-    `SELECT organization_id::text, created_by::text
+): Promise<{
+  orgId: string | null;
+  projectId: string | null;
+  userId: string | null;
+}> {
+  const r = await pool.query<{
+    organization_id: string | null;
+    project_id: string | null;
+    created_by: string;
+  }>(
+    `SELECT organization_id::text, project_id, created_by::text
        FROM leadgrid_url_research_batches
       WHERE id = $1::uuid`,
     [batchId],
   );
-  if (!r.rows[0]) return { orgId: null, userId: null };
+  if (!r.rows[0]) return { orgId: null, projectId: null, userId: null };
   return {
     orgId: r.rows[0].organization_id,
+    projectId: r.rows[0].project_id,
     userId: r.rows[0].created_by,
   };
 }
@@ -504,6 +524,31 @@ export async function processUrlResearchBatch(
     Math.min(opts.concurrency ?? BULK_URL_CONCURRENCY, 10),
   );
 
+  const { orgId, projectId, userId } = await getBatchOrgAndUser(pool, batchId);
+  if (!orgId || !projectId || !userId) {
+    // Unresolved legacy batches have no authoritative project boundary. Keep
+    // them inert and invisible instead of guessing from creator membership.
+    return;
+  }
+  // Preserve the non-null narrowing inside the nested worker closure.
+  const scopedOrganizationId = orgId;
+  const scopedProjectId = projectId;
+  const project = await loadAccessibleLeadgridProject(pool, projectId, userId);
+  if (!project || project.organizationId !== orgId || project.id !== projectId) {
+    await pool.query(
+      `UPDATE leadgrid_url_research_batches
+          SET status = 'cancelled',
+              finished_at = COALESCE(finished_at, NOW()),
+              metadata = COALESCE(metadata, '{}'::jsonb)
+                || '{"stop_reason":"project_access_revoked"}'::jsonb
+        WHERE id = $1::uuid
+          AND organization_id = $2::uuid
+          AND project_id = $3`,
+      [batchId, orgId, projectId],
+    );
+    return;
+  }
+
   // Marker batch running
   await pool.query(
     `UPDATE leadgrid_url_research_batches
@@ -511,12 +556,16 @@ export async function processUrlResearchBatch(
             started_at = COALESCE(started_at, NOW()),
             finished_at = NULL
       WHERE id = $1::uuid
+        AND organization_id = $2::uuid
+        AND project_id = $3
         AND status IN ('pending', 'failed', 'partial')`,
-    [batchId],
+    [batchId, orgId, projectId],
   );
 
-  const { orgId, userId } = await getBatchOrgAndUser(pool, batchId);
-  const items = await loadBatchItems(pool, batchId);
+  const items = await loadBatchItems(pool, batchId, {
+    organizationId: orgId,
+    projectId,
+  });
 
   // Worker-pool: en gruppe Promises som plukker fra `queue`.
   const queue = [...items];
@@ -529,10 +578,19 @@ export async function processUrlResearchBatch(
       }
       const item = queue.shift();
       if (!item) return;
-      await processItem(pool, item, runner, orgId, userId, batchId, {
-        maxAttempts: opts.maxAttempts,
-        backoff: opts.backoff,
-      });
+      await processItem(
+        pool,
+        item,
+        runner,
+        scopedOrganizationId,
+        scopedProjectId,
+        userId,
+        batchId,
+        {
+          maxAttempts: opts.maxAttempts,
+          backoff: opts.backoff,
+        },
+      );
     }
   }
 
@@ -558,7 +616,8 @@ async function processItem(
   pool: Pool,
   item: BatchItem,
   runner: RunUrlResearchFn,
-  orgId: string | null,
+  orgId: string,
+  projectId: string,
   userId: string | null,
   batchId: string,
   opts?: { maxAttempts?: number; backoff?: (n: number) => number },
@@ -633,7 +692,12 @@ async function processItem(
       }
 
       // Success — apply research til draft-raden (samme som enkelt-URL-flyten)
-      await applyResearchToDraftLite(pool, item.draft_lead_id, result);
+      await applyResearchToDraftLite(
+        pool,
+        item.draft_lead_id,
+        { organizationId: orgId, projectId },
+        result,
+      );
 
       const hasPin =
         result.location.latitude != null && result.location.longitude != null;
@@ -698,6 +762,7 @@ async function processItem(
               publishEvent({
                 pool,
                 organizationId: orgId,
+                projectId,
                 type: "lead.created",
                 leadId: item.draft_lead_id,
                 actorUserId: userId,
@@ -758,6 +823,7 @@ type ApplyResearchInput = NonNullable<
 async function applyResearchToDraftLite(
   pool: Pool,
   draftId: string,
+  scope: { organizationId: string; projectId: string },
   result: ApplyResearchInput,
 ): Promise<void> {
   const { companyProfile, location, bootstrapPayload } = result;
@@ -784,7 +850,9 @@ async function applyResearchToDraftLite(
        draft_status            = 'researched',
        import_raw_data         = $18::jsonb,
        updated_at              = NOW()
-     WHERE id = $1::uuid`,
+     WHERE id = $1::uuid
+       AND organization_id = $19::uuid
+       AND project_id = $20`,
     [
       draftId,
       companyProfile.name,
@@ -804,14 +872,23 @@ async function applyResearchToDraftLite(
       companyProfile.aiOpportunityScore,
       companyProfile.estimatedValueOere,
       JSON.stringify(bootstrapPayload ?? {}),
+      scope.organizationId,
+      scope.projectId,
     ],
   );
   if (companyProfile.socials.facebook) {
     try {
       await pool.query(
         `UPDATE crm_customers SET facebook_url = COALESCE($2, facebook_url)
-          WHERE id = $1::uuid`,
-        [draftId, companyProfile.socials.facebook],
+          WHERE id = $1::uuid
+            AND organization_id = $3::uuid
+            AND project_id = $4`,
+        [
+          draftId,
+          companyProfile.socials.facebook,
+          scope.organizationId,
+          scope.projectId,
+        ],
       );
     } catch {
       /* facebook_url-kolonnen kan mangle i eldre miljøer */
@@ -924,7 +1001,7 @@ export const __test = {
 export async function retrySingleItem(
   pool: Pool,
   itemId: string,
-  opts: ProcessOptions = {},
+  opts: RetrySingleItemOptions,
 ): Promise<{ ok: boolean; status: string; errorMessage?: string }> {
   // 1. Hent item + batch-info
   const r = await pool.query<{
@@ -934,14 +1011,17 @@ export async function retrySingleItem(
     draft_lead_id: string | null;
     status: string;
     organization_id: string | null;
+    project_id: string | null;
     created_by: string | null;
   }>(
     `SELECT i.id::text, i.batch_id::text, i.url, i.draft_lead_id::text, i.status,
-            b.organization_id::text, b.created_by::text
+            b.organization_id::text, b.project_id, b.created_by::text
        FROM leadgrid_url_research_items i
        JOIN leadgrid_url_research_batches b ON b.id = i.batch_id
-      WHERE i.id = $1::uuid`,
-    [itemId],
+      WHERE i.id = $1::uuid
+        AND b.organization_id = $2::uuid
+        AND b.project_id = $3`,
+    [itemId, opts.expectedScope.organizationId, opts.expectedScope.projectId],
   );
   const row = r.rows[0];
   if (!row) {
@@ -953,6 +1033,14 @@ export async function retrySingleItem(
       status: row.status,
       errorMessage: `cannot_retry_status_${row.status}`,
     };
+  }
+  if (
+    !row.organization_id ||
+    !row.project_id ||
+    opts.expectedScope.organizationId !== row.organization_id ||
+    opts.expectedScope.projectId !== row.project_id
+  ) {
+    return { ok: false, status: "not_found", errorMessage: "item_not_found" };
   }
 
   // 2. Reset item-row til pending (clear error_message)
@@ -993,6 +1081,7 @@ export async function retrySingleItem(
     },
     runner,
     row.organization_id,
+    row.project_id,
     row.created_by,
     row.batch_id,
   );
@@ -1017,11 +1106,22 @@ export async function retrySingleItem(
 export async function markItemSkipped(
   pool: Pool,
   itemId: string,
+  scope: { batchId: string; organizationId: string; projectId: string },
 ): Promise<{ ok: boolean }> {
   const r = await pool.query<{ batch_id: string; status: string }>(
     `SELECT batch_id::text, status
-       FROM leadgrid_url_research_items WHERE id = $1::uuid`,
-    [itemId],
+      FROM leadgrid_url_research_items item
+       JOIN leadgrid_url_research_batches batch ON batch.id = item.batch_id
+      WHERE item.id = $1::uuid
+        AND item.batch_id = $2::uuid
+        AND batch.organization_id = $3::uuid
+        AND batch.project_id = $4`,
+    [
+      itemId,
+      scope.batchId,
+      scope.organizationId,
+      scope.projectId,
+    ],
   );
   const row = r.rows[0];
   if (!row) return { ok: false };
@@ -1030,8 +1130,9 @@ export async function markItemSkipped(
     `UPDATE leadgrid_url_research_items
         SET status = 'skipped',
             finished_at = NOW()
-      WHERE id = $1::uuid`,
-    [itemId],
+      WHERE id = $1::uuid
+        AND batch_id = $2::uuid`,
+    [itemId, row.batch_id],
   );
   await recomputeBatchCountersByBatchId(pool, row.batch_id);
   return { ok: true };

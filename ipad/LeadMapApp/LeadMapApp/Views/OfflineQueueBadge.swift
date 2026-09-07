@@ -1,186 +1,256 @@
 // OfflineQueueBadge.swift
 //
-// Robusthet-pakke 3 — viser et lite banner i Leadgrid-hub når selgeren
-// enten er offline eller har pending actions i køen. Skrur seg ned når
-// vi er online og køen er tom.
+// Global status for den tenant-avgrensede offline-køen. Komponenten er
+// bevisst skjult når appen er online og køen er tom, men dukker opp i den
+// delte Leadgrid-headeren ved offline, ventende handlinger eller feil.
 
 import SwiftUI
 
-struct OfflineQueueBadge: View {
+struct LeadgridSyncStatusButton: View {
     @Environment(NetworkMonitor.self) private var monitor
     @Environment(AppState.self) private var appState
-    @State private var pendingCount: Int = 0
-    @State private var failedCount: Int = 0
-    @State private var refreshTimer: Timer?
-    @State private var showRecovery = false
+
+    @State private var pendingCount = 0
+    @State private var failedCount = 0
+    @State private var showSyncCenter = false
+
+    private var refreshKey: String {
+        "\(appState.activeOrganizationId ?? "none")|\(appState.activeProjectId ?? "none")|\(appState.currentUserId ?? "none")|\(monitor.isOnline)"
+    }
+
+    private var shouldShow: Bool {
+        appState.activeOrganizationId != nil
+            && (pendingCount > 0 || failedCount > 0 || !monitor.isOnline)
+    }
+
+    private var totalCount: Int { pendingCount + failedCount }
 
     var body: some View {
         Group {
             if shouldShow {
-                HStack(spacing: 10) {
-                    Image(systemName: statusIcon)
-                        .foregroundStyle(statusColor)
-                        .imageScale(.large)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(statusTitle)
-                            .font(.caption.bold())
-                        if pendingCount > 0 {
-                            Text("\(pendingCount) ventende handling(er)")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .accessibilityIdentifier("offline-queue-pending-count")
+                Button {
+                    showSyncCenter = true
+                } label: {
+                    ZStack(alignment: .topTrailing) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color(red: 0.10, green: 0.09, blue: 0.16))
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                            Image(systemName: statusIcon)
+                                .font(.appScaled(size: 14, weight: .semibold))
+                                .foregroundStyle(statusColor)
+                        }
+                        .frame(width: 44, height: 44)
+
+                        if totalCount > 0 {
+                            Text("\(min(totalCount, 99))")
+                                .font(.appScaled(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(statusColor, in: Capsule())
+                                .overlay(
+                                    Capsule().stroke(
+                                        Color(red: 0.05, green: 0.04, blue: 0.10),
+                                        lineWidth: 1.5
+                                    )
+                                )
+                                .offset(x: 6, y: -6)
                         }
                     }
-                    Spacer()
-                    if failedCount > 0 {
-                        Button("Se og rett") { showRecovery = true }
-                            .font(.caption.bold())
-                            .buttonStyle(.bordered)
-                    }
                 }
-                .padding(.vertical, 4)
-                .accessibilityIdentifier("offline-queue-status")
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("global-sync-status")
+                .accessibilityLabel(accessibilityLabel)
+                .macCatalystHover()
             }
         }
-        .task {
+        .task(id: refreshKey) {
             await refreshCounts()
-        }
-        .onAppear {
-            // Re-poll hvert 3. sekund mens visningen er på skjermen
-            refreshTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
-                Task { @MainActor in
-                    await refreshCounts()
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: 3_000_000_000)
+                } catch {
+                    break
                 }
+                await refreshCounts()
             }
         }
-        .onDisappear {
-            refreshTimer?.invalidate()
-            refreshTimer = nil
-        }
-        .sheet(isPresented: $showRecovery, onDismiss: {
+        .sheet(isPresented: $showSyncCenter, onDismiss: {
             Task { await refreshCounts() }
         }) {
-            if let organizationId = appState.activeOrganizationId {
+            if let organizationId = appState.activeOrganizationId,
+               let projectId = appState.activeProjectId,
+               let actorUserId = appState.currentUserId {
                 OfflineQueueRecoverySheet(
                     organizationId: organizationId,
-                    api: appState.api
+                    projectId: projectId,
+                    actorUserId: actorUserId,
+                    api: appState.api,
+                    lastSyncAt: appState.lastSyncAt
                 )
             }
         }
     }
 
-    private var shouldShow: Bool {
-        pendingCount > 0 || failedCount > 0 || !monitor.isOnline
-    }
-
-    private var statusTitle: String {
-        if failedCount > 0 { return "\(failedCount) handling(er) krever oppfølging" }
-        return monitor.isOnline
-            ? "Synker ventende handlinger"
-            : "Frakoblet — handlinger lagres lokalt"
-    }
-
     private var statusIcon: String {
         if failedCount > 0 { return "exclamationmark.triangle.fill" }
-        return monitor.isOnline ? "arrow.up.circle.fill" : "wifi.slash"
+        if !monitor.isOnline { return "wifi.slash" }
+        return "arrow.triangle.2.circlepath"
     }
 
     private var statusColor: Color {
         if failedCount > 0 { return .red }
-        return monitor.isOnline ? .blue : .orange
+        if !monitor.isOnline { return .orange }
+        return .blue
+    }
+
+    private var accessibilityLabel: String {
+        if failedCount > 0 {
+            return "Synkronisering, \(failedCount) handlinger krever oppfølging"
+        }
+        if !monitor.isOnline {
+            return pendingCount > 0
+                ? "Frakoblet, \(pendingCount) handlinger lagret lokalt"
+                : "Frakoblet"
+        }
+        return "Synkronisering, \(pendingCount) ventende handlinger"
     }
 
     @MainActor
     private func refreshCounts() async {
-        guard let organizationId = appState.activeOrganizationId else {
+        guard let organizationId = appState.activeOrganizationId,
+              let projectId = appState.activeProjectId,
+              let actorUserId = appState.currentUserId else {
             pendingCount = 0
             failedCount = 0
             return
         }
         pendingCount = await OfflineActionQueue.shared.pendingCount(
-            organizationId: organizationId
+            organizationId: organizationId,
+            actorUserId: actorUserId,
+            projectId: projectId
         )
         failedCount = await OfflineActionQueue.shared.failedCount(
-            organizationId: organizationId
+            organizationId: organizationId,
+            actorUserId: actorUserId,
+            projectId: projectId
         )
     }
 }
 
-private struct OfflineQueueRecoverySheet: View {
+struct OfflineQueueRecoverySheet: View {
     let organizationId: String
+    let projectId: String
+    let actorUserId: String
     let api: APIClient?
+    let lastSyncAt: Date?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(NetworkMonitor.self) private var monitor
+
     @State private var actions: [OfflineActionQueue.PendingAction] = []
     @State private var pendingDiscard: OfflineActionQueue.PendingAction?
+    @State private var isSyncing = false
+
+    private var pendingActions: [OfflineActionQueue.PendingAction] {
+        actions.filter { $0.permanentlyFailedAt == nil }
+    }
+
+    private var failedActions: [OfflineActionQueue.PendingAction] {
+        actions.filter { $0.permanentlyFailedAt != nil }
+    }
 
     var body: some View {
         NavigationStack {
             List {
+                Section("Status") {
+                    Label(
+                        monitor.isOnline ? "Tilkoblet" : "Frakoblet",
+                        systemImage: monitor.isOnline ? "wifi" : "wifi.slash"
+                    )
+                    .foregroundStyle(monitor.isOnline ? .green : .orange)
+
+                    if let lastSyncAt {
+                        LabeledContent(
+                            "Siste datasynk",
+                            value: lastSyncAt.formatted(date: .abbreviated, time: .shortened)
+                        )
+                    }
+
+                    LabeledContent("Venter", value: "\(pendingActions.count)")
+                    LabeledContent("Krever oppfølging", value: "\(failedActions.count)")
+                }
+
                 if actions.isEmpty {
                     ContentUnavailableView(
-                        "Ingen fastlåste handlinger",
-                        systemImage: "checkmark.circle",
-                        description: Text("Køen har ingen handlinger som krever manuell oppfølging.")
+                        "Alt er synkronisert",
+                        systemImage: "checkmark.icloud.fill",
+                        description: Text(
+                            monitor.isOnline
+                                ? "Ingen lokale handlinger venter på opplasting."
+                                : "Ingen handlinger venter. Nye endringer lagres lokalt til nettet er tilbake."
+                        )
                     )
-                } else {
-                    Section {
-                        ForEach(actions) { action in
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(actionTitle(action))
-                                    .font(.headline)
-                                Text("Kø-ID \(action.id.uuidString)")
-                                    .font(.caption2.monospaced())
-                                    .foregroundStyle(.secondary)
-                                    .textSelection(.enabled)
-                                Text(action.organizationId == nil
-                                     ? "Eldre køelement mangler organisasjonskontekst og kan ikke sendes trygt."
-                                     : "Mislyktes etter \(action.attemptCount) forsøk. Payloaden er fortsatt lagret på enheten.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                if let lastError = action.lastError, !lastError.isEmpty {
-                                    Text(lastError)
-                                        .font(.caption)
-                                        .foregroundStyle(.red)
-                                }
-                                HStack {
-                                    if action.failureKind == .duplicateConflict {
-                                        Button("Opprett likevel") {
-                                            Task { await overrideDuplicate(action) }
-                                        }
-                                        .buttonStyle(.borderedProminent)
-                                        .disabled(action.organizationId == nil)
-                                    } else {
-                                        Button("Prøv igjen") {
-                                            Task { await retry(action) }
-                                        }
-                                        .buttonStyle(.borderedProminent)
-                                        .disabled(action.organizationId == nil)
-                                    }
+                    .listRowBackground(Color.clear)
+                }
 
-                                    Button("Fjern", role: .destructive) {
-                                        pendingDiscard = action
-                                    }
-                                    .buttonStyle(.bordered)
-                                }
-                            }
-                            .padding(.vertical, 4)
+                if !pendingActions.isEmpty {
+                    Section {
+                        ForEach(pendingActions) { action in
+                            actionRow(action, isFailed: false)
                         }
                     } header: {
-                        Text("Handlinger som ikke ble slettet")
+                        Text("Venter på synkronisering")
                     } footer: {
-                        Text("Fjern sletter bare den valgte lokale køhandlingen og kan ikke angres.")
+                        Text(
+                            monitor.isOnline
+                                ? "Handlingene sendes automatisk og idempotent."
+                                : "Handlingene er lagret på enheten og sendes når forbindelsen er tilbake."
+                        )
+                    }
+                }
+
+                if !failedActions.isEmpty {
+                    Section {
+                        ForEach(failedActions) { action in
+                            actionRow(action, isFailed: true)
+                        }
+                    } header: {
+                        Text("Krever oppfølging")
+                    } footer: {
+                        Text("Payloaden beholdes lokalt til du prøver igjen eller fjerner handlingen.")
                     }
                 }
             }
-            .navigationTitle("Offline-kø")
+            .navigationTitle("Synksenter")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if !pendingActions.isEmpty {
+                        Button {
+                            Task { await syncAll() }
+                        } label: {
+                            if isSyncing {
+                                ProgressView()
+                            } else {
+                                Label("Synkroniser nå", systemImage: "arrow.triangle.2.circlepath")
+                            }
+                        }
+                        .disabled(!monitor.isOnline || api == nil || isSyncing)
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Ferdig") { dismiss() }
                 }
             }
-            .task { await reload() }
+            .task(id: "\(organizationId)|\(projectId)") { await reload() }
+            .onChange(of: monitor.isOnline) { _, isOnline in
+                if isOnline, !pendingActions.isEmpty {
+                    Task { await syncAll() }
+                }
+            }
             .confirmationDialog(
                 "Fjerne denne køhandlingen?",
                 isPresented: Binding(
@@ -198,44 +268,143 @@ private struct OfflineQueueRecoverySheet: View {
                     }
                 }
                 Button("Avbryt", role: .cancel) { pendingDiscard = nil }
+            } message: {
+                Text("Den lokale handlingen slettes og kan ikke gjenopprettes.")
             }
         }
+        .preferredColorScheme(.dark)
+        .presentationDragIndicator(.visible)
+    }
+
+    @ViewBuilder
+    private func actionRow(
+        _ action: OfflineActionQueue.PendingAction,
+        isFailed: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label(
+                    actionTitle(action),
+                    systemImage: isFailed
+                        ? "exclamationmark.triangle.fill"
+                        : (monitor.isOnline ? "arrow.up.circle.fill" : "internaldrive.fill")
+                )
+                .font(.headline)
+                .foregroundStyle(isFailed ? .red : (monitor.isOnline ? .blue : .orange))
+                Spacer()
+                Text(action.createdAt.formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("Kø-ID \(action.id.uuidString)")
+                .font(.caption2.monospaced())
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+
+            if action.organizationId == nil {
+                Text("Eldre køelement mangler workspace og kan ikke sendes trygt.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            } else if isFailed {
+                Text("Mislyktes etter \(action.attemptCount) forsøk.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(
+                    monitor.isOnline
+                        ? "Klar for opplasting."
+                        : "Trygt lagret lokalt til nettet er tilbake."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            if let lastError = action.lastError, !lastError.isEmpty {
+                Text(lastError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
+            if isFailed {
+                HStack {
+                    if action.failureKind == .duplicateConflict {
+                        Button("Opprett likevel") {
+                            Task { await overrideDuplicate(action) }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(action.organizationId == nil)
+                    } else {
+                        Button("Prøv igjen") {
+                            Task { await retry(action) }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(action.organizationId == nil)
+                    }
+
+                    Button("Fjern", role: .destructive) {
+                        pendingDiscard = action
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    @MainActor
+    private func syncAll() async {
+        guard monitor.isOnline, let api else {
+            await reload()
+            return
+        }
+        isSyncing = true
+        _ = await OfflineActionQueue.shared.drain(
+            api: api,
+            organizationId: organizationId,
+            actorUserId: actorUserId,
+            projectId: projectId
+        )
+        await reload()
+        isSyncing = false
     }
 
     @MainActor
     private func retry(_ action: OfflineActionQueue.PendingAction) async {
         let reset = await OfflineActionQueue.shared.retry(
             id: action.id,
-            organizationId: organizationId
+            organizationId: organizationId,
+            actorUserId: actorUserId,
+            projectId: projectId
         )
-        if reset, monitor.isOnline, let api {
-            _ = await OfflineActionQueue.shared.drain(
-                api: api,
-                organizationId: organizationId
-            )
+        if reset {
+            await syncAll()
+        } else {
+            await reload()
         }
-        await reload()
     }
 
     @MainActor
     private func overrideDuplicate(_ action: OfflineActionQueue.PendingAction) async {
         let reset = await OfflineActionQueue.shared.retryLeadCreationAllowingDuplicate(
             id: action.id,
-            organizationId: organizationId
+            organizationId: organizationId,
+            actorUserId: actorUserId,
+            projectId: projectId
         )
-        if reset, monitor.isOnline, let api {
-            _ = await OfflineActionQueue.shared.drain(
-                api: api,
-                organizationId: organizationId
-            )
+        if reset {
+            await syncAll()
+        } else {
+            await reload()
         }
-        await reload()
     }
 
     @MainActor
     private func reload() async {
-        actions = await OfflineActionQueue.shared.failedActions(
-            organizationId: organizationId
+        actions = await OfflineActionQueue.shared.actions(
+            organizationId: organizationId,
+            actorUserId: actorUserId,
+            projectId: projectId
         )
     }
 

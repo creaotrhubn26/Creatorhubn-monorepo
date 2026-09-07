@@ -151,13 +151,12 @@ const FUNNEL_STAGE_LABELS: Record<string, string> = {
 
 interface Props {
   scanId: string;
-  projectId?: string;
-  brandKey?: string;
+  projectId: string;
   onBack?: () => void;
 }
 
 export default function MarketScanDetailPanel({
-  scanId, projectId, brandKey = "theroleroom", onBack,
+  scanId, projectId, onBack,
 }: Props) {
   // Workflow-actions per opportunity
   const [actingOpportunityId, setActingOpportunityId] = useState<string | null>(null);
@@ -176,7 +175,7 @@ export default function MarketScanDetailPanel({
             method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json", ...authHeaders() },
-            body: JSON.stringify({ projectId, brandKey }),
+            body: JSON.stringify({ projectId }),
           },
         );
         const body = await r.json();
@@ -191,7 +190,7 @@ export default function MarketScanDetailPanel({
         setActingOpportunityId(null);
       }
     },
-    [scanId, projectId, brandKey],
+    [scanId, projectId],
   );
   const [scan, setScan] = useState<MarketScan | null>(null);
   const [competitors, setCompetitors] = useState<Competitor[]>([]);

@@ -360,7 +360,7 @@ struct AddLeadSheet: View {
         let leadSource: String
 
         func makeCreateRequest(
-            projectID: String? = nil,
+            projectID: String,
             idempotencyKey: UUID = UUID()
         ) -> APIClient.CreateLeadAtPinRequest {
             APIClient.CreateLeadAtPinRequest(

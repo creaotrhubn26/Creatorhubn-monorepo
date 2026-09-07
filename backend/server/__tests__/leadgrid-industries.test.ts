@@ -16,7 +16,10 @@ import type { Pool, QueryResult, QueryResultRow } from "pg";
 
 import { __test as industriesTest } from "../leadgrid-industries-routes";
 import { __test as classifyTest } from "../leadgrid-industry-classify";
-import { __test as routingTest } from "../leadgrid-lead-routing-service";
+import {
+  __test as routingTest,
+  routeAndPersist,
+} from "../leadgrid-lead-routing-service";
 
 const { classifyIndustryForLead } = classifyTest;
 const { routeLeadByIndustry } = routingTest;
@@ -210,6 +213,7 @@ describe("routeLeadByIndustry", () => {
     const pool = mockPool([]);
     const r = await routeLeadByIndustry(pool, {
       organizationId: "org-1",
+      projectId: "project-1",
       industryId: null,
       currentOwnerUserId: "owner-1",
     });
@@ -230,6 +234,7 @@ describe("routeLeadByIndustry", () => {
     ]);
     const r = await routeLeadByIndustry(pool, {
       organizationId: "org-1",
+      projectId: "project-1",
       industryId: "ind-1",
     });
     expect(r.reason).toBe("primary");
@@ -249,6 +254,7 @@ describe("routeLeadByIndustry", () => {
     ]);
     const r = await routeLeadByIndustry(pool, {
       organizationId: "org-1",
+      projectId: "project-1",
       industryId: "ind-1",
     });
     expect(r.reason).toBe("expert");
@@ -267,6 +273,7 @@ describe("routeLeadByIndustry", () => {
     ]);
     const r = await routeLeadByIndustry(pool, {
       organizationId: "org-1",
+      projectId: "project-1",
       industryId: "ind-1",
     });
     expect(r.reason).toBe("specialist");
@@ -284,6 +291,7 @@ describe("routeLeadByIndustry", () => {
     ]);
     const r = await routeLeadByIndustry(pool, {
       organizationId: "org-1",
+      projectId: "project-1",
       industryId: "ind-1",
       currentOwnerUserId: "current-owner",
     });
@@ -296,6 +304,7 @@ describe("routeLeadByIndustry", () => {
     const pool = mockPool([{ matcher: /organization_member_industries/, rows: [] }]);
     const r = await routeLeadByIndustry(pool, {
       organizationId: "org-1",
+      projectId: "project-1",
       industryId: "ind-1",
       currentOwnerUserId: "owner-1",
     });
@@ -316,9 +325,71 @@ describe("routeLeadByIndustry", () => {
     ]);
     const r = await routeLeadByIndustry(pool, {
       organizationId: "org-1",
+      projectId: "project-1",
       industryId: "ind-1",
     });
     expect(r.userId).toBe("user-A"); // lex-min
+  });
+
+  it("avgrenser workload og kandidater til det valgte prosjektet", async () => {
+    const query = vi.fn(async () => ({
+      rows: [
+        { user_id: "user-A", expertise_level: "expert", is_primary: false, open_lead_count: 1 },
+      ],
+      rowCount: 1,
+    }));
+    const pool = { query } as unknown as Pool;
+
+    await routeLeadByIndustry(pool, {
+      organizationId: "11111111-1111-4111-8111-111111111111",
+      projectId: "dentum-oslo",
+      industryId: "22222222-2222-4222-8222-222222222222",
+    });
+
+    const [sql, params] = query.mock.calls[0];
+    expect(String(sql)).toContain("AND project_id = $2");
+    expect(String(sql)).toContain("project_member.project_id = project.id");
+    expect(String(sql)).toContain("projects.view_all");
+    expect(params).toEqual([
+      "11111111-1111-4111-8111-111111111111",
+      "dentum-oslo",
+      "22222222-2222-4222-8222-222222222222",
+    ]);
+  });
+
+  it("persisterer en routingbeslutning på eksakt lead-scope", async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("organization_member_industries")) {
+        return {
+          rows: [
+            { user_id: "user-A", expertise_level: "expert", is_primary: false, open_lead_count: 0 },
+          ],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    const pool = { query } as unknown as Pool;
+
+    await routeAndPersist(
+      pool,
+      "33333333-3333-4333-8333-333333333333",
+      {
+        organizationId: "11111111-1111-4111-8111-111111111111",
+        projectId: "dentum-oslo",
+        industryId: "22222222-2222-4222-8222-222222222222",
+      },
+    );
+
+    const [sql, params] = query.mock.calls[1];
+    expect(String(sql)).toContain("organization_id = $3::uuid");
+    expect(String(sql)).toContain("project_id = $4");
+    expect(params).toEqual([
+      "33333333-3333-4333-8333-333333333333",
+      "user-A",
+      "11111111-1111-4111-8111-111111111111",
+      "dentum-oslo",
+    ]);
   });
 });
 

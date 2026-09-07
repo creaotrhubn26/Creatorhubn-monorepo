@@ -13,6 +13,14 @@ const service = vi.hoisted(() => ({
   decideDiscoveryCandidate: vi.fn(),
   appendDiscoveryFeedback: vi.fn(),
 }));
+const campaignService = vi.hoisted(() => ({
+  createDiscoveryCampaign: vi.fn(),
+  listDiscoveryCampaigns: vi.fn(),
+  getDiscoveryCampaign: vi.fn(),
+  advanceDiscoveryCampaign: vi.fn(),
+  retryDiscoveryCampaign: vi.fn(),
+  cancelDiscoveryCampaign: vi.fn(),
+}));
 const placesDetails = vi.hoisted(() => ({
   fetchTransientDiscoveryPlaceDetails: vi.fn(),
 }));
@@ -27,6 +35,22 @@ const permissionResolver = vi.hoisted(() => ({
   resolveEffectivePermissions: vi.fn(),
 }));
 
+vi.mock("./leadgrid-discovery-campaign-service.js", () => ({
+  ...campaignService,
+  DiscoveryCampaignError: class DiscoveryCampaignError extends Error {
+    code: string;
+    status: number;
+    retryable: boolean;
+    field?: string;
+    constructor(code: string, status = 400, field?: string) {
+      super(code);
+      this.code = code;
+      this.status = status;
+      this.retryable = false;
+      this.field = field;
+    }
+  },
+}));
 vi.mock("./leadgrid-project-access.js", () => ({ ...access }));
 vi.mock("./lead-map-permission-routes.js", () => ({ ...permissionResolver }));
 vi.mock("./leadgrid-discovery-service.js", () => ({
@@ -193,12 +217,19 @@ describe("Leadgrid Discovery HTTP contract", () => {
       `GET ${base}/runs/:runId`,
       `POST ${base}/runs/:runId/confirm`,
       `POST ${base}/runs/:runId/cancel`,
+      `POST ${base}/campaign-runs`,
+      `GET ${base}/campaign-runs`,
+      `GET ${base}/campaign-runs/:campaignRunId`,
+      `POST ${base}/campaign-runs/:campaignRunId/advance`,
+      `POST ${base}/campaign-runs/:campaignRunId/retry`,
+      `POST ${base}/campaign-runs/:campaignRunId/cancel`,
       `GET ${base}/runs/:runId/candidates`,
       `POST ${base}/runs/:runId/candidates/:candidateId/place-details`,
       `POST ${base}/runs/:runId/candidates/:candidateId/decision`,
       `POST ${base}/runs/:runId/candidates/:candidateId/feedback`,
       `GET ${base}/profiles`,
       `POST ${base}/profiles`,
+      `POST ${base}/profiles/batch`,
       `PATCH ${base}/profiles/:profileId`,
       `DELETE ${base}/profiles/:profileId`,
     ]) {
@@ -266,6 +297,95 @@ describe("Leadgrid Discovery HTTP contract", () => {
     });
   });
 
+  it("uses the same tenant/RBAC gate for persistent campaign routes", () => {
+    const { routes } = makeHarness({ query: vi.fn() } as unknown as Pool);
+    expect(routes.get(`POST ${base}/campaign-runs`)?.[0]).toBe(
+      routes.get(`POST ${base}/preview`)?.[0],
+    );
+    expect(
+      routes.get(`POST ${base}/campaign-runs/:campaignRunId/cancel`)?.[0],
+    ).toBe(routes.get(`POST ${base}/preview`)?.[0]);
+  });
+
+  it("preserves profile priority and binds campaign creation to the resolved project", async () => {
+    const orderedProfileIds = [
+      profileId,
+      "55555555-5555-4555-8555-555555555555",
+      "66666666-6666-4666-8666-666666666666",
+      "77777777-7777-4777-8777-777777777777",
+    ];
+    const orderedProfiles = orderedProfileIds.map((id, index) => ({
+      profile_id: id,
+      expected_version: index + 1,
+    }));
+    campaignService.createDiscoveryCampaign.mockResolvedValue({
+      campaign: {
+        id: runId,
+        status: "running",
+        profile_ids: orderedProfileIds,
+      },
+      replayed: false,
+    });
+    const response = await makeHarness({
+      query: vi.fn(),
+    } as unknown as Pool).call("POST", `${base}/campaign-runs`, {
+      params: { projectId: "project-a" },
+      headers: { "Idempotency-Key": "dentum-oslo-batch-0001" },
+      body: {
+        name: "Dentum – klinikkpilot Oslo og omegn",
+        profiles: orderedProfiles,
+      },
+    });
+
+    expect(response.status).toBe(202);
+    expect(campaignService.createDiscoveryCampaign).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        project,
+        userId: "user-a",
+        name: "Dentum – klinikkpilot Oslo og omegn",
+        profiles: orderedProfiles.map((profile) => ({
+          profileId: profile.profile_id,
+          expectedVersion: profile.expected_version,
+        })),
+        idempotencyKey: "dentum-oslo-batch-0001",
+      },
+    );
+  });
+
+  it("keeps campaign history and commands inside the selected project", async () => {
+    campaignService.listDiscoveryCampaigns.mockResolvedValue({ campaigns: [] });
+    campaignService.cancelDiscoveryCampaign.mockResolvedValue({
+      campaign: { id: runId, status: "cancel_requested" },
+      replayed: false,
+    });
+    const harness = makeHarness({ query: vi.fn() } as unknown as Pool);
+
+    await harness.call("GET", `${base}/campaign-runs`, {
+      params: { projectId: "project-a" },
+      query: { limit: "7" },
+    });
+    await harness.call("POST", `${base}/campaign-runs/:campaignRunId/cancel`, {
+      params: { projectId: "project-a", campaignRunId: runId },
+      headers: { "Idempotency-Key": "dentum-cancel-0001" },
+      body: {},
+    });
+
+    expect(campaignService.listDiscoveryCampaigns).toHaveBeenCalledWith(
+      expect.anything(),
+      { project, limit: 7 },
+    );
+    expect(campaignService.cancelDiscoveryCampaign).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        project,
+        userId: "user-a",
+        campaignId: runId,
+        idempotencyKey: "dentum-cancel-0001",
+      },
+    );
+  });
+
   it("requires Idempotency-Key and returns the typed error envelope", async () => {
     const harness = makeHarness({ query: vi.fn() } as unknown as Pool);
     const response = await harness.call("POST", `${base}/runs`, {
@@ -310,6 +430,48 @@ describe("Leadgrid Discovery HTTP contract", () => {
         triggerKind: "manual",
       }),
     );
+  });
+
+  it("requires expected_profile_version for a profile-linked run", async () => {
+    const harness = makeHarness({ query: vi.fn() } as unknown as Pool);
+    const response = await harness.call("POST", `${base}/runs`, {
+      params: { projectId: "project-a" },
+      headers: { "Idempotency-Key": "profile-run-version-required" },
+      body: {
+        brief: brief(),
+        profile_id: profileId,
+        start_immediately: true,
+      },
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: {
+        code: "invalid_request",
+        field: "expected_profile_version",
+      },
+    });
+    expect(service.createDiscoveryRun).not.toHaveBeenCalled();
+  });
+
+  it("rejects any attempt to inject the internal campaign snapshot capability over HTTP", async () => {
+    const harness = makeHarness({ query: vi.fn() } as unknown as Pool);
+    const response = await harness.call("POST", `${base}/runs`, {
+      params: { projectId: "project-a" },
+      headers: { "Idempotency-Key": "untrusted-snapshot-injection" },
+      body: {
+        brief: brief(),
+        start_immediately: true,
+        trusted_profile_snapshot: {
+          profile_id: profileId,
+          profile_version: 1,
+          source_cursor_map: {},
+        },
+      },
+    });
+
+    expect(response.status).toBe(400);
+    expect(service.createDiscoveryRun).not.toHaveBeenCalled();
   });
 
   it("restores cross-device run history with validated status filters", async () => {
@@ -362,7 +524,12 @@ describe("Leadgrid Discovery HTTP contract", () => {
     );
     expect(
       placesDetails.fetchTransientDiscoveryPlaceDetails,
-    ).toHaveBeenCalledWith(expect.anything(), { project, runId, candidateId });
+    ).toHaveBeenCalledWith(expect.anything(), {
+      project,
+      runId,
+      candidateId,
+      userId: "user-a",
+    });
     expect(response.body).toMatchObject({
       candidate_id: candidateId,
       mode: "transient_details_only",
@@ -541,11 +708,23 @@ describe("Leadgrid Discovery HTTP contract", () => {
             exclusion_terms: [],
             city: "Norge",
             geo: null,
+            territory_code: null,
+            municipality_numbers: [],
+            municipality_names: [],
             target_count: 20,
             enrichment_count: 10,
             minimum_fit_score: 50,
             ideal_customer: null,
             goal: null,
+            organization_forms: [],
+            employee_count: null,
+            organization_structure: "any",
+            website_requirement: "any",
+            website_quality: { minimum_score: null },
+            commercial_signals: {
+              registered_in_vat_register: null,
+              registered_in_business_register: null,
+            },
           },
         }),
       ],
@@ -570,6 +749,195 @@ describe("Leadgrid Discovery HTTP contract", () => {
     expect(rulesMode.status).toBe(400);
     expect(rulesPayload.status).toBe(400);
     expect(pool.connect).not.toHaveBeenCalled();
+  });
+
+  it("creates a four-profile preset atomically and replays it idempotently", async () => {
+    const storedRows: Record<string, unknown>[] = [];
+    let batchRecord: { request_hash: string; profile_ids: string[] } | null =
+      null;
+    const sequence: string[] = [];
+    const clientQuery = vi.fn(
+      async (sql: string, params: unknown[] = []): Promise<unknown> => {
+        sequence.push(sql.trim().split(/\s+/).slice(0, 4).join(" "));
+        if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") {
+          return { rows: [] };
+        }
+        if (
+          sql.includes("FROM leadgrid_discovery_profile_batches") &&
+          sql.includes("FOR UPDATE")
+        ) {
+          return { rows: batchRecord ? [batchRecord] : [] };
+        }
+        if (sql.includes("id = ANY($3::uuid[])")) {
+          return { rows: storedRows };
+        }
+        if (sql.includes("INSERT INTO leadgrid_discovery_profiles")) {
+          const briefValue = JSON.parse(String(params[12]));
+          const id = `${String(storedRows.length + 5).repeat(8)}-${String(
+            storedRows.length + 5,
+          ).repeat(4)}-4${String(storedRows.length + 5).repeat(3)}-8${String(
+            storedRows.length + 5,
+          ).repeat(3)}-${String(storedRows.length + 5).repeat(12)}`;
+          const row = {
+            id,
+            organization_id: organizationId,
+            project_id: "project-a",
+            name: params[2],
+            is_default: params[3],
+            status: params[4],
+            target_customer_types: params[5],
+            city_filters: params[6],
+            geography_lat: params[7],
+            geography_lng: params[8],
+            geography_radius_km: params[9],
+            company_size_min: params[10],
+            company_size_max: params[11],
+            brief: briefValue,
+            desired_signals: JSON.parse(String(params[13])),
+            source_config: JSON.parse(String(params[15])),
+            approval_mode: params[16],
+            max_candidates_per_run: params[18],
+            enrichment_count: params[19],
+            auto_discover_enabled: params[20],
+            schedule_cron: params[21],
+            schedule_timezone: params[22],
+            last_run_at: null,
+            next_run_at: params[23],
+            version: 1,
+            created_at: "2026-09-05T12:00:00.000Z",
+            updated_at: "2026-09-05T12:00:00.000Z",
+          };
+          storedRows.push(row);
+          return { rows: [row] };
+        }
+        if (sql.includes("INSERT INTO leadgrid_discovery_profile_batches")) {
+          batchRecord = {
+            request_hash: String(params[3]),
+            profile_ids: params[4] as string[],
+          };
+          return { rows: [] };
+        }
+        return { rows: [] };
+      },
+    );
+    const pool = {
+      query: vi.fn(),
+      connect: vi.fn(async () => ({
+        query: clientQuery,
+        release: vi.fn(),
+      })),
+    } as unknown as Pool;
+    const harness = makeHarness(pool);
+    const body = {
+      profiles: [
+        ["Oslo", "oslo", ["0301"]],
+        ["Vest", "vest", ["3201", "3203"]],
+        ["Øst og nord", "ost-nord", ["3205", "3222"]],
+        ["Sør", "sor", ["3207", "3212"]],
+      ].map(([name, territory, municipalityNumbers]) => ({
+        name,
+        brief: {
+          industry_queries: ["tannklinikk"],
+          municipality_numbers: municipalityNumbers,
+          territory_code: territory,
+          target_count: 60,
+          enrichment_count: 30,
+        },
+      })),
+    };
+    const options = {
+      params: { projectId: "project-a" },
+      headers: { "Idempotency-Key": "clinic-preset-0001" },
+      body,
+    };
+
+    const first = await harness.call("POST", `${base}/profiles/batch`, options);
+    const second = await harness.call(
+      "POST",
+      `${base}/profiles/batch`,
+      options,
+    );
+
+    expect(first.status).toBe(201);
+    expect(first.body).toMatchObject({ replayed: false });
+    expect(second.status).toBe(200);
+    expect(second.body).toMatchObject({ replayed: true });
+    expect((first.body as { profiles: unknown[] }).profiles).toHaveLength(4);
+    expect((second.body as { profiles: unknown[] }).profiles).toHaveLength(4);
+    expect(
+      clientQuery.mock.calls.filter(([sql]) =>
+        String(sql).includes("INSERT INTO leadgrid_discovery_profiles"),
+      ),
+    ).toHaveLength(4);
+    expect(
+      clientQuery.mock.calls.filter(([sql]) =>
+        String(sql).includes("INSERT INTO leadgrid_discovery_profile_batches"),
+      ),
+    ).toHaveLength(1);
+    expect(
+      clientQuery.mock.calls.filter(
+        ([sql, params]) =>
+          String(sql).includes("pg_advisory_xact_lock") &&
+          String(params?.[0]).includes("discovery_profile_batch"),
+      ),
+    ).toHaveLength(2);
+    expect(sequence.filter((entry) => entry === "COMMIT")).toHaveLength(2);
+  });
+
+  it("rolls back the entire profile batch when one insert fails", async () => {
+    let inserts = 0;
+    const sequence: string[] = [];
+    const clientQuery = vi.fn(async (sql: string) => {
+      sequence.push(sql);
+      if (sql.includes("FROM leadgrid_discovery_profile_batches")) {
+        return { rows: [] };
+      }
+      if (sql.includes("INSERT INTO leadgrid_discovery_profiles")) {
+        inserts += 1;
+        if (inserts === 3) throw new Error("simulated insert failure");
+        return { rows: [{ id: profileId }] };
+      }
+      return { rows: [] };
+    });
+    const pool = {
+      query: vi.fn(),
+      connect: vi.fn(async () => ({
+        query: clientQuery,
+        release: vi.fn(),
+      })),
+    } as unknown as Pool;
+    const response = await makeHarness(pool).call(
+      "POST",
+      `${base}/profiles/batch`,
+      {
+        params: { projectId: "project-a" },
+        headers: { "Idempotency-Key": "clinic-preset-failure-0001" },
+        body: {
+          profiles: ["oslo", "vest", "ost-nord", "sor"].map(
+            (territory, index) => ({
+              name: `Profil ${index + 1}`,
+              brief: {
+                industry_queries: ["tannklinikk"],
+                municipality_numbers: [
+                  `03${String(index + 1).padStart(2, "0")}`,
+                ],
+                territory_code: territory,
+              },
+            }),
+          ),
+        },
+      },
+    );
+
+    expect(response.status).toBe(500);
+    expect(inserts).toBe(3);
+    expect(sequence).toContain("ROLLBACK");
+    expect(
+      sequence.some((sql) =>
+        sql.includes("INSERT INTO leadgrid_discovery_profile_batches"),
+      ),
+    ).toBe(false);
+    expect(sequence).not.toContain("COMMIT");
   });
 
   it("rejects an invalid cron/timezone pair before profile persistence", async () => {
@@ -659,16 +1027,16 @@ describe("Leadgrid Discovery HTTP contract", () => {
       sql.includes("INSERT INTO leadgrid_discovery_profiles"),
     );
     expect(insert?.[0]).toContain("schedule_timezone, next_run_at");
-    expect(JSON.parse(String(insert?.[1]?.[12]))).toEqual({
+    expect(JSON.parse(String(insert?.[1]?.[15]))).toEqual({
       brreg_open_data: { enabled: true },
       google_places: {
         enabled: false,
         mode: "transient_details_only",
       },
     });
-    expect(insert?.[0]).toContain("$21::timestamptz");
-    expect(insert?.[1]?.[20]).toEqual(expect.any(String));
-    expect(Number.isNaN(Date.parse(String(insert?.[1]?.[20])))).toBe(false);
+    expect(insert?.[0]).toContain("$24::timestamptz");
+    expect(insert?.[1]?.[23]).toEqual(expect.any(String));
+    expect(Number.isNaN(Date.parse(String(insert?.[1]?.[23])))).toBe(false);
   });
 
   it("uses OCC and all scope keys when patching a profile", async () => {

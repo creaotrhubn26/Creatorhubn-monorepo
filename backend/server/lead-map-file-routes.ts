@@ -7,11 +7,7 @@ import {
   softDeleteUserFile,
   uploadUserFile,
 } from "./role-room-user-storage-service.js";
-import {
-  requestedLeadMapOrganizationId,
-  resolveLeadOrganizationScope,
-  sendLeadMapOrganizationScopeError,
-} from "./lead-map-org-scope.js";
+import { loadAccessibleLeadgridLead } from "./leadgrid-lead-access.js";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
 import { resolveLeadMapSession } from "./lead-map-session-helper.js";
 
@@ -19,6 +15,7 @@ type SessionData = { userId: string; role?: string; email?: string };
 type ScopedRequest = Request & {
   leadgridUserId?: string;
   leadgridOrganizationId?: string;
+  leadgridProjectId?: string;
   file?: Express.Multer.File;
 };
 
@@ -55,25 +52,16 @@ export function registerLeadMapFileRoutes(deps: {
     const current = await resolveLeadMapSession(req, pool, activeSessions);
     if (!current?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     try {
-      const organizationId = await resolveLeadOrganizationScope(
+      const lead = await loadAccessibleLeadgridLead(
         pool,
-        current.userId,
-        req.params.id,
-        requestedLeadMapOrganizationId(req),
+        { leadId: req.params.id, userId: current.userId },
       );
-      if (!organizationId) return res.status(409).json({ error: "workspace_scope_required" });
-      const lead = await pool.query(
-        `SELECT 1 FROM crm_customers
-          WHERE id = $1::uuid AND organization_id = $2::uuid AND archived_at IS NULL
-          LIMIT 1`,
-        [req.params.id, organizationId],
-      );
-      if (!lead.rows.length) return res.status(404).json({ error: "lead_not_found" });
+      if (!lead) return res.status(404).json({ error: "lead_not_found" });
       req.leadgridUserId = current.userId;
-      req.leadgridOrganizationId = organizationId;
+      req.leadgridOrganizationId = lead.organizationId;
+      req.leadgridProjectId = lead.projectId;
       next();
-    } catch (error) {
-      if (sendLeadMapOrganizationScopeError(error, res)) return;
+    } catch {
       return res.status(500).json({ error: "file_scope_failed" });
     }
   };
@@ -86,9 +74,11 @@ export function registerLeadMapFileRoutes(deps: {
          FROM leadgrid_lead_files lf
          JOIN role_room_user_files f ON f.id = lf.file_id AND f.deleted_at IS NULL
          LEFT JOIN users u ON u.id = lf.uploader_user_id
-        WHERE lf.organization_id = $1::uuid AND lf.lead_id = $2::uuid
+        WHERE lf.organization_id = $1::uuid
+          AND lf.project_id = $2
+          AND lf.lead_id = $3::uuid
         ORDER BY f.uploaded_at DESC`,
-      [req.leadgridOrganizationId, req.params.id],
+      [req.leadgridOrganizationId, req.leadgridProjectId, req.params.id],
     );
     return res.json({ files: result.rows });
   });
@@ -102,6 +92,7 @@ export function registerLeadMapFileRoutes(deps: {
       const file = req.file;
       const userId = req.leadgridUserId!;
       const organizationId = req.leadgridOrganizationId!;
+      const projectId = req.leadgridProjectId!;
       if (!file?.buffer?.length) return res.status(400).json({ error: "mangler_fil" });
       const tags = typeof req.body?.tags === "string"
         ? req.body.tags.split(",").map((value: string) => value.trim()).filter(Boolean).slice(0, 20)
@@ -116,8 +107,9 @@ export function registerLeadMapFileRoutes(deps: {
         body: file.buffer,
         contentType: file.mimetype,
         sourceModule: "leadgrid",
-        metadata: { organizationId, leadId: req.params.id, tags, description },
+        metadata: { organizationId, projectId, leadId: req.params.id, tags, description },
         context: {
+          projectId,
           attachedToEntityType: "leadgrid_lead",
           attachedToEntityId: req.params.id,
           attachmentNote: description || undefined,
@@ -131,9 +123,17 @@ export function registerLeadMapFileRoutes(deps: {
       try {
         await pool.query(
           `INSERT INTO leadgrid_lead_files
-             (file_id, organization_id, lead_id, uploader_user_id, description, tags)
-           VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::text[])`,
-          [uploaded.file.id, organizationId, req.params.id, userId, description || null, tags],
+             (file_id, organization_id, project_id, lead_id, uploader_user_id, description, tags)
+           VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5, $6, $7::text[])`,
+          [
+            uploaded.file.id,
+            organizationId,
+            projectId,
+            req.params.id,
+            userId,
+            description || null,
+            tags,
+          ],
         );
       } catch (error) {
         // Filen er allerede registrert i den delte storage-tabellen. Rull den
@@ -148,8 +148,16 @@ export function registerLeadMapFileRoutes(deps: {
   app.get("/api/admin-room/lead-map/leads/:id/files/:fileId/download", resolveScope, async (req: ScopedRequest, res: Response) => {
     const linked = await pool.query<{ uploader_user_id: string }>(
       `SELECT uploader_user_id FROM leadgrid_lead_files
-        WHERE file_id = $1::uuid AND lead_id = $2::uuid AND organization_id = $3::uuid`,
-      [req.params.fileId, req.params.id, req.leadgridOrganizationId],
+        WHERE file_id = $1::uuid
+          AND lead_id = $2::uuid
+          AND organization_id = $3::uuid
+          AND project_id = $4`,
+      [
+        req.params.fileId,
+        req.params.id,
+        req.leadgridOrganizationId,
+        req.leadgridProjectId,
+      ],
     );
     if (!linked.rows.length) return res.status(404).json({ error: "not_found" });
     const result = await getUserFileDownloadUrl(pool, {
@@ -159,4 +167,50 @@ export function registerLeadMapFileRoutes(deps: {
     if (!result.ok) return res.status(404).json({ error: result.reason });
     return res.json({ url: result.url, displayName: result.displayName });
   });
+
+  app.delete(
+    "/api/admin-room/lead-map/leads/:id/files/:fileId",
+    requireLeadMapPermission("leads.update", { pool, activeSessions }),
+    resolveScope,
+    async (req: ScopedRequest, res: Response) => {
+      const linked = await pool.query<{ uploader_user_id: string }>(
+        `SELECT uploader_user_id
+           FROM leadgrid_lead_files
+          WHERE file_id = $1::uuid
+            AND lead_id = $2::uuid
+            AND organization_id = $3::uuid
+            AND project_id = $4
+          LIMIT 1`,
+        [
+          req.params.fileId,
+          req.params.id,
+          req.leadgridOrganizationId,
+          req.leadgridProjectId,
+        ],
+      );
+      const file = linked.rows[0];
+      if (!file) return res.status(404).json({ error: "not_found" });
+
+      const deleted = await softDeleteUserFile(pool, {
+        userId: file.uploader_user_id,
+        fileId: req.params.fileId,
+      });
+      if (!deleted.ok) return res.status(404).json({ error: "not_found" });
+
+      await pool.query(
+        `DELETE FROM leadgrid_lead_files
+          WHERE file_id = $1::uuid
+            AND lead_id = $2::uuid
+            AND organization_id = $3::uuid
+            AND project_id = $4`,
+        [
+          req.params.fileId,
+          req.params.id,
+          req.leadgridOrganizationId,
+          req.leadgridProjectId,
+        ],
+      );
+      return res.json({ ok: true, freedBytes: deleted.freedBytes });
+    },
+  );
 }

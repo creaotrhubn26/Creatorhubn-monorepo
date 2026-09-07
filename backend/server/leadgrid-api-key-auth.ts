@@ -19,11 +19,31 @@ import type { Request, Response, NextFunction } from "express";
 import type { Pool } from "pg";
 import { createHash } from "crypto";
 
-interface ApiKeyContext {
+export type LeadgridApiKeyAccessScope = "project" | "organization";
+
+export interface ApiKeyContext {
   apiKeyId: string;
   organizationId: string;
+  projectId: string | null;
+  accessScope: LeadgridApiKeyAccessScope;
   scopes: string[];
   rateLimitRpm: number;
+}
+
+/**
+ * A project-bound key can only address its configured project. Organization
+ * keys are a legacy/admin-only escape hatch and must still name a project on
+ * every data request; this helper only verifies that the named project is
+ * compatible with the immutable key binding.
+ */
+export function apiKeyAllowsProject(
+  context: ApiKeyContext,
+  projectId: string,
+): boolean {
+  if (context.accessScope === "organization") {
+    return context.projectId === null;
+  }
+  return Boolean(context.projectId && context.projectId === projectId);
 }
 
 declare global {
@@ -80,6 +100,8 @@ export function requireApiKey(pool: Pool, requiredScopes: string[] = []) {
     let row: {
       id: string;
       organization_id: string;
+      project_id: string | null;
+      access_scope: LeadgridApiKeyAccessScope;
       scopes: unknown;
       rate_limit_rpm: number;
     } | null = null;
@@ -87,15 +109,38 @@ export function requireApiKey(pool: Pool, requiredScopes: string[] = []) {
       const r = await pool.query<{
         id: string;
         organization_id: string;
+        project_id: string | null;
+        access_scope: LeadgridApiKeyAccessScope;
         scopes: unknown;
         rate_limit_rpm: number;
       }>(
-        `SELECT id::text, organization_id::text, scopes, rate_limit_rpm
-           FROM leadgrid_api_keys
-          WHERE key_prefix = $1
-            AND key_hash = $2
-            AND revoked_at IS NULL
-            AND (expires_at IS NULL OR expires_at > NOW())
+        `SELECT k.id::text,
+                k.organization_id::text,
+                k.project_id,
+                k.access_scope,
+                k.scopes,
+                k.rate_limit_rpm
+           FROM leadgrid_api_keys k
+           LEFT JOIN leadgrid_projects p
+             ON p.organization_id = k.organization_id
+            AND p.id = k.project_id
+          WHERE k.key_prefix = $1
+            AND k.key_hash = $2
+            AND k.revoked_at IS NULL
+            AND (k.expires_at IS NULL OR k.expires_at > NOW())
+            AND (
+              (k.access_scope = 'organization' AND k.project_id IS NULL)
+              OR (
+                k.access_scope = 'project'
+                AND k.project_id IS NOT NULL
+                AND p.id IS NOT NULL
+                AND (p.status IS NULL OR p.status NOT IN ('archived', 'deleted'))
+                AND (p.project_type IS NULL OR p.project_type NOT IN (
+                  'feature_film', 'documentary', 'film', 'short_film',
+                  'tv_series', 'commercial', 'music_video', 'casting'
+                ))
+              )
+            )
           LIMIT 1`,
         [prefix, hash],
       );
@@ -160,6 +205,8 @@ export function requireApiKey(pool: Pool, requiredScopes: string[] = []) {
     req.apiKey = {
       apiKeyId: row.id,
       organizationId: row.organization_id,
+      projectId: row.project_id,
+      accessScope: row.access_scope,
       scopes,
       rateLimitRpm: row.rate_limit_rpm,
     };

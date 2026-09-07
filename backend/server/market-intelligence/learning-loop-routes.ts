@@ -21,6 +21,8 @@ import {
   processWorkflowAnalytics,
   processAllDueWorkflows,
 } from "./learning-loop-service.js";
+import { getWorkflow } from "./marketing-cockpit-sync-service.js";
+import { loadAccessibleLeadgridProject } from "../leadgrid-project-access.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -62,10 +64,62 @@ export function registerLearningLoopRoutes({
     return session;
   }
 
+  async function workflowScope(
+    req: Request,
+    session: SessionData,
+    res: Response,
+  ) {
+    const rawProjectId = req.query.projectId
+      ?? req.query.project_id
+      ?? req.body?.projectId
+      ?? req.body?.project_id;
+    const projectId = typeof rawProjectId === "string" ? rawProjectId.trim() : "";
+    if (!projectId) {
+      res.status(400).json({ error: "project_id_required" });
+      return null;
+    }
+    const project = await loadAccessibleLeadgridProject(
+      pool,
+      projectId,
+      session.userId,
+    );
+    if (!project) {
+      res.status(404).json({ error: "project_not_found" });
+      return null;
+    }
+    return {
+      workspaceOwnerUserId: session.userId,
+      organizationId: project.organizationId,
+      projectId: project.id,
+    };
+  }
+
+  async function accessibleWorkflow(
+    req: Request,
+    session: SessionData,
+    res: Response,
+  ) {
+    const scope = await workflowScope(req, session, res);
+    if (!scope) return null;
+    const workflow = await getWorkflow(pool, req.params.id, scope);
+    if (!workflow) {
+      res.status(404).json({ error: "not_found" });
+      return null;
+    }
+    return { scope, workflow };
+  }
+
   app.post("/api/marketing-workflows/:id/recompute-analytics", async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    const session = requireAdmin(req, res);
+    if (!session) return;
     try {
-      const result = await processWorkflowAnalytics(pool, req.params.id);
+      const context = await accessibleWorkflow(req, session, res);
+      if (!context) return;
+      const result = await processWorkflowAnalytics(
+        pool,
+        req.params.id,
+        context.scope,
+      );
       if (!result) return res.status(404).json({ error: "no_drafts_linked" });
       return res.json({ analytics: result });
     } catch (err) {
@@ -96,20 +150,29 @@ export function registerLearningLoopRoutes({
   });
 
   app.get("/api/marketing-workflows/:id/analytics", async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    const session = requireAdmin(req, res);
+    if (!session) return;
     try {
+      const context = await accessibleWorkflow(req, session, res);
+      if (!context) return;
       const r = await pool.query(
-        `SELECT id::text, workflow_id::text, opportunity_id::text, market_scan_id::text,
-                total_drafts_published, total_impressions, total_engagements,
-                total_clicks, total_conversions, total_revenue_nok,
-                performance_score, performance_tier,
-                insight_summary, what_worked, what_didnt_work, recommendation_adjustment,
-                computed_at::text
-           FROM marketing_workflow_analytics
-          WHERE workflow_id = $1::uuid
-          ORDER BY computed_at DESC
+        `SELECT analytics.id::text, analytics.workflow_id::text,
+                analytics.opportunity_id::text, analytics.market_scan_id::text,
+                analytics.total_drafts_published, analytics.total_impressions,
+                analytics.total_engagements, analytics.total_clicks,
+                analytics.total_conversions, analytics.total_revenue_nok,
+                analytics.performance_score, analytics.performance_tier,
+                analytics.insight_summary, analytics.what_worked,
+                analytics.what_didnt_work, analytics.recommendation_adjustment,
+                analytics.computed_at::text
+           FROM marketing_workflow_analytics analytics
+           JOIN marketing_workflows workflow ON workflow.id = analytics.workflow_id
+          WHERE analytics.workflow_id = $1::uuid
+            AND workflow.organization_id = $2::uuid
+            AND workflow.project_id = $3
+          ORDER BY analytics.computed_at DESC
           LIMIT 1`,
-        [req.params.id],
+        [req.params.id, context.scope.organizationId, context.scope.projectId],
       );
       if (r.rows.length === 0) return res.status(404).json({ error: "no_analytics" });
       return res.json({ analytics: r.rows[0] });
@@ -118,11 +181,13 @@ export function registerLearningLoopRoutes({
     }
   });
 
-  app.get("/api/marketing-workflows/top-performers", async (req, res) => {
+  app.get("/api/marketing-workflow-analytics/top-performers", async (req, res) => {
     const session = requireAdmin(req, res);
     if (!session) return;
-    const limit = req.query.limit ? Number(req.query.limit) : 10;
     try {
+      const scope = await workflowScope(req, session, res);
+      if (!scope) return;
+      const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 10));
       const r = await pool.query(
         `SELECT mwa.id::text, mwa.workflow_id::text, mwa.opportunity_id::text,
                 mwa.performance_score, mwa.performance_tier,
@@ -133,11 +198,12 @@ export function registerLearningLoopRoutes({
            FROM marketing_workflow_analytics mwa
            LEFT JOIN market_scan_opportunities mso ON mso.id = mwa.opportunity_id
            JOIN marketing_workflows mw ON mw.id = mwa.workflow_id
-          WHERE mw.workspace_owner_user_id = $1
+          WHERE mw.organization_id = $1::uuid
+            AND mw.project_id = $2
             AND mwa.performance_tier IN ('high', 'top')
           ORDER BY mwa.performance_score DESC
-          LIMIT $2`,
-        [session.userId, limit],
+          LIMIT $3`,
+        [scope.organizationId, scope.projectId, limit],
       );
       return res.json({ topPerformers: r.rows });
     } catch (err) {

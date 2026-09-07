@@ -15,6 +15,11 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { randomBytes, createHash } from "crypto";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
+import {
+  getLeadgridSession,
+  hasLeadgridProjectsViewAllAccess,
+  loadAccessibleLeadgridProject,
+} from "./leadgrid-project-access.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -24,22 +29,60 @@ interface Deps {
   activeSessions: Map<string, SessionData>;
 }
 
-function getSession(
-  req: Request,
-  activeSessions: Map<string, SessionData>,
-): SessionData | null {
-  const auth = req.headers.authorization;
-  if (auth?.startsWith("Bearer ")) {
-    const s = activeSessions.get(auth.slice(7));
-    if (s) return s;
+interface ManageableApiKeyRow {
+  id: string;
+  organization_id: string;
+  project_id: string | null;
+  access_scope: "project" | "organization";
+}
+
+async function canManageOrganizationScopeKeys(
+  pool: Pick<Pool, "query">,
+  organizationId: string,
+  userId: string,
+): Promise<boolean> {
+  const membership = await pool.query<{ role: string }>(
+    `SELECT role
+       FROM organization_members
+      WHERE organization_id = $1::uuid
+        AND user_id = $2
+      LIMIT 1`,
+    [organizationId, userId],
+  );
+  if (membership.rows[0]?.role !== "admin") return false;
+  return hasLeadgridProjectsViewAllAccess(pool, { organizationId, userId });
+}
+
+async function canManageApiKey(
+  pool: Pick<Pool, "query">,
+  key: ManageableApiKeyRow,
+  userId: string,
+): Promise<boolean> {
+  if (key.access_scope === "organization") {
+    return key.project_id === null && canManageOrganizationScopeKeys(
+      pool,
+      key.organization_id,
+      userId,
+    );
   }
-  return null;
+  if (!key.project_id) return false;
+  const project = await loadAccessibleLeadgridProject(
+    pool,
+    key.project_id,
+    userId,
+  );
+  return Boolean(
+    project &&
+      project.id === key.project_id &&
+      project.organizationId === key.organization_id,
+  );
 }
 
 /**
  * Smart org-id resolve for API-key mgmt:
  *  1. body.organization_id eller query.organization_id eksplisitt
- *  2. brukerens første organization_members-rad (admin > salgssjef > annet)
+ *  2. prosjektets organisasjon når project_id er oppgitt
+ *  3. brukerens første organization_members-rad (admin > salgssjef > annet)
  */
 async function resolveOrgIdSmart(
   req: Request,
@@ -50,6 +93,25 @@ async function resolveOrgIdSmart(
     (req.body && (req.body as Record<string, unknown>).organization_id) ??
     (req.query && (req.query as Record<string, unknown>).organization_id);
   if (typeof explicit === "string" && explicit.length > 0) return explicit;
+
+  const requestedProject =
+    (req.body && ((req.body as Record<string, unknown>).project_id ??
+      (req.body as Record<string, unknown>).projectId)) ??
+    (req.query && ((req.query as Record<string, unknown>).project_id ??
+      (req.query as Record<string, unknown>).projectId));
+  if (typeof requestedProject === "string" && requestedProject.trim()) {
+    try {
+      const project = await loadAccessibleLeadgridProject(
+        pool,
+        requestedProject.trim(),
+        userId,
+      );
+      if (project) return project.organizationId;
+    } catch {
+      return null;
+    }
+  }
+
   try {
     const r = await pool.query<{ organization_id: string }>(
       `SELECT organization_id::text
@@ -81,6 +143,7 @@ function generateApiKey(env: "live" | "test"): { token: string; prefix: string }
 const VALID_SCOPES = new Set([
   "leads.read",
   "leads.write",
+  "outcomes.write",
   "recommendations.read",
   "recommendations.write",
   "*",
@@ -103,12 +166,13 @@ export function registerLeadgridApiKeyMgmtRoutes(deps: Deps): void {
 
   // ───────────────────────────────────────────────────────────────────
   // POST /api/leadgrid/api-keys — opprett ny key
-  // Body: { name, scopes?, env?, rate_limit_rpm?, expires_at? }
+  // Body: { name, project_id, scopes?, env?, rate_limit_rpm?, expires_at? }
+  // access_scope="organization" er et eksplisitt admin-only unntak.
   // Returnerer { id, token, warning } — token vises KUN her, kan ikke
   // hentes senere (vi lagrer kun hash).
   // ───────────────────────────────────────────────────────────────────
   app.post("/api/leadgrid/api-keys", permCreate, async (req: Request, res: Response) => {
-    const session = getSession(req, activeSessions);
+    const session = getLeadgridSession(req, activeSessions);
     if (!session) {
       res.status(401).json({ error: "Innlogging kreves" });
       return;
@@ -124,11 +188,64 @@ export function registerLeadgridApiKeyMgmtRoutes(deps: Deps): void {
       env?: "live" | "test";
       rate_limit_rpm?: number;
       expires_at?: string;
+      project_id?: string;
+      projectId?: string;
+      access_scope?: string;
+      accessScope?: string;
     };
-    if (!b.name || typeof b.name !== "string" || b.name.trim().length === 0) {
-      res.status(400).json({ error: "name kreves" });
+    const normalizedName = typeof b.name === "string" ? b.name.trim() : "";
+    if (!normalizedName || normalizedName.length > 120) {
+      res.status(400).json({ error: "invalid_name" });
       return;
     }
+
+    const rawAccessScope = b.access_scope ?? b.accessScope ?? "project";
+    if (rawAccessScope !== "project" && rawAccessScope !== "organization") {
+      res.status(400).json({ error: "invalid_access_scope" });
+      return;
+    }
+    const accessScope: "project" | "organization" = rawAccessScope;
+    const rawProjectId = b.project_id ?? b.projectId;
+    let projectId: string | null = null;
+
+    if (accessScope === "project") {
+      if (typeof rawProjectId !== "string" || !rawProjectId.trim() || rawProjectId.trim().length > 255) {
+        res.status(400).json({ error: "project_id_required" });
+        return;
+      }
+      try {
+        const project = await loadAccessibleLeadgridProject(
+          pool,
+          rawProjectId.trim(),
+          session.userId,
+        );
+        if (!project || project.organizationId !== orgId) {
+          res.status(404).json({ error: "project_not_found" });
+          return;
+        }
+        projectId = project.id;
+      } catch (error) {
+        console.warn("[api-key-mgmt] project lookup feilet:", error);
+        res.status(500).json({ error: "project_lookup_failed" });
+        return;
+      }
+    } else {
+      if (rawProjectId !== undefined && rawProjectId !== null && rawProjectId !== "") {
+        res.status(400).json({ error: "organization_scope_cannot_bind_project" });
+        return;
+      }
+      try {
+        if (!(await canManageOrganizationScopeKeys(pool, orgId, session.userId))) {
+          res.status(403).json({ error: "organization_scope_requires_admin" });
+          return;
+        }
+      } catch (error) {
+        console.warn("[api-key-mgmt] admin lookup feilet:", error);
+        res.status(500).json({ error: "admin_lookup_failed" });
+        return;
+      }
+    }
+
     const env: "live" | "test" = b.env === "test" ? "test" : "live";
     const scopes = sanitizeScopes(b.scopes);
     const rateLimit =
@@ -143,13 +260,15 @@ export function registerLeadgridApiKeyMgmtRoutes(deps: Deps): void {
     try {
       const r = await pool.query<{ id: string }>(
         `INSERT INTO leadgrid_api_keys
-           (organization_id, name, key_prefix, key_hash,
+           (organization_id, project_id, access_scope, name, key_prefix, key_hash,
             scopes, rate_limit_rpm, expires_at, created_by)
-         VALUES ($1::uuid, $2, $3, $4, $5::jsonb, $6, $7, $8)
+         VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10)
          RETURNING id::text`,
         [
           orgId,
-          b.name.trim(),
+          projectId,
+          accessScope,
+          normalizedName,
           prefix,
           keyHash,
           JSON.stringify(scopes),
@@ -163,6 +282,8 @@ export function registerLeadgridApiKeyMgmtRoutes(deps: Deps): void {
         id: r.rows[0].id,
         token,
         prefix,
+        project_id: projectId,
+        access_scope: accessScope,
         scopes,
         rate_limit_rpm: rateLimit,
         env,
@@ -179,7 +300,7 @@ export function registerLeadgridApiKeyMgmtRoutes(deps: Deps): void {
   // GET /api/leadgrid/api-keys — list org-ens keys (uten klartekst-token)
   // ───────────────────────────────────────────────────────────────────
   app.get("/api/leadgrid/api-keys", permView, async (req: Request, res: Response) => {
-    const session = getSession(req, activeSessions);
+    const session = getLeadgridSession(req, activeSessions);
     if (!session) {
       res.status(401).json({ error: "Innlogging kreves" });
       return;
@@ -190,16 +311,35 @@ export function registerLeadgridApiKeyMgmtRoutes(deps: Deps): void {
       return;
     }
     try {
-      const r = await pool.query(
-        `SELECT id::text, name, key_prefix, scopes, rate_limit_rpm,
-                last_used_at::text, total_requests, expires_at::text,
-                revoked_at::text, revoked_reason, created_at::text
-           FROM leadgrid_api_keys
-          WHERE organization_id = $1::uuid
-          ORDER BY created_at DESC`,
+      const r = await pool.query<ManageableApiKeyRow & Record<string, unknown>>(
+        `SELECT k.id::text, k.organization_id::text, k.name, k.key_prefix,
+                k.project_id, k.access_scope,
+                p.name AS project_name, k.scopes, k.rate_limit_rpm,
+                k.last_used_at::text, k.total_requests, k.expires_at::text,
+                k.revoked_at::text, k.revoked_reason, k.created_at::text
+           FROM leadgrid_api_keys k
+           LEFT JOIN leadgrid_projects p
+             ON p.organization_id = k.organization_id
+            AND p.id = k.project_id
+          WHERE k.organization_id = $1::uuid
+          ORDER BY k.created_at DESC`,
         [orgId],
       );
-      res.json({ data: r.rows });
+      const visibility = new Map<string, Promise<boolean>>();
+      const visibleRows = await Promise.all(
+        r.rows.map(async (key) => {
+          const boundary = key.access_scope === "organization"
+            ? `organization:${key.organization_id}`
+            : `project:${key.organization_id}:${key.project_id ?? ""}`;
+          let allowed = visibility.get(boundary);
+          if (!allowed) {
+            allowed = canManageApiKey(pool, key, session.userId);
+            visibility.set(boundary, allowed);
+          }
+          return (await allowed) ? key : null;
+        }),
+      );
+      res.json({ data: visibleRows.filter((key) => key !== null) });
     } catch (err) {
       console.warn("[api-key-mgmt] list feilet:", err);
       res.status(500).json({ error: "list_failed" });
@@ -211,7 +351,7 @@ export function registerLeadgridApiKeyMgmtRoutes(deps: Deps): void {
   // Body: { reason? }
   // ───────────────────────────────────────────────────────────────────
   app.post("/api/leadgrid/api-keys/:id/revoke", permRevoke, async (req: Request, res: Response) => {
-    const session = getSession(req, activeSessions);
+    const session = getLeadgridSession(req, activeSessions);
     if (!session) {
       res.status(401).json({ error: "Innlogging kreves" });
       return;
@@ -223,16 +363,38 @@ export function registerLeadgridApiKeyMgmtRoutes(deps: Deps): void {
     }
     const reason = String(
       ((req.body as Record<string, unknown>)?.reason as string | undefined) ?? "manual",
-    );
+    ).trim().slice(0, 500) || "manual";
     try {
+      const lookup = await pool.query<ManageableApiKeyRow>(
+        `SELECT id::text, organization_id::text, project_id, access_scope
+           FROM leadgrid_api_keys
+          WHERE id::text = $1
+            AND organization_id = $2::uuid
+            AND revoked_at IS NULL
+          LIMIT 1`,
+        [req.params.id, orgId],
+      );
+      const key = lookup.rows[0];
+      if (!key || !(await canManageApiKey(pool, key, session.userId))) {
+        res.status(404).json({ error: "ikke_funnet_eller_revokert" });
+        return;
+      }
       const r = await pool.query(
         `UPDATE leadgrid_api_keys
             SET revoked_at = NOW(), revoked_reason = $1
           WHERE id = $2::uuid
             AND organization_id = $3::uuid
+            AND access_scope = $4
+            AND project_id IS NOT DISTINCT FROM $5
             AND revoked_at IS NULL
           RETURNING id::text`,
-        [reason, req.params.id, orgId],
+        [
+          reason,
+          key.id,
+          key.organization_id,
+          key.access_scope,
+          key.project_id,
+        ],
       );
       if (r.rowCount === 0) {
         res.status(404).json({ error: "ikke_funnet_eller_revokert" });

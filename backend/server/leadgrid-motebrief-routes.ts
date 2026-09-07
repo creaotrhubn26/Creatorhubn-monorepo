@@ -30,9 +30,16 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { randomUUID } from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
-import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
-import { assertAnyEntitled, MOTE_BRIEF_FEATURE_KEYS, CANVAS_ANALYSE_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
+import {
+  assertAnyEntitledForOrganization,
+  MOTE_BRIEF_FEATURE_KEYS,
+  CANVAS_ANALYSE_FEATURE_KEYS,
+} from "./leadgrid-entitlement-guard.js";
 import { withAIQuota } from "./leadgrid-ai-queue.js";
+import {
+  loadAccessibleLeadgridProject,
+  type LeadgridAccessibleProject,
+} from "./leadgrid-project-access.js";
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const DOFFIN_API_KEY = process.env.DOFFIN_API_KEY ?? "";
@@ -133,15 +140,23 @@ async function hentAktiveAnbud(orgnr: string | null): Promise<AnbudSignal[]> {
 type VunnetCase = { tittel: string; bransje: string | null; laerdom: string | null };
 
 /** Org-ens egne VUNNEDE case fra Leadbook Eksempler — «innsikt å by på». */
-async function hentVunnedeCase(pool: Pool, orgId: string, bransjeHint: string | null): Promise<VunnetCase[]> {
+async function hentVunnedeCase(
+  pool: Pool,
+  orgId: string,
+  projectId: string,
+  bransjeHint: string | null,
+): Promise<VunnetCase[]> {
   try {
     const r = await pool.query<{ title: string; industry: string | null; key_learnings: unknown }>(
       `SELECT title, industry, key_learnings FROM leadbook_examples
-        WHERE organization_id = $1 AND outcome = 'won' AND status = 'published'
-        ORDER BY (CASE WHEN industry ILIKE '%' || $2 || '%' THEN 0 ELSE 1 END),
+        WHERE organization_id = $1
+          AND project_id = $2
+          AND outcome = 'won'
+          AND status = 'published'
+        ORDER BY (CASE WHEN industry ILIKE '%' || $3 || '%' THEN 0 ELSE 1 END),
                  created_at DESC
         LIMIT 3`,
-      [orgId, bransjeHint ?? ""]);
+      [orgId, projectId, bransjeHint ?? ""]);
     return r.rows.map((row) => ({
       tittel: row.title,
       bransje: row.industry,
@@ -152,82 +167,29 @@ async function hentVunnedeCase(pool: Pool, orgId: string, bransjeHint: string | 
   } catch { return []; }
 }
 
-// ── Møtelogg (fase 3): løftene våre huskes til neste brief ───────────
-
-let loggSchemaReady = false;
-async function ensureLoggSchema(pool: Pool): Promise<void> {
-  if (loggSchemaReady) return;
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS leadgrid_mote_logg (
-      id UUID PRIMARY KEY,
-      organization_id TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      selskap TEXT NOT NULL,
-      orgnr TEXT,
-      lead_id UUID REFERENCES crm_customers(id) ON DELETE SET NULL,
-      meeting_at TIMESTAMPTZ,
-      request_id UUID,
-      resultat JSONB,
-      notat TEXT NOT NULL DEFAULT '',
-      lofter JSONB NOT NULL DEFAULT '[]',
-      oppgaver JSONB NOT NULL DEFAULT '[]',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    )`);
-  await pool.query(`
-    ALTER TABLE leadgrid_mote_logg
-      ADD COLUMN IF NOT EXISTS lead_id UUID REFERENCES crm_customers(id) ON DELETE SET NULL,
-      ADD COLUMN IF NOT EXISTS meeting_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS request_id UUID,
-      ADD COLUMN IF NOT EXISTS resultat JSONB`);
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS idx_mote_logg_selskap
-      ON leadgrid_mote_logg (organization_id, lower(selskap), created_at DESC)`);
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS idx_mote_logg_meeting
-      ON leadgrid_mote_logg (organization_id, lead_id, meeting_at DESC)
-      WHERE lead_id IS NOT NULL`);
-  await pool.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS uq_mote_logg_request
-      ON leadgrid_mote_logg (organization_id, request_id)
-      WHERE request_id IS NOT NULL`);
-  loggSchemaReady = true;
-}
-
-// ── Oppgaver fra møtelogging: ekte, avhukbar liste (ikke bare visning) ──
-
-let oppgaveSchemaReady = false;
-async function ensureOppgaveSchema(pool: Pool): Promise<void> {
-  if (oppgaveSchemaReady) return;
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS leadgrid_oppgaver (
-      id UUID PRIMARY KEY,
-      organization_id TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      selskap TEXT NOT NULL,
-      lead_id TEXT,
-      tittel TEXT NOT NULL,
-      frist TEXT,
-      kilde TEXT NOT NULL DEFAULT 'mote_etterarbeid',
-      status TEXT NOT NULL DEFAULT 'open',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      done_at TIMESTAMPTZ
-    )`);
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS idx_leadgrid_oppgaver_bruker
-      ON leadgrid_oppgaver (organization_id, user_id, status, created_at DESC)`);
-  oppgaveSchemaReady = true;
-}
+// Møtelogg, oppgaver og mål eies av deploy-migrasjonene. Ruter skal aldri
+// forsøke DDL ved første brukerklikk.
 
 type ForrigeMote = { dato: string; notat: string; lofter: string[] };
 
-async function hentForrigeMote(pool: Pool, orgId: string, selskap: string): Promise<ForrigeMote | null> {
+async function hentForrigeMote(
+  pool: Pool,
+  orgId: string,
+  projectId: string,
+  selskap: string,
+  leadId: string | null,
+): Promise<ForrigeMote | null> {
   try {
-    await ensureLoggSchema(pool);
     const r = await pool.query<{ created_at: Date; notat: string; lofter: unknown }>(
       `SELECT created_at, notat, lofter FROM leadgrid_mote_logg
-        WHERE organization_id = $1 AND lower(selskap) = lower($2)
+        WHERE organization_id = $1
+          AND project_id = $2
+          AND (
+            ($4::uuid IS NOT NULL AND lead_id = $4::uuid)
+            OR ($4::uuid IS NULL AND lower(selskap) = lower($3))
+          )
         ORDER BY created_at DESC LIMIT 1`,
-      [orgId, selskap]);
+      [orgId, projectId, selskap, leadId]);
     const row = r.rows[0];
     if (!row) return null;
     return {
@@ -238,35 +200,25 @@ async function hentForrigeMote(pool: Pool, orgId: string, selskap: string): Prom
   } catch { return null; }
 }
 
-// ── Mål & behov (per org + selskap): selgerens mål styrer briefen, og
+// ── Mål & behov (per prosjekt + lead/selskap): selgerens mål styrer briefen, og
 //    behovsbanken akkumulerer kundeforståelse på tvers av møter/selgere ──
-
-let maalSchemaReady = false;
-async function ensureMaalSchema(pool: Pool): Promise<void> {
-  if (maalSchemaReady) return;
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS leadgrid_mote_maal (
-      organization_id TEXT NOT NULL,
-      selskap_key TEXT NOT NULL,
-      selskap TEXT NOT NULL,
-      maal TEXT NOT NULL DEFAULT '',
-      behov JSONB NOT NULL DEFAULT '[]',
-      updated_by TEXT,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      PRIMARY KEY (organization_id, selskap_key)
-    )`);
-  maalSchemaReady = true;
-}
 
 type MaalBehov = { maal: string; behov: string[] };
 
-async function hentMaalBehov(pool: Pool, orgId: string, selskap: string): Promise<MaalBehov | null> {
+async function hentMaalBehov(
+  pool: Pool,
+  orgId: string,
+  projectId: string,
+  selskap: string,
+  leadId: string | null,
+): Promise<MaalBehov | null> {
   try {
-    await ensureMaalSchema(pool);
     const r = await pool.query<{ maal: string; behov: unknown }>(
       `SELECT maal, behov FROM leadgrid_mote_maal
-        WHERE organization_id = $1 AND selskap_key = lower($2)`,
-      [orgId, selskap]);
+        WHERE organization_id = $1
+          AND project_id = $2
+          AND selskap_key = COALESCE($4::text, lower($3))`,
+      [orgId, projectId, selskap, leadId]);
     const row = r.rows[0];
     if (!row) return null;
     return {
@@ -277,12 +229,20 @@ async function hentMaalBehov(pool: Pool, orgId: string, selskap: string): Promis
 }
 
 /** Flett nye behov (fra etterarbeidet) inn i banken — unike, maks 12. */
-async function flettInnBehov(pool: Pool, orgId: string, selskap: string,
-                             userId: string, nye: string[]): Promise<void> {
+async function flettInnBehov(
+  pool: Pool,
+  orgId: string,
+  projectId: string,
+  selskap: string,
+  leadId: string | null,
+  userId: string,
+  nye: string[],
+): Promise<void> {
   if (nye.length === 0) return;
   try {
-    await ensureMaalSchema(pool);
-    const eksisterende = (await hentMaalBehov(pool, orgId, selskap))?.behov ?? [];
+    const eksisterende = (
+      await hentMaalBehov(pool, orgId, projectId, selskap, leadId)
+    )?.behov ?? [];
     const sett = new Set(eksisterende.map((b) => b.toLowerCase()));
     const flettet = [...eksisterende];
     for (const b of nye) {
@@ -294,11 +254,18 @@ async function flettInnBehov(pool: Pool, orgId: string, selskap: string,
     }
     await pool.query(
       `INSERT INTO leadgrid_mote_maal
-         (organization_id, selskap_key, selskap, behov, updated_by, updated_at)
-       VALUES ($1, lower($2), $2, $3::jsonb, $4, now())
-       ON CONFLICT (organization_id, selskap_key)
-       DO UPDATE SET behov = $3::jsonb, updated_by = $4, updated_at = now()`,
-      [orgId, selskap, JSON.stringify(flettet), userId]);
+         (organization_id, project_id, selskap_key, selskap, lead_id,
+          behov, updated_by, updated_at)
+       VALUES ($1, $2, COALESCE($4::text, lower($3)), $3, $4::uuid,
+               $5::jsonb, $6, now())
+       ON CONFLICT (organization_id, project_id, selskap_key)
+         WHERE project_id IS NOT NULL
+       DO UPDATE SET selskap = EXCLUDED.selskap,
+                     lead_id = COALESCE(EXCLUDED.lead_id, leadgrid_mote_maal.lead_id),
+                     behov = EXCLUDED.behov,
+                     updated_by = EXCLUDED.updated_by,
+                     updated_at = now()`,
+      [orgId, projectId, selskap, leadId, JSON.stringify(flettet), userId]);
   } catch (e) {
     console.warn("[motebrief] behov-fletting feilet:", String(e).slice(0, 120));
   }
@@ -316,16 +283,69 @@ export function registerLeadgridMotebriefRoutes(deps: {
 }): void {
   const { app, pool, requireUserSession } = deps;
 
+  async function selectedProject(
+    req: Request,
+    res: Response,
+    userId: string,
+  ): Promise<LeadgridAccessibleProject | null> {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const projectId = String(
+      body.projectId ?? body.project_id
+      ?? req.query.projectId ?? req.query.project_id ?? "",
+    ).trim();
+    if (!projectId) {
+      res.status(400).json({ error: "project_id_required" });
+      return null;
+    }
+    const project = await loadAccessibleLeadgridProject(pool, projectId, userId);
+    if (!project) {
+      res.status(404).json({ error: "project_not_found" });
+      return null;
+    }
+    const claimedOrganizationId = String(
+      body.organizationId ?? body.organization_id
+      ?? req.query.organizationId ?? req.query.organization_id ?? "",
+    ).trim();
+    if (claimedOrganizationId && claimedOrganizationId !== project.organizationId) {
+      res.status(404).json({ error: "project_not_found" });
+      return null;
+    }
+    return project;
+  }
+
+  async function leadInProject(
+    leadId: string,
+    project: LeadgridAccessibleProject,
+  ): Promise<{ id: string; next_follow_up_at: string | null } | null> {
+    const result = await pool.query<{ id: string; next_follow_up_at: string | null }>(
+      `SELECT id::text, next_follow_up_at::text
+         FROM crm_customers
+        WHERE id = $1::uuid
+          AND organization_id = $2::uuid
+          AND project_id = $3
+          AND archived_at IS NULL`,
+      [leadId, project.organizationId, project.id],
+    );
+    return result.rows[0] ?? null;
+  }
+
   app.post("/api/leadgrid/moter/brief", async (req, res) => {
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
-      if (!(await assertAnyEntitled(pool, session.userId, MOTE_BRIEF_FEATURE_KEYS, res))) return;
+      const project = await selectedProject(req, res, session.userId);
+      if (!project) return;
+      if (!(await assertAnyEntitledForOrganization(
+        pool,
+        project.organizationId,
+        MOTE_BRIEF_FEATURE_KEYS,
+        res,
+      ))) return;
       if (!ANTHROPIC_API_KEY) {
         res.status(503).json({ error: "ai_unavailable" });
         return;
       }
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      const orgId = project.organizationId;
       const b = (req.body ?? {}) as Record<string, unknown>;
       const selskap = String(b.selskap ?? "").trim().slice(0, 200);
       if (selskap.length < 2) {
@@ -338,8 +358,23 @@ export function registerLeadgridMotebriefRoutes(deps: {
       const motetid = String(b.motetid ?? "").slice(0, 60);
       const notater = String(b.notater ?? "").slice(0, 2000);
       const leadStatus = String(b.leadStatus ?? b.lead_status ?? "").slice(0, 60);
+      const requestedLeadId = String(b.leadId ?? b.lead_id ?? "").trim();
+      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      let leadId: string | null = null;
+      if (requestedLeadId) {
+        if (!uuidPattern.test(requestedLeadId)) {
+          res.status(400).json({ error: "invalid_lead_id" });
+          return;
+        }
+        const lead = await leadInProject(requestedLeadId, project);
+        if (!lead) {
+          res.status(404).json({ error: "lead_not_found" });
+          return;
+        }
+        leadId = lead.id;
+      }
 
-      const cacheKey = `${orgId ?? "-"}:${selskap.toLowerCase()}:${new Date().toISOString().slice(0, 10)}`;
+      const cacheKey = `${orgId}:${project.id}:${leadId ?? selskap.toLowerCase()}:${new Date().toISOString().slice(0, 10)}`;
       const cached = briefCache.get(cacheKey);
       if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
         res.json(cached.body);
@@ -352,9 +387,9 @@ export function registerLeadgridMotebriefRoutes(deps: {
       const [regnskap, anbud, caser, forrigeMote, maalBehov] = await Promise.all([
         hentRegnskap(funnetOrgnr),
         hentAktiveAnbud(funnetOrgnr),
-        orgId ? hentVunnedeCase(pool, orgId, brreg?.naering ?? null) : Promise.resolve([]),
-        orgId ? hentForrigeMote(pool, orgId, selskap) : Promise.resolve(null),
-        orgId ? hentMaalBehov(pool, orgId, selskap) : Promise.resolve(null),
+        hentVunnedeCase(pool, orgId, project.id, brreg?.naering ?? null),
+        hentForrigeMote(pool, orgId, project.id, selskap, leadId),
+        hentMaalBehov(pool, orgId, project.id, selskap, leadId),
       ]);
 
       const fakta = {
@@ -398,7 +433,7 @@ Fakta:
 ${JSON.stringify(fakta)}`;
 
       const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-      const msg = await withAIQuota("claude", null, () =>
+      const msg = await withAIQuota("claude", orgId, () =>
         client.messages.create({
           model: "claude-sonnet-4-6",
           max_tokens: 1200,
@@ -414,10 +449,10 @@ ${JSON.stringify(fakta)}`;
         const cost = inTok != null && outTok != null ? (inTok * 3 + outTok * 15) / 1_000_000 : null;
         await pool.query(
           `INSERT INTO leadbook_ai_usage
-             (id, organization_id, user_id, user_name, feature, model,
+             (id, organization_id, project_id, user_id, user_name, feature, model,
               input_chars, input_tokens, output_tokens, cost_usd)
-           VALUES ($1,$2,$3,$4,'mote_brief',$5,$6,$7,$8,$9)`,
-          [randomUUID(), orgId ?? "", session.userId, "", "claude-sonnet-4-6",
+           VALUES ($1,$2,$3,$4,$5,'mote_brief',$6,$7,$8,$9,$10)`,
+          [randomUUID(), orgId, project.id, session.userId, "", "claude-sonnet-4-6",
            prompt.length, inTok, outTok, cost]);
       } catch { /* logging velter aldri svaret */ }
 
@@ -462,10 +497,27 @@ ${JSON.stringify(fakta)}`;
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      const project = await selectedProject(req, res, session.userId);
+      if (!project) return;
       const selskap = String(req.query.selskap ?? "").trim().slice(0, 200);
-      if (!orgId || selskap.length < 2) { res.json({ maal: "", behov: [] }); return; }
-      const mb = await hentMaalBehov(pool, orgId, selskap);
+      const requestedLeadId = String(req.query.leadId ?? req.query.lead_id ?? "").trim();
+      const leadId = requestedLeadId || null;
+      if (leadId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(leadId)) {
+        res.status(400).json({ error: "invalid_lead_id" });
+        return;
+      }
+      if (leadId && !(await leadInProject(leadId, project))) {
+        res.status(404).json({ error: "lead_not_found" });
+        return;
+      }
+      if (selskap.length < 2) { res.json({ maal: "", behov: [] }); return; }
+      const mb = await hentMaalBehov(
+        pool,
+        project.organizationId,
+        project.id,
+        selskap,
+        leadId,
+      );
       res.json({ maal: mb?.maal ?? "", behov: mb?.behov ?? [] });
     } catch (e) {
       console.error("[motebrief] maal get failed:", e);
@@ -477,8 +529,8 @@ ${JSON.stringify(fakta)}`;
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.status(400).json({ error: "no_org" }); return; }
+      const project = await selectedProject(req, res, session.userId);
+      if (!project) return;
       const b = (req.body ?? {}) as Record<string, unknown>;
       const selskap = String(b.selskap ?? "").trim().slice(0, 200);
       if (selskap.length < 2) {
@@ -490,17 +542,40 @@ ${JSON.stringify(fakta)}`;
         .map((x) => String(x).trim().slice(0, 160))
         .filter((x) => x.length > 0)
         .slice(0, 12);
-      await ensureMaalSchema(pool);
+      const requestedLeadId = String(b.leadId ?? b.lead_id ?? "").trim();
+      const leadId = requestedLeadId || null;
+      if (leadId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(leadId)) {
+        res.status(400).json({ error: "invalid_lead_id" });
+        return;
+      }
+      if (leadId && !(await leadInProject(leadId, project))) {
+        res.status(404).json({ error: "lead_not_found" });
+        return;
+      }
       await pool.query(
         `INSERT INTO leadgrid_mote_maal
-           (organization_id, selskap_key, selskap, maal, behov, updated_by, updated_at)
-         VALUES ($1, lower($2), $2, $3, $4::jsonb, $5, now())
-         ON CONFLICT (organization_id, selskap_key)
-         DO UPDATE SET maal = $3, behov = $4::jsonb, updated_by = $5, updated_at = now()`,
-        [orgId, selskap, maal, JSON.stringify(behov), session.userId]);
+           (organization_id, project_id, selskap_key, selskap, lead_id,
+            maal, behov, updated_by, updated_at)
+         VALUES ($1, $2, COALESCE($4::text, lower($3)), $3, $4::uuid,
+                 $5, $6::jsonb, $7, now())
+         ON CONFLICT (organization_id, project_id, selskap_key)
+           WHERE project_id IS NOT NULL
+         DO UPDATE SET selskap = EXCLUDED.selskap,
+                       lead_id = COALESCE(EXCLUDED.lead_id, leadgrid_mote_maal.lead_id),
+                       maal = EXCLUDED.maal,
+                       behov = EXCLUDED.behov,
+                       updated_by = EXCLUDED.updated_by,
+                       updated_at = now()`,
+        [project.organizationId, project.id, selskap, leadId, maal,
+         JSON.stringify(behov), session.userId]);
       // Målet endret → dagens brief-cache for selskapet er utdatert.
       for (const key of briefCache.keys()) {
-        if (key.includes(`:${selskap.toLowerCase()}:`)) briefCache.delete(key);
+        const scopedPrefix = `${project.organizationId}:${project.id}:`;
+        if (key.startsWith(scopedPrefix)
+            && (key.includes(`:${selskap.toLowerCase()}:`)
+              || (leadId && key.includes(`:${leadId}:`)))) {
+          briefCache.delete(key);
+        }
       }
       res.json({ ok: true });
     } catch (e) {
@@ -520,10 +595,16 @@ ${JSON.stringify(fakta)}`;
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
-      if (!(await assertAnyEntitled(pool, session.userId, MOTE_BRIEF_FEATURE_KEYS, res))) return;
+      const project = await selectedProject(req, res, session.userId);
+      if (!project) return;
+      if (!(await assertAnyEntitledForOrganization(
+        pool,
+        project.organizationId,
+        MOTE_BRIEF_FEATURE_KEYS,
+        res,
+      ))) return;
       if (!ANTHROPIC_API_KEY) { res.status(503).json({ error: "ai_unavailable" }); return; }
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.status(400).json({ error: "no_org" }); return; }
+      const orgId = project.organizationId;
       const b = (req.body ?? {}) as Record<string, unknown>;
       const selskap = String(b.selskap ?? "").trim().slice(0, 200);
       const tekst = String(b.tekst ?? "").trim().slice(0, 20_000);
@@ -540,30 +621,31 @@ ${JSON.stringify(fakta)}`;
       const requestId = uuidPattern.test(requestedId) ? requestedId : randomUUID();
       let leadId: string | null = null;
       let meetingAt: string | null = null;
-      if (uuidPattern.test(requestedLeadId)) {
-        const lead = await pool.query<{ id: string; next_follow_up_at: string | null }>(
-          `SELECT id::text, next_follow_up_at::text
-             FROM crm_customers
-            WHERE id = $1::uuid AND organization_id = $2::uuid`,
-          [requestedLeadId, orgId],
-        );
-        if (lead.rowCount === 0) {
+      if (requestedLeadId) {
+        if (!uuidPattern.test(requestedLeadId)) {
+          res.status(400).json({ error: "invalid_lead_id" });
+          return;
+        }
+        const lead = await leadInProject(requestedLeadId, project);
+        if (!lead) {
           res.status(404).json({ error: "lead_not_found" });
           return;
         }
-        leadId = lead.rows[0].id;
+        leadId = lead.id;
         const parsedMeetingAt = requestedMeetingAt ? new Date(requestedMeetingAt) : null;
         meetingAt = parsedMeetingAt && !Number.isNaN(parsedMeetingAt.getTime())
           ? parsedMeetingAt.toISOString()
-          : lead.rows[0].next_follow_up_at;
+          : lead.next_follow_up_at;
       }
-      await ensureLoggSchema(pool);
       const replay = await pool.query<{ resultat: unknown }>(
         `SELECT resultat
            FROM leadgrid_mote_logg
-          WHERE organization_id = $1 AND request_id = $2::uuid AND resultat IS NOT NULL
+          WHERE organization_id = $1
+            AND project_id = $2
+            AND request_id = $3::uuid
+            AND resultat IS NOT NULL
           LIMIT 1`,
-        [orgId, requestId],
+        [orgId, project.id, requestId],
       );
       if ((replay.rowCount ?? 0) > 0) {
         res.json({ resultat: replay.rows[0].resultat });
@@ -571,7 +653,13 @@ ${JSON.stringify(fakta)}`;
       }
       // Selgerens mål: innsendt verdi vinner, ellers det lagrede målet
       // fra Mål & behov — måloppnåelse vurderes mot dette.
-      const lagretMaal = await hentMaalBehov(pool, orgId, selskap);
+      const lagretMaal = await hentMaalBehov(
+        pool,
+        orgId,
+        project.id,
+        selskap,
+        leadId,
+      );
       const moteMaal = (String(b.moteMaal ?? b.mote_maal ?? "").slice(0, 400) || lagretMaal?.maal || "");
 
       const prompt = `Du er etterarbeids-assistenten til en norsk B2B-feltselger. Under er rå notater/transkripsjon fra et kundemøte hos «${selskap}»${kontakt ? ` (kontakt: ${kontakt})` : ""}${moteMaal ? `. Selgerens mål med møtet var: ${moteMaal}` : ""}.
@@ -598,7 +686,7 @@ Rå notater/transkripsjon:
 ${tekst}`;
 
       const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-      const msg = await withAIQuota("claude", null, () =>
+      const msg = await withAIQuota("claude", orgId, () =>
         client.messages.create({
           model: "claude-sonnet-4-6",
           max_tokens: 1500,
@@ -613,10 +701,10 @@ ${tekst}`;
         const cost = inTok != null && outTok != null ? (inTok * 3 + outTok * 15) / 1_000_000 : null;
         await pool.query(
           `INSERT INTO leadbook_ai_usage
-             (id, organization_id, user_id, user_name, feature, model,
+             (id, organization_id, project_id, user_id, user_name, feature, model,
               input_chars, input_tokens, output_tokens, cost_usd)
-           VALUES ($1,$2,$3,$4,'mote_etterarbeid',$5,$6,$7,$8,$9)`,
-          [randomUUID(), orgId ?? "", session.userId, "", "claude-sonnet-4-6",
+           VALUES ($1,$2,$3,$4,$5,'mote_etterarbeid',$6,$7,$8,$9,$10)`,
+          [randomUUID(), orgId, project.id, session.userId, "", "claude-sonnet-4-6",
            prompt.length, inTok, outTok, cost]);
       } catch { /* logging velter aldri svaret */ }
 
@@ -627,14 +715,20 @@ ${tekst}`;
       };
 
       // Behovsbanken: flett nye behov inn (unike, cap) — best effort.
-      if (orgId && Array.isArray(resultat.nye_behov)) {
-        await flettInnBehov(pool, orgId, selskap, session.userId,
-                            (resultat.nye_behov as unknown[]).map(String).slice(0, 6));
+      if (Array.isArray(resultat.nye_behov)) {
+        await flettInnBehov(
+          pool,
+          orgId,
+          project.id,
+          selskap,
+          leadId,
+          session.userId,
+          (resultat.nye_behov as unknown[]).map(String).slice(0, 6),
+        );
       }
 
       // Logg og avledede oppgaver er én transaksjon. Klientens stabile
       // requestId gjør retry etter tapt svar replay-sikker.
-      await ensureOppgaveSchema(pool);
       const parsedResult = JSON.parse(match[0]) as Record<string, unknown>;
       const db = await pool.connect();
       let persistedResult: unknown = parsedResult;
@@ -642,13 +736,14 @@ ${tekst}`;
         await db.query("BEGIN");
         const inserted = await db.query<{ id: string }>(
           `INSERT INTO leadgrid_mote_logg
-             (id, organization_id, user_id, selskap, orgnr, lead_id, meeting_at,
+             (id, organization_id, project_id, user_id, selskap, orgnr, lead_id, meeting_at,
               request_id, resultat, notat, lofter, oppgaver)
-           VALUES ($1,$2,$3,$4,$5,$6::uuid,$7::timestamptz,$8::uuid,$9::jsonb,$10,$11::jsonb,$12::jsonb)
-           ON CONFLICT (organization_id, request_id) WHERE request_id IS NOT NULL
+           VALUES ($1,$2,$3,$4,$5,$6,$7::uuid,$8::timestamptz,$9::uuid,$10::jsonb,$11,$12::jsonb,$13::jsonb)
+           ON CONFLICT (organization_id, project_id, request_id)
+             WHERE project_id IS NOT NULL AND request_id IS NOT NULL
            DO NOTHING
            RETURNING id::text`,
-          [randomUUID(), orgId, session.userId, selskap, orgnr, leadId, meetingAt,
+          [randomUUID(), orgId, project.id, session.userId, selskap, orgnr, leadId, meetingAt,
            requestId, JSON.stringify(parsedResult),
            String(resultat.notat ?? "").slice(0, 2000),
            JSON.stringify(Array.isArray(resultat.lofter) ? resultat.lofter : []),
@@ -662,18 +757,20 @@ ${tekst}`;
             if (!tittel) continue;
             await db.query(
               `INSERT INTO leadgrid_oppgaver
-                 (id, organization_id, user_id, selskap, lead_id, tittel, frist)
-               VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-              [randomUUID(), orgId, session.userId, selskap, leadId, tittel,
+                 (id, organization_id, project_id, user_id, selskap, lead_id, tittel, frist)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+              [randomUUID(), orgId, project.id, session.userId, selskap, leadId, tittel,
                String(o?.frist ?? "").slice(0, 80) || null],
             );
           }
         } else {
           const existing = await db.query<{ resultat: unknown }>(
             `SELECT resultat FROM leadgrid_mote_logg
-              WHERE organization_id = $1 AND request_id = $2::uuid
+              WHERE organization_id = $1
+                AND project_id = $2
+                AND request_id = $3::uuid
               FOR UPDATE`,
-            [orgId, requestId],
+            [orgId, project.id, requestId],
           );
           persistedResult = existing.rows[0]?.resultat ?? parsedResult;
         }
@@ -685,7 +782,12 @@ ${tekst}`;
         db.release();
       }
       for (const key of briefCache.keys()) {
-        if (key.includes(`:${selskap.toLowerCase()}:`)) briefCache.delete(key);
+        const scopedPrefix = `${orgId}:${project.id}:`;
+        if (key.startsWith(scopedPrefix)
+            && (key.includes(`:${selskap.toLowerCase()}:`)
+              || (leadId && key.includes(`:${leadId}:`)))) {
+          briefCache.delete(key);
+        }
       }
       res.json({ resultat: persistedResult });
     } catch (e) {
@@ -704,29 +806,45 @@ ${tekst}`;
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.status(400).json({ error: "no_org" }); return; }
+      const project = await selectedProject(req, res, session.userId);
+      if (!project) return;
+      const orgId = project.organizationId;
       const b = (req.body ?? {}) as Record<string, unknown>;
       const selskap = String(b.selskap ?? "").trim().slice(0, 200);
       const tekst = String(b.tekst ?? "").trim().slice(0, 10_000);
       const requestedLeadId = String(b.leadId ?? b.lead_id ?? "").trim();
       const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const requestedId = String(b.requestId ?? b.request_id ?? "").trim();
+      const requestId = uuidPattern.test(requestedId) ? requestedId : randomUUID();
+      const shouldPersist = b.persist !== false;
       let leadId: string | null = null;
       if (requestedLeadId) {
         if (!uuidPattern.test(requestedLeadId)) {
           res.status(400).json({ error: "invalid_lead_id" });
           return;
         }
-        const lead = await pool.query(
-          `SELECT 1 FROM crm_customers
-            WHERE id = $1::uuid AND organization_id = $2::uuid`,
-          [requestedLeadId, orgId],
-        );
-        if (lead.rowCount === 0) {
+        const lead = await leadInProject(requestedLeadId, project);
+        if (!lead) {
           res.status(404).json({ error: "lead_not_found" });
           return;
         }
         leadId = requestedLeadId;
+      }
+      if (shouldPersist) {
+        const replay = await pool.query<{ resultat: unknown }>(
+          `SELECT resultat
+             FROM leadgrid_mote_logg
+            WHERE organization_id = $1
+              AND project_id = $2
+              AND request_id = $3::uuid
+              AND resultat IS NOT NULL
+            LIMIT 1`,
+          [orgId, project.id, requestId],
+        );
+        if ((replay.rowCount ?? 0) > 0) {
+          res.json({ resultat: replay.rows[0].resultat });
+          return;
+        }
       }
       // Apple Intelligence-modus: analysen er alt gjort ON-DEVICE (gratis,
       // privat) — vi bare persisterer. Ingen AI-gate (koster ingenting).
@@ -735,7 +853,12 @@ ${tekst}`;
         ? finishedRaw as { oppsummering?: unknown; oppgaver?: unknown; lofter?: unknown }
         : null;
       if (!ferdig) {
-        if (!(await assertAnyEntitled(pool, session.userId, CANVAS_ANALYSE_FEATURE_KEYS, res))) return;
+        if (!(await assertAnyEntitledForOrganization(
+          pool,
+          orgId,
+          CANVAS_ANALYSE_FEATURE_KEYS,
+          res,
+        ))) return;
         if (!ANTHROPIC_API_KEY) { res.status(503).json({ error: "ai_unavailable" }); return; }
         if (tekst.length < 10) {
           res.status(400).json({ error: "bad_request", message: "For lite gjenkjent tekst å analysere." });
@@ -772,7 +895,7 @@ Gjenkjent tekst:
 ${tekst}`;
 
       const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-      const msg = await withAIQuota("claude", null, () =>
+      const msg = await withAIQuota("claude", orgId, () =>
         client.messages.create({
           model: "claude-sonnet-4-6",
           max_tokens: 900,
@@ -787,10 +910,10 @@ ${tekst}`;
         const cost = inTok != null && outTok != null ? (inTok * 3 + outTok * 15) / 1_000_000 : null;
         await pool.query(
           `INSERT INTO leadbook_ai_usage
-             (id, organization_id, user_id, user_name, feature, model,
+             (id, organization_id, project_id, user_id, user_name, feature, model,
               input_chars, input_tokens, output_tokens, cost_usd)
-           VALUES ($1,$2,$3,$4,'canvas_analyse',$5,$6,$7,$8,$9)`,
-          [randomUUID(), orgId ?? "", session.userId, "", "claude-sonnet-4-6",
+           VALUES ($1,$2,$3,$4,$5,'canvas_analyse',$6,$7,$8,$9,$10)`,
+          [randomUUID(), orgId, project.id, session.userId, "", "claude-sonnet-4-6",
            prompt.length, inTok, outTok, cost]);
       } catch { /* logging velter aldri svaret */ }
 
@@ -803,33 +926,58 @@ ${tekst}`;
       const oppgaveListe = (Array.isArray(resultat.oppgaver) ? resultat.oppgaver : [])
         .slice(0, 10) as Array<{ tittel?: unknown; frist?: unknown }>;
 
+      // PDF-forhåndsanalyse lar brukeren velge punkter før noe lagres.
+      if (!shouldPersist) {
+        res.json({ resultat });
+        return;
+      }
+
       // Oppgaver og møtelogg må enten begge lagres eller ingen av dem.
-      await ensureOppgaveSchema(pool);
-      await ensureLoggSchema(pool);
+      // Loggen settes inn først, slik at en retry aldri lager duplikatoppgaver.
       const db = await pool.connect();
+      let persistedResult: unknown = resultat;
       try {
         await db.query("BEGIN");
-        for (const o of oppgaveListe) {
-          const tittel = String(o?.tittel ?? "").trim().slice(0, 300);
-          if (!tittel) continue;
-          await db.query(
-            `INSERT INTO leadgrid_oppgaver
-               (id, organization_id, user_id, selskap, lead_id, tittel, frist, kilde)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,'canvas')`,
-            [randomUUID(), orgId, session.userId, selskap || "Canvas-notat",
-             leadId, tittel, String(o?.frist ?? "").slice(0, 80) || null],
+        const inserted = await db.query(
+          `INSERT INTO leadgrid_mote_logg
+             (id, organization_id, project_id, user_id, selskap, orgnr,
+              lead_id, request_id, resultat, notat, lofter, oppgaver)
+           VALUES ($1,$2,$3,$4,$5,NULL,$6::uuid,$7::uuid,$8::jsonb,$9,$10::jsonb,$11::jsonb)
+           ON CONFLICT (organization_id, project_id, request_id)
+             WHERE project_id IS NOT NULL AND request_id IS NOT NULL
+           DO NOTHING
+           RETURNING id`,
+          [randomUUID(), orgId, project.id, session.userId,
+           selskap || "Canvas-notat", leadId, requestId, JSON.stringify(resultat),
+           `[Canvas-notat] ${String(resultat.oppsummering ?? "").slice(0, 1900)}`,
+           JSON.stringify(Array.isArray(resultat.lofter) ? resultat.lofter : []),
+           JSON.stringify(oppgaveListe)],
+        );
+        if ((inserted.rowCount ?? 0) > 0) {
+          for (const o of oppgaveListe) {
+            const tittel = String(o?.tittel ?? "").trim().slice(0, 300);
+            if (!tittel) continue;
+            await db.query(
+              `INSERT INTO leadgrid_oppgaver
+                 (id, organization_id, project_id, user_id, selskap, lead_id,
+                  tittel, frist, kilde)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'canvas')`,
+              [randomUUID(), orgId, project.id, session.userId,
+               selskap || "Canvas-notat", leadId, tittel,
+               String(o?.frist ?? "").slice(0, 80) || null],
+            );
+          }
+        } else {
+          const existing = await db.query<{ resultat: unknown }>(
+            `SELECT resultat
+               FROM leadgrid_mote_logg
+              WHERE organization_id = $1
+                AND project_id = $2
+                AND request_id = $3::uuid
+              FOR UPDATE`,
+            [orgId, project.id, requestId],
           );
-        }
-        if (selskap) {
-          await db.query(
-            `INSERT INTO leadgrid_mote_logg
-               (id, organization_id, user_id, selskap, orgnr, lead_id, notat, lofter, oppgaver)
-             VALUES ($1,$2,$3,$4,NULL,$5::uuid,$6,$7::jsonb,$8::jsonb)`,
-            [randomUUID(), orgId, session.userId, selskap, leadId,
-             `[Canvas-notat] ${String(resultat.oppsummering ?? "").slice(0, 1900)}`,
-             JSON.stringify(Array.isArray(resultat.lofter) ? resultat.lofter : []),
-             JSON.stringify(oppgaveListe)],
-          );
+          persistedResult = existing.rows[0]?.resultat ?? resultat;
         }
         await db.query("COMMIT");
       } catch (error) {
@@ -840,10 +988,15 @@ ${tekst}`;
       }
       if (selskap) {
         for (const key of briefCache.keys()) {
-          if (key.includes(`:${selskap.toLowerCase()}:`)) briefCache.delete(key);
+          const scopedPrefix = `${orgId}:${project.id}:`;
+          if (key.startsWith(scopedPrefix)
+              && (key.includes(`:${selskap.toLowerCase()}:`)
+                || (leadId && key.includes(`:${leadId}:`)))) {
+            briefCache.delete(key);
+          }
         }
       }
-      res.json({ resultat });
+      res.json({ resultat: persistedResult });
     } catch (e) {
       console.error("[canvas-analyse] failed:", e);
       res.status(500).json({ error: "internal_error" });
@@ -858,16 +1011,18 @@ ${tekst}`;
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.json({ oppgaver: [] }); return; }
-      await ensureOppgaveSchema(pool);
+      const project = await selectedProject(req, res, session.userId);
+      if (!project) return;
       const status = req.query.status === "done" ? "done" : "open";
       const r = await pool.query(
         `SELECT id, selskap, lead_id, tittel, frist, status, created_at
            FROM leadgrid_oppgaver
-          WHERE organization_id = $1 AND user_id = $2 AND status = $3
+          WHERE organization_id = $1
+            AND project_id = $2
+            AND user_id = $3
+            AND status = $4
           ORDER BY created_at DESC LIMIT 100`,
-        [orgId, session.userId, status]);
+        [project.organizationId, project.id, session.userId, status]);
       res.json({
         oppgaver: r.rows.map((row) => ({
           id: row.id,
@@ -891,15 +1046,17 @@ ${tekst}`;
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
+      const project = await selectedProject(req, res, session.userId);
+      if (!project) return;
       const status = (req.body ?? {}).status === "done" ? "done" : "open";
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.status(403).json({ error: "ingen_org" }); return; }
-      await ensureOppgaveSchema(pool);
       const r = await pool.query(
         `UPDATE leadgrid_oppgaver
             SET status = $1, done_at = CASE WHEN $1 = 'done' THEN now() ELSE NULL END
-          WHERE id = $2 AND user_id = $3 AND organization_id = $4`,
-        [status, req.params.id, session.userId, orgId]);
+          WHERE id = $2
+            AND user_id = $3
+            AND organization_id = $4
+            AND project_id = $5`,
+        [status, req.params.id, session.userId, project.organizationId, project.id]);
       if (r.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
       res.json({ ok: true, status });
     } catch (e) {

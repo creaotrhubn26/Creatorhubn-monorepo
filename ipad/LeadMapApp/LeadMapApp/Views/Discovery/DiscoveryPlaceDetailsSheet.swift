@@ -3,11 +3,30 @@ import SwiftUI
 struct DiscoveryPlaceDetailsSheet: View {
     let candidate: DiscoveryV2Candidate
     let load: @MainActor () async throws -> DiscoveryV2PlaceDetailsResponse
+    let onConfirmMatch: @MainActor (DiscoveryV2PlaceMatch) -> Void
+    let onClearConfirmation: @MainActor () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var response: DiscoveryV2PlaceDetailsResponse?
     @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var confirmedMatch: DiscoveryV2PlaceMatch?
+    @State private var pendingConfirmation: DiscoveryV2PlaceMatch?
+    @State private var showsConfirmation = false
+
+    init(
+        candidate: DiscoveryV2Candidate,
+        confirmedMatch: DiscoveryV2PlaceMatch?,
+        load: @escaping @MainActor () async throws -> DiscoveryV2PlaceDetailsResponse,
+        onConfirmMatch: @escaping @MainActor (DiscoveryV2PlaceMatch) -> Void,
+        onClearConfirmation: @escaping @MainActor () -> Void
+    ) {
+        self.candidate = candidate
+        self.load = load
+        self.onConfirmMatch = onConfirmMatch
+        self.onClearConfirmation = onClearConfirmation
+        _confirmedMatch = State(initialValue: confirmedMatch)
+    }
 
     var body: some View {
         NavigationStack {
@@ -31,6 +50,32 @@ struct DiscoveryPlaceDetailsSheet: View {
         }
         .preferredColorScheme(.dark)
         .task(id: candidate.id) { await reload() }
+        .alert(
+            "Bekreft Google Maps-identitet?",
+            isPresented: $showsConfirmation,
+            presenting: pendingConfirmation
+        ) { match in
+            Button("Avbryt", role: .cancel) { pendingConfirmation = nil }
+            Button("Bekreft identitet") {
+                guard let confirmationExpiresAt = response?.confirmationExpiresAt else {
+                    errorMessage = "Bekreftelsen mangler serverattestering. Hent Google Maps-detaljene på nytt."
+                    pendingConfirmation = nil
+                    return
+                }
+                var attestedMatch = match
+                attestedMatch.confirmationExpiresAt = confirmationExpiresAt
+                guard attestedMatch.hasFreshConfirmation() else {
+                    errorMessage = "Bekreftelsesvinduet er utløpt. Hent Google Maps-detaljene på nytt."
+                    pendingConfirmation = nil
+                    return
+                }
+                confirmedMatch = attestedMatch
+                onConfirmMatch(attestedMatch)
+                pendingConfirmation = nil
+            }
+        } message: { match in
+            Text("Du bekrefter at «\(match.displayName)» er samme virksomhet som kandidaten. Serverbekreftelsen er gyldig i 15 minutter. Place-ID-en lagres ikke nå; den sendes først dersom du senere godkjenner kandidaten som lead.")
+        }
     }
 
     private var sourceIdentity: some View {
@@ -51,6 +96,34 @@ struct DiscoveryPlaceDetailsSheet: View {
             Text("Google Maps brukes kun til dette detaljoppslaget og endrer ikke kandidaten eller matchscoren.")
                 .font(.caption)
                 .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+            if let confirmedMatch {
+                VStack(alignment: .leading, spacing: 5) {
+                    Label("Bekreftet identitet for eventuell godkjenning", systemImage: "checkmark.shield.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(LeadgridDiscoveryTheme.success)
+                    Text("\(confirmedMatch.displayName) · \(confirmedMatch.matchQualityTitle)")
+                        .font(.caption)
+                    Text("Place-ID: \(confirmedMatch.placeId)")
+                        .font(.caption2.monospaced())
+                        .textSelection(.enabled)
+                    if let expiresAt = confirmedMatch.confirmationExpiryDate {
+                        Text("Serverbekreftelse gyldig til \(expiresAt.formatted(date: .omitted, time: .shortened))")
+                            .font(.caption2)
+                            .foregroundStyle(confirmedMatch.hasFreshConfirmation()
+                                ? LeadgridDiscoveryTheme.secondaryText
+                                : LeadgridDiscoveryTheme.warning)
+                    }
+                    Text("ID-en lagres først når kandidaten godkjennes som lead. Å lukke arket eller bare åpne detaljer lagrer ingenting.")
+                        .font(.caption2)
+                        .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+                    Button("Fjern bekreftet identitet", role: .destructive) {
+                        self.confirmedMatch = nil
+                        onClearConfirmation()
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .padding(.top, 6)
+            }
         }
         .discoverySurface()
     }
@@ -166,6 +239,26 @@ struct DiscoveryPlaceDetailsSheet: View {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) { placeLinks(match) }
                 VStack(alignment: .leading, spacing: 8) { placeLinks(match) }
+            }
+
+            if confirmedMatch?.placeId == match.placeId {
+                Label("Valgt · \(match.matchQualityTitle)", systemImage: "checkmark.shield.fill")
+                    .font(.caption.bold())
+                    .foregroundStyle(LeadgridDiscoveryTheme.success)
+            } else {
+                Button {
+                    pendingConfirmation = match
+                    showsConfirmation = true
+                } label: {
+                    Label("Bekreft som samme virksomhet", systemImage: "checkmark.shield")
+                }
+                .buttonStyle(.bordered)
+                .disabled(response?.confirmationExpiresAt == nil)
+                if response?.confirmationExpiresAt == nil {
+                    Label("Serverbekreftelse mangler. Hent detaljene på nytt.", systemImage: "exclamationmark.triangle")
+                        .font(.caption2)
+                        .foregroundStyle(LeadgridDiscoveryTheme.warning)
+                }
             }
 
             if !match.attributions.isEmpty {

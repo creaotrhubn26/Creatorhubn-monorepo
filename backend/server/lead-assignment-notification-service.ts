@@ -14,6 +14,7 @@
 
 import type { Pool } from "pg";
 import { sendAPNs } from "./lead-map-apns-client.js";
+import { leadgridLeadDeepLink } from "./lead-map-notification-service.js";
 
 type EventType =
   | "lead_assigned_as_team_leader"
@@ -255,13 +256,39 @@ async function sendInternalEmail(
 export async function notifyAssignment(
   pool: Pool, params: NotifyAssignmentParams,
 ): Promise<{ in_app: boolean; email: boolean; whatsapp: boolean }> {
-  // Hent recipient + prefs
+  // The persisted customer tuple is authoritative. Never derive a project
+  // from a user's first membership or from a caller-provided deep link.
+  const scopeR = await pool.query<{ project_id: string }>(
+    `SELECT customer.project_id::text
+       FROM crm_customers customer
+       JOIN leadgrid_projects project
+         ON project.id = customer.project_id
+        AND project.organization_id = customer.organization_id
+      WHERE customer.id = $1::uuid
+        AND customer.organization_id = $2::uuid
+        AND customer.project_id IS NOT NULL
+        AND customer.archived_at IS NULL
+        AND (project.status IS NULL OR project.status NOT IN ('archived', 'deleted'))
+      LIMIT 1`,
+    [params.customerId, params.organizationId],
+  );
+  const projectId = scopeR.rows[0]?.project_id;
+  if (!projectId) return { in_app: false, email: false, whatsapp: false };
+
+  // A project-specific notification may only be delivered to a member of the
+  // authoritative customer organization.
   const userR = await pool.query<{
     first_name: string | null; last_name: string | null;
     email: string | null; phone: string | null;
   }>(
-    `SELECT first_name, last_name, email, phone FROM users WHERE id = $1`,
-    [params.recipientUserId],
+    `SELECT user_row.first_name, user_row.last_name, user_row.email, user_row.phone
+       FROM users user_row
+       JOIN organization_members member
+         ON member.user_id = user_row.id
+        AND member.organization_id = $2::uuid
+      WHERE user_row.id = $1
+      LIMIT 1`,
+    [params.recipientUserId, params.organizationId],
   );
   const user = userR.rows[0];
   if (!user) return { in_app: false, email: false, whatsapp: false };
@@ -274,7 +301,7 @@ export async function notifyAssignment(
 
   const subject = subjectFor(params.eventType, params.customerName, params.customerTier);
   const body = bodyFor(params.eventType, params.customerName, params.note);
-  const deepLink = params.deepLink ?? `${process.env.LEADGRID_PORTAL_BASE_URL ?? "https://theroleroom.com"}/admin-room?lead=${params.customerId}`;
+  const deepLink = leadgridLeadDeepLink(projectId, params.customerId);
 
   const result = { in_app: false, email: false, whatsapp: false };
 
@@ -283,12 +310,13 @@ export async function notifyAssignment(
     try {
       await pool.query(
         `INSERT INTO notification_events
-           (recipient_user_id, organization_id, event_type, title, body,
+           (recipient_user_id, organization_id, project_id, event_type, title, body,
             lead_id, triggered_by_user_id, deep_link, meta, email_sent)
-         VALUES ($1, $2, $3, $4, $5, $6::uuid, $7, $8, $9::jsonb, FALSE)`,
-        [params.recipientUserId, params.organizationId, params.eventType,
-         subject, body, params.customerId, params.triggeredByUserId, deepLink,
-         JSON.stringify({ tier: params.customerTier, note: params.note })],
+         VALUES ($1, $2, $3, $4, $5, $6, $7::uuid, $8, $9, $10::jsonb, FALSE)`,
+        [params.recipientUserId, params.organizationId, projectId,
+         params.eventType, subject, body, params.customerId,
+         params.triggeredByUserId, deepLink,
+         JSON.stringify({ project_id: projectId, tier: params.customerTier, note: params.note })],
       );
       result.in_app = true;
     } catch (e) { console.warn("[lead-assign-notif] in_app feilet", e); }
@@ -311,6 +339,7 @@ export async function notifyAssignment(
           customData: {
             event_type: params.eventType,
             lead_id: params.customerId,
+            project_id: projectId,
             deep_link: deepLink,
           },
         });
@@ -338,9 +367,14 @@ export async function notifyAssignment(
       try {
         await pool.query(
           `UPDATE notification_events SET email_sent = TRUE
-            WHERE recipient_user_id = $1 AND event_type = $2
-              AND lead_id = $3 AND created_at > now() - interval '30 seconds'`,
-          [params.recipientUserId, params.eventType, params.customerId],
+            WHERE recipient_user_id = $1
+              AND organization_id = $2::uuid
+              AND project_id = $3
+              AND event_type = $4
+              AND lead_id = $5::uuid
+              AND created_at > now() - interval '30 seconds'`,
+          [params.recipientUserId, params.organizationId, projectId,
+           params.eventType, params.customerId],
         );
       } catch { /* ignore */ }
     }

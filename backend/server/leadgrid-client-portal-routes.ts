@@ -5,7 +5,7 @@
  * (Egen fil — eksisterende client-portal-routes.ts hører til Role
  * Room client_workspace.)
  *
- * Klienten åpner `theroleroom.com/c/{token}` — ingen registrering,
+ * Klienten åpner `leadgrid.no/c/{token}` — ingen registrering,
  * ingen passord. Sidens innhold:
  *
  *   - Velkommen + verdi-budskap (hva Leadgrid er + hvordan det skaper verdi)
@@ -19,13 +19,13 @@
  *   POST   /api/leadgrid-client/:token/accept      Godta TOS
  *   POST   /api/leadgrid-client/:token/seen        Pulserer last_seen_at
  *   POST   /api/leadgrid-client/:token/focus       Klient ber om fokus
- *          { needs: ['needs_meta_pixel','needs_video'], note?: '...' }
+ *          { need_type: 'needs_meta_pixel', requested: true, note?: '...' }
  *          → skaper rader i client_focus_requests + notification til
  *          markedssjef/markedskoordinator hos org-eieren.
  */
 
 import type { Express, Request, Response } from "express";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { notifyClient } from "./client-notification-service.js";
 
 interface Deps {
@@ -217,11 +217,28 @@ interface TokenRow {
 
 async function loadToken(pool: Pool, token: string): Promise<TokenRow | null> {
   const r = await pool.query<TokenRow>(
-    `SELECT id::text, organization_id::text, project_id, customer_id,
-            invited_email, invited_name, invited_role,
-            accepted_at::text, expires_at::text, revoked_at::text,
-            first_opened_at::text
-       FROM client_portal_tokens WHERE token = $1 LIMIT 1`,
+    `SELECT portal.id::text,
+            portal.organization_id::text,
+            portal.project_id,
+            portal.customer_id::text,
+            portal.invited_email,
+            portal.invited_name,
+            portal.invited_role,
+            portal.accepted_at::text,
+            portal.expires_at::text,
+            portal.revoked_at::text,
+            portal.first_opened_at::text
+       FROM client_portal_tokens portal
+       JOIN leadgrid_projects project
+         ON project.organization_id = portal.organization_id
+        AND project.id = portal.project_id
+        AND (project.status IS NULL OR project.status NOT IN ('archived', 'deleted'))
+       JOIN crm_customers customer
+         ON customer.id::text = portal.customer_id::text
+        AND customer.organization_id = portal.organization_id
+        AND customer.project_id = portal.project_id
+      WHERE portal.token = $1
+      LIMIT 1`,
     [token],
   );
   return r.rows[0] ?? null;
@@ -251,8 +268,11 @@ export function registerClientPortalRoutes({ app, pool }: Deps): void {
             SET first_opened_at = COALESCE(first_opened_at, now()),
                 last_seen_at = now(),
                 view_count = view_count + 1
-          WHERE id = $1`,
-        [t.id],
+          WHERE id = $1::uuid
+            AND organization_id = $2::uuid
+            AND project_id = $3
+            AND customer_id::text = $4`,
+        [t.id, t.organization_id, t.project_id, t.customer_id],
       );
 
       // Hent org-data + email-branding for å gjøre portalen tydelig "levert av Org X"
@@ -281,8 +301,12 @@ export function registerClientPortalRoutes({ app, pool }: Deps): void {
         ai_opportunity_score: number | null; lead_category: string | null;
       }>(
         `SELECT name, website_url, logo_url, ai_opportunity_score, lead_category
-           FROM crm_customers WHERE id::text = $1 LIMIT 1`,
-        [t.customer_id],
+           FROM crm_customers
+          WHERE id::text = $1
+            AND organization_id = $2::uuid
+            AND project_id = $3
+          LIMIT 1`,
+        [t.customer_id, t.organization_id, t.project_id],
       );
 
       const needsRes = await pool.query<{
@@ -290,19 +314,24 @@ export function registerClientPortalRoutes({ app, pool }: Deps): void {
       }>(
         `SELECT need_type, priority, status, evidence
            FROM crm_customer_needs
-          WHERE customer_id = $1
+          WHERE customer_id::text = $1
+            AND organization_id = $2::uuid
+            AND project_id = $3
             AND status IN ('detected', 'accepted', 'resolved')
           ORDER BY priority DESC, need_type`,
-        [t.customer_id],
+        [t.customer_id, t.organization_id, t.project_id],
       );
 
       const signalsRes = await pool.query<{
         signal_type: string; polarity: string; raw_value: string | null;
       }>(
         `SELECT signal_type, polarity, raw_value
-           FROM crm_customer_signals WHERE customer_id = $1
+           FROM crm_customer_signals
+          WHERE customer_id::text = $1
+            AND organization_id = $2::uuid
+            AND project_id = $3
           ORDER BY polarity, signal_type`,
-        [t.customer_id],
+        [t.customer_id, t.organization_id, t.project_id],
       );
 
       const delsRes = await pool.query<{
@@ -313,7 +342,10 @@ export function registerClientPortalRoutes({ app, pool }: Deps): void {
         `SELECT id::text, title, client_summary, status,
                 target_date::text, completed_at::text, related_need_type
            FROM project_deliverables
-          WHERE project_id = $1 AND is_visible_to_client = true
+          WHERE organization_id = $1::uuid
+            AND project_id = $2
+            AND customer_id::text = $3
+            AND is_visible_to_client = true
           ORDER BY
             CASE status
               WHEN 'in_progress' THEN 1
@@ -323,14 +355,17 @@ export function registerClientPortalRoutes({ app, pool }: Deps): void {
               WHEN 'blocked' THEN 5
               ELSE 6 END,
             target_date NULLS LAST`,
-        [t.project_id],
+        [t.organization_id, t.project_id, t.customer_id],
       );
 
       // Hvilke needs har klienten allerede bedt om fokus på?
       const focusRes = await pool.query<{ need_type: string; status: string }>(
-        `SELECT need_type, status FROM client_focus_requests
-          WHERE customer_id = $1`,
-        [t.customer_id],
+        `SELECT need_type, status
+           FROM client_focus_requests
+          WHERE customer_id::text = $1
+            AND organization_id = $2::uuid
+            AND project_id = $3`,
+        [t.customer_id, t.organization_id, t.project_id],
       );
       const focusedNeeds = new Map(focusRes.rows.map((r) => [r.need_type, r.status]));
 
@@ -404,9 +439,10 @@ export function registerClientPortalRoutes({ app, pool }: Deps): void {
         },
         deliverables: delsRes.rows,
       });
-    } catch (err) {
+    } catch {
       return res.status(500).json({
-        error: "portal_load_failed", detail: String(err).slice(0, 500),
+        error: "portal_load_failed",
+        detail: "internal_error",
       });
     }
   });
@@ -414,12 +450,27 @@ export function registerClientPortalRoutes({ app, pool }: Deps): void {
   // POST /:token/accept
   app.post(`${ROOT}/:token/accept`, async (req: Request, res: Response) => {
     try {
+      const token = await loadToken(pool, req.params.token);
+      if (!token) return res.status(404).json({ error: "not_found_or_expired" });
+      if (tokenExpired(token)) {
+        return res.status(404).json({ error: "not_found_or_expired" });
+      }
       const r = await pool.query(
         `UPDATE client_portal_tokens
             SET accepted_at = COALESCE(accepted_at, now()), last_seen_at = now()
-          WHERE token = $1 AND revoked_at IS NULL AND expires_at > now()
+          WHERE id = $1::uuid
+            AND organization_id = $2::uuid
+            AND project_id = $3
+            AND customer_id::text = $4
+            AND revoked_at IS NULL
+            AND expires_at > now()
           RETURNING accepted_at::text`,
-        [req.params.token],
+        [
+          token.id,
+          token.organization_id,
+          token.project_id,
+          token.customer_id,
+        ],
       );
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found_or_expired" });
       return res.json({ accepted: true, accepted_at: r.rows[0].accepted_at });
@@ -429,61 +480,230 @@ export function registerClientPortalRoutes({ app, pool }: Deps): void {
   });
 
   // POST /:token/seen
-  app.post(`${ROOT}/:token/seen`, async (_req: Request, res: Response) => {
+  app.post(`${ROOT}/:token/seen`, async (req: Request, res: Response) => {
     try {
+      const token = await loadToken(pool, req.params.token);
+      if (!token || tokenExpired(token)) {
+        return res.status(404).json({ error: "not_found" });
+      }
       await pool.query(
         `UPDATE client_portal_tokens
             SET last_seen_at = now(), view_count = view_count + 1
-          WHERE token = $1`,
-        [(_req.params as { token: string }).token ?? ""],
+          WHERE id = $1::uuid
+            AND organization_id = $2::uuid
+            AND project_id = $3
+            AND customer_id::text = $4`,
+        [
+          token.id,
+          token.organization_id,
+          token.project_id,
+          token.customer_id,
+        ],
       );
-    } catch { /* noop */ }
+    } catch {
+      return res.status(500).json({ error: "seen_failed" });
+    }
     return res.json({ ok: true });
   });
 
   // POST /:token/focus — klient ber om fokus på spesifikke needs
   app.post(`${ROOT}/:token/focus`, async (req: Request, res: Response) => {
+    let client: PoolClient | null = null;
     try {
       const t = await loadToken(pool, req.params.token);
       if (!t) return res.status(404).json({ error: "not_found" });
       if (tokenExpired(t)) return res.status(410).json({ error: "expired" });
+      if (!t.accepted_at) {
+        return res.status(403).json({ error: "portal_not_accepted" });
+      }
 
-      const body = req.body as { needs?: string[]; note?: string };
-      const needs = Array.isArray(body.needs)
-        ? body.needs.filter((n) => typeof n === "string").slice(0, 30)
+      const body = req.body as {
+        need_type?: unknown;
+        requested?: unknown;
+        needs?: unknown;
+        note?: unknown;
+      };
+      const singleNeed =
+        typeof body.need_type === "string" ? body.need_type.trim() : "";
+      const isSingleMutation = singleNeed.length > 0;
+      if (isSingleMutation && typeof body.requested !== "boolean") {
+        return res.status(400).json({ error: "requested_boolean_required" });
+      }
+      if (singleNeed.length > 60) {
+        return res.status(400).json({ error: "invalid_need" });
+      }
+
+      const legacyNeeds = Array.isArray(body.needs)
+        ? body.needs
+            .filter((value): value is string => typeof value === "string")
+            .map((value) => value.trim())
+            .filter((value) => value.length > 0 && value.length <= 60)
+            .slice(0, 30)
         : [];
+      const needs = Array.from(
+        new Set(isSingleMutation ? [singleNeed] : legacyNeeds),
+      );
       if (needs.length === 0) {
-        return res.status(400).json({ error: "needs (array) påkrevd" });
+        return res.status(400).json({ error: "need_type_required" });
       }
-      const note = typeof body.note === "string" ? body.note.slice(0, 1000) : null;
+      const requested = isSingleMutation ? body.requested as boolean : true;
+      const note =
+        typeof body.note === "string"
+          ? body.note.trim().slice(0, 1000) || null
+          : null;
 
-      const created: string[] = [];
-      for (const needType of needs) {
-        const r = await pool.query<{ id: string }>(
-          `INSERT INTO client_focus_requests
-             (organization_id, project_id, customer_id, client_token,
-              need_type, client_note)
-           VALUES ($1, $2, $3, $4, $5, $6)
-           ON CONFLICT (customer_id, need_type) DO UPDATE
-             SET client_note = COALESCE(EXCLUDED.client_note, client_focus_requests.client_note),
-                 requested_at = now(),
-                 status = CASE
-                   WHEN client_focus_requests.status = 'declined' THEN 'pending'
-                   ELSE client_focus_requests.status END
-           RETURNING id::text`,
-          [t.organization_id, t.project_id, t.customer_id, req.params.token, needType, note],
-        );
-        if (r.rows[0]) created.push(r.rows[0].id);
+      const knownNeeds = await pool.query<{ need_type: string }>(
+        `SELECT need_type
+           FROM crm_customer_needs
+          WHERE customer_id::text = $1
+            AND organization_id = $2::uuid
+            AND project_id = $3
+            AND need_type = ANY($4::text[])
+            AND status IN ('detected', 'accepted', 'resolved')`,
+        [t.customer_id, t.organization_id, t.project_id, needs],
+      );
+      if (new Set(knownNeeds.rows.map((row) => row.need_type)).size !== needs.length) {
+        return res.status(400).json({ error: "invalid_need" });
       }
+
+      client = await pool.connect();
+      await client.query("BEGIN");
+      let changedCount = 0;
+      for (const needType of [...needs].sort()) {
+        await client.query(
+          "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+          [
+            [
+              "leadgrid-client-focus",
+              t.organization_id,
+              t.project_id,
+              t.customer_id,
+              needType,
+            ].join(":"),
+          ],
+        );
+        const existing = await client.query<{ status: string }>(
+          `SELECT status
+             FROM client_focus_requests
+            WHERE organization_id = $1::uuid
+              AND project_id = $2
+              AND customer_id::text = $3
+              AND need_type = $4
+            FOR UPDATE`,
+          [t.organization_id, t.project_id, t.customer_id, needType],
+        );
+        const currentStatus = existing.rows[0]?.status ?? null;
+
+        if (!requested) {
+          if (currentStatus === "in_progress") {
+            await client.query("ROLLBACK");
+            client.release();
+            client = null;
+            return res.status(409).json({
+              error: "delivery_already_started",
+              message: "Leveransen er allerede startet. Kontakt rådgiveren for å stoppe arbeidet.",
+            });
+          }
+          if (currentStatus === "completed" || currentStatus === "withdrawn" || !currentStatus) {
+            continue;
+          }
+          const withdrawn = await client.query(
+            `UPDATE client_focus_requests
+                SET status = 'withdrawn',
+                    withdrawn_at = NOW()
+              WHERE organization_id = $1::uuid
+                AND project_id = $2
+                AND customer_id::text = $3
+                AND need_type = $4
+                AND status = $5`,
+            [
+              t.organization_id,
+              t.project_id,
+              t.customer_id,
+              needType,
+              currentStatus,
+            ],
+          );
+          changedCount += withdrawn.rowCount ?? 0;
+          continue;
+        }
+
+        if (currentStatus === "completed") {
+          await client.query("ROLLBACK");
+          client.release();
+          client = null;
+          return res.status(409).json({
+            error: "focus_already_completed",
+            message: "Dette behovet er allerede levert.",
+          });
+        }
+        if (currentStatus && !["declined", "withdrawn"].includes(currentStatus)) {
+          continue;
+        }
+        if (currentStatus) {
+          const reopened = await client.query(
+            `UPDATE client_focus_requests
+                SET client_token = $5,
+                    client_note = COALESCE($6, client_note),
+                    status = 'pending',
+                    requested_at = NOW(),
+                    acknowledged_at = NULL,
+                    completed_at = NULL,
+                    withdrawn_at = NULL
+              WHERE organization_id = $1::uuid
+                AND project_id = $2
+                AND customer_id::text = $3
+                AND need_type = $4
+                AND status IN ('declined', 'withdrawn')`,
+            [
+              t.organization_id,
+              t.project_id,
+              t.customer_id,
+              needType,
+              req.params.token,
+              note,
+            ],
+          );
+          changedCount += reopened.rowCount ?? 0;
+        } else {
+          const inserted = await client.query(
+            `INSERT INTO client_focus_requests
+               (organization_id, project_id, customer_id, client_token,
+                need_type, client_note)
+             VALUES ($1::uuid, $2, $3, $4, $5, $6)
+             ON CONFLICT (
+               organization_id, project_id, customer_id, need_type
+             ) DO NOTHING`,
+            [
+              t.organization_id,
+              t.project_id,
+              t.customer_id,
+              req.params.token,
+              needType,
+              note,
+            ],
+          );
+          changedCount += inserted.rowCount ?? 0;
+        }
+      }
+      await client.query("COMMIT");
+      client.release();
+      client = null;
 
       // Notify markedssjef + markedskoordinator + salgssjef i org-en.
-      // Best-effort: failover hvis notification_events-schema er annet.
-      try {
+      // En retry som ikke endret status sender heller ikke et nytt varsel.
+      if (changedCount > 0) try {
         const customerName = await pool.query<{ name: string }>(
-          `SELECT name FROM crm_customers WHERE id::text = $1`,
-          [t.customer_id],
+          `SELECT name
+             FROM crm_customers
+            WHERE id::text = $1
+              AND organization_id = $2::uuid
+              AND project_id = $3`,
+          [t.customer_id, t.organization_id, t.project_id],
         );
-        const msg = `${customerName.rows[0]?.name ?? "Klient"} ber om fokus på ${needs.length} behov`;
+        const msg = requested
+          ? `${customerName.rows[0]?.name ?? "Klient"} ber om fokus på ${needs.length} behov`
+          : `${customerName.rows[0]?.name ?? "Klient"} trakk tilbake et fokusønske`;
         await pool.query(
           `INSERT INTO notification_events
              (user_id, event_type, lead_id, message, created_at)
@@ -497,9 +717,11 @@ export function registerClientPortalRoutes({ app, pool }: Deps): void {
       } catch { /* schema-variansjon — ikke avbryt */ }
 
       // Send bekreftelse til klienten (e-post + ev. SMS/WhatsApp etter prefs)
-      try {
+      if (requested && changedCount > 0) try {
         await notifyClient(pool, {
           customerId: t.customer_id,
+          organizationId: t.organization_id,
+          projectId: t.project_id,
           event: "focus_request_received",
           focusArea: needs.slice(0, 3).join(", "),
           portalToken: req.params.token,
@@ -508,13 +730,22 @@ export function registerClientPortalRoutes({ app, pool }: Deps): void {
         console.error("[client-portal-focus] notifyClient feilet", e);
       }
 
-      return res.status(201).json({
-        created_count: created.length,
-        focus_request_ids: created,
-        message: "Vi har varslet rådgiveren. De tar kontakt snart.",
+      return res.status(changedCount > 0 ? 201 : 200).json({
+        requested,
+        changed: changedCount > 0,
+        changed_count: changedCount,
+        replayed: changedCount === 0,
+        message: requested
+          ? "Vi har varslet rådgiveren. De tar kontakt snart."
+          : "Fokusforespørselen er trukket tilbake.",
       });
     } catch (err) {
+      if (client) {
+        await client.query("ROLLBACK").catch(() => undefined);
+      }
       return res.status(500).json({ error: "focus_failed", detail: "internal_error" });
+    } finally {
+      client?.release();
     }
   });
 }

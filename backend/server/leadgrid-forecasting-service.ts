@@ -19,6 +19,7 @@ const CACHE_TTL_HOURS = 6;
 
 export interface PipelineForecast {
   organizationId: string;
+  projectId: string;
   horizonDays: number;
   predictedRevenueLow: number;
   predictedRevenueMid: number;
@@ -35,11 +36,13 @@ export interface PipelineForecast {
 
 export interface AttributionResult {
   organizationId: string;
+  projectId: string;
   windowDays: number;
   actions: Array<{
     actionType: string;
     totalExecuted: number;
     totalWon: number;
+    totalLost: number;
     winRate: number;
     avgDaysToWon: number;
     avgDealValue: number;
@@ -55,19 +58,23 @@ export interface AttributionResult {
 export async function getOrComputeForecast(
   pool: Pool,
   organizationId: string,
+  projectId: string,
   horizonDays = 90,
 ): Promise<PipelineForecast> {
   const cached = await pool.query(
     `SELECT * FROM leadgrid_forecast_cache
-      WHERE organization_id = $1::uuid AND horizon_days = $2
-        AND computed_at > NOW() - ($3 || ' hours')::interval
+      WHERE organization_id = $1::uuid
+        AND project_id = $2
+        AND horizon_days = $3
+        AND computed_at > NOW() - ($4 || ' hours')::interval
       ORDER BY computed_at DESC LIMIT 1`,
-    [organizationId, horizonDays, String(CACHE_TTL_HOURS)],
+    [organizationId, projectId, horizonDays, String(CACHE_TTL_HOURS)],
   );
   if (cached.rowCount && cached.rows[0]) {
     const r = cached.rows[0];
     return {
       organizationId: r.organization_id,
+      projectId: r.project_id,
       horizonDays: r.horizon_days,
       predictedRevenueLow: Number(r.predicted_revenue_low),
       predictedRevenueMid: Number(r.predicted_revenue_mid),
@@ -82,12 +89,13 @@ export async function getOrComputeForecast(
       computedAt: r.computed_at,
     };
   }
-  return computeAndCacheForecast(pool, organizationId, horizonDays);
+  return computeAndCacheForecast(pool, organizationId, projectId, horizonDays);
 }
 
 async function computeAndCacheForecast(
   pool: Pool,
   organizationId: string,
+  projectId: string,
   horizonDays: number,
 ): Promise<PipelineForecast> {
   // Baseline-stats
@@ -96,6 +104,7 @@ async function computeAndCacheForecast(
        SELECT COUNT(*)::int AS cnt, COALESCE(SUM(expected_value), 0)::float8 AS total
          FROM crm_customers
         WHERE organization_id = $1::uuid
+          AND project_id = $2
           AND archived_at IS NULL
           AND pipeline_stage IN ('first_contact','qualified','meeting','proposal','negotiation')
      ),
@@ -105,14 +114,16 @@ async function computeAndCacheForecast(
               COALESCE(AVG(EXTRACT(EPOCH FROM (last_contacted_at - created_at)) / 86400), 30)::float8 AS avg_days
          FROM crm_customers
         WHERE organization_id = $1::uuid
+          AND project_id = $2
           AND pipeline_stage = 'won'
-          AND last_contacted_at > NOW() - ($2 || ' days')::interval
+          AND last_contacted_at > NOW() - ($3 || ' days')::interval
      ),
      totals AS (
        SELECT COUNT(*)::int AS total
          FROM crm_customers
         WHERE organization_id = $1::uuid
-          AND created_at > NOW() - ($3 || ' days')::interval
+          AND project_id = $2
+          AND created_at > NOW() - ($4 || ' days')::interval
      )
      SELECT active.cnt AS active_deals,
             active.total AS active_pipeline_value,
@@ -121,7 +132,7 @@ async function computeAndCacheForecast(
             wins.avg_days AS avg_cycle_days,
             totals.total AS total_leads
        FROM active, wins, totals`,
-    [organizationId, String(horizonDays), String(horizonDays * 2)],
+    [organizationId, projectId, String(horizonDays), String(horizonDays * 2)],
   );
   const s = stats.rows[0];
   const activeDeals = Number(s.active_deals);
@@ -200,6 +211,7 @@ Returner KUN gyldig JSON:
 
   const result: PipelineForecast = {
     organizationId,
+    projectId,
     horizonDays,
     predictedRevenueLow: claudeOverride.predictedRevenueLow ?? predictedLow,
     predictedRevenueMid: claudeOverride.predictedRevenueMid ?? predictedMid,
@@ -217,12 +229,12 @@ Returner KUN gyldig JSON:
   // Cache via UPSERT
   await pool.query(
     `INSERT INTO leadgrid_forecast_cache
-       (organization_id, horizon_days, predicted_revenue_low, predicted_revenue_mid,
+       (organization_id, project_id, horizon_days, predicted_revenue_low, predicted_revenue_mid,
         predicted_revenue_high, predicted_won_deals, predicted_avg_cycle_days,
         confidence_score, reasoning, contributing_factors,
         active_pipeline_value, active_deals)
-     VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12)
-     ON CONFLICT (organization_id, horizon_days) DO UPDATE SET
+     VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13)
+     ON CONFLICT (organization_id, project_id, horizon_days) DO UPDATE SET
        predicted_revenue_low = EXCLUDED.predicted_revenue_low,
        predicted_revenue_mid = EXCLUDED.predicted_revenue_mid,
        predicted_revenue_high = EXCLUDED.predicted_revenue_high,
@@ -235,7 +247,7 @@ Returner KUN gyldig JSON:
        active_deals = EXCLUDED.active_deals,
        computed_at = NOW()`,
     [
-      organizationId, horizonDays,
+      organizationId, projectId, horizonDays,
       result.predictedRevenueLow, result.predictedRevenueMid, result.predictedRevenueHigh,
       result.predictedWonDeals, result.predictedAvgCycleDays,
       result.confidence, result.reasoning,
@@ -250,6 +262,7 @@ Returner KUN gyldig JSON:
 export async function computeAttribution(
   pool: Pool,
   organizationId: string,
+  projectId: string,
   windowDays = 90,
 ): Promise<AttributionResult> {
   const r = await pool.query(
@@ -258,10 +271,16 @@ export async function computeAttribution(
               c.pipeline_stage, c.estimated_value::float8 AS estimated_value,
               EXTRACT(EPOCH FROM (c.last_contacted_at - r.executed_at)) / 86400 AS days_to_outcome
          FROM lead_recommendations r
-         JOIN crm_customers c ON c.id = r.lead_id
+         JOIN crm_customers c
+           ON c.id = r.lead_id
+          AND c.organization_id = r.organization_id
+          AND c.project_id = r.project_id
         WHERE r.organization_id = $1::uuid
+          AND r.project_id = $2
+          AND c.project_id = $2
+          AND c.archived_at IS NULL
           AND r.status = 'executed'
-          AND r.executed_at > NOW() - ($2 || ' days')::interval
+          AND r.executed_at > NOW() - ($3 || ' days')::interval
      )
      SELECT action_type,
             COUNT(*)::int AS total_executed,
@@ -272,7 +291,7 @@ export async function computeAttribution(
        FROM executed
        GROUP BY action_type
        ORDER BY total_executed DESC`,
-    [organizationId, String(windowDays)],
+    [organizationId, projectId, String(windowDays)],
   );
   const actions = r.rows.map((row) => {
     const exec = Number(row.total_executed);
@@ -283,6 +302,7 @@ export async function computeAttribution(
       actionType: row.action_type as string,
       totalExecuted: exec,
       totalWon: won,
+      totalLost: Number(row.total_lost),
       winRate,
       avgDaysToWon: Number(row.avg_days_to_won),
       avgDealValue: avgValue,
@@ -294,25 +314,43 @@ export async function computeAttribution(
     .slice(0, 3)
     .map((a) => a.actionType);
 
+  // Cachen er kun avledet data. Fjern gamle rader for prosjekt/vindu først,
+  // slik at action types som ikke lenger finnes ikke blir stående som falske funn.
+  await pool.query(
+    `DELETE FROM leadgrid_attribution_aggregates
+      WHERE organization_id = $1::uuid
+        AND project_id = $2
+        AND window_days = $3`,
+    [organizationId, projectId, windowDays],
+  );
+
   // Cache via UPSERT
   for (const a of actions) {
     await pool
       .query(
         `INSERT INTO leadgrid_attribution_aggregates
-         (organization_id, action_type, window_days, total_executed,
+         (organization_id, project_id, action_type, window_days, total_executed,
           total_won, total_lost, win_rate, avg_days_to_won, avg_deal_value)
-       VALUES ($1::uuid, $2, $3, $4, $5, 0, $6, $7, $8)
-       ON CONFLICT (organization_id, action_type, window_days) DO UPDATE SET
+       VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (organization_id, project_id, action_type, window_days) DO UPDATE SET
          total_executed = EXCLUDED.total_executed,
          total_won = EXCLUDED.total_won,
+         total_lost = EXCLUDED.total_lost,
          win_rate = EXCLUDED.win_rate,
          avg_days_to_won = EXCLUDED.avg_days_to_won,
          avg_deal_value = EXCLUDED.avg_deal_value,
          computed_at = NOW()`,
-        [organizationId, a.actionType, windowDays, a.totalExecuted, a.totalWon, a.winRate, a.avgDaysToWon, a.avgDealValue],
+        [organizationId, projectId, a.actionType, windowDays, a.totalExecuted, a.totalWon, a.totalLost, a.winRate, a.avgDaysToWon, a.avgDealValue],
       )
       .catch((err) => console.warn("[attribution cache] feilet:", err));
   }
 
-  return { organizationId, windowDays, actions, topActionTypes, computedAt: new Date().toISOString() };
+  return {
+    organizationId,
+    projectId,
+    windowDays,
+    actions,
+    topActionTypes,
+    computedAt: new Date().toISOString(),
+  };
 }

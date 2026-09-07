@@ -4,42 +4,35 @@
  * Team-leaderboard for Salgssjef/Teamleder/Admin:
  *
  *   GET /organizations/:id/leaderboard
+ *     ?projectId=required
  *     ?period=this_month|last_30d|ytd
  *     ?team_id=optional
  *     ?sort=achieved|progress|won|meetings
  *
- *   GET /teams/:teamId/leaderboard
- *     Forenklet wrapper som scoper til ett team.
- *
  *   GET /organizations/:id/leaderboard-summary
- *     Top-line: total achieved, total target, top performer,
- *     avg progress, total meetings, total won.
+ *     Samme obligatoriske prosjekt- og valgfrie teamfilter.
  *
  * Tilgang:
- *   - Krever permissions.manage ELLER admin/salgssjef/teamleder-rolle
- *     for å se andres performance.
- *   - Salgskonsulent kan se sin egen + teamets totaler (begrenset).
+ *   - Krever tilgang til eksplisitt Leadgrid-prosjekt.
+ *   - Admin/salgssjef ser hele prosjektet; teamleder bare eget team.
  */
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import {
+  getLeadgridSession,
+  loadAccessibleLeadgridProject,
+  type LeadgridSession,
+} from "./leadgrid-project-access.js";
+import {
+  LeadMapProjectScopeError,
+  requestedLeadMapProjectId,
+} from "./lead-map-project-scope.js";
 
-type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
   app: Express;
   pool: Pool;
-  activeSessions: Map<string, SessionData>;
-}
-
-function getUser(
-  req: Request,
-  activeSessions: Map<string, SessionData>,
-): SessionData | null {
-  const auth = req.headers.authorization;
-  if (auth?.startsWith("Bearer ")) {
-    return activeSessions.get(auth.slice(7)) ?? null;
-  }
-  return null;
+  activeSessions: Map<string, LeadgridSession>;
 }
 
 type Period = "this_month" | "last_30d" | "ytd";
@@ -75,6 +68,54 @@ function periodFilter(
   }
 }
 
+interface LeaderboardScope {
+  organizationId: string;
+  projectId: string;
+}
+
+async function resolveLeaderboardScope(
+  req: Request,
+  res: Response,
+  pool: Pool,
+  userId: string,
+): Promise<LeaderboardScope | null> {
+  let projectId: string | null;
+  try {
+    projectId = requestedLeadMapProjectId(req);
+  } catch (error) {
+    if (error instanceof LeadMapProjectScopeError) {
+      res.status(error.status).json({ error: error.code });
+      return null;
+    }
+    throw error;
+  }
+  if (!projectId) {
+    res.status(400).json({ error: "project_id_required" });
+    return null;
+  }
+
+  const project = await loadAccessibleLeadgridProject(pool, projectId, userId);
+  const pathOrganizationId = req.params.id?.trim();
+  if (!project || !pathOrganizationId || project.organizationId !== pathOrganizationId) {
+    // Fail closed without revealing whether a project exists in another tenant.
+    res.status(404).json({ error: "project_not_found" });
+    return null;
+  }
+  return {
+    organizationId: project.organizationId,
+    projectId: project.id,
+  };
+}
+
+function optionalTeamFilter(req: Request): string | null | undefined {
+  const value = req.query.team_id;
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  if (!normalized || normalized.length > 255) return undefined;
+  return normalized;
+}
+
 /** Sjekk om bruker kan se andres performance i org-en */
 async function canViewOthers(
   pool: Pool, userId: string, organizationId: string,
@@ -92,6 +133,30 @@ async function canViewOthers(
     salesTeamId: row.sales_team_id,
   };
 }
+
+function teamScopeForAccess(
+  access: Awaited<ReturnType<typeof canViewOthers>>,
+  requestedTeamId: string | null,
+): { teamId: string | null } | { error: string } {
+  if (access.canViewAll) return { teamId: requestedTeamId };
+  if (!access.canViewTeam || !access.salesTeamId) {
+    return { error: "mangler_tilgang_leaderboard" };
+  }
+  if (requestedTeamId && requestedTeamId !== access.salesTeamId) {
+    return { error: "team_scope_forbidden" };
+  }
+  return { teamId: access.salesTeamId };
+}
+
+function parsePeriod(req: Request): Period | null {
+  const value = req.query.period ?? "this_month";
+  return typeof value === "string"
+    && ["this_month", "last_30d", "ytd"].includes(value)
+    ? value as Period
+    : null;
+}
+
+const SORTS = new Set(["progress", "achieved", "won", "meetings"]);
 
 interface LeaderboardRow {
   user_id: string;
@@ -118,51 +183,62 @@ export function registerLeadMapLeaderboardRoutes({ app, pool, activeSessions }: 
   app.get(
     "/api/admin-room/lead-map/organizations/:id/leaderboard",
     async (req: Request, res: Response) => {
-      const session = getUser(req, activeSessions);
+      const session = getLeadgridSession(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
-      const orgId = req.params.id;
-      const period = (req.query.period as Period | undefined) ?? "this_month";
-      if (!["this_month", "last_30d", "ytd"].includes(period)) {
+      const period = parsePeriod(req);
+      if (!period) {
         return res.status(400).json({ error: "ugyldig_periode" });
       }
-      const teamFilter = (req.query.team_id as string | undefined) ?? null;
-      const sortBy = (req.query.sort as string | undefined) ?? "progress";
-
-      const { canViewAll, canViewTeam, salesTeamId } =
-        await canViewOthers(pool, session.userId, orgId);
-      if (!canViewAll && !canViewTeam) {
-        return res.status(403).json({ error: "mangler_tilgang_leaderboard" });
+      const requestedTeam = optionalTeamFilter(req);
+      if (requestedTeam === undefined) {
+        return res.status(400).json({ error: "ugyldig_team_id" });
       }
+      const requestedSort = req.query.sort ?? "progress";
+      if (typeof requestedSort !== "string" || !SORTS.has(requestedSort)) {
+        return res.status(400).json({ error: "ugyldig_sortering" });
+      }
+      const sortBy = requestedSort;
 
-      // Hvis teamleder uten team_id: scope til eget team automatisk
-      const effectiveTeam = canViewAll ? teamFilter : (teamFilter ?? salesTeamId);
+      const scope = await resolveLeaderboardScope(
+        req, res, pool, session.userId,
+      );
+      if (!scope) return;
+
+      const access = await canViewOthers(
+        pool, session.userId, scope.organizationId,
+      );
+      const teamScope = teamScopeForAccess(access, requestedTeam);
+      if ("error" in teamScope) {
+        return res.status(403).json({ error: teamScope.error });
+      }
+      const effectiveTeam = teamScope.teamId;
 
       try {
         // Bygg parametere
-        const wonFilter = periodFilter(period, "c.updated_at", 1);
-        const visitFilter = periodFilter(period, "v.visit_datetime", 1);
         const ym = yearMonth();
 
-        const params: unknown[] = [orgId];
-        let idx = 2;
-
-        // Periode-filter param
-        let wonPeriodClause = wonFilter.sql.replace(/\$1/g, `$${idx}`);
-        for (const p of wonFilter.params) {
-          params.push(p);
-          idx += 1;
-        }
-        let visitPeriodClause = visitFilter.sql.replace(/\$1/g, `$${idx}`);
-        for (const p of visitFilter.params) {
-          params.push(p);
-          idx += 1;
-        }
+        const params: unknown[] = [scope.organizationId, scope.projectId];
+        let idx = 3;
 
         // Team-filter
         let teamClause = "";
         if (effectiveTeam) {
           teamClause = `AND om.sales_team_id = $${idx}`;
           params.push(effectiveTeam);
+          idx += 1;
+        }
+
+        // Periode-filter param
+        const wonFilter = periodFilter(period, "c.updated_at", idx);
+        const wonPeriodClause = wonFilter.sql;
+        for (const p of wonFilter.params) {
+          params.push(p);
+          idx += 1;
+        }
+        const visitFilter = periodFilter(period, "v.visit_datetime", idx);
+        const visitPeriodClause = visitFilter.sql;
+        for (const p of visitFilter.params) {
+          params.push(p);
           idx += 1;
         }
 
@@ -195,34 +271,53 @@ export function registerLeadMapLeaderboardRoutes({ app, pool, activeSessions }: 
                 ${teamClause}
            ),
            won_stats AS (
-             SELECT c.assigned_user_id AS user_id,
-                    COALESCE(SUM(c.estimated_value), 0)::text AS achieved_nok,
+             SELECT c.organization_id,
+                    c.project_id,
+                    c.assigned_user_id AS user_id,
+                    COALESCE(SUM(c.estimated_value) FILTER (
+                      WHERE c.lead_status = 'won'
+                    ), 0)::text AS achieved_nok,
                     COUNT(*) FILTER (WHERE c.lead_status = 'won')::int AS won_count,
                     COUNT(*) FILTER (WHERE c.lead_status = 'lost')::int AS lost_count
                FROM crm_customers c
-              WHERE c.assigned_user_id IS NOT NULL
+               JOIN member_base mb ON mb.user_id = c.assigned_user_id
+              WHERE c.organization_id = $1::uuid
+                AND c.project_id = $2
+                AND c.archived_at IS NULL
                 AND c.lead_status IN ('won', 'lost')
                 AND ${wonPeriodClause}
-              GROUP BY c.assigned_user_id
+              GROUP BY c.organization_id, c.project_id, c.assigned_user_id
            ),
            visit_stats AS (
-             SELECT c.assigned_user_id AS user_id,
+             SELECT c.organization_id,
+                    c.project_id,
+                    c.assigned_user_id AS user_id,
                     COUNT(*)::int AS meetings_count
                FROM crm_visits v
-               JOIN crm_customers c ON c.id = v.customer_id
-              WHERE v.visit_type IN ('online_meeting','physical')
+               JOIN crm_customers c
+                 ON c.id = v.customer_id
+                AND c.organization_id = $1::uuid
+                AND c.project_id = $2
+               JOIN member_base mb ON mb.user_id = c.assigned_user_id
+              WHERE c.archived_at IS NULL
+                AND v.visit_type IN ('online_meeting','physical')
                 AND ${visitPeriodClause}
-              GROUP BY c.assigned_user_id
+              GROUP BY c.organization_id, c.project_id, c.assigned_user_id
            ),
            assigned_stats AS (
-             SELECT assigned_user_id AS user_id,
+             SELECT c.organization_id,
+                    c.project_id,
+                    c.assigned_user_id AS user_id,
                     COUNT(*)::int AS leads_assigned,
                     COUNT(*) FILTER (
-                      WHERE lead_status NOT IN ('won','lost','do_not_contact')
+                      WHERE c.lead_status NOT IN ('won','lost','do_not_contact')
                     )::int AS leads_active
-               FROM crm_customers
-              WHERE assigned_user_id IS NOT NULL
-              GROUP BY assigned_user_id
+               FROM crm_customers c
+               JOIN member_base mb ON mb.user_id = c.assigned_user_id
+              WHERE c.organization_id = $1::uuid
+                AND c.project_id = $2
+                AND c.archived_at IS NULL
+              GROUP BY c.organization_id, c.project_id, c.assigned_user_id
            )
            SELECT mb.user_id, mb.display_name, mb.user_name, mb.user_email,
                   mb.avatar_url, mb.title, mb.role,
@@ -235,9 +330,18 @@ export function registerLeadMapLeaderboardRoutes({ app, pool, activeSessions }: 
                   COALESCE(asg.leads_assigned, 0) AS leads_assigned,
                   COALESCE(asg.leads_active, 0) AS leads_active
              FROM member_base mb
-             LEFT JOIN won_stats ws ON ws.user_id = mb.user_id
-             LEFT JOIN visit_stats vs ON vs.user_id = mb.user_id
-             LEFT JOIN assigned_stats asg ON asg.user_id = mb.user_id`,
+             LEFT JOIN won_stats ws
+               ON ws.organization_id = $1::uuid
+              AND ws.project_id = $2
+              AND ws.user_id = mb.user_id
+             LEFT JOIN visit_stats vs
+               ON vs.organization_id = $1::uuid
+              AND vs.project_id = $2
+              AND vs.user_id = mb.user_id
+             LEFT JOIN assigned_stats asg
+               ON asg.organization_id = $1::uuid
+              AND asg.project_id = $2
+              AND asg.user_id = mb.user_id`,
           params,
         );
 
@@ -294,6 +398,7 @@ export function registerLeadMapLeaderboardRoutes({ app, pool, activeSessions }: 
 
         return res.json({
           leaderboard: ranked,
+          projectId: scope.projectId,
           period,
           teamFilter: effectiveTeam,
           sortBy,
@@ -308,30 +413,49 @@ export function registerLeadMapLeaderboardRoutes({ app, pool, activeSessions }: 
   app.get(
     "/api/admin-room/lead-map/organizations/:id/leaderboard-summary",
     async (req: Request, res: Response) => {
-      const session = getUser(req, activeSessions);
+      const session = getLeadgridSession(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
-      const orgId = req.params.id;
-      const period = (req.query.period as Period | undefined) ?? "this_month";
-
-      const { canViewAll, canViewTeam } =
-        await canViewOthers(pool, session.userId, orgId);
-      if (!canViewAll && !canViewTeam) {
-        return res.status(403).json({ error: "mangler_tilgang_leaderboard" });
+      const period = parsePeriod(req);
+      if (!period) {
+        return res.status(400).json({ error: "ugyldig_periode" });
       }
+      const requestedTeam = optionalTeamFilter(req);
+      if (requestedTeam === undefined) {
+        return res.status(400).json({ error: "ugyldig_team_id" });
+      }
+      const scope = await resolveLeaderboardScope(
+        req, res, pool, session.userId,
+      );
+      if (!scope) return;
+
+      const access = await canViewOthers(
+        pool, session.userId, scope.organizationId,
+      );
+      const teamScope = teamScopeForAccess(access, requestedTeam);
+      if ("error" in teamScope) {
+        return res.status(403).json({ error: teamScope.error });
+      }
+      const effectiveTeam = teamScope.teamId;
 
       try {
-        const wonFilter = periodFilter(period, "c.updated_at", 1);
-        const visitFilter = periodFilter(period, "v.visit_datetime", 1);
         const ym = yearMonth();
 
-        const params: unknown[] = [orgId];
-        let idx = 2;
-        let wonPeriodClause = wonFilter.sql.replace(/\$1/g, `$${idx}`);
+        const params: unknown[] = [scope.organizationId, scope.projectId];
+        let idx = 3;
+        let teamClause = "";
+        if (effectiveTeam) {
+          teamClause = `AND om.sales_team_id = $${idx}`;
+          params.push(effectiveTeam);
+          idx += 1;
+        }
+        const wonFilter = periodFilter(period, "c.updated_at", idx);
+        const wonPeriodClause = wonFilter.sql;
         for (const p of wonFilter.params) {
           params.push(p);
           idx += 1;
         }
-        let visitPeriodClause = visitFilter.sql.replace(/\$1/g, `$${idx}`);
+        const visitFilter = periodFilter(period, "v.visit_datetime", idx);
+        const visitPeriodClause = visitFilter.sql;
         for (const p of visitFilter.params) {
           params.push(p);
           idx += 1;
@@ -348,9 +472,10 @@ export function registerLeadMapLeaderboardRoutes({ app, pool, activeSessions }: 
           active_sellers: number;
         }>(
           `WITH org_users AS (
-             SELECT user_id FROM organization_members
-              WHERE organization_id = $1
-                AND role IN ('salgskonsulent','teamleder','salgssjef','promotor')
+             SELECT om.user_id FROM organization_members om
+              WHERE om.organization_id = $1::uuid
+                AND om.role IN ('salgskonsulent','teamleder','salgssjef','promotor')
+                ${teamClause}
            ),
            targets AS (
              SELECT COALESCE(SUM(
@@ -370,19 +495,28 @@ export function registerLeadMapLeaderboardRoutes({ app, pool, activeSessions }: 
               AND up.organization_id = $1
            ),
            won_agg AS (
-             SELECT COALESCE(SUM(c.estimated_value), 0)::text AS total_achieved,
+             SELECT COALESCE(SUM(c.estimated_value) FILTER (
+                      WHERE c.lead_status = 'won'
+                    ), 0)::text AS total_achieved,
                     COUNT(*) FILTER (WHERE c.lead_status = 'won')::int AS total_won,
                     COUNT(*) FILTER (WHERE c.lead_status = 'lost')::int AS total_lost
                FROM crm_customers c
-              WHERE c.assigned_user_id IN (SELECT user_id FROM org_users)
+               JOIN org_users ou ON ou.user_id = c.assigned_user_id
+              WHERE c.organization_id = $1::uuid
+                AND c.project_id = $2
+                AND c.archived_at IS NULL
                 AND c.lead_status IN ('won','lost')
                 AND ${wonPeriodClause}
            ),
            visit_agg AS (
              SELECT COUNT(*)::int AS total_meetings
                FROM crm_visits v
-               JOIN crm_customers c ON c.id = v.customer_id
-              WHERE c.assigned_user_id IN (SELECT user_id FROM org_users)
+               JOIN crm_customers c
+                 ON c.id = v.customer_id
+                AND c.organization_id = $1::uuid
+                AND c.project_id = $2
+               JOIN org_users ou ON ou.user_id = c.assigned_user_id
+              WHERE c.archived_at IS NULL
                 AND v.visit_type IN ('online_meeting','physical')
                 AND ${visitPeriodClause}
            )
@@ -402,7 +536,9 @@ export function registerLeadMapLeaderboardRoutes({ app, pool, activeSessions }: 
         const won = row?.total_won ?? 0;
         const lost = row?.total_lost ?? 0;
         return res.json({
+          projectId: scope.projectId,
           period,
+          teamFilter: effectiveTeam,
           totalTargetNok: target,
           totalAchievedNok: achieved,
           progressPct: target > 0 ? Math.round((achieved / target) * 100) : null,

@@ -285,7 +285,12 @@ struct OversiktView: View {
             .background(Brand.bg.ignoresSafeArea())
         }
         .navigationBarHidden(true)
-        .task { await initialLoad() }
+        .task(id: appState.activeLeadgridProjectId) {
+            momentum = nil
+            forecast = nil
+            dorsalgStats = nil
+            await initialLoad()
+        }
         .refreshable { await refresh() }
     }
 
@@ -334,16 +339,30 @@ struct OversiktView: View {
     }
 
     private func refresh() async {
+        let requestedProjectId = appState.activeLeadgridProjectId
         loading = true
-        defer { loading = false }
+        defer {
+            if appState.activeLeadgridProjectId == requestedProjectId {
+                loading = false
+            }
+        }
         // Dørsalg-stats (kun når org-en har modusen): demo = statiske tall,
         // ekte = aggregat fra backend (mig 0397).
         if dorsalgAktivert || DemoModeManager.isActiveNonisolated {
             if DemoModeManager.isActiveNonisolated {
                 if dorsalgAktivert { dorsalgStats = Self.demoDorsalgStats }
-            } else if let api = appState.api {
-                dorsalgStats = await KartverketService.shared.fetchDorsalgStats(using: api)
+            } else if let api = appState.api,
+                      let projectId = appState.activeLeadgridProjectId {
+                let loaded = await KartverketService.shared.fetchDorsalgStats(
+                    projectId: projectId, using: api
+                )
+                guard appState.activeLeadgridProjectId == projectId else { return }
+                dorsalgStats = loaded
+            } else {
+                dorsalgStats = nil
             }
+        } else {
+            dorsalgStats = nil
         }
         // Pakke 10: bind til prod-APIClient sine ekte endepunkter
         // (/api/leadgrid/momentum/today + /api/leadgrid/forecasting/pipeline).
@@ -359,9 +378,22 @@ struct OversiktView: View {
         // Team-medlemmer (idempotent) — trengs for ekte «Tildel til
         // teammedlem»-liste og TopSellers-leaderboard når demo er AV.
         TeamLiveStore.shared.attach(api: api, appState: appState)
-        async let momTask: LeadgridMomentum? = try? api.fetchMomentumToday()
-        async let fcTask: LeadgridForecast? = try? api.fetchPipelineForecast()
+        guard let projectId = appState.activeLeadgridProjectId else {
+            await MainActor.run {
+                self.momentum = nil
+                self.forecast = nil
+                self.lastUpdated = Date()
+            }
+            return
+        }
+        async let momTask: LeadgridMomentum? = try? api.fetchMomentumToday(
+            projectId: projectId
+        )
+        async let fcTask: LeadgridForecast? = try? api.fetchPipelineForecast(
+            projectId: projectId
+        )
         let (mom, fc) = await (momTask, fcTask)
+        guard appState.activeLeadgridProjectId == projectId else { return }
         await MainActor.run {
             self.momentum = mom
             self.forecast = fc
@@ -1845,7 +1877,13 @@ private struct LeadsInAreaCard: View {
                 guard let api = appState.api else {
                     throw AddLeadSaveError(message: "Du må være innlogget for å lagre leaden")
                 }
-                _ = try await api.createLeadAtPin(newLead.makeCreateRequest(), organizationId: appState.activeOrganizationId)
+                guard let projectId = appState.activeLeadgridProjectId else {
+                    throw AddLeadSaveError(message: "Velg et kundeprosjekt før du lagrer leaden")
+                }
+                _ = try await api.createLeadAtPin(
+                    newLead.makeCreateRequest(projectID: projectId),
+                    organizationId: appState.activeOrganizationId
+                )
                 miniShowToast("«\(newLead.companyName)» lagt til")
             }
         }
@@ -3225,7 +3263,12 @@ private struct MapLeadInfoCard: View {
             // Ring — bare synlig hvis vi har telefonnummer.
             if let phone = lead.phone, !phone.isEmpty,
                let url = URL(string: "tel:\(phone.filter { $0.isNumber || $0 == "+" })") {
-                Link(destination: url) {
+                LeadgridContactHandoffButton(
+                    url: url,
+                    channel: .phone,
+                    leadId: lead.id,
+                    projectId: lead.projectId
+                ) {
                     Image(systemName: "phone.fill")
                         .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(.white)
@@ -3233,13 +3276,19 @@ private struct MapLeadInfoCard: View {
                         .background(Brand.card, in: Circle())
                         .overlay(Circle().strokeBorder(Brand.stroke, lineWidth: 1))
                 }
+                .buttonStyle(.plain)
                 .help("Ring \(phone)")
             }
 
             // E-post — bare synlig hvis vi har e-postadresse.
             if let email = lead.email, !email.isEmpty,
                let url = URL(string: "mailto:\(email)") {
-                Link(destination: url) {
+                LeadgridContactHandoffButton(
+                    url: url,
+                    channel: .email,
+                    leadId: lead.id,
+                    projectId: lead.projectId
+                ) {
                     Image(systemName: "envelope.fill")
                         .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(.white)
@@ -3247,6 +3296,7 @@ private struct MapLeadInfoCard: View {
                         .background(Brand.card, in: Circle())
                         .overlay(Circle().strokeBorder(Brand.stroke, lineWidth: 1))
                 }
+                .buttonStyle(.plain)
                 .help("Send e-post til \(email)")
             }
 
@@ -3772,8 +3822,13 @@ private struct MoteOppgaverCard: View {
             if oppgaver.isEmpty { oppgaver = Self.demoOppgaver }
             return
         }
-        guard let api = appState.api else { return }
-        oppgaver = (try? await api.hentMoteOppgaver()) ?? []
+        guard let api = appState.api,
+              let projectId = appState.activeProjectId,
+              !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+        let loaded = (try? await api.hentMoteOppgaver(projectId: projectId)) ?? []
+        guard projectId == appState.activeProjectId else { return }
+        oppgaver = loaded
     }
 
     /// Huk av: optimistisk fjerning + PATCH (demo: kun lokalt).
@@ -3782,8 +3837,12 @@ private struct MoteOppgaverCard: View {
             oppgaver.removeAll { $0.id == o.id }
         }
         guard !DemoModeManager.isActiveNonisolated,
-              let api = appState.api else { return }
-        Task { try? await api.settMoteOppgaveStatus(id: o.id, ferdig: true) }
+              let api = appState.api,
+              let projectId = appState.activeProjectId else { return }
+        Task {
+            try? await api.settMoteOppgaveStatus(
+                id: o.id, ferdig: true, projectId: projectId)
+        }
     }
 
     private static let demoOppgaver: [MoteOppgaveDTO] = [
@@ -3870,7 +3929,7 @@ struct NextActionRow: View {
     /// Åpne lead-detaljen. Hele raden kaller denne; handlings-pillen kaller
     /// den kun som fallback når vi ikke har telefon/e-post å handle på.
     var onOpen: (LeadModel) -> Void = { _ in }
-    @Environment(\.openURL) private var openURL
+    @State private var contactHandoffRequest: LeadgridExternalContactRequest?
 
     /// Handlings-pillen utfører den konkrete neste-handlingen:
     /// Ring → tel:, E-post → mailto:, Møte/Planlegg → åpne lead-detaljen.
@@ -3878,13 +3937,25 @@ struct NextActionRow: View {
         switch lead.status {
         case .interested:
             if let email = lead.email, !email.isEmpty,
-               let url = URL(string: "mailto:\(email)") { openURL(url); return }
+               let url = URL(string: "mailto:\(email)") {
+                contactHandoffRequest = .init(
+                    url: url, channel: .email, leadId: lead.id,
+                    leadProjectId: lead.projectId)
+                return
+            }
             onOpen(lead)
         case .meetingBooked, .return:
             onOpen(lead)
         default:
-            if let phone = lead.phone, !phone.isEmpty,
-               let url = URL(string: "tel:\(phone.filter { $0.isNumber || $0 == "+" })") { openURL(url); return }
+            if let phone = lead.phone, !phone.isEmpty {
+                let normalized = phone.filter { $0.isNumber || $0 == "+" }
+                if !normalized.isEmpty, let url = URL(string: "tel:\(normalized)") {
+                    contactHandoffRequest = .init(
+                        url: url, channel: .phone, leadId: lead.id,
+                        leadProjectId: lead.projectId)
+                    return
+                }
+            }
             onOpen(lead)
         }
     }
@@ -3996,6 +4067,7 @@ struct NextActionRow: View {
         .padding(.vertical, 6).padding(.horizontal, 4)
         .contentShape(Rectangle())
         .onTapGesture { onOpen(lead) }
+        .leadgridContactHandoff(request: $contactHandoffRequest)
     }
 }
 
@@ -5124,6 +5196,7 @@ struct MyProfileSheet: View {
                     monthGoalCard
                     activityTrendCard
                     contactInfoCard
+                    WorkspacePlanProfileCard()
                     achievementsCard
                     actionRows
                     // Utvikler-verktøy (Pakke 10) — demo-modus toggle.
@@ -5744,11 +5817,8 @@ struct ProfilePopover: View {
     @State private var pinGuideOpen = false
     @State private var aboutOpen = false
     @State private var abonnementOpen = false
+    @State private var workspaceSettingsOpen = false
 
-    /// Abonnements-oversikten er org-ledelsens domene.
-    private var canSeeAbonnement: Bool {
-        ["admin", "salgssjef"].contains(appState.roleInOrg ?? "") || appState.isSuperAdmin
-    }
 
     /// Ekte app-versjon fra bundelen (før: hardkodet «v1.3.1»).
     private var appVersion: String {
@@ -5813,15 +5883,19 @@ struct ProfilePopover: View {
                                 }?.name)
                         }
                         .buttonStyle(.plain)
-                        // Abonnement (2026-07-17): plan + funksjoner + fakturaer
-                        // + Stripe-portal — org-ledelsens eget overblikk.
-                        if canSeeAbonnement {
-                            Button { abonnementOpen = true } label: {
-                                row(icon: "creditcard.fill", color: Brand.green,
-                                    label: "Abonnement")
-                            }
-                            .buttonStyle(.plain)
+                        // Alle medlemmer kan se workspace-planen. Selve
+                        // betalingsadministrasjonen gater AbonnementSheet.
+                        Button { abonnementOpen = true } label: {
+                            row(icon: "creditcard.fill", color: Brand.green,
+                                label: "Abonnement",
+                                trailing: appState.activeWorkspacePlanDisplayName)
                         }
+                        .buttonStyle(.plain)
+                        Button { workspaceSettingsOpen = true } label: {
+                            row(icon: "gearshape.2.fill", color: Brand.purple,
+                                label: "Workspace-innstillinger")
+                        }
+                        .buttonStyle(.plain)
                         if let onOpenSuperAdmin {
                             Button(action: onOpenSuperAdmin) {
                                 row(icon: "crown.fill", color: Brand.yellow,
@@ -5905,6 +5979,9 @@ struct ProfilePopover: View {
         }
         .sheet(isPresented: $abonnementOpen) {
             AbonnementSheet()
+        }
+        .sheet(isPresented: $workspaceSettingsOpen) {
+            WorkspaceSettingsSheet()
         }
     }
 

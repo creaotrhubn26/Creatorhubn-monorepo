@@ -201,6 +201,12 @@ struct LeadDraft: Codable, Equatable, Sendable {
         Self.validateLength(nextAction, max: 2_000, label: "Neste handling", field: .nextAction, issues: &issues)
         Self.validateLength(leadSource, max: 80, label: "Lead-kilde", field: .leadSource, issues: &issues)
         Self.validateLength(projectId, max: 255, label: "Prosjekt", field: .project, issues: &issues)
+        if Self.optionalText(projectId ?? "") == nil {
+            issues.append(.init(
+                field: .project,
+                message: "Velg et kundeprosjekt før leaden opprettes."
+            ))
+        }
         Self.validateLength(rawText, max: 20_000, label: "Råtekst", field: .rawText, issues: &issues)
 
         if let value = Self.optionalText(email ?? "") {

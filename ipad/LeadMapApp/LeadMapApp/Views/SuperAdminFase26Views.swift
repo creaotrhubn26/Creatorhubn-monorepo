@@ -427,33 +427,11 @@ struct SuperAdminLeadMapPlacesView: View {
     }
 
     private func search() async {
-        await MainActor.run { searching = true }
-        do {
-            let r = try await api.searchLeadMapPlaces(query: query)
-            await MainActor.run {
-                results = r.places
-                selectedIds = []
-            }
-        } catch {
-            await flash("Søk feilet")
-        }
-        await MainActor.run { searching = false }
+        await flash("Denne Places-flyten er avviklet. Bruk Discovery V2.")
     }
 
     private func importSelected() async {
-        await MainActor.run { importing = true }
-        do {
-            let r = try await api.importLeadMapPlaces(placeIds: Array(selectedIds))
-            await flash("Importert: \(r.imported) (skipped \(r.skipped))")
-            await MainActor.run {
-                selectedIds = []
-                results = []
-                query = ""
-            }
-        } catch {
-            await flash("Import feilet")
-        }
-        await MainActor.run { importing = false }
+        await flash("Direkte Places-import er avviklet. Bekreft kandidater i Discovery V2.")
     }
 
     private func flash(_ text: String) async {

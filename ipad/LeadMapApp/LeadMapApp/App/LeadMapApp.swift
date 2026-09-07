@@ -53,11 +53,18 @@ struct LeadMapApp: App {
                     // på telefonen, ellers backend). watchOS < 27 har ikke
                     // Foundation Models, så klokka relayer hit.
                     WatchSession.shared.activate()
-                    WatchSession.shared.onQuickAction = { leadId, action, organizationId, actionId in
+                    WatchSession.shared.onQuickAction = { leadId, action, actorUserId, organizationId, projectId, actionId in
                         guard let api = appState.api else {
                             WatchSession.shared.sendQuickActionRejection(
                                 actionId: actionId,
                                 message: "Du må være logget inn i Leadgrid på iPhone før handlingen kan lagres."
+                            )
+                            return
+                        }
+                        guard appState.currentUserId == actorUserId else {
+                            WatchSession.shared.sendQuickActionRejection(
+                                actionId: actionId,
+                                message: "Watch-handlingen tilhører en annen innlogget bruker. Åpne Leadgrid og synkroniser på nytt."
                             )
                             return
                         }
@@ -79,6 +86,21 @@ struct LeadMapApp: App {
                             )
                             return
                         }
+                        let hasProjectContext = appState.projects.contains {
+                            $0.id == projectId
+                                && ($0.organizationId == nil || $0.organizationId == organizationId)
+                        } || (
+                            appState.projects.isEmpty
+                                && appState.activeOrganizationId == organizationId
+                                && appState.activeProjectId == projectId
+                        )
+                        guard hasProjectContext else {
+                            WatchSession.shared.sendQuickActionRejection(
+                                actionId: actionId,
+                                message: "Du har ikke lenger tilgang til kundeprosjektet denne leaden tilhører. Handlingen ble ikke lagret."
+                            )
+                            return
+                        }
                         guard ["called", "visited", "meeting_booked", "declined"].contains(action) else {
                             WatchSession.shared.sendQuickActionRejection(
                                 actionId: actionId,
@@ -93,6 +115,7 @@ struct LeadMapApp: App {
                                 disposition = await OfflineResilientActions.logPhoneCall(
                                     api: api,
                                     organizationId: organizationId,
+                                    projectId: projectId,
                                     leadId: leadId,
                                     actionId: actionId
                                 )
@@ -100,6 +123,7 @@ struct LeadMapApp: App {
                                 disposition = await OfflineResilientActions.updateLeadStatus(
                                     api: api,
                                     organizationId: organizationId,
+                                    projectId: projectId,
                                     leadId: leadId,
                                     status: action,
                                     actionId: actionId
@@ -256,11 +280,13 @@ extension NotificationAppDelegate: UNUserNotificationCenterDelegate {
         // approaching_lead) stille → tap gjorde ingenting. Vi ruter alt
         // som har et event_type ELLER en lead_id.
         let leadId = userInfo["lead_id"] as? String
-        let hasRoutable = !eventType.isEmpty || leadId != nil
+        let deepLink = userInfo["deep_link"] as? String
+        let projectId = userInfo["project_id"] as? String
+        let organizationId = userInfo["organization_id"] as? String
+        let hasRoutable = !eventType.isEmpty || leadId != nil || deepLink != nil
 
         if hasRoutable {
             // Snap ut Sendable-felter FØR task-grensen (Swift 6 strict).
-            let deepLink = userInfo["deep_link"] as? String
             // Etter-møte-varselet (lokal notif) bærer selskap + møte-id.
             let selskap = userInfo["selskap"] as? String
             let moteId = userInfo["mote_id"] as? String
@@ -269,6 +295,8 @@ extension NotificationAppDelegate: UNUserNotificationCenterDelegate {
                 var payload: [String: String] = ["event_type": safeEventType]
                 if let leadId { payload["lead_id"] = leadId }
                 if let deepLink { payload["deep_link"] = deepLink }
+                if let projectId { payload["project_id"] = projectId }
+                if let organizationId { payload["organization_id"] = organizationId }
                 if let selskap { payload["selskap"] = selskap }
                 if let moteId { payload["mote_id"] = moteId }
                 // Buffer via bridge: et cold-start-tap fyrer FØR noe view
@@ -389,10 +417,14 @@ struct RootView: View {
             // Robusthet-pakke 3: drain offline-køen ved app-start hvis online,
             // og sett opp connectivity-restore-handler.
             if let api = appState.api,
-               let organizationId = appState.activeOrganizationId {
+               let organizationId = appState.activeOrganizationId,
+               let projectId = appState.activeProjectId,
+               let actorUserId = appState.currentUserId {
                 let result = await OfflineActionQueue.shared.drain(
                     api: api,
-                    organizationId: organizationId
+                    organizationId: organizationId,
+                    actorUserId: actorUserId,
+                    projectId: projectId
                 )
                 if result.success > 0 || result.failed > 0 {
                     print("[offline-queue] drained at boot: \(result.success) ok, \(result.failed) failed")
@@ -401,11 +433,15 @@ struct RootView: View {
             NetworkMonitor.shared.onConnectivityRestored = {
                 Task {
                     guard let api = appState.api,
-                          let organizationId = appState.activeOrganizationId
+                          let organizationId = appState.activeOrganizationId,
+                          let projectId = appState.activeProjectId,
+                          let actorUserId = appState.currentUserId
                     else { return }
                     let result = await OfflineActionQueue.shared.drain(
                         api: api,
-                        organizationId: organizationId
+                        organizationId: organizationId,
+                        actorUserId: actorUserId,
+                        projectId: projectId
                     )
                     print("[offline-queue] drained on reconnect: \(result.success) ok, \(result.failed) failed")
                     await appState.discoveryCoordinator.refreshAuthoritative(useServerListFallback: true)
@@ -459,7 +495,9 @@ struct RootView: View {
             )
         }
         .onOpenURL { url in
-            _ = appState.handleLeadgridURL(url)
+            Task { @MainActor in
+                _ = await appState.handleLeadgridURL(url)
+            }
         }
         // Lytt på alle WebSocket-events globalt så vi kan trigge
         // pulse-animasjon på nye pins uavhengig av hvilken fane er åpen.
@@ -747,11 +785,9 @@ struct PhoneMerTab: View {
                         merRow(.canvas, icon: "pencil.and.outline", color: .purple,
                                title: "Canvas", subtitle: "Pencil-notater koblet til leads")
                     }
-                    // Market Scan (ekte AI-bedrifts-discovery) + Research/
-                    // Analytics/Billing/Pipeline-Kanban m.m. — ferdig bygd,
-                    // men uoppnåelig herfra før nå (2026-08-19).
+                    // Spesialiserte CRM-flater uten egen hovedfane eller profilplassering.
                     merRow(.hub, icon: "magnifyingglass.circle.fill", color: .pink,
-                           title: "Verktøy", subtitle: "Market Scan, research, analyse, faktura")
+                           title: "Verktøy", subtitle: "Research, analyse og rapportering")
                 }
             }
             .navigationTitle("Mer")
@@ -1010,13 +1046,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
     case kvalitet
     case anbud
     case canvas
-    /// «Leadgrid CRM»-hub (2026-08-19, Daniel-feedback) — Market Scan
-    /// (ekte AI-bedrifts-discovery: Claude + Brreg + Google Places, auto-
-    /// oppretter leads) + Research/Analytics/Billing/Pipeline-Kanban/NBA/
-    /// Partner-program/AI-kost m.m. Alt var 100% ferdig bygd (LeadgridHubView
-    /// + 15 undersider) men helt uoppnåelig — ingen navigasjon linket dit,
-    /// verken på iPad-sidebar eller iPhone (kun MoreTabView pekte på den,
-    /// og MoreTabView selv ble aldri instansiert noe sted).
+    /// Spesialiserte CRM-verktøy samlet bak Mer → Verktøy.
     case hub
     /// Bekreftelsesstyrt Leadgrid-agent med seks lead-skills.
     case agent

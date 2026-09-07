@@ -409,19 +409,51 @@ export async function lookupCompanyForNewLead(
   };
 }
 
+interface LeadEnrichmentScopeInput {
+  leadId: string;
+  workspaceOwnerUserId: string;
+  organizationId?: string | null;
+  projectId?: string | null;
+}
+
+function buildLeadEnrichmentScope(args: LeadEnrichmentScopeInput): {
+  predicate: string;
+  values: unknown[];
+} {
+  if (args.projectId && !args.organizationId) {
+    throw new Error("project_scope_requires_organization");
+  }
+  if (args.organizationId && args.projectId) {
+    return {
+      predicate: "id = $1 AND organization_id = $2::uuid AND project_id = $3",
+      values: [args.leadId, args.organizationId, args.projectId],
+    };
+  }
+  if (args.organizationId) {
+    return {
+      predicate: "id = $1 AND organization_id = $2::uuid",
+      values: [args.leadId, args.organizationId],
+    };
+  }
+  return {
+    predicate: "id = $1 AND owner_user_id = $2",
+    values: [args.leadId, args.workspaceOwnerUserId],
+  };
+}
+
 export async function enrichLeadWithBrreg(
   pool: Pool,
   args: {
     leadId: string;
     workspaceOwnerUserId: string;
     organizationId?: string | null;
+    projectId?: string | null;
     forceRefresh?: boolean;
     /** Nattlig jobb: krever navne-match-vakt og merker resultatet autoLinked. */
     autoMode?: boolean;
   },
 ): Promise<EnrichmentResult> {
-  const scopeColumn = args.organizationId ? "organization_id" : "owner_user_id";
-  const scopeValue = args.organizationId ?? args.workspaceOwnerUserId;
+  const scope = buildLeadEnrichmentScope(args);
   // 1. Hent lead m/ scope
   const lr = await pool.query<{
     id: string; name: string; enrichment_org_nr: string | null;
@@ -429,8 +461,8 @@ export async function enrichLeadWithBrreg(
   }>(
     `SELECT id::text, name, enrichment_org_nr, enriched_at::text
        FROM crm_customers
-      WHERE id = $1 AND ${scopeColumn} = $2`,
-    [args.leadId, scopeValue],
+      WHERE ${scope.predicate}`,
+    scope.values,
   );
   if (lr.rows.length === 0) {
     throw new Error("lead_not_found");
@@ -452,9 +484,11 @@ export async function enrichLeadWithBrreg(
         matchedName: hit.navn,
       };
       await pool.query(
-        `UPDATE crm_customers SET enrichment_data = $3::jsonb, enriched_at = NOW()
-          WHERE id = $1 AND ${scopeColumn} = $2`,
-        [lead.id, scopeValue, JSON.stringify(result)],
+        `UPDATE crm_customers
+            SET enrichment_data = $${scope.values.length + 1}::jsonb,
+                enriched_at = NOW()
+          WHERE ${scope.predicate}`,
+        [...scope.values, JSON.stringify(result)],
       );
       return result;
     }
@@ -472,10 +506,10 @@ export async function enrichLeadWithBrreg(
       // Lagre "ikke funnet" for å unngå å spørre igjen
       await pool.query(
         `UPDATE crm_customers
-            SET enrichment_data = $3::jsonb,
+            SET enrichment_data = $${scope.values.length + 1}::jsonb,
                 enriched_at = NOW()
-          WHERE id = $1 AND ${scopeColumn} = $2`,
-        [lead.id, scopeValue, JSON.stringify(result)],
+          WHERE ${scope.predicate}`,
+        [...scope.values, JSON.stringify(result)],
       );
       return result;
     }
@@ -531,11 +565,11 @@ export async function enrichLeadWithBrreg(
   // 4. Persistere
   await pool.query(
     `UPDATE crm_customers
-        SET enrichment_data = $3::jsonb,
-            enrichment_org_nr = $4,
+        SET enrichment_data = $${scope.values.length + 1}::jsonb,
+            enrichment_org_nr = $${scope.values.length + 2},
             enriched_at = NOW()
-      WHERE id = $1 AND ${scopeColumn} = $2`,
-    [lead.id, scopeValue, JSON.stringify(result), orgNr],
+      WHERE ${scope.predicate}`,
+    [...scope.values, JSON.stringify(result), orgNr],
   );
 
   return result;
@@ -544,18 +578,22 @@ export async function enrichLeadWithBrreg(
 /** Hent allerede lagret berikkelse. Re-fetcher hvis eldre enn 30 dager. */
 export async function getStoredEnrichment(
   pool: Pool,
-  args: { leadId: string; workspaceOwnerUserId: string; organizationId?: string | null },
+  args: {
+    leadId: string;
+    workspaceOwnerUserId: string;
+    organizationId?: string | null;
+    projectId?: string | null;
+  },
 ): Promise<EnrichmentResult | null> {
-  const scopeColumn = args.organizationId ? "organization_id" : "owner_user_id";
-  const scopeValue = args.organizationId ?? args.workspaceOwnerUserId;
+  const scope = buildLeadEnrichmentScope(args);
   const r = await pool.query<{
     enrichment_data: EnrichmentResult | null;
     enriched_at: string | null;
   }>(
     `SELECT enrichment_data, enriched_at::text
        FROM crm_customers
-      WHERE id = $1 AND ${scopeColumn} = $2`,
-    [args.leadId, scopeValue],
+      WHERE ${scope.predicate}`,
+    scope.values,
   );
   if (r.rows.length === 0 || !r.rows[0].enrichment_data) return null;
   return r.rows[0].enrichment_data;

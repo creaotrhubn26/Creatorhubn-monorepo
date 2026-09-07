@@ -29,7 +29,11 @@ describe("Leadgrid project discovery context", () => {
               id: projectId,
               name: "Leadgrid salg",
               description: "Vi hjelper økonomiteam med automatisering.",
+              project_type: "b2b_sales",
               industry: "regnskapsbyråer",
+              status: "active",
+              created_by: userId,
+              member_role: "owner",
               organization_id: organizationId,
             },
           ],
@@ -68,8 +72,10 @@ describe("Leadgrid project discovery context", () => {
     });
     const [projectSql, projectParams] = query.mock.calls[0];
     expect(String(projectSql)).toContain("FROM leadgrid_projects p");
-    expect(String(projectSql)).toContain("FROM organization_members om");
-    expect(String(projectSql)).toContain("p.organization_id IS NULL");
+    expect(String(projectSql)).toContain("LEFT JOIN organization_members om");
+    expect(String(projectSql)).toContain("LEFT JOIN leadgrid_project_members pm");
+    expect(String(projectSql)).toContain("projects.view_all");
+    expect(String(projectSql)).toContain("p.organization_id IS NOT NULL");
     expect(String(projectSql)).toContain("p.created_by = $2");
     expect(String(projectSql)).toContain("'archived', 'deleted'");
     expect(String(projectSql)).not.toContain("casting_projects");
@@ -81,7 +87,9 @@ describe("Leadgrid project discovery context", () => {
       const sql = String(sqlValue);
       expect(sql).toContain("FROM leadgrid_projects p");
       expect(sql).toContain("om.user_id = $2");
-      expect(sql).toContain("p.organization_id IS NULL AND p.created_by = $2");
+      expect(sql).toContain("pm.user_id IS NOT NULL");
+      expect(sql).toContain("denied.effect = 'revoke'");
+      expect(sql).toContain("p.organization_id IS NOT NULL");
       expect(sql).not.toContain("owned_lead");
       expect(params).toEqual(["foreign-project", "user-1"]);
       return { rows: [] };

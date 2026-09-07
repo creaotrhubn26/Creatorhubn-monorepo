@@ -327,10 +327,11 @@ struct SuperAdminHubView: View {
                     }
 
                     Section("Lead-Map detalj") {
-                        NavigationLink {
-                            SuperAdminLeadMapPlacesView(api: api)
+                        Button {
+                            appState.discoveryCoordinator.showWorkspace()
                         } label: {
-                            Label("Places-import (Google Places)", systemImage: "mappin.and.ellipse")
+                            Label("Discovery V2", systemImage: "scope")
+                                .foregroundStyle(.primary)
                         }
                     }
 
@@ -364,6 +365,15 @@ struct SuperAdminHubView: View {
                     .ignoresSafeArea()
             )
             .scrollContentBackground(.hidden)
+            .fullScreenCover(isPresented: Binding(
+                get: { appState.discoveryCoordinator.isPresented },
+                set: { presented in
+                    if presented { appState.discoveryCoordinator.showWorkspace() }
+                    else { appState.discoveryCoordinator.dismissWorkspace() }
+                }
+            )) {
+                DiscoveryWorkspaceView(coordinator: appState.discoveryCoordinator)
+            }
         }
     }
 }

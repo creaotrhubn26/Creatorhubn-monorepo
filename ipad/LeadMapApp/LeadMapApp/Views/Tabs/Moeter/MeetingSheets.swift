@@ -62,27 +62,14 @@ struct StartMeetingSheet: View {
             switch self {
             case .checkIn:    return "Marker oppmøte + start timer"
             case .facetime:   return "Apple — alle plattformer"
-            case .googleMeet: return "Auto-generert lenke"
+            case .googleMeet: return "Krever lagret møtelenke"
             case .phone:      return "Ring kontakt direkte"
             }
         }
     }
 
     private var availableModes: [Mode] {
-        DemoModeManager.isActiveNonisolated ? Mode.allCases : [.checkIn]
-    }
-
-    /// Eksterne møte-/telefonlenker har foreløpig ingen sann datakilde.
-    /// De er derfor kun tilgjengelige i eksplisitt demo-modus.
-    private func link(for mode: Mode) -> String? {
-        guard DemoModeManager.isActiveNonisolated else { return nil }
-        let short = String(UUID().uuidString.prefix(8)).lowercased()
-        switch mode {
-        case .facetime:   return "https://facetime.apple.com/join#v=1&p=\(short)"
-        case .googleMeet: return "https://meet.google.com/\(short.prefix(3))-\(short.dropFirst(3).prefix(4))-\(short.suffix(3))"
-        case .phone:      return "tel://+4790012345"
-        case .checkIn:    return nil
-        }
+        [.checkIn]
     }
 
     var body: some View {
@@ -91,7 +78,7 @@ struct StartMeetingSheet: View {
                 VStack(spacing: 16) {
                     meetingHeader
                     modeGrid
-                    if mode == .checkIn { checkInCard } else if let l = link(for: mode) { linkCard(l) }
+                    checkInCard
                     if let startError {
                         Text(startError)
                             .font(.appScaled(size: 11, weight: .semibold))
@@ -232,38 +219,6 @@ struct StartMeetingSheet: View {
         .overlay(RoundedRectangle(cornerRadius: 13).stroke(SBrand.stroke, lineWidth: 1))
     }
 
-    private func linkCard(_ link: String) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 9) {
-                Image(systemName: mode.icon)
-                    .font(.appScaled(size: 13))
-                    .foregroundStyle(mode.color)
-                Text(mode == .phone ? "Telefon-nummer" : "\(mode.rawValue)-lenke")
-                    .font(.appScaled(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-                Spacer()
-                Button {
-                    UIPasteboard.general.string = link
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                        .font(.appScaled(size: 12))
-                        .foregroundStyle(SBrand.purpleLight)
-                }
-                .buttonStyle(.plain)
-            }
-            Text(link)
-                .font(.appScaled(size: 11, design: .monospaced))
-                .foregroundStyle(SBrand.textSecondary)
-                .lineLimit(2)
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(SBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
-        }
-        .padding(14)
-        .background(SBrand.card, in: RoundedRectangle(cornerRadius: 13))
-        .overlay(RoundedRectangle(cornerRadius: 13).stroke(SBrand.stroke, lineWidth: 1))
-    }
-
     private var actionBar: some View {
         VStack(spacing: 8) {
         if let onAvsluttOgLogg {
@@ -318,9 +273,6 @@ struct StartMeetingSheet: View {
     private func startMeeting() async {
         guard !starting else { return }
         if DemoModeManager.isActiveNonisolated {
-            if let link = link(for: mode), let url = URL(string: link) {
-                await UIApplication.shared.open(url)
-            }
             dismiss()
             return
         }
@@ -592,6 +544,11 @@ struct LogNoteSheet: View {
             saveError = "Ingen aktiv tilkobling. Notatet ble ikke lagret."
             return
         }
+        guard let projectId = appState.activeProjectId,
+              !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            saveError = "Velg et kundeprosjekt før du lagrer notatet."
+            return
+        }
         saving = true
         saveError = nil
         defer { saving = false }
@@ -600,6 +557,7 @@ struct LogNoteSheet: View {
                 leadId: meeting.id.uuidString.lowercased(),
                 body: "[\(category.rawValue)] \(trimmed)",
                 pinned: pinned,
+                projectId: projectId,
                 organizationId: appState.activeOrganizationId
             )
             await appState.refreshAll()
@@ -643,7 +601,6 @@ struct LeadDetailStub: View {
                     hero
                     statsRow
                     contactCard
-                    activitySummary
                     Color.clear.frame(height: 16)
                 }
                 .padding(20)
@@ -754,35 +711,4 @@ struct LeadDetailStub: View {
         .overlay(RoundedRectangle(cornerRadius: 13).stroke(SBrand.stroke, lineWidth: 1))
     }
 
-    private var activitySummary: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Text("Siste aktivitet")
-                .font(.appScaled(size: 12, weight: .bold))
-                .foregroundStyle(.white)
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle().fill(SBrand.blue.opacity(0.20))
-                    Image(systemName: "envelope.fill")
-                        .font(.appScaled(size: 11, weight: .semibold))
-                        .foregroundStyle(SBrand.blue)
-                }
-                .frame(width: 30, height: 30)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Tilbud sendt")
-                        .font(.appScaled(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Text("15. mai 14:18 · Lars Kristensen")
-                        .font(.appScaled(size: 10))
-                        .foregroundStyle(SBrand.textSecondary)
-                }
-                Spacer()
-            }
-            .padding(10)
-            .background(SBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-        }
-        .padding(14)
-        .background(SBrand.card, in: RoundedRectangle(cornerRadius: 13))
-        .overlay(RoundedRectangle(cornerRadius: 13).stroke(SBrand.stroke, lineWidth: 1))
-    }
 }
-

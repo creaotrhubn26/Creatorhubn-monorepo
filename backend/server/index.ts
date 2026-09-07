@@ -612,10 +612,8 @@ import { registerLeadgridAIUsageRoutes } from "./leadgrid-ai-usage-routes.js";
 import { registerLeadgridForecastingRoutes } from "./leadgrid-forecasting-routes.js";
 import { registerLeadgridMomentumRoutes } from "./leadgrid-momentum-routes.js";
 import { registerLeadgridImportRoutes } from "./leadgrid-import-routes.js";
-import { registerLeadgridUrlResearchRoutes } from "./leadgrid-url-research-routes.js";
 import { registerLeadgridContinuousDiscoveryCron } from "./leadgrid-continuous-discovery.js";
 import { registerLeadgridDiscoveryRoutes } from "./leadgrid-discovery-routes.js";
-import { registerUrlResearchResumeCron } from "./leadgrid-url-batch-processor.js";
 import { registerLeadgridDiscoveryConfigRoutes } from "./leadgrid-discovery-config-routes.js";
 import { registerLeadgridIndustriesRoutes } from "./leadgrid-industries-routes.js";
 import { registerLeadgridDealsRoutes } from "./leadgrid-deals-routes.js";
@@ -625,6 +623,7 @@ import { registerLeadgridWorkflowWebhookRoutes } from "./leadgrid-workflow-webho
 import { registerLeadgridWorkflowTriggerRoutes } from "./leadgrid-workflow-triggers-routes.js";
 import { registerLeadgridWebhookRotationRoutes } from "./leadgrid-webhook-rotation-routes.js";
 import { registerLeadgridPublicApiV1 } from "./leadgrid-public-api-v1.js";
+import { registerLeadgridPublicOutcomeRoutes } from "./leadgrid-public-outcome-routes.js";
 import { registerLeadgridApiKeyMgmtRoutes } from "./leadgrid-api-key-mgmt-routes.js";
 import { registerLeadgridOpenApiRoutes } from "./leadgrid-openapi-routes.js";
 import { registerLeadgridTerritoryRoutes } from "./leadgrid-territory-routes.js";
@@ -635,6 +634,7 @@ import { registerLeadgridAgentBridgeRoutes } from "./leadgrid-agent-bridge-route
 import { registerLeadScoutRoutes } from "./lead-scout-routes.js";
 import { registerLeadPresetRoutes } from "./lead-preset-routes.js";
 import { registerLeadRulesRoutes } from "./lead-rules-routes.js";
+import { registerLeadRulesCron } from "./lead-rules-cron.js";
 import { registerLeadPortfolioRoutes } from "./lead-portfolio-routes.js";
 import { registerCustomerAutoOnboardRoutes } from "./customer-auto-onboard-routes.js";
 import { registerClientPortalRoutes } from "./leadgrid-client-portal-routes.js";
@@ -2218,6 +2218,7 @@ const leadMapSessionHydrator = createLeadMapSessionHydrator(
   activeSessions,
 );
 app.use("/api/admin-room/lead-map", leadMapSessionHydrator);
+app.use("/api/lead-map", leadMapSessionHydrator);
 app.use("/api/leadgrid", leadMapSessionHydrator);
 app.use("/api/auth/user", leadMapSessionHydrator);
 // Role Room agent guards are intentionally synchronous, so warm their
@@ -25535,20 +25536,20 @@ registerLeadgridMomentumRoutes({ app, pool, activeSessions });
 //   GET  /api/leadgrid/import/batches
 // Gated på leads.import_csv.
 registerLeadgridImportRoutes({ app, pool, activeSessions });
-// URL Research → draft-lead → pin på kartet (mig 328 + mig 0351).
-// Gjenbruker Role Room Agents orchestrator-stack (Brreg + Places +
-// Claude). Endpoints:
-//   Enkelt-URL (mig 328):
-//     POST /api/leadgrid/url-research/{start,run,commit,refresh-section}
-//     GET  /api/leadgrid/url-research/preview/:draft_lead_id
-//   Bulk-URL (mig 0351):
-//     POST /api/leadgrid/url-research/batch
-//     GET  /api/leadgrid/url-research/batches/:id
-//     GET  /api/leadgrid/url-research/batches/:id/poll
-//     POST /api/leadgrid/url-research/batches/:id/commit-all
-//     POST /api/leadgrid/url-research/batches/:id/cancel
-// Gated på leads.import_url.
-registerLeadgridUrlResearchRoutes({ app, pool, activeSessions });
+// Legacy URL Research persisted raw Google Places payloads without a
+// customer-project boundary or Discovery V2 attestation. Keep one
+// authenticated tombstone for every method/subpath while a safe, project-bound
+// website-research source is redesigned on top of Discovery V2.
+app.use("/api/leadgrid/url-research", (req, res) => {
+  if (!requireUserSession(req, res)) return;
+  res.setHeader("Cache-Control", "no-store");
+  res.status(410).json({
+    error: "legacy_url_research_retired",
+    message:
+      "URL Research er erstattet av prosjektbundet Discovery V2 med manuell kandidatgodkjenning.",
+    replacement: "/api/leadgrid/projects/:projectId/discovery/profiles",
+  });
+});
 // Legacy Google-based Discovery is permanently fail-closed. Historical code
 // is intentionally not imported into the production graph; all new work uses
 // the review-first, BRREG-backed v2 contract below.
@@ -25570,11 +25571,6 @@ registerLeadgridDiscoveryRoutes({ app, pool, activeSessions });
 // for auto_discover_enabled prosjekter.
 registerLeadgridDiscoveryConfigRoutes({ app, pool, activeSessions });
 registerLeadgridContinuousDiscoveryCron(pool);
-// Resume-sweeper for URL-research: batcher som dør ved deploy/restart
-// (items fastlåst i 'running', batch i 'pending'/'running') gjenopptas
-// ved boot (+45s) og hver time. Fikser prod-funnet 2026-07-03 der 5
-// batcher/49 items sto fast siden 2026-06-28.
-registerUrlResearchResumeCron(pool);
 // Industries-katalog + member-spesialiseringer (mig 329).
 // 3-lags bransje-system: industries (global+custom) + crm_customers.industry_id
 // + organization_member_industries (sales-rep × bransje × expertise).
@@ -25611,6 +25607,7 @@ registerLeadgridWebhookRotationRoutes({ app, pool, activeSessions });
 // Stabilt schema for 3.-parts-integrasjoner (Salesforce, HubSpot, custom).
 // /api/v1/leads, /api/v1/recommendations, /api/v1/health auth via lgk_-key.
 registerLeadgridPublicApiV1({ app, pool });
+registerLeadgridPublicOutcomeRoutes({ app, pool });
 // Admin-management av API-keys (session-auth, gated på api_keys.*).
 registerLeadgridApiKeyMgmtRoutes({ app, pool, activeSessions });
 // Swagger UI på /api/v1/docs + OpenAPI 3.1-spec på /api/v1/openapi.json.
@@ -25642,6 +25639,8 @@ registerLeadScoutRoutes({ app, pool, activeSessions });
 registerLeadPresetRoutes({ app, pool, activeSessions });
 // IF/THEN automation-regler m/ engine + audit
 registerLeadRulesRoutes({ app, pool, activeSessions });
+// Varig, prosjektbundet kø for cron_hourly/cron_daily-regler.
+registerLeadRulesCron(pool);
 // Prosjekt-portefølje (alle kundeprosjekter for én org m/ score+needs)
 registerLeadPortfolioRoutes({ app, pool, activeSessions });
 // Selv-onboarding (BRREG + crawl + scout + invite til klient-portal)

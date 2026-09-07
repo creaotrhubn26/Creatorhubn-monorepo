@@ -22,7 +22,6 @@ import {
   TIER_PRICING_NOK,
   type LeadMapTier,
 } from "./lead-map-entitlements-service.js";
-import { autoPopulateLeadMap } from "./lead-map-discovery-populate.js";
 import Stripe from "stripe";
 import {
   createLeadFromPin,
@@ -32,18 +31,17 @@ import {
   generateLeadPitch,
   getLeadById,
   getLeadMapMetrics,
-  importPlaceAsLead,
   listLeadsInBounds,
   listRecentActivities,
   listVisits,
   logVisit,
-  searchPlaces,
   setLeadGeo,
   updateLeadStatus,
   type ActivityKind,
   type ActivityOutcome,
   type LeadStatus,
   type VisitType,
+  VisitIdempotencyConflictError,
 } from "./lead-map-service.js";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
 import {
@@ -52,8 +50,15 @@ import {
   resolveLeadOrganizationScope,
   sendLeadMapOrganizationScopeError,
 } from "./lead-map-org-scope.js";
+import {
+  LeadMapProjectScopeError,
+  requestedLeadMapProjectId,
+  sendLeadMapProjectScopeError,
+} from "./lead-map-project-scope.js";
 import { resolveLeadMapSession } from "./lead-map-session-helper.js";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
+import { loadAccessibleLeadgridProject } from "./leadgrid-project-access.js";
+import { loadAccessibleLeadgridLead } from "./leadgrid-lead-access.js";
 import {
   hashLeadCreationBody,
   LeadCreationValidationError,
@@ -62,6 +67,7 @@ import {
   parseLeadCreationIdempotencyKey,
 } from "./lead-map-create-contract.js";
 import { CardLeadProjectScopeError, createCardLead } from "./lead-map-card-service.js";
+import { hashLeadVisitRequest } from "./lead-map-visit-contract.js";
 
 /** Bygger notes-feltet for crm_customers fra visittkort-payload */
 function buildNotes(body: {
@@ -103,11 +109,11 @@ const VALID_STATUSES: ReadonlySet<LeadStatus> = new Set([
 ]);
 
 const VALID_VISIT_TYPES: ReadonlySet<VisitType> = new Set([
-  'physical', 'phone', 'email', 'online_meeting', 'research',
+  'physical', 'phone', 'sms', 'whatsapp', 'email', 'online_meeting', 'research',
 ]);
 
 const VALID_ACTIVITY_KINDS: ReadonlySet<ActivityKind> = new Set([
-  'call', 'email', 'meeting', 'note', 'visit', 'demo', 'proposal', 'deal_close',
+  'call', 'sms', 'whatsapp', 'email', 'meeting', 'note', 'visit', 'demo', 'proposal', 'deal_close',
 ]);
 const VALID_ACTIVITY_OUTCOMES: ReadonlySet<ActivityOutcome> = new Set([
   'no_answer', 'spoke', 'meeting_booked', 'proposal_sent',
@@ -123,6 +129,16 @@ function getStripe(): Stripe | null {
   return stripeClient;
 }
 
+function sendLegacyPlacesRetired(res: Response): Response {
+  return res.status(410).json({
+    error: "legacy_places_flow_retired",
+    message:
+      "Direkte Google Places-søk og -import er avviklet. Bruk en prosjektbundet Discovery V2-profil, åpne et transient detaljoppslag og godkjenn kandidaten manuelt.",
+    replacement:
+      "/api/leadgrid/projects/:projectId/discovery/profiles",
+  });
+}
+
 export function setupLeadMapRoutes(deps: Deps): void {
   const { app, pool, activeSessions } = deps;
 
@@ -133,6 +149,48 @@ export function setupLeadMapRoutes(deps: Deps): void {
     return leadId
       ? resolveLeadOrganizationScope(pool, userId, leadId, requested)
       : resolveAuthorizedLeadMapOrganization(pool, userId, requested);
+  }
+
+  async function leadProjectScope(
+    req: Request,
+    userId: string,
+    leadId: string,
+  ) {
+    const lead = await loadAccessibleLeadgridLead(pool, { leadId, userId });
+    const requestedProjectId = requestedLeadMapProjectId(req);
+    const requestedOrganizationId = requestedLeadMapOrganizationId(req);
+    if (
+      !lead
+      || (requestedProjectId && requestedProjectId !== lead.projectId)
+      || (requestedOrganizationId
+        && requestedOrganizationId !== lead.organizationId)
+    ) {
+      throw new LeadMapProjectScopeError(404, "project_not_found");
+    }
+    return {
+      organizationId: lead.organizationId,
+      projectId: lead.projectId,
+    };
+  }
+
+  async function requestedProjectScope(req: Request, userId: string) {
+    const projectId = requestedLeadMapProjectId(req);
+    if (!projectId) {
+      throw new LeadMapProjectScopeError(400, "project_id_required");
+    }
+    const project = await loadAccessibleLeadgridProject(pool, projectId, userId);
+    const requestedOrganizationId = requestedLeadMapOrganizationId(req);
+    if (
+      !project
+      || (requestedOrganizationId
+        && requestedOrganizationId !== project.organizationId)
+    ) {
+      throw new LeadMapProjectScopeError(404, "project_not_found");
+    }
+    return {
+      organizationId: project.organizationId,
+      projectId: project.id,
+    };
   }
 
   // Helper: krev aktiv entitlement (returnerer 402 hvis ikke)
@@ -187,13 +245,32 @@ export function setupLeadMapRoutes(deps: Deps): void {
         }
         return res.status(400).json({ error: "ugyldig_payload" });
       }
+      if (!body.projectId) {
+        return res.status(400).json({ error: "project_id_required" });
+      }
+      if (body.googlePlaceId) {
+        return res.status(400).json({
+          error: "google_place_id_requires_discovery_attestation",
+        });
+      }
       try {
-        const organizationId =
-          (await organizationScope(req, session.userId))
-          ?? (await resolveOrgIdForUser(pool, session.userId));
+        const project = await loadAccessibleLeadgridProject(
+          pool,
+          body.projectId,
+          session.userId,
+        );
+        const requestedOrganizationId = requestedLeadMapOrganizationId(req);
+        if (
+          !project
+          || (requestedOrganizationId
+            && requestedOrganizationId !== project.organizationId)
+        ) {
+          return res.status(404).json({ error: "project_not_found" });
+        }
         const candidates = await findLeadDuplicateCandidates(pool, {
           ...body,
-          organizationId,
+          organizationId: project.organizationId,
+          projectId: project.id,
         });
         return res.json({ candidates: duplicateCandidatesPayload(candidates) });
       } catch (error) {
@@ -238,16 +315,36 @@ export function setupLeadMapRoutes(deps: Deps): void {
         }
         return res.status(400).json({ error: "ugyldig_payload" });
       }
+      if (!body.projectId) {
+        return res.status(400).json({ error: "project_id_required" });
+      }
+      if (body.googlePlaceId) {
+        return res.status(400).json({
+          error: "google_place_id_requires_discovery_attestation",
+        });
+      }
 
       let organizationId: string | null = null;
       try {
-        organizationId =
-          (await organizationScope(req, session.userId))
-          ?? (await resolveOrgIdForUser(pool, session.userId));
+        const project = await loadAccessibleLeadgridProject(
+          pool,
+          body.projectId,
+          session.userId,
+        );
+        const requestedOrganizationId = requestedLeadMapOrganizationId(req);
+        if (
+          !project
+          || (requestedOrganizationId
+            && requestedOrganizationId !== project.organizationId)
+        ) {
+          return res.status(404).json({ error: "project_not_found" });
+        }
+        organizationId = project.organizationId;
         const creation = await createLeadFromPin(pool, {
           ...body,
           ownerUserId: session.userId,
           organizationId,
+          projectId: project.id,
           idempotencyKey,
           requestHash: idempotencyKey ? hashLeadCreationBody(body) : null,
           allowDuplicate,
@@ -263,10 +360,12 @@ export function setupLeadMapRoutes(deps: Deps): void {
               await publishEvent({
                 pool,
                 organizationId,
+                projectId: project.id,
                 type: "lead.created",
                 leadId: creation.id,
                 actorUserId: session.userId,
                 data: {
+                  project_id: project.id,
                   source: body.leadSource,
                   lead_status: body.leadStatus,
                   lead_temperature: body.leadTemperature,
@@ -295,6 +394,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
           const candidates = await findLeadDuplicateCandidates(pool, {
             ...body,
             organizationId,
+            projectId: body.projectId,
           }).catch(() => []);
           return res.status(409).json({
             error: "duplicate_conflict",
@@ -337,16 +437,19 @@ export function setupLeadMapRoutes(deps: Deps): void {
       ? req.query.category.split(',')
       : undefined;
 
-    const projectId = typeof req.query.projectId === 'string' && req.query.projectId.length > 0
-      ? req.query.projectId
-      : null;
     try {
-      const organizationId = await organizationScope(req, session.userId);
+      const scope = await requestedProjectScope(req, session.userId);
       const leads = await listLeadsInBounds(pool, {
-        ownerUserId: session.userId, organizationId, projectId, bounds, statusFilter, categoryFilter,
+        ownerUserId: session.userId,
+        organizationId: scope.organizationId,
+        projectId: scope.projectId,
+        bounds,
+        statusFilter,
+        categoryFilter,
       });
       return res.json({ leads });
     } catch (err) {
+      if (sendLeadMapProjectScopeError(err, res)) return;
       if (sendLeadMapOrganizationScopeError(err, res)) return;
       return res.status(500).json({ error: "leads_failed", detail: "internal_error" });
     }
@@ -357,11 +460,16 @@ export function setupLeadMapRoutes(deps: Deps): void {
     const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     try {
-      const organizationId = await organizationScope(req, session.userId, req.params.id);
-      const lead = await getLeadById(pool, { ownerUserId: session.userId, organizationId }, req.params.id);
+      const scope = await leadProjectScope(req, session.userId, req.params.id);
+      const lead = await getLeadById(pool, {
+        ownerUserId: session.userId,
+        organizationId: scope.organizationId,
+        projectId: scope.projectId,
+      }, req.params.id);
       if (!lead) return res.status(404).json({ error: "not_found" });
       return res.json(lead);
     } catch (err) {
+      if (sendLeadMapProjectScopeError(err, res)) return;
       if (sendLeadMapOrganizationScopeError(err, res)) return;
       return res.status(500).json({ error: "lead_failed", detail: "internal_error" });
     }
@@ -376,21 +484,34 @@ export function setupLeadMapRoutes(deps: Deps): void {
     from: string | null;
     to: string;
     userId: string;
+    organizationId?: string | null;
+    projectId?: string | null;
   }): void {
     void (async () => {
       try {
-        const { resolveOrgIdForUser } = await import("./leadgrid-org-resolver.js");
         const { publishEvent } = await import("./leadgrid-workflow-engine.js");
-        const orgId = await resolveOrgIdForUser(pool, opts.userId);
+        const lead = await loadAccessibleLeadgridLead(pool, {
+          leadId: opts.leadId,
+          userId: opts.userId,
+        });
+        if (
+          !lead ||
+          (opts.organizationId && opts.organizationId !== lead.organizationId) ||
+          (opts.projectId && opts.projectId !== lead.projectId)
+        ) {
+          return;
+        }
         await publishEvent({
           pool,
-          organizationId: orgId,
+          organizationId: lead.organizationId,
+          projectId: lead.projectId,
           type: "lead.status_changed",
           leadId: opts.leadId,
           actorUserId: opts.userId,
           data: {
             from: opts.from,
             to: opts.to,
+            project_id: lead.projectId,
             occurred_at: new Date().toISOString(),
           },
         });
@@ -412,10 +533,11 @@ export function setupLeadMapRoutes(deps: Deps): void {
       return res.status(400).json({ error: "ugyldig_status" });
     }
     try {
-      const organizationId = await organizationScope(req, session.userId, req.params.id);
+      const scope = await leadProjectScope(req, session.userId, req.params.id);
       const r = await updateLeadStatus(pool, {
         ownerUserId: session.userId,
-        organizationId,
+        organizationId: scope.organizationId,
+        projectId: scope.projectId,
         leadId: req.params.id,
         status: body.status as LeadStatus,
         notes: body.notes,
@@ -438,11 +560,14 @@ export function setupLeadMapRoutes(deps: Deps): void {
           from: oldStatus,
           to: body.status,
           userId: session.userId,
+          organizationId: scope.organizationId,
+          projectId: scope.projectId,
         });
       }
 
       return res.json(r);
     } catch (err) {
+      if (sendLeadMapProjectScopeError(err, res)) return;
       if (sendLeadMapOrganizationScopeError(err, res)) return;
       return res.status(500).json({ error: "status_failed", detail: "internal_error" });
     }
@@ -465,11 +590,21 @@ export function setupLeadMapRoutes(deps: Deps): void {
       return res.status(400).json({ error: "ugyldig_temperatur" });
     }
     try {
-      const organizationId = await organizationScope(req, session.userId, req.params.id);
+      const scope = await leadProjectScope(req, session.userId, req.params.id);
       const scopeParams: unknown[] = [req.params.id];
-      const scopeClause = organizationId
-        ? (scopeParams.push(organizationId), `organization_id = $${scopeParams.length}::uuid`)
-        : (scopeParams.push(session.userId), `owner_user_id = $${scopeParams.length}`);
+      const scopeClauses: string[] = [];
+      if (scope.organizationId) {
+        scopeParams.push(scope.organizationId);
+        scopeClauses.push(`organization_id = $${scopeParams.length}::uuid`);
+      } else {
+        scopeParams.push(session.userId);
+        scopeClauses.push(`owner_user_id = $${scopeParams.length}`);
+      }
+      if (scope.projectId) {
+        scopeParams.push(scope.projectId);
+        scopeClauses.push(`project_id = $${scopeParams.length}`);
+      }
+      const scopeClause = scopeClauses.join(" AND ");
       const prev = await pool.query<{ lead_temperature: string | null }>(
         `SELECT lead_temperature FROM crm_customers WHERE id = $1::uuid AND ${scopeClause}`,
         scopeParams,
@@ -489,16 +624,18 @@ export function setupLeadMapRoutes(deps: Deps): void {
           try {
             const { resolveOrgIdForUser } = await import("./leadgrid-org-resolver.js");
             const { publishEvent } = await import("./leadgrid-workflow-engine.js");
-            const orgId = organizationId ?? await resolveOrgIdForUser(pool, session.userId);
+            const orgId = scope.organizationId ?? await resolveOrgIdForUser(pool, session.userId);
             await publishEvent({
               pool,
               organizationId: orgId,
+              projectId: scope.projectId,
               type: "lead.temperature_changed",
               leadId: req.params.id,
               actorUserId: session.userId,
               data: {
                 from: oldTemp,
                 to: body.temperature,
+                project_id: scope.projectId,
                 occurred_at: new Date().toISOString(),
               },
             });
@@ -510,6 +647,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
       return res.json({ ok: true, temperature: body.temperature });
     } catch (err) {
+      if (sendLeadMapProjectScopeError(err, res)) return;
       if (sendLeadMapOrganizationScopeError(err, res)) return;
       return res.status(500).json({ error: "temperature_failed", detail: "internal_error" });
     }
@@ -530,10 +668,11 @@ export function setupLeadMapRoutes(deps: Deps): void {
       return res.status(400).json({ error: "mangler_koordinater" });
     }
     try {
-      const organizationId = await organizationScope(req, session.userId, req.params.id);
+      const scope = await leadProjectScope(req, session.userId, req.params.id);
       const r = await setLeadGeo(pool, {
         ownerUserId: session.userId,
-        organizationId,
+        organizationId: scope.organizationId,
+        projectId: scope.projectId,
         leadId: req.params.id,
         latitude: body.latitude, longitude: body.longitude,
         address: body.address, postalCode: body.postalCode,
@@ -542,12 +681,15 @@ export function setupLeadMapRoutes(deps: Deps): void {
       if (!r.ok) return res.status(404).json({ error: "not_found" });
       return res.json(r);
     } catch (err) {
+      if (sendLeadMapProjectScopeError(err, res)) return;
       if (sendLeadMapOrganizationScopeError(err, res)) return;
       return res.status(500).json({ error: "geo_failed", detail: "internal_error" });
     }
   });
 
   // POST /leads/:id/visits
+  // Idempotency-Key er valgfri for eldre klienter; når den finnes må den
+  // være en stabil UUID for den samme brukerhandlingen og alle retries.
   app.post("/api/admin-room/lead-map/leads/:id/visits",
     requireLeadMapPermission("visits.create", { pool, activeSessions }),
     async (req: Request, res: Response) => {
@@ -591,11 +733,27 @@ export function setupLeadMapRoutes(deps: Deps): void {
       return res.status(400).json({ error: "ugyldig_aktivitetstid" });
     }
 
+    let idempotencyKey: string | null;
     try {
-      const organizationId = await organizationScope(req, session.userId, req.params.id);
+      idempotencyKey = parseLeadCreationIdempotencyKey(
+        req.get("Idempotency-Key"),
+      );
+    } catch (error) {
+      if (error instanceof LeadCreationValidationError) {
+        return res.status(400).json({ error: error.code });
+      }
+      return res.status(400).json({ error: "ugyldig_idempotency_key" });
+    }
+    const requestHash = idempotencyKey
+      ? hashLeadVisitRequest(req.params.id, body)
+      : null;
+
+    try {
+      const scope = await leadProjectScope(req, session.userId, req.params.id);
       const r = await logVisit(pool, {
         ownerUserId: session.userId,
-        organizationId,
+        organizationId: scope.organizationId,
+        projectId: scope.projectId,
         leadId: req.params.id,
         visitType: body.visitType as VisitType,
         contactPerson: body.contactPerson,
@@ -611,22 +769,41 @@ export function setupLeadMapRoutes(deps: Deps): void {
         activityKind: body.activityKind as ActivityKind | undefined,
         outcome: body.outcome as ActivityOutcome | undefined,
         durationMinutes: body.durationMinutes,
+        idempotencyKey,
+        requestHash,
       });
       if (!r.ok) return res.status(404).json({ error: "not_found" });
+      if (r.idempotentReplay) {
+        res.setHeader("Idempotent-Replayed", "true");
+      }
 
       const oldStatus = r.previousStatus ?? null;
-      if (body.newStatus && oldStatus !== body.newStatus) {
+      if (!r.idempotentReplay && body.newStatus && oldStatus !== body.newStatus) {
         publishLeadStatusChanged({
           leadId: req.params.id,
           from: oldStatus,
           to: body.newStatus,
           userId: session.userId,
+          organizationId: scope.organizationId,
+          projectId: scope.projectId,
         });
       }
 
-      return res.json(r);
+      return res.json({
+        ok: true,
+        visitId: r.visitId,
+        previousStatus: r.previousStatus,
+        replayed: r.idempotentReplay === true,
+      });
     } catch (err) {
+      if (sendLeadMapProjectScopeError(err, res)) return;
       if (sendLeadMapOrganizationScopeError(err, res)) return;
+      if (err instanceof VisitIdempotencyConflictError) {
+        return res.status(409).json({
+          error: "idempotency_key_conflict",
+          existing_visit_id: err.existingVisitId,
+        });
+      }
       return res.status(500).json({ error: "visit_failed", detail: "internal_error" });
     }
   });
@@ -636,10 +813,15 @@ export function setupLeadMapRoutes(deps: Deps): void {
     const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     try {
-      const organizationId = await organizationScope(req, session.userId, req.params.id);
-      const visits = await listVisits(pool, { ownerUserId: session.userId, organizationId }, req.params.id, 50);
+      const scope = await leadProjectScope(req, session.userId, req.params.id);
+      const visits = await listVisits(pool, {
+        ownerUserId: session.userId,
+        organizationId: scope.organizationId,
+        projectId: scope.projectId,
+      }, req.params.id, 50);
       return res.json({ visits });
     } catch (err) {
+      if (sendLeadMapProjectScopeError(err, res)) return;
       if (sendLeadMapOrganizationScopeError(err, res)) return;
       return res.status(500).json({ error: "visits_failed", detail: "internal_error" });
     }
@@ -651,10 +833,15 @@ export function setupLeadMapRoutes(deps: Deps): void {
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
     try {
-      const organizationId = await organizationScope(req, session.userId);
-      const activities = await listRecentActivities(pool, { ownerUserId: session.userId, organizationId }, limit);
+      const scope = await requestedProjectScope(req, session.userId);
+      const activities = await listRecentActivities(pool, {
+        ownerUserId: session.userId,
+        organizationId: scope.organizationId,
+        projectId: scope.projectId,
+      }, limit);
       return res.json({ activities });
     } catch (err) {
+      if (sendLeadMapProjectScopeError(err, res)) return;
       if (sendLeadMapOrganizationScopeError(err, res)) return;
       return res.status(500).json({ error: "activities_failed", detail: "internal_error" });
     }
@@ -665,13 +852,15 @@ export function setupLeadMapRoutes(deps: Deps): void {
     const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     try {
-      const projectId = typeof req.query.projectId === 'string' && req.query.projectId.length > 0
-        ? req.query.projectId
-        : null;
-      const organizationId = await organizationScope(req, session.userId);
-      const metrics = await getLeadMapMetrics(pool, { ownerUserId: session.userId, organizationId, projectId });
+      const scope = await requestedProjectScope(req, session.userId);
+      const metrics = await getLeadMapMetrics(pool, {
+        ownerUserId: session.userId,
+        organizationId: scope.organizationId,
+        projectId: scope.projectId,
+      });
       return res.json(metrics);
     } catch (err) {
+      if (sendLeadMapProjectScopeError(err, res)) return;
       if (sendLeadMapOrganizationScopeError(err, res)) return;
       return res.status(500).json({ error: "metrics_failed", detail: "internal_error" });
     }
@@ -685,46 +874,35 @@ export function setupLeadMapRoutes(deps: Deps): void {
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     const body = (req.body ?? {}) as { serviceFocus?: string };
     try {
-      const organizationId = await organizationScope(req, session.userId, req.params.id);
+      const scope = await leadProjectScope(req, session.userId, req.params.id);
       const r = await generateLeadPitch(pool, {
-        ownerUserId: session.userId, organizationId, leadId: req.params.id,
+        ownerUserId: session.userId,
+        organizationId: scope.organizationId,
+        projectId: scope.projectId,
+        leadId: req.params.id,
         serviceFocus: body.serviceFocus,
       });
       if (!r) return res.status(503).json({ error: "ai_unavailable_or_lead_not_found" });
       return res.json(r);
     } catch (err) {
+      if (sendLeadMapProjectScopeError(err, res)) return;
       if (sendLeadMapOrganizationScopeError(err, res)) return;
       return res.status(500).json({ error: "pitch_failed", detail: "internal_error" });
     }
   });
 
-  // POST /places/search — Google Places search
-  app.post("/api/admin-room/lead-map/places/search", async (req: Request, res: Response) => {
-    const session = await getUser(req, pool, activeSessions);
-    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
-
-    const body = (req.body ?? {}) as {
-      query?: string; latitude?: number; longitude?: number;
-      radiusMeters?: number; type?: string;
-    };
-    if (!body.query) return res.status(400).json({ error: "mangler_query" });
-
-    try {
-      const organizationId = await organizationScope(req, session.userId);
-      const r = await searchPlaces(pool, {
-        ownerUserId: session.userId,
-        organizationId,
-        query: body.query,
-        latitude: body.latitude, longitude: body.longitude,
-        radiusMeters: body.radiusMeters ?? 5000,
-        type: body.type,
-      });
-      if (!r.ok) return res.status(503).json({ error: r.reason });
-      return res.json({ results: r.results });
-    } catch (err) {
-      return res.status(500).json({ error: "places_failed", detail: "internal_error" });
-    }
-  });
+  // Legacy broad Places search could bypass Discovery V2 provenance,
+  // attestation and manual approval. It remains registered only to fail closed.
+  app.post(
+    "/api/admin-room/lead-map/places/search",
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) {
+        return res.status(401).json({ error: "Innlogging kreves" });
+      }
+      return sendLegacyPlacesRetired(res);
+    },
+  );
 
   // GET /company-lookup?q= — ekte BRREG-oppslag for «Legg til lead»-skjemaets
   // scan-felt (2026-08-16). Erstatter en klient-side mock som alltid fylte
@@ -841,6 +1019,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
             await publishEvent({
               pool,
               organizationId,
+              projectId: body.project_id ?? "",
               type: "lead.created",
               leadId: cardLeadId,
               actorUserId: session.userId,
@@ -897,15 +1076,35 @@ export function setupLeadMapRoutes(deps: Deps): void {
         }
         return res.status(400).json({ error: "ugyldig_payload" });
       }
+      if (!body.projectId) {
+        return res.status(400).json({ error: "project_id_required" });
+      }
+      if (body.googlePlaceId) {
+        return res.status(400).json({
+          error: "google_place_id_requires_discovery_attestation",
+        });
+      }
 
       try {
-        const organizationId =
-          (await organizationScope(req, session.userId))
-          ?? (await resolveOrgIdForUser(pool, session.userId));
+        const project = await loadAccessibleLeadgridProject(
+          pool,
+          body.projectId,
+          session.userId,
+        );
+        const requestedOrganizationId = requestedLeadMapOrganizationId(req);
+        if (
+          !project
+          || (requestedOrganizationId
+            && requestedOrganizationId !== project.organizationId)
+        ) {
+          return res.status(404).json({ error: "project_not_found" });
+        }
+        const organizationId = project.organizationId;
         const creation = await createLeadFromPin(pool, {
           ...body,
           ownerUserId: session.userId,
           organizationId,
+          projectId: project.id,
           idempotencyKey,
           requestHash: idempotencyKey ? hashLeadCreationBody(body) : null,
         });
@@ -923,6 +1122,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
               await publishEvent({
                 pool,
                 organizationId,
+                projectId: project.id,
                 type: "lead.created",
                 leadId: creation.id,
                 actorUserId: session.userId,
@@ -973,33 +1173,19 @@ export function setupLeadMapRoutes(deps: Deps): void {
     },
   );
 
-  // POST /places/import — importer ett Places-resultat som lead
-  app.post("/api/admin-room/lead-map/places/import", async (req: Request, res: Response) => {
-    const session = await getUser(req, pool, activeSessions);
-    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
-
-    const body = (req.body ?? {}) as {
-      place?: Parameters<typeof importPlaceAsLead>[1]['place'];
-      leadCategory?: string;
-      projectId?: string | null;
-    };
-    if (!body.place?.placeId) return res.status(400).json({ error: "mangler_place" });
-
-    try {
-      const organizationId = await organizationScope(req, session.userId);
-      const r = await importPlaceAsLead(pool, {
-        ownerUserId: session.userId,
-        organizationId,
-        place: body.place,
-        leadCategory: body.leadCategory,
-        projectId: body.projectId ?? null,
-      });
-      if (!r.ok) return res.status(r.reason === 'already_imported' ? 409 : 500).json(r);
-      return res.json(r);
-    } catch (err) {
-      return res.status(500).json({ error: "import_failed", detail: "internal_error" });
-    }
-  });
+  // Legacy raw Place payload import is intentionally retired. The V2
+  // decision route accepts only a short-lived server attestation bound to
+  // organization, project, run, candidate and user.
+  app.post(
+    "/api/admin-room/lead-map/places/import",
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) {
+        return res.status(401).json({ error: "Innlogging kreves" });
+      }
+      return sendLegacyPlacesRetired(res);
+    },
+  );
 
   // ════════════════════════════════════════════════════════════════════
   // KLIENT-VENDT (Role Room Agent) — multi-tenant via agent_config_id
@@ -1208,59 +1394,36 @@ export function setupLeadMapRoutes(deps: Deps): void {
     }
   });
 
-  // POST /agent/configs/:configId/lead-map/places/search
-  app.post("/api/role-room/agent/configs/:configId/lead-map/places/search", async (req, res) => {
-    const session = await getUser(req, pool, activeSessions);
-    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
-    if (!await verifyConfigAccess(req.params.configId, session.userId)) {
-      return res.status(403).json({ error: "ingen_tilgang_til_config" });
-    }
-    const body = (req.body ?? {}) as {
-      query?: string; latitude?: number; longitude?: number;
-      radiusMeters?: number; type?: string;
-    };
-    if (!body.query) return res.status(400).json({ error: "mangler_query" });
-    try {
-      const r = await searchPlaces(pool, {
-        ownerUserId: session.userId,
-        agentConfigId: req.params.configId,
-        query: body.query,
-        latitude: body.latitude, longitude: body.longitude,
-        radiusMeters: body.radiusMeters ?? 5000,
-        type: body.type,
-      });
-      if (!r.ok) return res.status(503).json({ error: r.reason });
-      return res.json({ results: r.results });
-    } catch (err) {
-      return res.status(500).json({ error: "places_failed", detail: "internal_error" });
-    }
-  });
+  // Role Room's legacy raw Places import surface is also fail-closed.
+  // It cannot mint Discovery V2 attestations because it has no project/run/
+  // candidate context.
+  app.post(
+    "/api/role-room/agent/configs/:configId/lead-map/places/search",
+    async (req, res) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) {
+        return res.status(401).json({ error: "Innlogging kreves" });
+      }
+      if (!(await verifyConfigAccess(req.params.configId, session.userId))) {
+        return res.status(403).json({ error: "ingen_tilgang_til_config" });
+      }
+      return sendLegacyPlacesRetired(res);
+    },
+  );
 
-  // POST /agent/configs/:configId/lead-map/places/import
-  app.post("/api/role-room/agent/configs/:configId/lead-map/places/import", async (req, res) => {
-    const session = await getUser(req, pool, activeSessions);
-    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
-    if (!await verifyConfigAccess(req.params.configId, session.userId)) {
-      return res.status(403).json({ error: "ingen_tilgang_til_config" });
-    }
-    const body = (req.body ?? {}) as {
-      place?: Parameters<typeof importPlaceAsLead>[1]['place'];
-      leadCategory?: string;
-    };
-    if (!body.place?.placeId) return res.status(400).json({ error: "mangler_place" });
-    try {
-      const r = await importPlaceAsLead(pool, {
-        ownerUserId: session.userId,
-        agentConfigId: req.params.configId,
-        place: body.place,
-        leadCategory: body.leadCategory,
-      });
-      if (!r.ok) return res.status(r.reason === 'already_imported' ? 409 : 500).json(r);
-      return res.json(r);
-    } catch (err) {
-      return res.status(500).json({ error: "import_failed", detail: "internal_error" });
-    }
-  });
+  app.post(
+    "/api/role-room/agent/configs/:configId/lead-map/places/import",
+    async (req, res) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) {
+        return res.status(401).json({ error: "Innlogging kreves" });
+      }
+      if (!(await verifyConfigAccess(req.params.configId, session.userId))) {
+        return res.status(403).json({ error: "ingen_tilgang_til_config" });
+      }
+      return sendLegacyPlacesRetired(res);
+    },
+  );
 
   // POST /agent/configs/:configId/lead-map/leads/:id/generate-pitch
   app.post("/api/role-room/agent/configs/:configId/lead-map/leads/:id/generate-pitch", async (req, res) => {
@@ -1331,53 +1494,19 @@ export function setupLeadMapRoutes(deps: Deps): void {
     }
   });
 
-  // POST /agent/configs/:configId/lead-map/auto-populate — Site Discovery → import lookalike-leads
+  // Legacy Role Room auto-populate persisted raw Google Places data directly
+  // into CRM. Keep the authenticated route as a fail-closed tombstone so old
+  // clients receive an actionable migration response.
   app.post("/api/role-room/agent/configs/:configId/lead-map/auto-populate", async (req, res) => {
     const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
-    // UUID-validering FØR noen ::uuid-cast — en malformet configId ville
-    // ellers kastet «invalid input syntax for type uuid» i verifyConfig-
-    // Access/SELECT (før try) → uhåndtert → HENG (Notification-QA 2026-07-07).
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.configId)) {
       return res.status(400).json({ error: "ugyldig_config_id" });
     }
     if (!await verifyConfigAccess(req.params.configId, session.userId)) {
       return res.status(403).json({ error: "ingen_tilgang_til_config" });
     }
-    const e = await requireEntitlement(req, res, req.params.configId);
-    if (!e) return;
-
-    const body = (req.body ?? {}) as {
-      clientWebsiteUrl?: string;
-      city?: string;
-      maxQueries?: number;
-      maxImportsPerQuery?: number;
-    };
-
-    // Hent URL fra config hvis ikke i body
-    let websiteUrl = body.clientWebsiteUrl;
-    if (!websiteUrl) {
-      const c = await pool.query<{ client_website_url: string | null }>(
-        `SELECT client_website_url FROM client_ads_configs WHERE id = $1::uuid`,
-        [req.params.configId],
-      );
-      websiteUrl = c.rows[0]?.client_website_url ?? undefined;
-    }
-    if (!websiteUrl) return res.status(400).json({ error: "mangler_client_website_url" });
-
-    try {
-      const result = await autoPopulateLeadMap(pool, {
-        configId: req.params.configId,
-        producerUserId: session.userId,
-        clientWebsiteUrl: websiteUrl,
-        city: body.city,
-        maxQueries: body.maxQueries,
-        maxImportsPerQuery: body.maxImportsPerQuery,
-      });
-      return res.json(result);
-    } catch (err) {
-      return res.status(500).json({ error: "auto_populate_failed", detail: "internal_error" });
-    }
+    return sendLegacyPlacesRetired(res);
   });
 
   // POST /agent/configs/:configId/lead-map/checkout — opprett Stripe Checkout-session

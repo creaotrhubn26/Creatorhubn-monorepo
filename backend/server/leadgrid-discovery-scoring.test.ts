@@ -111,4 +111,143 @@ describe("Discovery scoring", () => {
       },
     });
   });
+
+  it("scores explicit Brreg company evidence and excludes known filter mismatches", () => {
+    const matching = scoreDiscoveryCandidate({
+      ...base,
+      municipalityNumber: "0301",
+      requiredMunicipalityNumbers: ["0301", "3201"],
+      organizationFormCode: "AS",
+      requiredOrganizationForms: ["AS"],
+      employeeCount: 12,
+      employeeCountKnown: true,
+      minimumEmployees: 5,
+      maximumEmployees: 50,
+      registeredInVatRegister: true,
+      registeredInVatRegisterKnown: true,
+      requiredVatRegistration: true,
+      registeredInBusinessRegister: true,
+      registeredInBusinessRegisterKnown: true,
+      requiredBusinessRegistration: true,
+    });
+    expect(matching.excluded).toBe(false);
+    expect(matching.explanation).toMatchObject({ filter_mismatches: [] });
+    expect(
+      matching.factors.fit.find((factor) => factor.key === "employee_count")
+        ?.evidence,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ref: "brreg.employee_count", value: 12 }),
+      ]),
+    );
+
+    const outsideMunicipalities = scoreDiscoveryCandidate({
+      ...base,
+      municipalityNumber: "1103",
+      requiredMunicipalityNumbers: ["0301", "3201"],
+    });
+    expect(outsideMunicipalities.excluded).toBe(true);
+    expect(outsideMunicipalities.explanation).toMatchObject({
+      filter_mismatches: ["municipality"],
+    });
+  });
+
+  it("retains unknown structure and website quality without treating unknown as poor", () => {
+    const score = scoreDiscoveryCandidate({
+      ...base,
+      organizationStructure: "unknown",
+      requiredOrganizationStructure: "chain",
+      organizationStructureEvidence: {
+        sourceUri:
+          "https://data.brreg.no/enhetsregisteret/api/konsernstruktur/999999999",
+        basis: "not_found",
+        relatedOrganizationCount: null,
+      },
+      minimumWebsiteQualityScore: 70,
+      websiteQuality: {
+        status: "unknown",
+        score: null,
+        fetchedAt: "2026-09-05T12:00:00.000Z",
+        sourceUri: "https://oslo-regnskap.no",
+        finalUrl: null,
+        httpStatus: null,
+        redirectCount: 0,
+        reason: "request_failed",
+        signals: {
+          https: null,
+          reachable: null,
+          title: null,
+          meta_description: null,
+          viewport: null,
+          contact_path: null,
+          call_to_action: null,
+        },
+      },
+    });
+
+    expect(score.excluded).toBe(false);
+    expect(score.explanation).toMatchObject({
+      filter_mismatches: [],
+      unknown_filter_evidence: ["organization_structure", "website_quality"],
+      website_quality: {
+        status: "unknown",
+        score: null,
+        outcome: "unknown",
+        reason: "request_failed",
+      },
+    });
+    expect(
+      score.factors.fit.find(
+        (factor) => factor.key === "organization_structure",
+      )?.evidence,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "Brreg-konserntilknytning",
+          value: "unknown",
+        }),
+      ]),
+    );
+  });
+
+  it("excludes an assessed website below the declared quality threshold", () => {
+    const score = scoreDiscoveryCandidate({
+      ...base,
+      minimumWebsiteQualityScore: 70,
+      websiteQuality: {
+        status: "assessed",
+        score: 45,
+        fetchedAt: "2026-09-05T12:00:00.000Z",
+        sourceUri: "https://oslo-regnskap.no",
+        finalUrl: "https://oslo-regnskap.no/",
+        httpStatus: 200,
+        redirectCount: 0,
+        reason: "assessed",
+        signals: {
+          https: true,
+          reachable: true,
+          title: false,
+          meta_description: false,
+          viewport: false,
+          contact_path: false,
+          call_to_action: false,
+        },
+      },
+    });
+
+    expect(score.excluded).toBe(true);
+    expect(score.explanation).toMatchObject({
+      filter_mismatches: ["website_quality"],
+      website_quality: {
+        status: "assessed",
+        score: 45,
+        minimum_score: 70,
+        outcome: "excluded",
+        evidence: {
+          source_uri: "https://oslo-regnskap.no",
+          http_status: 200,
+        },
+      },
+    });
+  });
 });

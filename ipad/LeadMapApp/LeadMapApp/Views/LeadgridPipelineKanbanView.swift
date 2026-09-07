@@ -25,6 +25,7 @@ struct LeadDragPayload: Codable, Transferable {
 }
 
 struct LeadgridPipelineKanbanView: View {
+    @Environment(AppState.self) private var appState
     let api: APIClient
     @State private var leads: [LeadIntelligenceLead] = []
     @State private var loading = true
@@ -54,7 +55,8 @@ struct LeadgridPipelineKanbanView: View {
             .padding()
         }
         .navigationTitle("Pipeline")
-        .task { await load() }
+        .task(id: appState.activeLeadgridProjectId) { await load() }
+        .onChange(of: appState.activeLeadgridProjectId) { _, _ in selected = nil }
         .refreshable { await load() }
         .onReceive(NotificationCenter.default.publisher(for: .leadgridRealtimeEvent)) { notif in
             guard let info = notif.userInfo as? [String: String],
@@ -66,8 +68,12 @@ struct LeadgridPipelineKanbanView: View {
         .overlay {
             if loading && leads.isEmpty {
                 ProgressView().controlSize(.large)
-            }
-            if let errorText, leads.isEmpty {
+            } else if appState.activeLeadgridProjectId == nil {
+                ContentUnavailableView(
+                    "Velg kundeprosjekt",
+                    systemImage: "folder.badge.questionmark",
+                    description: Text("Pipeline vises bare for det aktive Leadgrid-kundeprosjektet."))
+            } else if let errorText, leads.isEmpty {
                 ContentUnavailableView(
                     "Kunne ikke laste pipeline",
                     systemImage: "exclamationmark.triangle",
@@ -77,8 +83,18 @@ struct LeadgridPipelineKanbanView: View {
         .sheet(item: $selected) { lead in
             NavigationStack {
                 ScrollView {
-                    LeadgridIntelligencePanel(api: api, leadId: lead.id)
-                        .padding()
+                    if let projectId = appState.activeLeadgridProjectId {
+                        LeadgridIntelligencePanel(
+                            api: api,
+                            leadId: lead.id,
+                            projectId: projectId)
+                            .padding()
+                    } else {
+                        ContentUnavailableView(
+                            "Velg kundeprosjekt",
+                            systemImage: "folder.badge.questionmark",
+                            description: Text("Lead-innsikt krever et aktivt Leadgrid-kundeprosjekt."))
+                    }
                 }
                 .navigationTitle(lead.name)
                 .navigationBarTitleDisplayMode(.inline)
@@ -204,17 +220,26 @@ struct LeadgridPipelineKanbanView: View {
     @MainActor
     private func load() async {
         loading = true; errorText = nil
+        guard let projectId = appState.activeLeadgridProjectId else {
+            leads = []
+            loading = false
+            return
+        }
         // Fallback: hent alle recommendations + deriver unike leads via
         // fetchLeadIntelligence. Backend bør på sikt eksponere et eget
-        // /api/leadgrid/intelligence/pipeline?org=X-endepunkt.
+        // /api/leadgrid/intelligence/pipeline?projectId=X-endepunkt.
         do {
-            let recs = try await api.fetchNBARecommendations(limit: 200)
+            let recs = try await api.fetchNBARecommendations(
+                projectId: projectId,
+                limit: 200)
             var seenIds = Set<String>()
             var uniqueLeads: [LeadIntelligenceLead] = []
             for r in recs where !seenIds.contains(r.leadId) {
                 seenIds.insert(r.leadId)
                 do {
-                    let intel = try await api.fetchLeadIntelligence(leadId: r.leadId)
+                    let intel = try await api.fetchLeadIntelligence(
+                        leadId: r.leadId,
+                        projectId: projectId)
                     uniqueLeads.append(intel.lead)
                 } catch {
                     // hopp over leads vi ikke får tak i; ikke fail hele kanban
@@ -231,12 +256,19 @@ struct LeadgridPipelineKanbanView: View {
     // backend. Revert + vis alert hvis serveren feiler.
     @MainActor
     private func moveLead(_ leadId: String, to newStage: String, oldStage: String) async {
+        guard let projectId = appState.activeLeadgridProjectId else {
+            moveError = "Velg et Leadgrid-kundeprosjekt før du flytter leaden."
+            return
+        }
         guard let idx = leads.firstIndex(where: { $0.id == leadId }) else { return }
         let original = leads[idx]
         leads[idx] = original.with(pipelineStage: newStage)
 
         do {
-            _ = try await api.updateLeadPipelineStage(leadId: leadId, stage: newStage)
+            _ = try await api.updateLeadPipelineStage(
+                leadId: leadId,
+                projectId: projectId,
+                stage: newStage)
         } catch {
             moveError = "Kunne ikke flytte: \(error.localizedDescription)"
             if let revertIdx = leads.firstIndex(where: { $0.id == leadId }) {

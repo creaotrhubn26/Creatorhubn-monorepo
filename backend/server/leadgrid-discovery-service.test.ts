@@ -9,9 +9,11 @@ import type {
 import { leadgridRealtime } from "./leadgrid-realtime.js";
 import {
   cancelDiscoveryRun,
+  cancelDiscoveryRunFromTrustedWorkflow,
   confirmDiscoveryRun,
   createDiscoveryRun,
   decideDiscoveryCandidate,
+  discoverySourceQueryFingerprint,
   executeDiscoveryRun,
   isLeadgridDiscoveryEnabled,
   listDiscoveryCandidates,
@@ -335,6 +337,355 @@ describe("Leadgrid Discovery service", () => {
     expect(sequence.some((entry) => entry.includes("ROLLBACK"))).toBe(false);
   });
 
+  it("requires an exact stored profile version and brief for profile-linked runs", async () => {
+    const profileId = "77777777-7777-4777-8777-777777777777";
+    const connect = vi.fn();
+    const disconnectedPool = {
+      connect,
+      query: vi.fn(),
+    } as unknown as Pool;
+
+    await expect(
+      createDiscoveryRun(disconnectedPool, {
+        project,
+        userId: "user-a",
+        brief,
+        profileId,
+        idempotencyKey: "profile-version-required",
+        startImmediately: false,
+      }),
+    ).rejects.toMatchObject({
+      code: "validation_error",
+      field: "expected_profile_version",
+    });
+    expect(connect).not.toHaveBeenCalled();
+
+    const storedBrief = { ...brief, city: "Bergen" };
+    const { pool, sequence } = transactionPool((sql) => {
+      if (sql.includes("AND r.idempotency_key = $3")) return { rows: [] };
+      if (
+        sql.includes("SELECT version, status, brief") &&
+        sql.includes("FROM leadgrid_discovery_profiles")
+      ) {
+        return {
+          rows: [{ version: 4, status: "active", brief: storedBrief }],
+          rowCount: 1,
+        };
+      }
+      return undefined;
+    });
+
+    await expect(
+      createDiscoveryRun(pool, {
+        project,
+        userId: "user-a",
+        brief,
+        profileId,
+        expectedProfileVersion: 4,
+        idempotencyKey: "profile-brief-mismatch",
+        startImmediately: false,
+      }),
+    ).rejects.toMatchObject({
+      code: "profile_version_conflict",
+      field: "brief",
+    });
+    expect(sequence).toContain("ROLLBACK");
+    expect(
+      sequence.some((entry) =>
+        entry.includes("INSERT INTO leadgrid_discovery_runs"),
+      ),
+    ).toBe(false);
+
+    let insertValues: unknown[] = [];
+    const normalizedStoredBrief = previewDiscovery(storedBrief).brief;
+    const storedFingerprint = discoverySourceQueryFingerprint(
+      normalizedStoredBrief,
+      normalizedStoredBrief.industry_queries[0],
+    );
+    const { pool: matchingPool } = transactionPool((sql, values) => {
+      if (sql.includes("AND r.idempotency_key = $3")) return { rows: [] };
+      if (
+        sql.includes("SELECT version, status, brief") &&
+        sql.includes("FROM leadgrid_discovery_profiles")
+      ) {
+        return {
+          rows: [
+            {
+              version: 4,
+              status: "active",
+              brief: normalizedStoredBrief,
+              rotation_index: 6,
+              source_cursor_map: { [storedFingerprint]: 612 },
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      if (sql.includes("INSERT INTO leadgrid_discovery_runs")) {
+        insertValues = values;
+      }
+      if (sql.includes("WHERE r.id = $3::uuid")) {
+        return {
+          rows: [
+            runRow({
+              id: String(insertValues[0]),
+              profile_id: profileId,
+              profile_version: 4,
+              status: "awaiting_confirmation",
+              requested_count: normalizedStoredBrief.target_count,
+              enrichment_count: normalizedStoredBrief.enrichment_count,
+              idempotency_key: "profile-brief-match",
+              request_hash: String(insertValues[12]),
+              brief_snapshot: normalizedStoredBrief,
+              search_plan: JSON.parse(String(insertValues[14])),
+            }),
+          ],
+          rowCount: 1,
+        };
+      }
+      return undefined;
+    });
+
+    const created = await createDiscoveryRun(matchingPool, {
+      project,
+      userId: "user-a",
+      brief: storedBrief,
+      profileId,
+      expectedProfileVersion: 4,
+      idempotencyKey: "profile-brief-match",
+      startImmediately: false,
+    });
+    expect(created.replayed).toBe(false);
+    expect(created.run).toMatchObject({
+      profile_id: profileId,
+      profile_version: 4,
+      brief_snapshot: normalizedStoredBrief,
+    });
+    expect(JSON.parse(String(insertValues[13]))).toEqual(normalizedStoredBrief);
+    expect(JSON.parse(String(insertValues[15]))).toMatchObject({
+      version: 3,
+      source_cursor_start: { [storedFingerprint]: 612 },
+      source_cursor_next: { [storedFingerprint]: 612 },
+      source_page_start: 0,
+      source_page_next: 0,
+    });
+  });
+
+  it("creates a campaign child from its captured brief/version/cursor without reading the mutable live profile", async () => {
+    const profileId = "77777777-7777-4777-8777-777777777777";
+    const normalizedBrief = previewDiscovery(brief).brief;
+    const fingerprint = discoverySourceQueryFingerprint(
+      normalizedBrief,
+      normalizedBrief.industry_queries[0],
+    );
+    let insertValues: unknown[] = [];
+    const { pool, sequence } = transactionPool((sql, values) => {
+      if (sql.includes("AND r.idempotency_key = $3")) return { rows: [] };
+      if (sql.includes("FROM leadgrid_discovery_profiles")) {
+        throw new Error("trusted campaign snapshot must not read live profile");
+      }
+      if (sql.includes("INSERT INTO leadgrid_discovery_monthly_usage")) {
+        return { rows: [{ reserved_candidates: 20 }], rowCount: 1 };
+      }
+      if (sql.includes("INSERT INTO leadgrid_discovery_runs")) {
+        insertValues = values;
+      }
+      if (sql.includes("INSERT INTO background_jobs")) {
+        return { rows: [{ id: JOB_ID }], rowCount: 1 };
+      }
+      if (sql.includes("UPDATE leadgrid_discovery_capacity_reservations")) {
+        return { rows: [], rowCount: 1 };
+      }
+      if (sql.includes("WHERE r.id = $3::uuid")) {
+        return {
+          rows: [
+            runRow({
+              id: String(insertValues[0]),
+              profile_id: profileId,
+              profile_version: 4,
+              trigger_kind: "workflow",
+              request_hash: String(insertValues[12]),
+              brief_snapshot: normalizedBrief,
+              search_plan: JSON.parse(String(insertValues[14])),
+              checkpoint: JSON.parse(String(insertValues[15])),
+              background_job_id: JOB_ID,
+            }),
+          ],
+          rowCount: 1,
+        };
+      }
+      return undefined;
+    });
+
+    const result = await createDiscoveryRun(pool, {
+      project,
+      userId: "user-a",
+      brief: normalizedBrief,
+      profileId,
+      expectedProfileVersion: 4,
+      trustedProfileSnapshot: {
+        profileId,
+        profileVersion: 4,
+        sourceCursorMap: { [fingerprint]: 55 },
+      },
+      idempotencyKey: "campaign-child-snapshot",
+      startImmediately: true,
+      triggerKind: "workflow",
+    });
+
+    expect(result.run).toMatchObject({
+      profile_id: profileId,
+      profile_version: 4,
+      brief_snapshot: normalizedBrief,
+    });
+    expect(JSON.parse(String(insertValues[15]))).toMatchObject({
+      source_cursor_start: { [fingerprint]: 55 },
+      source_cursor_next: { [fingerprint]: 55 },
+    });
+    expect(
+      sequence.some((sql) => sql.includes("FROM leadgrid_discovery_profiles")),
+    ).toBe(false);
+  });
+
+  it("cannot internally cancel a run outside the exact active campaign tuple", async () => {
+    const { pool, sequence } = transactionPool((sql) => {
+      if (
+        sql.includes("JOIN leadgrid_discovery_campaign_runs c") &&
+        sql.includes("c.active_run_id = r.id")
+      ) {
+        return { rows: [], rowCount: 0 };
+      }
+      return undefined;
+    });
+
+    await expect(
+      cancelDiscoveryRunFromTrustedWorkflow(pool, {
+        project,
+        campaignId: "88888888-8888-4888-8888-888888888888",
+        runId: RUN_ID,
+      }),
+    ).rejects.toMatchObject({ code: "not_found" });
+    expect(sequence).toContain("ROLLBACK");
+    expect(
+      sequence.some((sql) => sql.includes("UPDATE leadgrid_discovery_runs")),
+    ).toBe(false);
+  });
+  it("resets malformed legacy cursor-map entries instead of carrying them into a run", async () => {
+    const profileId = "77777777-7777-4777-8777-777777777777";
+    const normalizedBrief = previewDiscovery(brief).brief;
+    const fingerprint = discoverySourceQueryFingerprint(
+      normalizedBrief,
+      normalizedBrief.industry_queries[0],
+    );
+    let insertValues: unknown[] = [];
+    const { pool } = transactionPool((sql, values) => {
+      if (sql.includes("AND r.idempotency_key = $3")) return { rows: [] };
+      if (
+        sql.includes("SELECT version, status, brief") &&
+        sql.includes("FROM leadgrid_discovery_profiles")
+      ) {
+        return {
+          rows: [
+            {
+              version: 4,
+              status: "active",
+              brief: normalizedBrief,
+              source_cursor_map: {
+                [fingerprint]: "not-an-offset",
+                "not-a-sha256-fingerprint": 900,
+                ["b".repeat(64)]: -1,
+              },
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      if (sql.includes("INSERT INTO leadgrid_discovery_runs")) {
+        insertValues = values;
+      }
+      if (sql.includes("WHERE r.id = $3::uuid")) {
+        return {
+          rows: [
+            runRow({
+              id: String(insertValues[0]),
+              profile_id: profileId,
+              profile_version: 4,
+              status: "awaiting_confirmation",
+              brief_snapshot: normalizedBrief,
+              checkpoint: JSON.parse(String(insertValues[15])),
+            }),
+          ],
+          rowCount: 1,
+        };
+      }
+      return undefined;
+    });
+
+    await expect(
+      createDiscoveryRun(pool, {
+        project,
+        userId: "user-a",
+        brief: normalizedBrief,
+        profileId,
+        expectedProfileVersion: 4,
+        idempotencyKey: "malformed-profile-cursor-map",
+        startImmediately: false,
+      }),
+    ).resolves.toMatchObject({ replayed: false });
+
+    const checkpoint = JSON.parse(String(insertValues[15]));
+    expect(checkpoint).toMatchObject({
+      version: 3,
+      source_cursor_start: { [fingerprint]: 0 },
+      source_cursor_next: { [fingerprint]: 0 },
+    });
+    expect(checkpoint.source_cursor_start).not.toHaveProperty(
+      "not-a-sha256-fingerprint",
+    );
+  });
+
+  it("refuses a scheduled run when the profile was paused before transactional creation", async () => {
+    const profileId = "77777777-7777-4777-8777-777777777777";
+    const normalizedBrief = previewDiscovery(brief).brief;
+    const { pool, sequence } = transactionPool((sql) => {
+      if (sql.includes("AND r.idempotency_key = $3")) return { rows: [] };
+      if (sql.includes("FROM leadgrid_discovery_profiles")) {
+        return {
+          rows: [
+            {
+              version: 4,
+              status: "paused",
+              brief: normalizedBrief,
+              rotation_index: 2,
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return undefined;
+    });
+
+    await expect(
+      createDiscoveryRun(pool, {
+        project,
+        userId: "user-a",
+        brief: normalizedBrief,
+        profileId,
+        expectedProfileVersion: 4,
+        idempotencyKey: "paused-scheduled-profile",
+        startImmediately: true,
+        triggerKind: "scheduled",
+      }),
+    ).rejects.toMatchObject({ code: "invalid_state", field: "profile_id" });
+
+    expect(sequence).toContain("ROLLBACK");
+    expect(
+      sequence.some((entry) =>
+        entry.includes("INSERT INTO leadgrid_discovery_runs"),
+      ),
+    ).toBe(false);
+  });
+
   it("refuses execution when the queue claim cannot fence the run", async () => {
     const leaseToken = "66666666-6666-4666-8666-666666666666";
     const query = vi
@@ -403,6 +754,9 @@ describe("Leadgrid Discovery service", () => {
     });
     const searchRegistry = vi.fn(async () => ({
       candidates: [registryCandidate()],
+      sourcePageStart: 0,
+      sourcePageNext: 1,
+      sourcePageCount: 10,
       pagesFetched: 1,
       sourceResultsSeen: 1,
       duplicateResultsSkipped: 0,
@@ -414,8 +768,12 @@ describe("Leadgrid Discovery service", () => {
       externalRequests: 1,
       geocodeRequests: 1,
       geocodeMisses: 0,
+      companyFilteredResults: 0,
+      websiteAssessmentCandidates: 0,
+      websiteAssessmentRequests: 0,
       resolution: "nace" as const,
       resolvedNaceCodes: ["69.201"],
+      resolvedMunicipalities: [],
     }));
 
     await expect(
@@ -655,12 +1013,12 @@ describe("Leadgrid Discovery service", () => {
     expect(textOf(promotionCall?.[0])).toContain(
       "enrichment_org_nr, enrichment_data, enriched_at",
     );
-    expect(promotionCall?.[1]?.[9]).toBe("999888777");
-    expect(JSON.parse(String(promotionCall?.[1]?.[10]))).toMatchObject({
+    expect(promotionCall?.[1]?.[10]).toBe("999888777");
+    expect(JSON.parse(String(promotionCall?.[1]?.[11]))).toMatchObject({
       source: "brreg",
       autoLinked: true,
     });
-    expect(promotionCall?.[1]?.[11]).toBe("2026-08-30T09:00:00.000Z");
+    expect(promotionCall?.[1]?.[12]).toBe("2026-08-30T09:00:00.000Z");
     expect(sequence.indexOf("COMMIT")).toBeLessThan(
       sequence.findIndex((entry) => entry.startsWith("EVENT")),
     );
@@ -688,7 +1046,7 @@ describe("Leadgrid Discovery service", () => {
   it("rejects atomically without creating a CRM lead", async () => {
     const sequence: string[] = [];
     const emit = vi.spyOn(leadgridRealtime, "emit");
-    const { pool } = transactionPool((sql) => {
+    const { pool, query } = transactionPool((sql) => {
       if (sql.includes("SELECT c.id::text AS candidate_id")) {
         return { rows: [decisionCandidate()] };
       }
@@ -719,11 +1077,30 @@ describe("Leadgrid Discovery service", () => {
     expect(result).toMatchObject({
       decision: "reject",
       lead_id: null,
-      candidate_status: "rejected",
+      candidate_status: "review_ready",
     });
     expect(
       sequence.some((entry) => entry.includes("INSERT INTO crm_customers")),
     ).toBe(false);
+    const rejectionPropagation = query.mock.calls.find(([queryValue]) => {
+      const sql = textOf(queryValue);
+      return (
+        sql.includes("UPDATE leadgrid_discovery_run_candidates") &&
+        sql.includes("SET disposition = 'rejected'")
+      );
+    });
+    expect(textOf(rejectionPropagation?.[0])).toContain(
+      "AND run_id = $4::uuid",
+    );
+    expect(textOf(rejectionPropagation?.[0])).not.toContain(
+      "occurrence_run.profile_id",
+    );
+    expect(rejectionPropagation?.[1]).toEqual([
+      CANDIDATE_ID,
+      ORGANIZATION_ID,
+      project.id,
+      RUN_ID,
+    ]);
     expect(sequence.at(-1)).toBe("COMMIT");
     expect(
       emit.mock.calls
@@ -744,21 +1121,211 @@ describe("Leadgrid Discovery service", () => {
     ).toBe(true);
   });
 
-  it("propagates a canonical decision across overlapping open runs", async () => {
-    const otherRunId = "66666666-6666-4666-8666-666666666666";
-    const emit = vi
-      .spyOn(leadgridRealtime, "emit")
-      .mockImplementation(() => {});
+  it("persists only an explicitly confirmed Place ID with territory provenance", async () => {
     const { pool, query } = transactionPool((sql) => {
+      if (sql.includes("SELECT c.id::text AS candidate_id")) {
+        return {
+          rows: [
+            {
+              ...decisionCandidate(),
+              profile_id: "44444444-4444-4444-8444-444444444444",
+              profile_version: 3,
+              brief_snapshot: {
+                territory_code: "vest",
+                municipality_numbers: ["3201", "3203"],
+                municipality_names: ["BÆRUM", "ASKER"],
+              },
+              source_hits: [
+                {
+                  run_id: RUN_ID,
+                  profile_id: "44444444-4444-4444-8444-444444444444",
+                  territory_code: "vest",
+                },
+              ],
+              provenance: [
+                {
+                  source: "brreg_open_data",
+                  profile_id: "44444444-4444-4444-8444-444444444444",
+                  territory_code: "vest",
+                },
+              ],
+            },
+          ],
+        };
+      }
+      if (sql.includes("FROM leadgrid_discovery_feedback")) {
+        return { rows: [] };
+      }
+      if (
+        sql.includes("FROM leadgrid_discovery_place_confirmations") &&
+        sql.includes("FOR UPDATE")
+      ) {
+        return {
+          rows: [{ place_id: "ChIJ-confirmed-place-id" }],
+          rowCount: 1,
+        };
+      }
+      if (sql.includes("UPDATE leadgrid_discovery_place_confirmations")) {
+        return { rows: [], rowCount: 1 };
+      }
+      if (sql.includes("FROM crm_customers")) return { rows: [] };
+      if (sql.includes("INSERT INTO crm_customers")) {
+        return { rows: [{ id: LEAD_ID }], rowCount: 1 };
+      }
+      return undefined;
+    });
+
+    await decideDiscoveryCandidate(pool, {
+      project,
+      userId: "user-a",
+      runId: RUN_ID,
+      candidateId: CANDIDATE_ID,
+      idempotencyKey: "confirmed-place-promotion-0001",
+      decision: {
+        decision: "approve",
+        reason_code: "good_fit",
+        confirmed_google_place_id: "ChIJ-confirmed-place-id",
+      },
+    });
+
+    const confirmationLookup = query.mock.calls.find(([queryValue]) =>
+      textOf(queryValue).includes(
+        "FROM leadgrid_discovery_place_confirmations",
+      ),
+    );
+    expect(textOf(confirmationLookup?.[0])).toContain("requested_by = $6");
+    expect(textOf(confirmationLookup?.[0])).toContain("consumed_at IS NULL");
+    expect(textOf(confirmationLookup?.[0])).toContain("expires_at > NOW()");
+    expect(confirmationLookup?.[1]).toEqual([
+      ORGANIZATION_ID,
+      project.id,
+      RUN_ID,
+      CANDIDATE_ID,
+      "ChIJ-confirmed-place-id",
+      "user-a",
+    ]);
+
+    const crmLookup = query.mock.calls.find(([queryValue]) =>
+      textOf(queryValue).includes("FROM crm_customers"),
+    );
+    expect(textOf(crmLookup?.[0])).toContain("website_domain_normalized = $4");
+    expect(textOf(crmLookup?.[0])).toContain("google_place_id = $5");
+    expect(crmLookup?.[1]).toEqual([
+      ORGANIZATION_ID,
+      project.id,
+      "999888777",
+      "tryggregnskap.no",
+      "ChIJ-confirmed-place-id",
+    ]);
+    const insert = query.mock.calls.find(([queryValue]) =>
+      textOf(queryValue).includes("INSERT INTO crm_customers"),
+    );
+    expect(textOf(insert?.[0])).toContain("google_place_id_confirmed_at");
+    expect(textOf(insert?.[0])).toContain("discovery_territory_code");
+    expect(insert?.[1]?.[13]).toBe("ChIJ-confirmed-place-id");
+    expect(Number.isNaN(Date.parse(String(insert?.[1]?.[14])))).toBe(false);
+    expect(insert?.[1]?.[15]).toBe("vest");
+    expect(JSON.parse(String(insert?.[1]?.[19]))).toMatchObject({
+      discovery: {
+        profile_id: "44444444-4444-4444-8444-444444444444",
+        profile_version: 3,
+        territory_code: "vest",
+        municipality_numbers: ["3201", "3203"],
+        dedupe_checks: {
+          organization_number: "checked",
+          normalized_domain: "checked",
+          google_place_id: "confirmed_match_checked",
+        },
+        google_places: {
+          place_id: "ChIJ-confirmed-place-id",
+          persisted_fields: ["place_id"],
+        },
+      },
+    });
+    const promotionLocks = query.mock.calls
+      .filter(
+        ([queryValue, values]) =>
+          textOf(queryValue).includes("pg_advisory_xact_lock") &&
+          String(values?.[0]).startsWith(`leadgrid:${ORGANIZATION_ID}:`),
+      )
+      .map(([, values]) => String(values?.[0]));
+    expect(promotionLocks).toEqual([
+      `leadgrid:${ORGANIZATION_ID}:google_place_id:ChIJ-confirmed-place-id`,
+      `leadgrid:${ORGANIZATION_ID}:organization_number:999888777`,
+      `leadgrid:${ORGANIZATION_ID}:website_domain:tryggregnskap.no`,
+    ]);
+    expect(
+      query.mock.calls.some(([queryValue]) =>
+        textOf(queryValue).includes(
+          "UPDATE leadgrid_discovery_place_confirmations",
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects a syntactically valid but unattested Place ID before CRM promotion", async () => {
+    const { pool, sequence } = transactionPool((sql) => {
       if (sql.includes("SELECT c.id::text AS candidate_id")) {
         return { rows: [decisionCandidate()] };
       }
       if (sql.includes("FROM leadgrid_discovery_feedback")) {
         return { rows: [] };
       }
+      if (sql.includes("FROM leadgrid_discovery_place_confirmations")) {
+        return { rows: [], rowCount: 0 };
+      }
+      return undefined;
+    });
+
+    await expect(
+      decideDiscoveryCandidate(pool, {
+        project,
+        userId: "user-a",
+        runId: RUN_ID,
+        candidateId: CANDIDATE_ID,
+        idempotencyKey: "forged-place-promotion-0001",
+        decision: {
+          decision: "approve",
+          confirmed_google_place_id: "ChIJ-forged-but-valid",
+        },
+      }),
+    ).rejects.toMatchObject({ code: "place_confirmation_required" });
+
+    expect(
+      sequence.some((entry) => entry.includes("INSERT INTO crm_customers")),
+    ).toBe(false);
+    expect(sequence.at(-1)).toBe("ROLLBACK");
+  });
+
+  it("propagates rejection only across the same saved profile snapshot", async () => {
+    const otherRunId = "66666666-6666-4666-8666-666666666666";
+    const profileId = "77777777-7777-4777-8777-777777777777";
+    const profileBrief = previewDiscovery({
+      ...brief,
+      territory_code: "oslo",
+    }).brief;
+    const emit = vi
+      .spyOn(leadgridRealtime, "emit")
+      .mockImplementation(() => {});
+    const { pool, query } = transactionPool((sql) => {
+      if (sql.includes("SELECT c.id::text AS candidate_id")) {
+        return {
+          rows: [
+            {
+              ...decisionCandidate(),
+              profile_id: profileId,
+              profile_version: 2,
+              brief_snapshot: profileBrief,
+            },
+          ],
+        };
+      }
+      if (sql.includes("FROM leadgrid_discovery_feedback")) {
+        return { rows: [] };
+      }
       if (
         sql.includes("UPDATE leadgrid_discovery_run_candidates") &&
-        sql.includes("RETURNING run_id::text")
+        sql.includes("RETURNING rc.run_id::text")
       ) {
         return {
           rows: [{ run_id: RUN_ID }, { run_id: otherRunId }],
@@ -790,18 +1357,31 @@ describe("Leadgrid Discovery service", () => {
       const sql = textOf(queryValue);
       return (
         sql.includes("UPDATE leadgrid_discovery_run_candidates") &&
-        sql.includes("RETURNING run_id::text")
+        sql.includes("RETURNING rc.run_id::text")
       );
     });
     expect(textOf(propagation?.[0])).toContain(
       "'researching', 'review_ready', 'failed'",
     );
+    expect(textOf(propagation?.[0])).toContain(
+      "occurrence_run.profile_id = $5::uuid",
+    );
+    expect(textOf(propagation?.[0])).toContain(
+      "occurrence_run.brief_snapshot = $6::jsonb",
+    );
     expect(propagation?.[1]).toEqual([
       CANDIDATE_ID,
-      "rejected",
       ORGANIZATION_ID,
       project.id,
+      RUN_ID,
+      profileId,
+      JSON.stringify(profileBrief),
     ]);
+    expect(
+      query.mock.calls.some(([queryValue]) =>
+        textOf(queryValue).includes("SET status = 'rejected'"),
+      ),
+    ).toBe(false);
     const refreshedRunIds = query.mock.calls
       .filter(([queryValue]) =>
         textOf(queryValue).includes(
@@ -852,7 +1432,10 @@ describe("Leadgrid Discovery service", () => {
         return { rows: [] };
       }
       if (sql.includes("FROM crm_customers")) {
-        return { rows: [{ id: LEAD_ID }], rowCount: 1 };
+        return {
+          rows: [{ id: LEAD_ID, google_place_id: null }],
+          rowCount: 1,
+        };
       }
       return undefined;
     });
@@ -878,13 +1461,21 @@ describe("Leadgrid Discovery service", () => {
       textOf(queryValue).includes("FROM crm_customers"),
     );
     expect(textOf(crmLookup?.[0])).toContain("enrichment_org_nr = $3");
-    expect(crmLookup?.[1]).toEqual([ORGANIZATION_ID, project.id, "999888777"]);
+    expect(textOf(crmLookup?.[0])).toContain("website_domain_normalized = $4");
+    expect(textOf(crmLookup?.[0])).toContain("google_place_id = $5");
+    expect(crmLookup?.[1]).toEqual([
+      ORGANIZATION_ID,
+      project.id,
+      "999888777",
+      "tryggregnskap.no",
+      null,
+    ]);
     expect(
       query.mock.calls.some(
         ([queryValue, values]) =>
           textOf(queryValue).includes("pg_advisory_xact_lock") &&
           values?.[0] ===
-            `${ORGANIZATION_ID}|${project.id}|crm_promotion|orgnr:999888777`,
+            `leadgrid:${ORGANIZATION_ID}:organization_number:999888777`,
       ),
     ).toBe(true);
   });
@@ -951,12 +1542,23 @@ describe("Leadgrid Discovery service", () => {
   it("executes search and bounded top-N enrichment without pre-approving CRM", async () => {
     let status = "queued";
     let reviewReadyCount = 0;
+    const executionProfileId = "77777777-7777-4777-8777-777777777777";
     const multiQueryBrief = {
       ...brief,
       industry_queries: ["regnskapsfører", "revisjonsfirma"],
+      website_quality: { minimum_score: 65 },
+    };
+    const normalizedMultiQueryBrief = previewDiscovery(multiQueryBrief).brief;
+    const queryFingerprints = normalizedMultiQueryBrief.industry_queries.map(
+      (queryText) =>
+        discoverySourceQueryFingerprint(normalizedMultiQueryBrief, queryText),
+    );
+    const sourceCursorStart = {
+      [queryFingerprints[0]]: 120,
+      [queryFingerprints[1]]: 240,
     };
     const sequence: string[] = [];
-    const { pool } = transactionPool((sql, values) => {
+    const { pool, query } = transactionPool((sql, values) => {
       if (
         sql.includes("FROM leadgrid_discovery_runs r") &&
         sql.includes("r.id = $1::uuid")
@@ -965,9 +1567,21 @@ describe("Leadgrid Discovery service", () => {
           rows: [
             runRow({
               status,
+              profile_id: executionProfileId,
+              profile_version: 9,
               candidate_count: 1,
               review_ready_count: reviewReadyCount,
-              brief_snapshot: multiQueryBrief,
+              brief_snapshot: normalizedMultiQueryBrief,
+              checkpoint: {
+                version: 3,
+                source_cursor_start: sourceCursorStart,
+                source_cursor_next: sourceCursorStart,
+                source_page_start: 0,
+                source_page_next: 0,
+                completed_queries: [],
+                query_errors: [],
+                query_results: {},
+              },
             }),
           ],
         };
@@ -1001,23 +1615,40 @@ describe("Leadgrid Discovery service", () => {
       }
       return undefined;
     }, sequence);
+    let searchCall = 0;
     const searchRegistry = vi.fn(
-      async (_input: DiscoveryRegistrySearchInput) => ({
-        candidates: [],
-        pagesFetched: 1,
-        sourceResultsSeen: 0,
-        duplicateResultsSkipped: 0,
-        invalidResultsSkipped: 0,
-        geoFilteredResults: 0,
-        sourceLimitReached: false,
-        hasMoreSourceResults: false,
-        limitReason: null,
-        externalRequests: 1,
-        geocodeRequests: 0,
-        geocodeMisses: 0,
-        resolution: "nace" as const,
-        resolvedNaceCodes: ["69.201"],
-      }),
+      async (_input: DiscoveryRegistrySearchInput) => {
+        const callIndex = searchCall++;
+        const sourceOffset = _input.sourceOffset ?? 0;
+        const consumed = callIndex === 0 ? 20 : 40;
+        return {
+          candidates: [],
+          sourceOffsetStart: sourceOffset,
+          sourceOffsetNext: sourceOffset + consumed,
+          sourcePageStart: Math.floor(sourceOffset / 100),
+          sourcePageNext: Math.floor((sourceOffset + consumed) / 100),
+          sourcePageCount: 10,
+          pagesFetched: 1,
+          sourceResultsSeen: consumed,
+          duplicateResultsSkipped: 0,
+          invalidResultsSkipped: 0,
+          geoFilteredResults: 0,
+          sourceLimitReached: false,
+          hasMoreSourceResults: false,
+          limitReason: null,
+          externalRequests: 1,
+          geocodeRequests: 0,
+          geocodeMisses: 0,
+          companyFilteredResults: 0,
+          // An upstream adapter may over-report; the service still clamps the
+          // durable usage to the profile's enrichment_count.
+          websiteAssessmentCandidates: callIndex === 0 ? 10 : 0,
+          websiteAssessmentRequests: 0,
+          resolution: "nace" as const,
+          resolvedNaceCodes: ["69.201"],
+          resolvedMunicipalities: [],
+        };
+      },
     );
     const events: Array<{ data: Record<string, unknown> }> = [];
 
@@ -1030,6 +1661,52 @@ describe("Leadgrid Discovery service", () => {
     expect(
       searchRegistry.mock.calls.map(([input]) => input.maxResults),
     ).toEqual([10, 19]);
+    expect(
+      searchRegistry.mock.calls.map(([input]) => input.sourceOffset),
+    ).toEqual([120, 240]);
+    expect(
+      searchRegistry.mock.calls.map(([input]) => input.websiteAssessmentLimit),
+    ).toEqual([5, 0]);
+    const providerUsageWrites = query.mock.calls.filter(([queryValue]) =>
+      textOf(queryValue).includes("provider_usage = $5::jsonb"),
+    );
+    expect(providerUsageWrites.length).toBeGreaterThan(0);
+    expect(
+      JSON.parse(String(providerUsageWrites.at(-1)?.[1]?.[4])),
+    ).toMatchObject({
+      source_cursor_start: sourceCursorStart,
+      source_cursor_next: {
+        [queryFingerprints[0]]: 140,
+        [queryFingerprints[1]]: 280,
+      },
+      source_page_start: 2,
+      source_page_next: 2,
+      website_assessment_candidates: 5,
+      website_assessment_requests: 0,
+    });
+    const cursorWrite = query.mock.calls.find(([queryValue]) =>
+      textOf(queryValue).includes("SET source_cursor_map ="),
+    );
+    expect(cursorWrite?.[1]?.slice(0, 4)).toEqual([
+      ORGANIZATION_ID,
+      project.id,
+      executionProfileId,
+      9,
+    ]);
+    expect(JSON.parse(String(cursorWrite?.[1]?.[4]))).toEqual({
+      [queryFingerprints[0]]: 140,
+      [queryFingerprints[1]]: 280,
+    });
+    expect(JSON.parse(String(cursorWrite?.[1]?.[5]))).toEqual(
+      sourceCursorStart,
+    );
+    expect(textOf(cursorWrite?.[0])).toContain("jsonb_each_text($6::jsonb)");
+    expect(textOf(cursorWrite?.[0])).toContain(
+      "profile.source_cursor_map -> expected.key",
+    );
+    expect(textOf(cursorWrite?.[0])).not.toContain(
+      "profile.source_cursor_map ->> expected.key",
+    );
     expect(
       searchRegistry.mock.calls.every(
         ([input]) => input.queryMode === "industry",
@@ -1051,11 +1728,464 @@ describe("Leadgrid Discovery service", () => {
     );
   });
 
+  it("resumes only the unfinished v3 query from its immutable absolute offset", async () => {
+    let status = "researching";
+    const executionProfileId = "77777777-7777-4777-8777-777777777777";
+    const normalizedBrief = previewDiscovery({
+      ...brief,
+      industry_queries: ["regnskapsfører", "revisjonsfirma"],
+    }).brief;
+    const fingerprints = normalizedBrief.industry_queries.map((queryText) =>
+      discoverySourceQueryFingerprint(normalizedBrief, queryText),
+    );
+    const checkpoint = {
+      version: 3,
+      source_cursor_start: {
+        [fingerprints[0]]: 120,
+        [fingerprints[1]]: 245,
+      },
+      source_cursor_next: {
+        [fingerprints[0]]: 140,
+        [fingerprints[1]]: 245,
+      },
+      source_page_start: 1,
+      source_page_next: 1,
+      completed_queries: [0],
+      query_errors: [],
+      query_results: {
+        "0": {
+          query_fingerprint: fingerprints[0],
+          raw: 20,
+          source_offset_start: 120,
+          source_offset_next: 140,
+          source_page_start: 1,
+          source_page_next: 1,
+          source_page_count: 10,
+          duplicates: 0,
+          invalid: 0,
+          geo_filtered: 0,
+          company_filtered: 0,
+          website_assessment_candidates: 0,
+          website_assessment_requests: 0,
+          pages: 1,
+          external_requests: 1,
+          geocodes: 0,
+          geocode_misses: 0,
+          source_limit_reached: false,
+          limit_reason: null,
+          resolved_nace_codes: ["69.201"],
+          resolved_municipalities: [],
+        },
+      },
+    };
+    const { pool, query } = transactionPool((sql, values) => {
+      if (
+        sql.includes("FROM leadgrid_discovery_runs r") &&
+        sql.includes("r.id = $1::uuid")
+      ) {
+        return {
+          rows: [
+            runRow({
+              status,
+              profile_id: executionProfileId,
+              profile_version: 9,
+              brief_snapshot: normalizedBrief,
+              checkpoint,
+            }),
+          ],
+        };
+      }
+      if (
+        sql.includes("SELECT status") &&
+        sql.includes("leadgrid_discovery_runs")
+      ) {
+        return { rows: [{ status }] };
+      }
+      if (sql.includes("SELECT COUNT(*)::int AS count")) {
+        return { rows: [{ count: 0 }] };
+      }
+      if (sql.includes("SET status = $2") && values[0] === RUN_ID) {
+        status = String(values[1]);
+        return { rows: [], rowCount: 1 };
+      }
+      return undefined;
+    });
+    const searchRegistry = vi.fn(
+      async (input: DiscoveryRegistrySearchInput) => ({
+        candidates: [],
+        sourceOffsetStart: input.sourceOffset ?? 0,
+        sourceOffsetNext: (input.sourceOffset ?? 0) + 3,
+        sourcePageStart: 2,
+        sourcePageNext: 2,
+        sourcePageCount: 10,
+        pagesFetched: 1,
+        sourceResultsSeen: 3,
+        duplicateResultsSkipped: 0,
+        invalidResultsSkipped: 0,
+        geoFilteredResults: 0,
+        companyFilteredResults: 0,
+        websiteAssessmentCandidates: 0,
+        websiteAssessmentRequests: 0,
+        sourceLimitReached: false,
+        hasMoreSourceResults: true,
+        limitReason: null,
+        externalRequests: 1,
+        geocodeRequests: 0,
+        geocodeMisses: 0,
+        resolution: "nace" as const,
+        resolvedNaceCodes: ["69.201"],
+        resolvedMunicipalities: [],
+      }),
+    );
+
+    await expect(
+      executeDiscoveryRun(pool, RUN_ID, { searchRegistry }),
+    ).resolves.toMatchObject({ status: "completed" });
+
+    expect(searchRegistry).toHaveBeenCalledOnce();
+    expect(searchRegistry.mock.calls[0]?.[0]).toMatchObject({
+      query: "revisjonsfirma",
+      sourceOffset: 245,
+    });
+    const checkpointWrite = query.mock.calls.find(([queryValue]) =>
+      textOf(queryValue).includes("SET checkpoint = $2::jsonb"),
+    );
+    const persistedCheckpoint = JSON.parse(String(checkpointWrite?.[1]?.[1]));
+    expect(persistedCheckpoint).toMatchObject({
+      source_cursor_start: {
+        [fingerprints[0]]: 120,
+        [fingerprints[1]]: 245,
+      },
+      source_cursor_next: {
+        [fingerprints[0]]: 140,
+        [fingerprints[1]]: 248,
+      },
+      completed_queries: [0, 1],
+    });
+  });
+
+  it("safely restarts every query from zero for a legacy v2 checkpoint", async () => {
+    let status = "researching";
+    const executionProfileId = "77777777-7777-4777-8777-777777777777";
+    const multiQueryBrief = {
+      ...brief,
+      industry_queries: ["regnskapsfører", "revisjonsfirma"],
+    };
+    const normalizedMultiQueryBrief = previewDiscovery(multiQueryBrief).brief;
+    const queryFingerprints = normalizedMultiQueryBrief.industry_queries.map(
+      (queryText) =>
+        discoverySourceQueryFingerprint(normalizedMultiQueryBrief, queryText),
+    );
+    const { pool, query } = transactionPool((sql, values) => {
+      if (
+        sql.includes("FROM leadgrid_discovery_runs r") &&
+        sql.includes("r.id = $1::uuid")
+      ) {
+        return {
+          rows: [
+            runRow({
+              status,
+              profile_id: executionProfileId,
+              profile_version: 9,
+              brief_snapshot: normalizedMultiQueryBrief,
+              checkpoint: {
+                version: 2,
+                source_page_start: 5,
+                source_page_next: 6,
+                completed_queries: [0],
+                query_errors: [],
+                query_results: {
+                  "0": {
+                    raw: 1,
+                    source_page_start: 5,
+                    source_page_next: 6,
+                    source_page_count: 10,
+                    duplicates: 0,
+                    invalid: 0,
+                    geo_filtered: 0,
+                    company_filtered: 0,
+                    website_assessment_candidates: 0,
+                    website_assessment_requests: 0,
+                    pages: 1,
+                    external_requests: 1,
+                    geocodes: 0,
+                    geocode_misses: 0,
+                    source_limit_reached: false,
+                    limit_reason: null,
+                    resolved_nace_codes: ["69.201"],
+                    resolved_municipalities: [],
+                  },
+                },
+              },
+            }),
+          ],
+        };
+      }
+      if (
+        sql.includes("SELECT status") &&
+        sql.includes("leadgrid_discovery_runs")
+      ) {
+        return { rows: [{ status }] };
+      }
+      if (sql.includes("SELECT COUNT(*)::int AS count")) {
+        return { rows: [{ count: 0 }] };
+      }
+      if (sql.includes("SET status = $2") && values[0] === RUN_ID) {
+        status = String(values[1]);
+        return { rows: [], rowCount: 1 };
+      }
+      return undefined;
+    });
+    const searchRegistry = vi.fn(
+      async (input: DiscoveryRegistrySearchInput) => ({
+        candidates: [],
+        sourceOffsetStart: input.sourceOffset ?? 0,
+        sourceOffsetNext: (input.sourceOffset ?? 0) + 1,
+        sourcePageStart: 0,
+        sourcePageNext: 0,
+        sourcePageCount: 10,
+        pagesFetched: 1,
+        sourceResultsSeen: 0,
+        duplicateResultsSkipped: 0,
+        invalidResultsSkipped: 0,
+        geoFilteredResults: 0,
+        companyFilteredResults: 0,
+        websiteAssessmentCandidates: 0,
+        websiteAssessmentRequests: 0,
+        sourceLimitReached: false,
+        hasMoreSourceResults: true,
+        limitReason: null,
+        externalRequests: 1,
+        geocodeRequests: 0,
+        geocodeMisses: 0,
+        resolution: "nace" as const,
+        resolvedNaceCodes: ["69.201"],
+        resolvedMunicipalities: [],
+      }),
+    );
+
+    await expect(
+      executeDiscoveryRun(pool, RUN_ID, { searchRegistry }),
+    ).resolves.toMatchObject({ status: "completed" });
+
+    expect(searchRegistry).toHaveBeenCalledTimes(2);
+    expect(searchRegistry.mock.calls.map(([input]) => input.query)).toEqual([
+      "regnskapsfører",
+      "revisjonsfirma",
+    ]);
+    expect(
+      searchRegistry.mock.calls.map(([input]) => input.sourceOffset),
+    ).toEqual([0, 0]);
+    const cursorWrite = query.mock.calls.find(([queryValue]) =>
+      textOf(queryValue).includes("SET source_cursor_map ="),
+    );
+    expect(JSON.parse(String(cursorWrite?.[1]?.[4]))).toEqual({
+      [queryFingerprints[0]]: 1,
+      [queryFingerprints[1]]: 1,
+    });
+    expect(JSON.parse(String(cursorWrite?.[1]?.[5]))).toEqual({
+      [queryFingerprints[0]]: 0,
+      [queryFingerprints[1]]: 0,
+    });
+  });
+
+  it("does not advance the profile cursor when execution fails", async () => {
+    let status = "researching";
+    const executionProfileId = "77777777-7777-4777-8777-777777777777";
+    const normalizedBrief = previewDiscovery(brief).brief;
+    const queryFingerprint = discoverySourceQueryFingerprint(
+      normalizedBrief,
+      normalizedBrief.industry_queries[0],
+    );
+    const { pool, query } = transactionPool((sql, values) => {
+      if (
+        sql.includes("FROM leadgrid_discovery_runs r") &&
+        sql.includes("r.id = $1::uuid")
+      ) {
+        return {
+          rows: [
+            runRow({
+              status,
+              profile_id: executionProfileId,
+              profile_version: 9,
+              brief_snapshot: normalizedBrief,
+              checkpoint: {
+                version: 3,
+                source_cursor_start: { [queryFingerprint]: 707 },
+                source_cursor_next: { [queryFingerprint]: 707 },
+                source_page_start: 7,
+                source_page_next: 7,
+                completed_queries: [],
+                query_errors: [],
+                query_results: {},
+              },
+            }),
+          ],
+        };
+      }
+      if (
+        sql.includes("SELECT status") &&
+        sql.includes("leadgrid_discovery_runs")
+      ) {
+        return { rows: [{ status }] };
+      }
+      if (sql.includes("SELECT COUNT(*)::int AS count")) {
+        return { rows: [{ count: 0 }] };
+      }
+      if (sql.includes("SET status = $2") && values[0] === RUN_ID) {
+        status = String(values[1]);
+        return { rows: [], rowCount: 1 };
+      }
+      return undefined;
+    });
+    const searchRegistry = vi.fn(async () => {
+      throw new Error("temporary registry failure");
+    });
+
+    await expect(
+      executeDiscoveryRun(pool, RUN_ID, { searchRegistry }),
+    ).rejects.toMatchObject({ code: "provider_unavailable" });
+
+    expect(searchRegistry).toHaveBeenCalledOnce();
+    expect(searchRegistry.mock.calls[0]?.[0]).toMatchObject({
+      sourceOffset: 707,
+    });
+    expect(
+      query.mock.calls.some(([queryValue]) =>
+        textOf(queryValue).includes("SET source_cursor_map ="),
+      ),
+    ).toBe(false);
+  });
+  it("completes without overwriting a newer cursor when terminal CAS loses a race", async () => {
+    let status = "researching";
+    const executionProfileId = "77777777-7777-4777-8777-777777777777";
+    const normalizedBrief = previewDiscovery(brief).brief;
+    const queryFingerprint = discoverySourceQueryFingerprint(
+      normalizedBrief,
+      normalizedBrief.industry_queries[0],
+    );
+    const { pool, query } = transactionPool((sql, values) => {
+      if (
+        sql.includes("FROM leadgrid_discovery_runs r") &&
+        sql.includes("r.id = $1::uuid")
+      ) {
+        return {
+          rows: [
+            runRow({
+              status,
+              profile_id: executionProfileId,
+              profile_version: 9,
+              brief_snapshot: normalizedBrief,
+              checkpoint: {
+                version: 3,
+                source_cursor_start: { [queryFingerprint]: 50 },
+                source_cursor_next: { [queryFingerprint]: 50 },
+                source_page_start: 0,
+                source_page_next: 0,
+                completed_queries: [],
+                query_errors: [],
+                query_results: {},
+              },
+            }),
+          ],
+        };
+      }
+      if (
+        sql.includes("SELECT status") &&
+        sql.includes("leadgrid_discovery_runs")
+      ) {
+        return { rows: [{ status }] };
+      }
+      if (sql.includes("SELECT COUNT(*)::int AS count")) {
+        return { rows: [{ count: 0 }] };
+      }
+      if (sql.includes("SET status = $2") && values[0] === RUN_ID) {
+        status = String(values[1]);
+        return { rows: [], rowCount: 1 };
+      }
+      if (sql.includes("SET source_cursor_map =")) {
+        // A parallel successful run already changed this fingerprint, so the
+        // compare-and-set must miss and leave that newer map untouched.
+        return { rows: [], rowCount: 0 };
+      }
+      return undefined;
+    });
+    const searchRegistry = vi.fn(
+      async (input: DiscoveryRegistrySearchInput) => ({
+        candidates: [],
+        sourceOffsetStart: input.sourceOffset ?? 0,
+        sourceOffsetNext: 70,
+        sourcePageStart: 0,
+        sourcePageNext: 0,
+        sourcePageCount: 10,
+        pagesFetched: 1,
+        sourceResultsSeen: 20,
+        duplicateResultsSkipped: 0,
+        invalidResultsSkipped: 0,
+        geoFilteredResults: 0,
+        companyFilteredResults: 0,
+        websiteAssessmentCandidates: 0,
+        websiteAssessmentRequests: 0,
+        sourceLimitReached: false,
+        hasMoreSourceResults: true,
+        limitReason: null,
+        externalRequests: 1,
+        geocodeRequests: 0,
+        geocodeMisses: 0,
+        resolution: "nace" as const,
+        resolvedNaceCodes: ["69.201"],
+        resolvedMunicipalities: [],
+      }),
+    );
+
+    await expect(
+      executeDiscoveryRun(pool, RUN_ID, { searchRegistry }),
+    ).resolves.toMatchObject({ status: "completed" });
+
+    expect(searchRegistry).toHaveBeenCalledOnce();
+    expect(searchRegistry.mock.calls[0]?.[0].sourceOffset).toBe(50);
+    const cursorWrites = query.mock.calls.filter(([queryValue]) =>
+      textOf(queryValue).includes("SET source_cursor_map ="),
+    );
+    expect(cursorWrites).toHaveLength(1);
+    expect(JSON.parse(String(cursorWrites[0]?.[1]?.[4]))).toEqual({
+      [queryFingerprint]: 70,
+    });
+    expect(JSON.parse(String(cursorWrites[0]?.[1]?.[5]))).toEqual({
+      [queryFingerprint]: 50,
+    });
+  });
+
   it("uses the request hash as the replay boundary", () => {
     expect(
       discoveryHash({ run_id: RUN_ID, decision: { decision: "approve" } }),
     ).not.toBe(
       discoveryHash({ run_id: RUN_ID, decision: { decision: "reject" } }),
+    );
+  });
+
+  it("keeps query fingerprints stable across query reorder and resets on filter change", () => {
+    const firstBrief = previewDiscovery({
+      ...brief,
+      industry_queries: ["regnskapsfører", "revisjonsfirma"],
+    }).brief;
+    const reorderedBrief = previewDiscovery({
+      ...brief,
+      industry_queries: ["revisjonsfirma", "regnskapsfører"],
+    }).brief;
+    const changedUniverse = previewDiscovery({
+      ...brief,
+      city: "Bergen",
+      industry_queries: ["regnskapsfører", "revisjonsfirma"],
+    }).brief;
+
+    expect(discoverySourceQueryFingerprint(firstBrief, "regnskapsfører")).toBe(
+      discoverySourceQueryFingerprint(reorderedBrief, "regnskapsfører"),
+    );
+    expect(
+      discoverySourceQueryFingerprint(firstBrief, "regnskapsfører"),
+    ).not.toBe(
+      discoverySourceQueryFingerprint(changedUniverse, "regnskapsfører"),
     );
   });
 

@@ -1,31 +1,77 @@
 // LeadgridLeadInboxView.swift
 //
-// Nye leads fra book-demo/kontakt-skjema m/ Claude-auto-research.
-// Markedssjef ser HOT/WARM/COOL-tier + claude-summary + 'Godta + tildel'.
+// Autoritativ «Tildelt meg»-visning. Brukes nå direkte i Leads-fanen,
+// men kan fortsatt presenteres som en selvstendig navigasjonsside.
 
 import SwiftUI
 
 struct LeadgridLeadInboxView: View {
     let api: APIClient
+    let organizationId: String
+    var embedded = false
+
     @State private var assignments: [MyAssignmentItem] = []
     @State private var loading = true
     @State private var errorText: String?
     @State private var selectedCustomerId: String?
+    @State private var searchText = ""
 
+    private var filteredAssignments: [MyAssignmentItem] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !query.isEmpty else { return assignments }
+        return assignments.filter { item in
+            item.name.lowercased().contains(query)
+                || item.email?.lowercased().contains(query) == true
+                || item.phone?.lowercased().contains(query) == true
+                || item.projectName?.lowercased().contains(query) == true
+        }
+    }
+
+    @ViewBuilder
     var body: some View {
+        Group {
+            if embedded {
+                inboxContent
+            } else {
+                inboxContent
+                    .navigationTitle("Lead-inbox")
+                    .marketingDirectorBackdrop(.crmHome)
+            }
+        }
+        .searchable(text: $searchText, prompt: "Søk i mine tildelte leads")
+        .task(id: organizationId) { await load() }
+        .refreshable { await load() }
+        .sheet(item: Binding(
+            get: { selectedCustomerId.map { CustomerIdWrapper(id: $0) } },
+            set: { selectedCustomerId = $0?.id }
+        )) { wrapper in
+            LeadgridCustomerDetailView(
+                customerId: wrapper.id,
+                api: api,
+                organizationId: organizationId
+            )
+        }
+    }
+
+    private var inboxContent: some View {
         List {
             if loading && assignments.isEmpty {
                 HStack { Spacer(); ProgressView(); Spacer() }
-            } else if assignments.isEmpty {
+            } else if filteredAssignments.isEmpty {
                 ContentUnavailableView(
-                    "Ingen tildelte leads",
-                    systemImage: "tray",
-                    description: Text("Du har ingen tildelte leads akkurat nå."),
+                    assignments.isEmpty ? "Ingen tildelte leads" : "Ingen treff",
+                    systemImage: assignments.isEmpty ? "tray" : "magnifyingglass",
+                    description: Text(
+                        assignments.isEmpty
+                            ? "Du har ingen tildelte leads akkurat nå."
+                            : "Prøv et annet navn, prosjekt, telefonnummer eller e-post."
+                    )
                 )
                 .listRowBackground(Color.clear)
             } else {
-                Section("Mine tildelte leads (\(assignments.count))") {
-                    ForEach(assignments) { item in
+                Section("Mine tildelte leads (\(filteredAssignments.count))") {
+                    ForEach(filteredAssignments) { item in
                         Button {
                             selectedCustomerId = item.id
                         } label: {
@@ -39,16 +85,6 @@ struct LeadgridLeadInboxView: View {
                 Section { Text(errorText).foregroundStyle(.red) }
             }
         }
-        .navigationTitle("Lead-inbox")
-        .marketingDirectorBackdrop(.crmHome)
-        .task { await load() }
-        .refreshable { await load() }
-        .sheet(item: Binding(
-            get: { selectedCustomerId.map { CustomerIdWrapper(id: $0) } },
-            set: { selectedCustomerId = $0?.id }
-        )) { wrapper in
-            LeadgridCustomerDetailView(customerId: wrapper.id, api: api)
-        }
     }
 
     private struct CustomerIdWrapper: Identifiable {
@@ -56,8 +92,15 @@ struct LeadgridLeadInboxView: View {
     }
 
     private func load() async {
+        await MainActor.run {
+            loading = true
+            errorText = nil
+            assignments = []
+        }
         do {
-            let resp = try await api.fetchMyAssignments()
+            let resp = try await api.fetchMyAssignments(
+                organizationId: organizationId
+            )
             await MainActor.run {
                 assignments = resp.items
                 loading = false

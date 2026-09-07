@@ -59,7 +59,7 @@ describe("transient Discovery Google Maps details", () => {
     await expect(
       fetchTransientDiscoveryPlaceDetails(
         pool,
-        { project, runId, candidateId },
+        { project, runId, candidateId, userId: "user-a" },
         { apiKey: "server-key", fetchImpl: fetchImpl as typeof fetch },
       ),
     ).rejects.toMatchObject({ code: "candidate_not_found", status: 404 });
@@ -69,6 +69,8 @@ describe("transient Discovery Google Maps details", () => {
     expect(sql).toContain("r.project_id = $2");
     expect(sql).toContain("r.id = $3::uuid");
     expect(sql).toContain("c.id = $4::uuid");
+    expect(sql).toContain("rc.observation_snapshot->>'name'");
+    expect(sql).toContain("rc.observation_snapshot->'latitude'");
     expect(params).toEqual([
       project.organizationId,
       project.id,
@@ -93,7 +95,7 @@ describe("transient Discovery Google Maps details", () => {
       await expect(
         fetchTransientDiscoveryPlaceDetails(
           pool,
-          { project, runId, candidateId },
+          { project, runId, candidateId, userId: "user-a" },
           { apiKey: "server-key", fetchImpl: fetchImpl as typeof fetch },
         ),
       ).rejects.toMatchObject({
@@ -104,7 +106,7 @@ describe("transient Discovery Google Maps details", () => {
     }
   });
 
-  it("keeps the API key server-side, requests a minimal field mask and performs no writes", async () => {
+  it("keeps the API key server-side and persists only short-lived returned Place-ID attestations", async () => {
     const { pool, query } = poolFor(candidate());
     const fetchImpl = vi.fn(async () =>
       response({
@@ -133,7 +135,7 @@ describe("transient Discovery Google Maps details", () => {
 
     const result = await fetchTransientDiscoveryPlaceDetails(
       pool,
-      { project, runId, candidateId },
+      { project, runId, candidateId, userId: "user-a" },
       {
         apiKey: "server-secret-key",
         fetchImpl: fetchImpl as typeof fetch,
@@ -164,14 +166,30 @@ describe("transient Discovery Google Maps details", () => {
       },
     });
     expect(String(init?.body)).not.toContain("server-secret-key");
-    expect(query).toHaveBeenCalledOnce();
-    expect(query.mock.calls.every(([sql]) => /^\s*SELECT\b/i.test(sql))).toBe(
-      true,
+    expect(query).toHaveBeenCalledTimes(2);
+    const [confirmationSql, confirmationParams] = query.mock.calls[1];
+    expect(confirmationSql).toContain(
+      "INSERT INTO leadgrid_discovery_place_confirmations",
+    );
+    expect(confirmationSql).toContain("FROM unnest($5::text[])");
+    expect(confirmationParams).toEqual([
+      project.organizationId,
+      project.id,
+      runId,
+      candidateId,
+      ["places/leadgrid"],
+      "user-a",
+      "2026-08-31T12:00:00.000Z",
+      "2026-08-31T12:15:00.000Z",
+    ]);
+    expect(confirmationSql).not.toMatch(
+      /display_name|formatted_address|rating|phone|website_uri/i,
     );
     expect(result).toMatchObject({
       candidate_id: candidateId,
       mode: "transient_details_only",
       fetched_at: "2026-08-31T12:00:00.000Z",
+      confirmation_expires_at: "2026-08-31T12:15:00.000Z",
       provider: { id: "google_places", name: "Google Maps" },
       matches: [
         {
@@ -205,7 +223,7 @@ describe("transient Discovery Google Maps details", () => {
 
     const result = await fetchTransientDiscoveryPlaceDetails(
       pool,
-      { project, runId, candidateId },
+      { project, runId, candidateId, userId: "user-a" },
       {
         apiKey: "server-key",
         fetchImpl: vi.fn(async () => response({ places })) as typeof fetch,
@@ -217,19 +235,40 @@ describe("transient Discovery Google Maps details", () => {
     expect(result.matches[0].google_maps_uri).toBeNull();
   });
 
-  it("maps provider throttling to a typed retryable error without leaking the upstream body", async () => {
-    const { pool } = poolFor(candidate());
-    const error = await fetchTransientDiscoveryPlaceDetails(
+  it("does not create an attestation when Google returns no usable matches", async () => {
+    const { pool, query } = poolFor(candidate());
+    const result = await fetchTransientDiscoveryPlaceDetails(
       pool,
-      { project, runId, candidateId },
+      { project, runId, candidateId, userId: "user-a" },
       {
         apiKey: "server-key",
-        fetchImpl: vi.fn(async () =>
-          response({ error: { message: "secret upstream detail" } }, 429),
-        ) as typeof fetch,
+        fetchImpl: vi.fn(async () => response({ places: [] })) as typeof fetch,
+        now: () => new Date("2026-08-31T12:00:00.000Z"),
+      },
+    );
+
+    expect(query).toHaveBeenCalledOnce();
+    expect(result.confirmation_expires_at).toBeNull();
+    expect(result.matches).toEqual([]);
+  });
+
+  it("maps provider throttling to a typed retryable error without leaking the upstream body", async () => {
+    const { pool } = poolFor(candidate());
+    const cancel = vi.fn(async () => undefined);
+    const error = await fetchTransientDiscoveryPlaceDetails(
+      pool,
+      { project, runId, candidateId, userId: "user-a" },
+      {
+        apiKey: "server-key",
+        fetchImpl: vi.fn(async () => ({
+          status: 429,
+          ok: false,
+          body: { cancel },
+        }) as unknown as Response) as typeof fetch,
       },
     ).catch((caught: unknown) => caught);
 
+    expect(cancel).toHaveBeenCalledOnce();
     expect(error).toBeInstanceOf(DiscoveryPlacesDetailsError);
     expect(error).toMatchObject({
       code: "places_rate_limited",

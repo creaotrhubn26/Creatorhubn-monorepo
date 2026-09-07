@@ -12,6 +12,7 @@ import SwiftUI
 
 struct LeadgridWonLostDashboardView: View {
     let api: APIClient
+    let projectId: String
 
     @State private var stats: WonLostStatsResponse?
     @State private var period: String = "30d"
@@ -213,7 +214,10 @@ struct LeadgridWonLostDashboardView: View {
     private func load() async {
         loading = true
         do {
-            let res = try await api.fetchWonLostStats(period: period)
+            let res = try await api.fetchWonLostStats(
+                period: period,
+                projectId: projectId
+            )
             await MainActor.run {
                 stats = res
                 loading = false

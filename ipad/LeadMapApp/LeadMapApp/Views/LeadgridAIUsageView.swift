@@ -3,13 +3,14 @@
 // iPad AI-kost-dashboard for org-en. Viser kost-utvikling (bar-stack
 // per provider), per-provider-detaljer og kost-fordeling (donut).
 // Backend: /api/leadgrid/ai-usage/{summary,history} (PR #871),
-// gated på billing.view_ai_usage.
+// begrenset til workspace-admin/superadmin.
 
 import SwiftUI
 import Charts
 
 struct LeadgridAIUsageView: View {
     let api: APIClient
+    let organizationId: String
 
     @State private var summary: LeadgridAIUsageSummary?
     @State private var history: LeadgridAIUsageHistory?
@@ -267,8 +268,10 @@ struct LeadgridAIUsageView: View {
     private func load() async {
         loading = true
         loadError = nil
-        async let s = api.fetchAIUsageSummary(sinceDays: period)
-        async let h = api.fetchAIUsageHistory(days: period)
+        async let s = api.fetchAIUsageSummary(
+            organizationId: organizationId, sinceDays: period)
+        async let h = api.fetchAIUsageHistory(
+            organizationId: organizationId, days: period)
         do {
             summary = try await s
         } catch {
@@ -284,7 +287,7 @@ struct LeadgridAIUsageView: View {
             switch api {
             case .forbidden,
                  .statusCode(403):
-                return "Du har ikke tilgang til AI-kost (krever billing.view_ai_usage)."
+                return "AI-kost er bare tilgjengelig for workspace-administrator."
             case .statusCode(let code):
                 return "Serverfeil (\(code))."
             case .invalidResponse:

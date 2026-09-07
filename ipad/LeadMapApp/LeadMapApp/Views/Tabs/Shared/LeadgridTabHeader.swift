@@ -5,7 +5,8 @@
 // All header-data er EKTE — ingen hardkodet mock:
 //   dato          → faktisk dagens dato (LeadgridHeaderLive, nb_NO)
 //   sjekkliste    → oppfølginger som forfaller innen 3 dager
-//   varsel-klokke → appState.leadgridUnreadCount + NotificationsView
+//   synkstatus     → tenant-avgrenset offline-kø, kun synlig ved avvik
+//   varsel-klokke → appState.leadgridUnreadCount + Leadgrid V2-innboks
 //   avatar        → appState.displayName/initials + ProfilePopover
 //
 // Layout (fasit = Oversikt):
@@ -166,11 +167,13 @@ struct LeadgridTabHeader<Extra: View>: View {
                     // iPhone: de sekundære knappene kollapses til én
                     // ellipsis-meny så header-raden får plass.
                     if DeviceIdiom.isPhone {
+                        LeadgridSyncStatusButton()
                         phoneOverflowMenu
                     } else {
                         analyseButton
                         nextActionsButton
                         activitiesButton
+                        LeadgridSyncStatusButton()
                         notificationsButton
                     }
                     Button { profileOpen.toggle() } label: {
@@ -208,11 +211,17 @@ struct LeadgridTabHeader<Extra: View>: View {
         }
         .onAppear { if state.pendingNotificationTap != nil { consumeNotificationTap() } }
         // Dørsalg-badgen: dagens dører (kun for dørsalg-profil-orger).
-        .task {
-            guard erRenDorsalgOrg, let api = state.api else { return }
-            if let stats = await KartverketService.shared.fetchDorsalgStats(using: api) {
-                dorsalgIDag = stats.iDag
-            }
+        .task(id: state.activeLeadgridProjectId) {
+            dorsalgIDag = 0
+            guard erRenDorsalgOrg,
+                  let api = state.api,
+                  let projectId = state.activeLeadgridProjectId else { return }
+            let loaded = await KartverketService.shared.fetchDorsalgStats(
+                projectId: projectId, using: api
+            )
+            guard !Task.isCancelled,
+                  state.activeLeadgridProjectId == projectId else { return }
+            dorsalgIDag = loaded?.iDag ?? 0
         }
         .sheet(isPresented: $myProfileOpen) {
             MyProfileSheet(name: state.displayName,
@@ -231,7 +240,13 @@ struct LeadgridTabHeader<Extra: View>: View {
                     guard let api = state.api else {
                         throw AddLeadSaveError(message: "Du må være innlogget for å lagre leaden")
                     }
-                    _ = try await api.createLeadAtPin(newLead.makeCreateRequest(), organizationId: state.activeOrganizationId)
+                    guard let projectId = state.activeLeadgridProjectId else {
+                        throw AddLeadSaveError(message: "Velg et kundeprosjekt før du lagrer leaden")
+                    }
+                    _ = try await api.createLeadAtPin(
+                        newLead.makeCreateRequest(projectID: projectId),
+                        organizationId: state.activeOrganizationId
+                    )
                     addLeadToast = "«\(newLead.companyName)» lagt til"
                 }
             case .newFollowUp:
@@ -522,7 +537,7 @@ struct LeadgridTabHeader<Extra: View>: View {
     }
 
     private var notificationsPopoverContent: some View {
-        NotificationsView()
+        LeadgridNotificationInboxView()
             .adaptivePopoverFrame(width: 400, height: 560)
             .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
     }
@@ -530,9 +545,14 @@ struct LeadgridTabHeader<Extra: View>: View {
     /// Konsumer et push-varsel-tap: åpne inboksen + frisk opp tellingen,
     /// og nil-ut tappen så andre monterte headere ikke dobbelt-håndterer.
     private func consumeNotificationTap() {
+        guard let payload = state.pendingNotificationTap else { return }
         state.pendingNotificationTap = nil
-        notificationsOpen = true
-        Task { await state.refreshLeadgridNotifications() }
+        Task { @MainActor in
+            let routed = await state.handleLeadgridNotificationTap(payload)
+            if !routed {
+                notificationsOpen = true
+            }
+        }
     }
 
     // MARK: Knapper
@@ -590,8 +610,8 @@ struct LeadgridTabHeader<Extra: View>: View {
         }
     }
 
-    /// Varsel-klokke m/ EKTE badge (appState.leadgridUnreadCount) →
-    /// NotificationsView (polling + mark-as-read + deep-link til lead).
+    /// Varsel-klokke m/ EKTE badge (appState.leadgridUnreadCount) og den
+    /// samme Leadgrid V2-innboksen som pollingen fyller.
     private var notificationsButton: some View {
         Button {
             notificationsOpen.toggle()

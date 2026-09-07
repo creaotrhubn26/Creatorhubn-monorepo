@@ -32,6 +32,7 @@ private enum BfBrand {
 
 struct MoteBriefSheet: View {
     let selskap: String
+    var leadId: String? = nil
     var orgnr: String? = nil
     var kontakt: String? = nil
     var kontaktRolle: String? = nil
@@ -347,13 +348,19 @@ struct MoteBriefSheet: View {
             feil = "Krever innlogget modus."
             return
         }
+        guard let projectId = appState.activeProjectId,
+              !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            feil = "Velg et kundeprosjekt før du lager møtebriefen."
+            return
+        }
         laster = true
         defer { laster = false }
         do {
             brief = try await api.hentMoteBrief(
                 selskap: selskap, orgnr: orgnr, kontakt: kontakt,
                 kontaktRolle: kontaktRolle, motetid: motetid,
-                notater: nil, leadStatus: leadStatus)
+                notater: nil, leadStatus: leadStatus,
+                leadId: leadId, projectId: projectId)
         } catch {
             feil = "Sjekk nettet — og at «Møter · AI-møtebrief» er aktivert for organisasjonen din."
         }

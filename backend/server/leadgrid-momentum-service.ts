@@ -11,13 +11,14 @@
  *   - crm_lead_activities (alle interaksjoner per kunde)
  *   - crm_customers (pipeline_stage, lead_temperature, organization_id)
  *   - lead_recommendations (NBA m/ expires_at + snoozed_until)
- *   - leadgrid_org_sales_goals + leadgrid_momentum_snapshots (mig 327)
+ *   - leadgrid_project_sales_goals + leadgrid_project_momentum_snapshots (mig 0538)
  */
 
 import type { Pool } from "pg";
 
 export interface SalesGoal {
   organizationId: string;
+  projectId: string;
   yearMonth: string;
   revenueTarget: number | null;
   dealsTarget: number | null;
@@ -28,10 +29,12 @@ export interface SalesGoal {
   dailyMeetingsTarget: number;
   dailyPipelineMovesTarget: number;
   monthlyLeadsNeeded: number | null;
+  notes: string | null;
 }
 
 export interface MomentumScore {
   organizationId: string;
+  projectId: string;
   date: string;
   score: number;                          // 0-100 composite
   breakdown: {
@@ -66,7 +69,7 @@ export interface MomentumScore {
   reasoning: string;
 }
 
-const DEFAULT_GOAL: Omit<SalesGoal, "organizationId" | "yearMonth"> = {
+const DEFAULT_GOAL: Omit<SalesGoal, "organizationId" | "projectId" | "yearMonth"> = {
   revenueTarget: null,
   dealsTarget: 3,
   meetingsTarget: 10,
@@ -76,6 +79,7 @@ const DEFAULT_GOAL: Omit<SalesGoal, "organizationId" | "yearMonth"> = {
   dailyMeetingsTarget: 1,
   dailyPipelineMovesTarget: 2,
   monthlyLeadsNeeded: null,
+  notes: null,
 };
 
 function currentYearMonth(): string {
@@ -84,44 +88,57 @@ function currentYearMonth(): string {
 }
 
 /**
- * Hent eller opprett goal for org for nåværende måned.
+ * Hent eller opprett mål for ett prosjekt for nåværende måned.
  * Hvis ingen finnes: opprett m/ defaults + auto-utregnet leads-needed.
  */
-export async function getOrCreateGoal(pool: Pool, organizationId: string): Promise<SalesGoal> {
-  const ym = currentYearMonth();
+export async function getOrCreateGoal(
+  pool: Pool,
+  organizationId: string,
+  projectId: string,
+  yearMonth = currentYearMonth(),
+): Promise<SalesGoal> {
+  const ym = normalizedYearMonth(yearMonth);
   const r = await pool.query(
-    `SELECT * FROM leadgrid_org_sales_goals
-      WHERE organization_id = $1::uuid AND year_month = $2 LIMIT 1`,
-    [organizationId, ym],
+    `SELECT *
+       FROM leadgrid_project_sales_goals
+      WHERE organization_id = $1::uuid
+        AND project_id = $2
+        AND year_month = $3
+      LIMIT 1`,
+    [organizationId, projectId, ym],
   );
   if (r.rowCount && r.rows[0]) {
     return mapGoalRow(r.rows[0]);
   }
-  // Opprett m/ defaults + auto-leads-needed basert på historisk win-rate
+
+  // Opprett m/ defaults + auto-leads-needed basert på prosjektets win-rate.
   const winRateR = await pool.query<{ win_rate: string | null }>(
     `SELECT
        COUNT(*) FILTER (WHERE pipeline_stage = 'won')::float8 /
          NULLIF(COUNT(*)::float8, 0) AS win_rate
        FROM crm_customers
-      WHERE organization_id = $1::uuid AND archived_at IS NULL
+      WHERE organization_id = $1::uuid
+        AND project_id = $2
+        AND archived_at IS NULL
         AND created_at > NOW() - INTERVAL '180 days'`,
-    [organizationId],
+    [organizationId, projectId],
   );
   const winRate = Number(winRateR.rows[0]?.win_rate) || 0.05;  // default 5%
   const dealsTarget = DEFAULT_GOAL.dealsTarget!;
   const monthlyLeadsNeeded = Math.max(20, Math.ceil(dealsTarget / winRate));
 
   const ins = await pool.query(
-    `INSERT INTO leadgrid_org_sales_goals
-       (organization_id, year_month, revenue_target, deals_target,
+    `INSERT INTO leadgrid_project_sales_goals
+       (organization_id, project_id, year_month, revenue_target, deals_target,
         meetings_target, proposals_target,
         daily_contacts_target, daily_followups_target,
         daily_meetings_target, daily_pipeline_moves_target,
         monthly_leads_needed)
-     VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     ON CONFLICT (organization_id, project_id, year_month) DO NOTHING
      RETURNING *`,
     [
-      organizationId, ym,
+      organizationId, projectId, ym,
       DEFAULT_GOAL.revenueTarget, DEFAULT_GOAL.dealsTarget,
       DEFAULT_GOAL.meetingsTarget, DEFAULT_GOAL.proposalsTarget,
       DEFAULT_GOAL.dailyContactsTarget, DEFAULT_GOAL.dailyFollowupsTarget,
@@ -129,21 +146,67 @@ export async function getOrCreateGoal(pool: Pool, organizationId: string): Promi
       monthlyLeadsNeeded,
     ],
   );
-  return mapGoalRow(ins.rows[0]);
+  if (ins.rows[0]) return mapGoalRow(ins.rows[0]);
+
+  // A concurrent request may have inserted the same project/month first.
+  const raced = await pool.query(
+    `SELECT *
+       FROM leadgrid_project_sales_goals
+      WHERE organization_id = $1::uuid
+        AND project_id = $2
+        AND year_month = $3
+      LIMIT 1`,
+    [organizationId, projectId, ym],
+  );
+  if (!raced.rows[0]) throw new Error("momentum_goal_upsert_failed");
+  return mapGoalRow(raced.rows[0]);
 }
+
+export type SalesGoalPatch = Partial<
+  Omit<SalesGoal, "organizationId" | "projectId">
+> & { notes?: string | null };
 
 export async function setGoal(
   pool: Pool,
   organizationId: string,
+  projectId: string,
   userId: string,
-  patch: Partial<SalesGoal> & { notes?: string },
+  patch: SalesGoalPatch,
 ): Promise<SalesGoal> {
-  const ym = patch.yearMonth ?? currentYearMonth();
-  const existing = await getOrCreateGoal(pool, organizationId);
-  const merged = { ...existing, ...patch, yearMonth: ym };
+  const ym = normalizedYearMonth(patch.yearMonth ?? currentYearMonth());
+  const existing = await getOrCreateGoal(pool, organizationId, projectId, ym);
+  const merged: SalesGoal = {
+    organizationId,
+    projectId,
+    yearMonth: ym,
+    revenueTarget: patch.revenueTarget === undefined
+      ? existing.revenueTarget
+      : patch.revenueTarget,
+    dealsTarget: patch.dealsTarget === undefined
+      ? existing.dealsTarget
+      : patch.dealsTarget,
+    meetingsTarget: patch.meetingsTarget === undefined
+      ? existing.meetingsTarget
+      : patch.meetingsTarget,
+    proposalsTarget: patch.proposalsTarget === undefined
+      ? existing.proposalsTarget
+      : patch.proposalsTarget,
+    dailyContactsTarget: patch.dailyContactsTarget
+      ?? existing.dailyContactsTarget,
+    dailyFollowupsTarget: patch.dailyFollowupsTarget
+      ?? existing.dailyFollowupsTarget,
+    dailyMeetingsTarget: patch.dailyMeetingsTarget
+      ?? existing.dailyMeetingsTarget,
+    dailyPipelineMovesTarget: patch.dailyPipelineMovesTarget
+      ?? existing.dailyPipelineMovesTarget,
+    monthlyLeadsNeeded: patch.monthlyLeadsNeeded === undefined
+      ? existing.monthlyLeadsNeeded
+      : patch.monthlyLeadsNeeded,
+    notes: patch.notes === undefined ? existing.notes : patch.notes,
+  };
 
-  await pool.query(
-    `UPDATE leadgrid_org_sales_goals
+  const updated = await pool.query(
+    `UPDATE leadgrid_project_sales_goals
         SET revenue_target = $1, deals_target = $2,
             meetings_target = $3, proposals_target = $4,
             daily_contacts_target = $5, daily_followups_target = $6,
@@ -152,31 +215,44 @@ export async function setGoal(
             notes = $10,
             set_by_user_id = $11,
             updated_at = NOW()
-      WHERE organization_id = $12::uuid AND year_month = $13`,
+      WHERE organization_id = $12::uuid
+        AND project_id = $13
+        AND year_month = $14
+      RETURNING *`,
     [
       merged.revenueTarget, merged.dealsTarget,
       merged.meetingsTarget, merged.proposalsTarget,
       merged.dailyContactsTarget, merged.dailyFollowupsTarget,
       merged.dailyMeetingsTarget, merged.dailyPipelineMovesTarget,
       merged.monthlyLeadsNeeded,
-      patch.notes ?? null,
+      merged.notes,
       userId,
-      organizationId, ym,
+      organizationId, projectId, ym,
     ],
   );
-  return merged;
+  if (!updated.rows[0]) throw new Error("momentum_goal_update_failed");
+  return mapGoalRow(updated.rows[0]);
+}
+
+function normalizedYearMonth(value: string): string {
+  const normalized = value.trim();
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(normalized)) {
+    throw new Error("invalid_year_month");
+  }
+  return normalized;
 }
 
 /**
- * Compute momentum-score for org for i dag.
+ * Compute momentum-score for ett prosjekt for i dag.
  * Vekting:
  *   activity 40% + velocity 30% + decay-prevention 20% - overdue 10%
  */
 export async function computeTodayMomentum(
   pool: Pool,
   organizationId: string,
+  projectId: string,
 ): Promise<MomentumScore> {
-  const goal = await getOrCreateGoal(pool, organizationId);
+  const goal = await getOrCreateGoal(pool, organizationId, projectId);
   const today = new Date().toISOString().slice(0, 10);
 
   // 1. Activity-count i dag
@@ -185,17 +261,21 @@ export async function computeTodayMomentum(
     calls: string; emails: string; visits: string;
   }>(
     `SELECT
-       COUNT(*) FILTER (WHERE activity_type IN ('visit_logged','email_sent','call_made','sms_sent'))::text AS contacts,
-       COUNT(*) FILTER (WHERE activity_type IN ('note_added','status_changed') AND created_at::date = CURRENT_DATE)::text AS followups,
-       COUNT(*) FILTER (WHERE activity_type IN ('meeting_scheduled','meeting_recap'))::text AS meetings,
-       COUNT(*) FILTER (WHERE activity_type = 'status_changed' AND new_value IN ('qualified','meeting','proposal','negotiation','won'))::text AS pipeline_moves,
-       COUNT(*) FILTER (WHERE activity_type = 'call_made')::text AS calls,
-       COUNT(*) FILTER (WHERE activity_type = 'email_sent')::text AS emails,
-       COUNT(*) FILTER (WHERE activity_type = 'visit_logged')::text AS visits
-       FROM crm_lead_activities
-       WHERE customer_id IN (SELECT id FROM crm_customers WHERE organization_id = $1::uuid)
-         AND created_at::date = CURRENT_DATE`,
-    [organizationId],
+       COUNT(*) FILTER (WHERE activity.activity_type IN ('visit_logged','email_sent','call_made','sms_sent'))::text AS contacts,
+       COUNT(*) FILTER (WHERE activity.activity_type IN ('note_added','status_changed'))::text AS followups,
+       COUNT(*) FILTER (WHERE activity.activity_type IN ('meeting_scheduled','meeting_recap'))::text AS meetings,
+       COUNT(*) FILTER (WHERE activity.activity_type = 'status_changed' AND activity.new_value IN ('qualified','meeting','proposal','negotiation','won'))::text AS pipeline_moves,
+       COUNT(*) FILTER (WHERE activity.activity_type = 'call_made')::text AS calls,
+       COUNT(*) FILTER (WHERE activity.activity_type = 'email_sent')::text AS emails,
+       COUNT(*) FILTER (WHERE activity.activity_type = 'visit_logged')::text AS visits
+       FROM crm_lead_activities activity
+       JOIN crm_customers customer
+         ON customer.id = activity.customer_id
+      WHERE customer.organization_id = $1::uuid
+        AND customer.project_id = $2
+        AND customer.archived_at IS NULL
+        AND activity.created_at::date = CURRENT_DATE`,
+    [organizationId, projectId],
   );
   const a = activityR.rows[0];
   const contacts = Number(a.contacts);
@@ -217,14 +297,24 @@ export async function computeTodayMomentum(
   // 2. Velocity-score: andel av aktive deals som beveget seg de siste 7d
   const velocityR = await pool.query<{ moved: string; total: string }>(
     `SELECT
-       COUNT(DISTINCT customer_id) FILTER (WHERE activity_type = 'status_changed'
-         AND created_at > NOW() - INTERVAL '7 days')::text AS moved,
+       (
+         SELECT COUNT(DISTINCT activity.customer_id)
+           FROM crm_lead_activities activity
+           JOIN crm_customers customer
+             ON customer.id = activity.customer_id
+          WHERE customer.organization_id = $1::uuid
+            AND customer.project_id = $2
+            AND customer.archived_at IS NULL
+            AND activity.activity_type = 'status_changed'
+            AND activity.created_at > NOW() - INTERVAL '7 days'
+       )::text AS moved,
        (SELECT COUNT(*) FROM crm_customers
-         WHERE organization_id = $1::uuid AND archived_at IS NULL
+         WHERE organization_id = $1::uuid
+           AND project_id = $2
+           AND archived_at IS NULL
            AND pipeline_stage IN ('first_contact','qualified','meeting','proposal','negotiation'))::text AS total
-       FROM crm_lead_activities
-       WHERE customer_id IN (SELECT id FROM crm_customers WHERE organization_id = $1::uuid)`,
-    [organizationId],
+      `,
+    [organizationId, projectId],
   );
   const moved = Number(velocityR.rows[0].moved);
   const totalActive = Math.max(1, Number(velocityR.rows[0].total));
@@ -234,13 +324,17 @@ export async function computeTodayMomentum(
   const decayR = await pool.query<{ contacted_hot: string; total_hot: string }>(
     `SELECT
        (SELECT COUNT(*) FROM crm_customers
-         WHERE organization_id = $1::uuid AND archived_at IS NULL
+         WHERE organization_id = $1::uuid
+           AND project_id = $2
+           AND archived_at IS NULL
            AND lead_temperature IN ('hot','ready')
            AND last_contacted_at > NOW() - INTERVAL '7 days')::text AS contacted_hot,
        (SELECT COUNT(*) FROM crm_customers
-         WHERE organization_id = $1::uuid AND archived_at IS NULL
+         WHERE organization_id = $1::uuid
+           AND project_id = $2
+           AND archived_at IS NULL
            AND lead_temperature IN ('hot','ready'))::text AS total_hot`,
-    [organizationId],
+    [organizationId, projectId],
   );
   const contactedHot = Number(decayR.rows[0].contacted_hot);
   const totalHot = Math.max(1, Number(decayR.rows[0].total_hot));
@@ -248,11 +342,21 @@ export async function computeTodayMomentum(
 
   // 4. Overdue penalty: antall NBA-pending med expires_at < NOW()
   const overdueR = await pool.query<{ count: string }>(
-    `SELECT COUNT(*)::text AS count FROM lead_recommendations
-       WHERE organization_id = $1::uuid AND status = 'pending'
-         AND expires_at IS NOT NULL AND expires_at < NOW()
-         AND (snoozed_until IS NULL OR snoozed_until < NOW())`,
-    [organizationId],
+    `SELECT COUNT(*)::text AS count
+       FROM lead_recommendations recommendation
+       JOIN crm_customers customer
+         ON customer.id = recommendation.lead_id
+      WHERE recommendation.organization_id = $1::uuid
+        AND recommendation.project_id = $2
+        AND customer.organization_id = $1::uuid
+        AND customer.project_id = $2
+        AND customer.project_id = recommendation.project_id
+        AND customer.archived_at IS NULL
+        AND recommendation.status = 'pending'
+        AND recommendation.expires_at IS NOT NULL
+        AND recommendation.expires_at < NOW()
+        AND (recommendation.snoozed_until IS NULL OR recommendation.snoozed_until < NOW())`,
+    [organizationId, projectId],
   );
   const overdueNbas = Number(overdueR.rows[0].count);
   const overduePenalty = Math.min(10, overdueNbas * 2);  // cap på 10 poeng straff
@@ -267,9 +371,13 @@ export async function computeTodayMomentum(
 
   // 5. Trend vs i går
   const yesterday = await pool.query<{ momentum_score: string }>(
-    `SELECT momentum_score::text FROM leadgrid_momentum_snapshots
-      WHERE organization_id = $1::uuid AND snapshot_date = CURRENT_DATE - INTERVAL '1 day' LIMIT 1`,
-    [organizationId],
+    `SELECT momentum_score::text
+       FROM leadgrid_project_momentum_snapshots
+      WHERE organization_id = $1::uuid
+        AND project_id = $2
+        AND snapshot_date = CURRENT_DATE - INTERVAL '1 day'
+      LIMIT 1`,
+    [organizationId, projectId],
   );
   const yesterdayScore = yesterday.rowCount ? Number(yesterday.rows[0].momentum_score) : score;
   const diff = score - yesterdayScore;
@@ -330,13 +438,13 @@ export async function computeTodayMomentum(
   }
 
   // Snapshot for trend-historikk (UPSERT)
-  void pool.query(
-    `INSERT INTO leadgrid_momentum_snapshots
-       (organization_id, snapshot_date, momentum_score,
+  await pool.query(
+    `INSERT INTO leadgrid_project_momentum_snapshots
+       (organization_id, project_id, snapshot_date, momentum_score,
         activity_score, velocity_score, decay_score, overdue_penalty,
         contacts_today, followups_today, meetings_today, pipeline_moves_today, overdue_nbas)
-     VALUES ($1::uuid, CURRENT_DATE, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-     ON CONFLICT (organization_id, snapshot_date) DO UPDATE SET
+     VALUES ($1::uuid, $2, CURRENT_DATE, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     ON CONFLICT (organization_id, project_id, snapshot_date) DO UPDATE SET
        momentum_score = EXCLUDED.momentum_score,
        activity_score = EXCLUDED.activity_score,
        velocity_score = EXCLUDED.velocity_score,
@@ -349,13 +457,14 @@ export async function computeTodayMomentum(
        overdue_nbas = EXCLUDED.overdue_nbas,
        computed_at = NOW()`,
     [
-      organizationId, score, activityScore, velocityScore, decayScore, overduePenalty,
+      organizationId, projectId, score, activityScore, velocityScore, decayScore, overduePenalty,
       contacts, followups, meetings, pipelineMoves, overdueNbas,
     ],
-  ).catch((err) => console.warn("[momentum] snapshot upsert feilet:", err));
+  );
 
   return {
     organizationId,
+    projectId,
     date: today,
     score,
     breakdown: {
@@ -381,15 +490,19 @@ export async function computeTodayMomentum(
 function mapGoalRow(row: Record<string, unknown>): SalesGoal {
   return {
     organizationId: String(row.organization_id),
+    projectId: String(row.project_id),
     yearMonth: String(row.year_month),
     revenueTarget: row.revenue_target !== null ? Number(row.revenue_target) : null,
-    dealsTarget: row.deals_target as number | null,
-    meetingsTarget: row.meetings_target as number | null,
-    proposalsTarget: row.proposals_target as number | null,
-    dailyContactsTarget: row.daily_contacts_target as number,
-    dailyFollowupsTarget: row.daily_followups_target as number,
-    dailyMeetingsTarget: row.daily_meetings_target as number,
-    dailyPipelineMovesTarget: row.daily_pipeline_moves_target as number,
-    monthlyLeadsNeeded: row.monthly_leads_needed as number | null,
+    dealsTarget: row.deals_target !== null ? Number(row.deals_target) : null,
+    meetingsTarget: row.meetings_target !== null ? Number(row.meetings_target) : null,
+    proposalsTarget: row.proposals_target !== null ? Number(row.proposals_target) : null,
+    dailyContactsTarget: Number(row.daily_contacts_target),
+    dailyFollowupsTarget: Number(row.daily_followups_target),
+    dailyMeetingsTarget: Number(row.daily_meetings_target),
+    dailyPipelineMovesTarget: Number(row.daily_pipeline_moves_target),
+    monthlyLeadsNeeded: row.monthly_leads_needed !== null
+      ? Number(row.monthly_leads_needed)
+      : null,
+    notes: row.notes === null || row.notes === undefined ? null : String(row.notes),
   };
 }

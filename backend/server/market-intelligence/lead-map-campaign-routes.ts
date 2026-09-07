@@ -24,6 +24,7 @@ import {
   getAreaResponseStats,
   runReEngagementCron,
 } from "./lead-map-campaign-service.js";
+import { loadAccessibleLeadgridProject } from "../leadgrid-project-access.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -65,14 +66,77 @@ export function registerLeadMapCampaignRoutes({
     return session;
   }
 
+  async function accessibleProject(value: unknown, userId: string, res: Response) {
+    const projectId = typeof value === "string" ? value.trim() : "";
+    if (!projectId) {
+      res.status(400).json({ error: "project_id_required" });
+      return null;
+    }
+    const project = await loadAccessibleLeadgridProject(pool, projectId, userId);
+    if (!project) {
+      res.status(404).json({ error: "project_not_found" });
+      return null;
+    }
+    return project;
+  }
+
+  function campaignScope(session: SessionData, project: {
+    id: string;
+    organizationId: string;
+  }) {
+    return {
+      workspaceOwnerUserId: session.userId,
+      organizationId: project.organizationId,
+      projectId: project.id,
+    };
+  }
+
+  async function validateLinkedResources(
+    body: Record<string, unknown>,
+    project: { id: string; organizationId: string },
+    res: Response,
+  ): Promise<boolean> {
+    if (typeof body.marketScanId === "string" && body.marketScanId.trim()) {
+      const scan = await pool.query(
+        `SELECT 1 FROM market_scans
+          WHERE id = $1::uuid AND organization_id = $2::uuid AND project_id = $3
+          LIMIT 1`,
+        [body.marketScanId.trim(), project.organizationId, project.id],
+      );
+      if (!scan.rows.length) {
+        res.status(400).json({ error: "market_scan_not_in_project" });
+        return false;
+      }
+    }
+    if (typeof body.brandKitId === "string" && body.brandKitId.trim()) {
+      const kit = await pool.query(
+        `SELECT 1 FROM brand_kits WHERE id = $1::uuid AND project_id = $2 LIMIT 1`,
+        [body.brandKitId.trim(), project.id],
+      );
+      if (!kit.rows.length) {
+        res.status(400).json({ error: "brand_kit_not_in_project" });
+        return false;
+      }
+    }
+    return true;
+  }
+
   app.post("/api/lead-map/campaigns", async (req, res) => {
     const session = requireAdmin(req, res);
     if (!session) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
     if (!body.name) return res.status(400).json({ error: "mangler_name" });
     try {
+      const project = await accessibleProject(
+        body.projectId ?? body.project_id,
+        session.userId,
+        res,
+      );
+      if (!project || !(await validateLinkedResources(body, project, res))) return;
       const campaign = await createCampaign(pool, {
         workspaceOwnerUserId: session.userId,
+        organizationId: project.organizationId,
+        projectId: project.id,
         agentConfigId: (body.agentConfigId as string | undefined) ?? null,
         name: String(body.name),
         description: body.description as string | undefined,
@@ -97,10 +161,18 @@ export function registerLeadMapCampaignRoutes({
     const session = requireAdmin(req, res);
     if (!session) return;
     try {
+      const project = await accessibleProject(
+        req.query.projectId ?? req.query.project_id,
+        session.userId,
+        res,
+      );
+      if (!project) return;
       const campaigns = await listCampaigns(pool, {
         workspaceOwnerUserId: session.userId,
+        organizationId: project.organizationId,
+        projectId: project.id,
         status: req.query.status ? String(req.query.status) : undefined,
-        limit: req.query.limit ? Number(req.query.limit) : 100,
+        limit: Math.max(1, Math.min(100, Number(req.query.limit) || 100)),
       });
       return res.json({ campaigns });
     } catch (err) {
@@ -109,9 +181,20 @@ export function registerLeadMapCampaignRoutes({
   });
 
   app.get("/api/lead-map/campaigns/:id", async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    const session = requireAdmin(req, res);
+    if (!session) return;
     try {
-      const campaign = await getCampaign(pool, req.params.id);
+      const project = await accessibleProject(
+        req.query.projectId ?? req.query.project_id,
+        session.userId,
+        res,
+      );
+      if (!project) return;
+      const campaign = await getCampaign(
+        pool,
+        req.params.id,
+        campaignScope(session, project),
+      );
       if (!campaign) return res.status(404).json({ error: "not_found" });
       return res.json({ campaign });
     } catch (err) {
@@ -120,9 +203,20 @@ export function registerLeadMapCampaignRoutes({
   });
 
   app.get("/api/lead-map/campaigns/:id/aggregate", async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    const session = requireAdmin(req, res);
+    if (!session) return;
     try {
-      const agg = await getCampaignAggregate(pool, req.params.id);
+      const project = await accessibleProject(
+        req.query.projectId ?? req.query.project_id,
+        session.userId,
+        res,
+      );
+      if (!project) return;
+      const agg = await getCampaignAggregate(
+        pool,
+        req.params.id,
+        campaignScope(session, project),
+      );
       if (!agg) return res.status(404).json({ error: "not_found" });
       return res.json(agg);
     } catch (err) {
@@ -135,7 +229,16 @@ export function registerLeadMapCampaignRoutes({
     const session = requireAdmin(req, res);
     if (!session) return;
     try {
-      const stats = await getCategoryConversionStats(pool, session.userId);
+      const project = await accessibleProject(
+        req.query.projectId ?? req.query.project_id,
+        session.userId,
+        res,
+      );
+      if (!project) return;
+      const stats = await getCategoryConversionStats(pool, {
+        organizationId: project.organizationId,
+        projectId: project.id,
+      });
       return res.json({ stats });
     } catch (err) {
       return res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
@@ -146,7 +249,16 @@ export function registerLeadMapCampaignRoutes({
     const session = requireAdmin(req, res);
     if (!session) return;
     try {
-      const stats = await getAreaResponseStats(pool, session.userId);
+      const project = await accessibleProject(
+        req.query.projectId ?? req.query.project_id,
+        session.userId,
+        res,
+      );
+      if (!project) return;
+      const stats = await getAreaResponseStats(pool, {
+        organizationId: project.organizationId,
+        projectId: project.id,
+      });
       return res.json({ stats });
     } catch (err) {
       return res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
@@ -165,7 +277,21 @@ export function registerLeadMapCampaignRoutes({
       return res.status(403).json({ error: "krever_admin_eller_cron_token" });
     }
     try {
-      const result = await runReEngagementCron(pool);
+      let projectScope: { organizationId: string; projectId: string } | undefined;
+      if (!tokenOk) {
+        const session = getSession(req, activeSessions)!;
+        const project = await accessibleProject(
+          req.body?.projectId ?? req.body?.project_id,
+          session.userId,
+          res,
+        );
+        if (!project) return;
+        projectScope = {
+          organizationId: project.organizationId,
+          projectId: project.id,
+        };
+      }
+      const result = await runReEngagementCron(pool, projectScope);
       return res.json(result);
     } catch (err) {
       console.error("[lead-map-campaign] cron failed", err);

@@ -22,7 +22,7 @@ function getStripe(): Stripe | null {
   const key = process.env.CREATORHUB_STRIPE_SECRET_KEY ?? process.env.STRIPE_SECRET_KEY;
   return key ? new Stripe(key) : null;
 }
-const PUBLIC_BASE = process.env.ROLE_ROOM_PUBLIC_URL ?? "https://theroleroom.com";
+const PUBLIC_BASE = (process.env.LEADGRID_PUBLIC_URL ?? "https://leadgrid.no").replace(/\/+$/, "");
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -149,8 +149,8 @@ export function registerPlanRoutes({ app, pool, activeSessions }: Deps): void {
         mode: "subscription",
         customer: customerId,
         line_items: [{ price: priceId, quantity: 1 }],
-        success_url: `${PUBLIC_BASE}/leadgrid?upgrade=success&plan=${planKey}`,
-        cancel_url: `${PUBLIC_BASE}/leadgrid?upgrade=cancelled`,
+        success_url: `${PUBLIC_BASE}/?upgrade=success&plan=${encodeURIComponent(planKey)}`,
+        cancel_url: `${PUBLIC_BASE}/?upgrade=cancelled`,
         allow_promotion_codes: true,
         metadata: {
           organization_id: orgId,

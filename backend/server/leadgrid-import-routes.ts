@@ -34,13 +34,14 @@
  */
 
 import type { Express, Request, Response } from "express";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import crypto from "crypto";
 import multer from "multer";
 import * as Papa from "papaparse";
 import * as XLSX from "xlsx";
 
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
+import { loadAccessibleLeadgridProject } from "./leadgrid-project-access.js";
 
 const MAX_IMPORT_BYTES = 10 * 1024 * 1024; // 10 MB
 const MAX_PREVIEW_ROWS = 20;
@@ -79,23 +80,25 @@ function getSession(
   return null;
 }
 
-async function resolveOrgId(
+function requestedProjectId(req: Request): string | null {
+  const candidate =
+    req.body?.project_id ?? req.body?.projectId ??
+    req.query?.project_id ?? req.query?.projectId ??
+    req.headers["x-leadgrid-project-id"];
+  return typeof candidate === "string" && candidate.trim().length > 0
+    ? candidate.trim()
+    : null;
+}
+
+async function resolveImportOrgId(
   req: Request,
   pool: Pool,
   userId: string,
 ): Promise<string | null> {
-  const explicit =
-    (req.query?.organization_id
-      ?? (req.body as { organization_id?: string } | undefined)?.organization_id) as
-      | string
-      | undefined;
-  if (typeof explicit === "string" && explicit.length > 0) return explicit;
-  const r = await pool.query<{ organization_id: string }>(
-    `SELECT organization_id::text FROM organization_members
-      WHERE user_id = $1 ORDER BY joined_at ASC LIMIT 1`,
-    [userId],
-  );
-  return r.rows[0]?.organization_id ?? null;
+  const projectId = requestedProjectId(req);
+  if (!projectId) return null;
+  const project = await loadAccessibleLeadgridProject(pool, projectId, userId);
+  return project?.organizationId ?? null;
 }
 
 // =====================================================================
@@ -107,11 +110,42 @@ interface ParsedFile {
   columns: string[];
   rows: Record<string, string>[];
   ownerUserId: string;
+  organizationId: string;
+  projectId: string;
+  projectName: string;
   fileName: string;
   expiresAt: number;
 }
 
 const fileCache = new Map<string, ParsedFile>();
+
+function commitKeyHash(token: string): string {
+  return crypto.createHash("sha256").update(token, "utf8").digest("hex");
+}
+
+interface CompletedImportRow {
+  id: string;
+  imported_count: number;
+  skipped_duplicates: number;
+  errors_count: number;
+  errors_sample: unknown;
+}
+
+function completedImportPayload(
+  row: CompletedImportRow,
+  project: { id: string; name: string },
+) {
+  return {
+    batch_id: row.id,
+    project_id: project.id,
+    project_name: project.name,
+    imported: Number(row.imported_count ?? 0),
+    skipped_duplicates: Number(row.skipped_duplicates ?? 0),
+    errors: Array.isArray(row.errors_sample) ? row.errors_sample : [],
+    errors_count: Number(row.errors_count ?? 0),
+    replayed: true,
+  };
+}
 
 function cacheFile(parsed: Omit<ParsedFile, "expiresAt">): string {
   const token = crypto.randomBytes(18).toString("base64url");
@@ -227,6 +261,12 @@ function normalizeName(s?: string | null): string | null {
   return v.length > 0 ? v : null;
 }
 
+function normalizeCountry(s?: string | null): string {
+  const value = (s ?? "NO").trim().toUpperCase();
+  if (["NORGE", "NORWAY", "NOREG"].includes(value)) return "NO";
+  return /^[A-Z]{2}$/.test(value) ? value : "NO";
+}
+
 interface MappedLead {
   name: string;
   email: string | null;
@@ -252,10 +292,11 @@ interface MappedLead {
  * Returnerer eksisterende lead-ID hvis duplikat funnet, null ellers.
  */
 export async function findDuplicate(
-  pool: Pool,
+  pool: Pick<Pool, "query"> | Pick<PoolClient, "query">,
   opts: {
     ownerUserId: string;
-    organizationId: string | null;
+    organizationId: string;
+    projectId: string;
     strategy: DedupeStrategy;
     lead: Pick<MappedLead, "email" | "phone" | "name" | "city">;
   },
@@ -293,16 +334,13 @@ export async function findDuplicate(
     return null;
   }
 
-  // Tenant-scope: foretrekk organization_id (denormalisert i mig 320),
-  // fall tilbake til owner_user_id for legacy-rader.
-  if (opts.organizationId) {
-    params.push(opts.organizationId);
-    where += ` AND (organization_id = $${params.length}::uuid OR owner_user_id = $${params.length + 1})`;
-    params.push(opts.ownerUserId);
-  } else {
-    params.push(opts.ownerUserId);
-    where += ` AND owner_user_id = $${params.length}`;
-  }
+  // CSV-import er alltid bundet til det valgte kundeprosjektet. Samme firma
+  // kan være relevant i to kundekampanjer, men aldri opprettes dobbelt i den
+  // samme prosjekt-pipelinen.
+  params.push(opts.organizationId);
+  where += ` AND organization_id = $${params.length}::uuid`;
+  params.push(opts.projectId);
+  where += ` AND project_id = $${params.length}`;
 
   const r = await pool.query<{ id: string }>(
     `SELECT id::text FROM crm_customers
@@ -364,10 +402,11 @@ function buildMappedLead(
 // =====================================================================
 
 async function insertLead(
-  pool: Pool,
+  pool: Pick<Pool, "query"> | Pick<PoolClient, "query">,
   opts: {
     ownerUserId: string;
-    organizationId: string | null;
+    organizationId: string;
+    projectId: string;
     importSource: "csv_import";
     importBatchId: string;
     lead: MappedLead;
@@ -380,17 +419,21 @@ async function insertLead(
     const r = await pool.query<{ id: string }>(
       `INSERT INTO crm_customers (
          id, name, phone, email, company, status, source,
-         owner_user_id, organization_id,
-         address, city, postal_code, website_url,
+         owner_user_id, organization_id, project_id,
+         address, city, postal_code, country, website_url,
+         lead_category, notes, linkedin_url, instagram_url, facebook_url,
+         employee_count_estimate, ai_opportunity_score,
          lead_status, lead_source,
          import_source, import_batch_id, import_raw_data,
          created_at, updated_at
        ) VALUES (
          gen_random_uuid(), $1, $2, $3, $4, 'lead', $5,
-         $6, $7::uuid,
-         $8, $9, $10, $11,
-         'unvisited', $12,
-         $13, $14::uuid, $15::jsonb,
+         $6, $7::uuid, $8,
+         $9, $10, $11, $12, $13,
+         $14, $15, $16, $17, $18,
+         $19, $20,
+         'unvisited', $21,
+         $22, $23::uuid, $24::jsonb,
          NOW(), NOW()
        )
        RETURNING id::text`,
@@ -402,10 +445,23 @@ async function insertLead(
         opts.importSource,
         opts.ownerUserId,
         opts.organizationId,
+        opts.projectId,
         opts.lead.address,
         opts.lead.city,
         opts.lead.postal_code,
+        normalizeCountry(opts.lead.country),
         opts.lead.website_url,
+        opts.lead.industry,
+        opts.lead.notes,
+        opts.lead.linkedin_url,
+        opts.lead.instagram_url,
+        opts.lead.facebook_url,
+        opts.lead.employee_count_estimate === null
+          ? null
+          : Math.max(0, opts.lead.employee_count_estimate),
+        opts.lead.lead_quality_score === null
+          ? null
+          : Math.min(100, Math.max(0, opts.lead.lead_quality_score)),
         opts.importSource,
         opts.importSource,
         opts.importBatchId,
@@ -428,6 +484,7 @@ export function registerLeadgridImportRoutes(deps: Deps): void {
   const permCsv = requireLeadMapPermission("leads.import_csv", {
     pool,
     activeSessions,
+    resolveOrgId: resolveImportOrgId,
   });
 
   // ------------------------------------------------------------------
@@ -442,6 +499,18 @@ export function registerLeadgridImportRoutes(deps: Deps): void {
       if (!session?.userId) {
         return res.status(401).json({ error: "Innlogging kreves" });
       }
+      const projectId = requestedProjectId(req);
+      if (!projectId) {
+        return res.status(400).json({ error: "project_id_required" });
+      }
+      const project = await loadAccessibleLeadgridProject(
+        pool,
+        projectId,
+        session.userId,
+      );
+      if (!project) {
+        return res.status(404).json({ error: "project_not_found" });
+      }
       const file = (req as Request & { file?: Express.Multer.File }).file;
       if (!file) {
         return res.status(400).json({ error: "missing_file" });
@@ -455,6 +524,9 @@ export function registerLeadgridImportRoutes(deps: Deps): void {
           columns: parsed.columns,
           rows: parsed.rows,
           ownerUserId: session.userId,
+          organizationId: project.organizationId,
+          projectId: project.id,
+          projectName: project.name,
           fileName: file.originalname,
         });
         return res.json({
@@ -463,6 +535,8 @@ export function registerLeadgridImportRoutes(deps: Deps): void {
           columns: parsed.columns,
           rows: parsed.rows.slice(0, MAX_PREVIEW_ROWS),
           total_rows: parsed.rows.length,
+          project_id: project.id,
+          project_name: project.name,
         });
       } catch (err) {
         console.error("[leadgrid-import] preview failed", err);
@@ -489,10 +563,41 @@ export function registerLeadgridImportRoutes(deps: Deps): void {
         file_token?: string;
         mapping?: ColumnMapping;
         dedupe_strategy?: DedupeStrategy;
+        project_id?: string;
+        projectId?: string;
       };
       if (!body.file_token || !body.mapping) {
         return res.status(400).json({ error: "missing_file_token_or_mapping" });
       }
+      const requestProjectId = requestedProjectId(req);
+      if (!requestProjectId) {
+        return res.status(400).json({ error: "project_id_required" });
+      }
+      const project = await loadAccessibleLeadgridProject(
+        pool,
+        requestProjectId,
+        session.userId,
+      );
+      if (!project) {
+        return res.status(404).json({ error: "project_not_found" });
+      }
+      const keyHash = commitKeyHash(body.file_token);
+      const prior = await pool.query<CompletedImportRow>(
+        `SELECT id::text, imported_count, skipped_duplicates,
+                errors_count, errors_sample
+           FROM leadgrid_import_batches
+          WHERE owner_user_id = $1
+            AND organization_id = $2::uuid
+            AND project_id = $3
+            AND commit_key_hash = $4
+          LIMIT 1`,
+        [session.userId, project.organizationId, project.id, keyHash],
+      );
+      if (prior.rows[0]) {
+        fileCache.delete(body.file_token);
+        return res.json(completedImportPayload(prior.rows[0], project));
+      }
+
       const cached = readCachedFile(body.file_token, session.userId);
       if (!cached) {
         return res.status(404).json({ error: "file_token_expired_or_unknown" });
@@ -500,80 +605,128 @@ export function registerLeadgridImportRoutes(deps: Deps): void {
       if (!body.mapping.name) {
         return res.status(400).json({ error: "mapping_must_include_name" });
       }
+      if (project.id !== cached.projectId) {
+        return res.status(409).json({ error: "import_project_changed" });
+      }
+      if (project.organizationId !== cached.organizationId) {
+        return res.status(404).json({ error: "project_not_found" });
+      }
 
       const dedupe: DedupeStrategy = body.dedupe_strategy ?? "email";
-      const orgId = await resolveOrgId(req, pool, session.userId);
+      if (!["email", "phone", "name+city", "none"].includes(dedupe)) {
+        return res.status(400).json({ error: "invalid_dedupe_strategy" });
+      }
+      const orgId = project.organizationId;
       const batchId = crypto.randomUUID();
 
       let imported = 0;
       let skipped = 0;
       const errors: { row: number; error: string }[] = [];
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        // Samme preview-token kan nå bare committes av én instans om gangen.
+        await client.query(
+          "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+          [keyHash],
+        );
+        const replay = await client.query<CompletedImportRow>(
+          `SELECT id::text, imported_count, skipped_duplicates,
+                  errors_count, errors_sample
+             FROM leadgrid_import_batches
+            WHERE owner_user_id = $1
+              AND organization_id = $2::uuid
+              AND project_id = $3
+              AND commit_key_hash = $4
+            LIMIT 1`,
+          [session.userId, orgId, project.id, keyHash],
+        );
+        if (replay.rows[0]) {
+          await client.query("COMMIT");
+          fileCache.delete(body.file_token);
+          return res.json(completedImportPayload(replay.rows[0], project));
+        }
 
-      for (let i = 0; i < cached.rows.length; i++) {
-        const row = cached.rows[i];
-        const mapped = buildMappedLead(row, body.mapping);
-        if (!mapped.name) {
-          errors.push({ row: i + 1, error: "missing_name" });
-          continue;
+        for (let i = 0; i < cached.rows.length; i++) {
+          const row = cached.rows[i];
+          const mapped = buildMappedLead(row, body.mapping);
+          if (!mapped.name) {
+            errors.push({ row: i + 1, error: "missing_name" });
+            continue;
+          }
+          const dupId = await findDuplicate(client, {
+            ownerUserId: session.userId,
+            organizationId: orgId,
+            projectId: project.id,
+            strategy: dedupe,
+            lead: mapped,
+          });
+          if (dupId) {
+            skipped++;
+            continue;
+          }
+          const ins = await insertLead(client, {
+            ownerUserId: session.userId,
+            organizationId: orgId,
+            projectId: project.id,
+            importSource: "csv_import",
+            importBatchId: batchId,
+            lead: mapped,
+          });
+          if (ins.ok) imported++;
+          else errors.push({ row: i + 1, error: ins.reason });
         }
-        const dupId = await findDuplicate(pool, {
-          ownerUserId: session.userId,
-          organizationId: orgId,
-          strategy: dedupe,
-          lead: mapped,
+
+        await client.query(
+          `INSERT INTO leadgrid_import_batches (
+              id, organization_id, project_id, owner_user_id, import_source,
+              file_name, total_rows, imported_count, skipped_duplicates,
+              errors_count, errors_sample, dedupe_strategy, column_mapping,
+              commit_key_hash
+            ) VALUES (
+              $1::uuid, $2::uuid, $3, $4, 'csv_import',
+              $5, $6, $7, $8,
+              $9, $10::jsonb, $11, $12::jsonb,
+              $13
+            )`,
+          [
+            batchId,
+            orgId,
+            project.id,
+            session.userId,
+            cached.fileName,
+            cached.rows.length,
+            imported,
+            skipped,
+            errors.length,
+            JSON.stringify(errors.slice(0, 10)),
+            dedupe,
+            JSON.stringify(body.mapping),
+            keyHash,
+          ],
+        );
+        await client.query("COMMIT");
+      } catch (err) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        console.error("[leadgrid-import] commit failed", err);
+        return res.status(500).json({
+          error: "import_commit_failed",
+          detail: "internal_error",
         });
-        if (dupId) {
-          skipped++;
-          continue;
-        }
-        const ins = await insertLead(pool, {
-          ownerUserId: session.userId,
-          organizationId: orgId,
-          importSource: "csv_import",
-          importBatchId: batchId,
-          lead: mapped,
-        });
-        if (ins.ok) {
-          imported++;
-        } else {
-          errors.push({ row: i + 1, error: ins.reason });
-        }
+      } finally {
+        client.release();
       }
 
-      await pool.query(
-        `INSERT INTO leadgrid_import_batches (
-            id, organization_id, owner_user_id, import_source, file_name,
-            total_rows, imported_count, skipped_duplicates, errors_count,
-            errors_sample, dedupe_strategy, column_mapping
-          ) VALUES (
-            $1::uuid, $2::uuid, $3, 'csv_import', $4,
-            $5, $6, $7, $8,
-            $9::jsonb, $10, $11::jsonb
-          )`,
-        [
-          batchId,
-          orgId,
-          session.userId,
-          cached.fileName,
-          cached.rows.length,
-          imported,
-          skipped,
-          errors.length,
-          JSON.stringify(errors.slice(0, 10)),
-          dedupe,
-          JSON.stringify(body.mapping),
-        ],
-      );
-
-      // Slett cache-token når den er konsumert
       fileCache.delete(body.file_token);
-
       return res.json({
         batch_id: batchId,
+        project_id: project.id,
+        project_name: project.name,
         imported,
         skipped_duplicates: skipped,
         errors: errors.slice(0, 50),
         errors_count: errors.length,
+        replayed: false,
       });
     },
   );
@@ -589,15 +742,30 @@ export function registerLeadgridImportRoutes(deps: Deps): void {
         return res.status(401).json({ error: "Innlogging kreves" });
       }
       try {
+        const projectId = requestedProjectId(req);
+        if (!projectId) {
+          return res.status(400).json({ error: "project_id_required" });
+        }
+        const project = await loadAccessibleLeadgridProject(
+          pool,
+          projectId,
+          session.userId,
+        );
+        if (!project) {
+          return res.status(404).json({ error: "project_not_found" });
+        }
         const r = await pool.query(
-          `SELECT id::text, organization_id::text, import_source, file_name,
+          `SELECT id::text, organization_id::text, project_id::text,
+                  import_source, file_name,
                   total_rows, imported_count, skipped_duplicates, errors_count,
                   dedupe_strategy, created_at
              FROM leadgrid_import_batches
             WHERE owner_user_id = $1
+              AND organization_id = $2::uuid
+              AND project_id = $3
             ORDER BY created_at DESC
             LIMIT 20`,
-          [session.userId],
+          [session.userId, project.organizationId, project.id],
         );
         return res.json({ batches: r.rows });
       } catch (err) {

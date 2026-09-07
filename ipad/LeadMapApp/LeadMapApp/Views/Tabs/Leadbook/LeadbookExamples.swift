@@ -608,6 +608,7 @@ struct LeadbookExamplesView: View {
     @State private var loadError: String?
     @State private var showCreate = false
     @State private var loadedOrganizationId: String?
+    @State private var loadedProjectId: String?
 
     // 2026-07-17: «Mine tilbakemeldinger»-samleflate (dialog-utvidelsen)
     @State private var myFeedback: [APIClient.LeadbookExampleFeedbackDTO] = []
@@ -665,20 +666,26 @@ struct LeadbookExamplesView: View {
             filterChips
             grid
         }
-        .task(id: appState.activeOrganizationId) { await loadExamples(reset: true) }
-        .task(id: "\(appState.activeOrganizationId ?? "")|\(requestedExampleId ?? "")") {
+        .task(id: "\(appState.activeOrganizationId ?? "")|\(appState.activeProjectId ?? "")") {
+            await loadExamples(reset: true)
+        }
+        .task(id: "\(appState.activeOrganizationId ?? "")|\(appState.activeProjectId ?? "")|\(requestedExampleId ?? "")") {
             guard let requestedExampleId else { return }
             await openExample(id: requestedExampleId)
         }
         .sheet(item: $detail) { ex in
-            // 2026-07-17: backend-rettigheter + refresh-callback inn i sheeten.
-            LeadbookExampleDetailSheet(
-                example: ex,
-                canEdit: canEdit,
-                canGiveFeedback: canGiveFeedback,
-                onChanged: { Task { await loadExamples() } }
-            )
-            .presentationDragIndicator(DeviceIdiom.isPhone ? .visible : .automatic)
+            if let organizationId = loadedOrganizationId,
+               let projectId = loadedProjectId {
+                LeadbookExampleDetailSheet(
+                    example: ex,
+                    organizationId: organizationId,
+                    projectId: projectId,
+                    canEdit: canEdit,
+                    canGiveFeedback: canGiveFeedback,
+                    onChanged: { Task { await loadExamples() } }
+                )
+                .presentationDragIndicator(DeviceIdiom.isPhone ? .visible : .automatic)
+            }
         }
         .sheet(isPresented: $showAdd) {
             AddExampleSheet { name in
@@ -689,28 +696,38 @@ struct LeadbookExamplesView: View {
         .sheet(isPresented: $showInbox) {
             // 2026-07-17: samleflate — tap på rad åpner eksempelets detail-sheet
             // hvis eksempelet er lastet; ellers ekspanderes raden inline.
-            LeadbookFeedbackInboxSheet(
-                items: myFeedback,
-                resolveExample: { exId in backendExamples.first { $0.backendId == exId } },
-                onOpenExample: { ex in
-                    showInbox = false
-                    // liten pause så innboks-sheeten rekker å lukke før neste åpnes
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { detail = ex }
-                }
-            )
-            .presentationDragIndicator(.visible)
+            if let organizationId = loadedOrganizationId,
+               let projectId = loadedProjectId {
+                LeadbookFeedbackInboxSheet(
+                    organizationId: organizationId,
+                    projectId: projectId,
+                    items: myFeedback,
+                    resolveExample: { exId in backendExamples.first { $0.backendId == exId } },
+                    onOpenExample: { ex in
+                        showInbox = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { detail = ex }
+                    }
+                )
+                .presentationDragIndicator(.visible)
+            }
         }
         .sheet(isPresented: $showCreate) {
             // 2026-07-17: ekte opprettelse — lagres som utkast på backend.
-            LeadbookCreateExampleSheet { name in
-                addToast = "«\(name)» lagret som utkast"
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { addToast = nil }
-                Task { await loadExamples() }
-            } onQueued: { name in
-                addToast = "«\(name)» lagret offline — sendes ved nett"
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { addToast = nil }
+            if let organizationId = loadedOrganizationId,
+               let projectId = loadedProjectId {
+                LeadbookCreateExampleSheet(
+                    organizationId: organizationId,
+                    projectId: projectId
+                ) { name in
+                    addToast = "«\(name)» lagret som utkast"
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { addToast = nil }
+                    Task { await loadExamples() }
+                } onQueued: { name in
+                    addToast = "«\(name)» lagret offline — sendes ved nett"
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { addToast = nil }
+                }
+                .presentationDragIndicator(DeviceIdiom.isPhone ? .visible : .automatic)
             }
-            .presentationDragIndicator(DeviceIdiom.isPhone ? .visible : .automatic)
         }
         .overlay(alignment: .top) {
             if let t = addToast {
@@ -1249,16 +1266,19 @@ struct LeadbookExamplesView: View {
     @MainActor
     private func loadExamples(reset: Bool = true) async {
         guard !isDemo, let api = appState.api,
-              let requestedOrganizationId = appState.activeOrganizationId else {
+              let requestedOrganizationId = appState.activeOrganizationId,
+              let requestedProjectId = appState.activeProjectId else {
             backendExamples = []
             myFeedback = []
             unreadFeedback = 0
             nextCursor = nil
             loadedOrganizationId = nil
+            loadedProjectId = nil
             return
         }
         if reset {
-            if loadedOrganizationId != requestedOrganizationId {
+            if loadedOrganizationId != requestedOrganizationId
+                || loadedProjectId != requestedProjectId {
                 backendExamples = []
                 myFeedback = []
                 unreadFeedback = 0
@@ -1275,8 +1295,12 @@ struct LeadbookExamplesView: View {
         }
         loadError = nil
         do {
-            let resp = try await api.fetchLeadbookExamples(cursor: reset ? nil : nextCursor)
-            guard appState.activeOrganizationId == requestedOrganizationId else { return }
+            let resp = try await api.fetchLeadbookExamples(
+                projectId: requestedProjectId,
+                cursor: reset ? nil : nextCursor)
+            guard appState.activeOrganizationId == requestedOrganizationId,
+                  appState.activeProjectId == requestedProjectId,
+                  resp.projectId == requestedProjectId else { return }
             let mapped = resp.examples.map(LeadbookExample.fromDTO)
             backendExamples = reset ? mapped : backendExamples + mapped
             canEdit = resp.canEdit
@@ -1284,18 +1308,23 @@ struct LeadbookExamplesView: View {
             canCreateDraft = resp.canCreateDraft ?? resp.canEdit
             nextCursor = resp.nextCursor
             loadedOrganizationId = requestedOrganizationId
+            loadedProjectId = requestedProjectId
         } catch {
-            guard appState.activeOrganizationId == requestedOrganizationId else { return }
+            guard appState.activeOrganizationId == requestedOrganizationId,
+                  appState.activeProjectId == requestedProjectId else { return }
             loadError = "Kunne ikke hente eksempler"
         }
-        guard appState.activeOrganizationId == requestedOrganizationId else { return }
+        guard appState.activeOrganizationId == requestedOrganizationId,
+              appState.activeProjectId == requestedProjectId else { return }
         isLoading = false
         isLoadingMore = false
         // 2026-07-17: «Mine tilbakemeldinger» + ulest-badge — sekundært,
         // feiler stille uten å påvirke eksempel-listen.
         do {
-            let mine = try await api.fetchMyLeadbookFeedback()
-            guard appState.activeOrganizationId == requestedOrganizationId else { return }
+            let mine = try await api.fetchMyLeadbookFeedback(projectId: requestedProjectId)
+            guard appState.activeOrganizationId == requestedOrganizationId,
+                  appState.activeProjectId == requestedProjectId,
+                  mine.projectId == requestedProjectId else { return }
             myFeedback = mine.feedback
             unreadFeedback = mine.unread
         } catch {
@@ -1309,17 +1338,23 @@ struct LeadbookExamplesView: View {
             if let fallback { detail = fallback }
             return
         }
-        let requestedOrganizationId = appState.activeOrganizationId
+        guard let requestedOrganizationId = appState.activeOrganizationId,
+              let requestedProjectId = appState.activeProjectId else { return }
         do {
-            let response = try await api.fetchLeadbookExample(id: id)
-            guard appState.activeOrganizationId == requestedOrganizationId else { return }
+            let response = try await api.fetchLeadbookExample(
+                id: id,
+                projectId: requestedProjectId)
+            guard appState.activeOrganizationId == requestedOrganizationId,
+                  appState.activeProjectId == requestedProjectId,
+                  response.projectId == requestedProjectId else { return }
             canEdit = response.canEdit
             canGiveFeedback = response.canGiveFeedback
             canCreateDraft = response.canCreateDraft ?? response.canEdit
             detail = LeadbookExample.fromDTO(response.example)
             if requestedExampleId == id { appState.clearLeadbookExampleDeepLink() }
         } catch {
-            guard appState.activeOrganizationId == requestedOrganizationId else { return }
+            guard appState.activeOrganizationId == requestedOrganizationId,
+                  appState.activeProjectId == requestedProjectId else { return }
             loadError = "Eksempelet finnes ikke, eller du har ikke tilgang."
             if requestedExampleId == id { appState.clearLeadbookExampleDeepLink() }
             if let fallback { detail = fallback }
@@ -1345,6 +1380,8 @@ import PencilKit
 
 struct LeadbookExampleDetailSheet: View {
     let example: LeadbookExample
+    let organizationId: String
+    let projectId: String
     // 2026-07-17: backend-rettigheter fra fetchLeadbookExamples + refresh-
     // callback til fanen. Defaultene holder gamle call-sites (Innsikt) grønne.
     var canEdit: Bool = false
@@ -1368,6 +1405,11 @@ struct LeadbookExampleDetailSheet: View {
     @State private var feedbackText = ""
     @State private var feedbackDim: LeadbookExample.Dimension?
     @State private var isSendingFeedback = false
+
+    private var isPinnedScopeActive: Bool {
+        appState.activeOrganizationId == organizationId
+            && appState.activeProjectId == projectId
+    }
 
     // 2026-07-17: replikk-anker — tilbakemelding på konkret replikk i
     // transkriptet, + scroll-mål (composer ↔ replikk) og tastatur-fokus.
@@ -1577,13 +1619,24 @@ struct LeadbookExampleDetailSheet: View {
     /// (b) selger-lest-kvittering for uleste tilbakemeldinger.
     /// Begge fire-and-forget — demo-eksempler (backendId == nil) er no-op.
     private func onOpenBackendExample() {
-        guard isBackend, let api = appState.api, let exId = example.backendId else { return }
-        Task { try? await api.recordLeadbookExampleView(exampleId: exId) }
+        guard isBackend, isPinnedScopeActive,
+              let api = appState.api, let exId = example.backendId else { return }
+        Task {
+            guard isPinnedScopeActive else { return }
+            try? await api.recordLeadbookExampleView(
+                exampleId: exId,
+                projectId: projectId)
+        }
         // Ledere kvitterer ikke — lest-status er selgerens signal (backend
         // håndhever uansett at kun eksempelets selger kan kvittere).
         if !canGiveFeedback {
             for fb in example.feedback where fb.readAt == nil {
-                Task { try? await api.markLeadbookFeedbackRead(feedbackId: fb.id) }
+                Task {
+                    guard isPinnedScopeActive else { return }
+                    try? await api.markLeadbookFeedbackRead(
+                        feedbackId: fb.id,
+                        projectId: projectId)
+                }
             }
         }
     }
@@ -1710,7 +1763,8 @@ struct LeadbookExampleDetailSheet: View {
     /// av om dette klient-passet fant noe. To lag, ikke ett.
     @MainActor
     private func publish() async {
-        guard let api = appState.api, let id = example.backendId, !isPublishing else { return }
+        guard isPinnedScopeActive, let api = appState.api,
+              let id = example.backendId, !isPublishing else { return }
         isPublishing = true
         do {
             let redactedTranscript = example.transcript.map { line -> [String: Any] in
@@ -1718,7 +1772,7 @@ struct LeadbookExampleDetailSheet: View {
                  "text": LeadbookAnonymizer.redactNames(line.text),
                  "at_sec": line.timestamp]
             }
-            try await api.updateLeadbookExample(id: id, [
+            try await api.updateLeadbookExample(id: id, projectId: projectId, [
                 "status": "published",
                 "transcript": redactedTranscript,
             ])
@@ -1736,10 +1790,13 @@ struct LeadbookExampleDetailSheet: View {
     /// backend; publisert flagges for leder-godkjenning + anonymisering.
     @MainActor
     private func requestDeletion() async {
-        guard let api = appState.api, let id = example.backendId, !isDeleting else { return }
+        guard isPinnedScopeActive, let api = appState.api,
+              let id = example.backendId, !isDeleting else { return }
         isDeleting = true
         do {
-            try await api.leadbookRequestExampleDeletion(exampleId: id)
+            try await api.leadbookRequestExampleDeletion(
+                exampleId: id,
+                projectId: projectId)
             deleteToast = example.isDraft
                 ? "Slettet"
                 : "Sletteforespørsel sendt til ledere"
@@ -2332,7 +2389,7 @@ struct LeadbookExampleDetailSheet: View {
 
     @MainActor
     private func runAIAnalysis() async {
-        guard let api = appState.api, !isAnalyzing else { return }
+        guard isPinnedScopeActive, let api = appState.api, !isAnalyzing else { return }
         let raw = example.transcript
             .map { "\($0.speaker.rawValue): \($0.text)" }
             .joined(separator: "\n")
@@ -2343,7 +2400,9 @@ struct LeadbookExampleDetailSheet: View {
         isAnalyzing = true
         aiError = nil
         do {
-            let intel = LeadbookExampleIntelligenceFactory.make(api: api)
+            let intel = LeadbookExampleIntelligenceFactory.make(
+                api: api,
+                projectId: projectId)
             let result = try await intel.structure(rawText: raw)
             aiSuggestion = result.structured
             aiSource = result.source
@@ -2362,7 +2421,7 @@ struct LeadbookExampleDetailSheet: View {
 
     @MainActor
     private func saveAISuggestion() async {
-        guard let api = appState.api, let id = example.backendId,
+        guard isPinnedScopeActive, let api = appState.api, let id = example.backendId,
               let s = aiSuggestion, !isSavingAI else { return }
         var fields: [String: Any] = [:]
         if example.summary.isEmpty, let sm = s.summary, !sm.isEmpty {
@@ -2377,7 +2436,10 @@ struct LeadbookExampleDetailSheet: View {
         }
         isSavingAI = true
         do {
-            try await api.updateLeadbookExample(id: id, fields)
+            try await api.updateLeadbookExample(
+                id: id,
+                projectId: projectId,
+                fields)
             aiSuggestion = nil
             saveToast = "AI-analysen lagret i eksempelet"
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { saveToast = nil }
@@ -2653,12 +2715,16 @@ struct LeadbookExampleDetailSheet: View {
 
     @MainActor
     private func sendReply(_ fb: APIClient.LeadbookExampleFeedbackDTO) async {
-        guard let api = appState.api, let organizationId = appState.activeOrganizationId else { return }
+        guard isPinnedScopeActive, let api = appState.api else { return }
         let text = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isSendingReply else { return }
         isSendingReply = true
         let disposition = await OfflineResilientActions.replyLeadbookFeedback(
-            api: api, organizationId: organizationId, feedbackId: fb.id, body: text)
+            api: api,
+            organizationId: organizationId,
+            projectId: projectId,
+            feedbackId: fb.id,
+            body: text)
         switch disposition {
         case .sent, .queued:
             // Optimistisk append — rolle-heuristikk kun for lokal visning
@@ -2783,8 +2849,8 @@ struct LeadbookExampleDetailSheet: View {
 
     @MainActor
     private func sendFeedback() async {
-        guard let api = appState.api,
-              let organizationId = appState.activeOrganizationId,
+        guard isPinnedScopeActive,
+              let api = appState.api,
               let id = example.backendId else { return }
         let text = feedbackText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isSendingFeedback else { return }
@@ -2801,7 +2867,11 @@ struct LeadbookExampleDetailSheet: View {
         if let anchorIdx { payload["transcript_index"] = anchorIdx }
         if let anchorSec { payload["at_sec"] = anchorSec }
         let disposition = await OfflineResilientActions.addLeadbookFeedback(
-            api: api, organizationId: organizationId, exampleId: id, payload: payload)
+            api: api,
+            organizationId: organizationId,
+            projectId: projectId,
+            exampleId: id,
+            payload: payload)
         switch disposition {
         case .sent, .queued:
             // Optimistisk append — refresh skjer i bakgrunnen via onChanged.
@@ -3783,6 +3853,8 @@ struct AddExampleSheet: View {
 /// Lagres som UTKAST via `createLeadbookExample` — publiseres fra detail-sheeten.
 /// (Demo-modusens AI-wizard `AddExampleSheet` er urørt og vises kun i demo.)
 struct LeadbookCreateExampleSheet: View {
+    let organizationId: String
+    let projectId: String
     var onCreated: (String) -> Void
     var onQueued: (String) -> Void = { _ in }
     @Environment(AppState.self) private var appState
@@ -3815,6 +3887,11 @@ struct LeadbookCreateExampleSheet: View {
     @State private var aiDimensionScores: [String: Int]?
     @State private var aiFeaturedDimension: String?
     @State private var aiPondusScore: Int?
+
+    private var isPinnedScopeActive: Bool {
+        appState.activeOrganizationId == organizationId
+            && appState.activeProjectId == projectId
+    }
 
     private var canSave: Bool {
         !title.trimmingCharacters(in: .whitespaces).isEmpty && !isSaving && !isStructuring
@@ -3991,14 +4068,16 @@ struct LeadbookCreateExampleSheet: View {
         .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
         .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.purple.opacity(0.25), lineWidth: 1))
         .sheet(isPresented: $showAIUsage) {
-            LeadbookAIUsageSheet()
+            LeadbookAIUsageSheet(
+                organizationId: organizationId,
+                projectId: projectId)
                 .presentationDragIndicator(.visible)
         }
     }
 
     @MainActor
     private func structureWithAI() async {
-        guard let api = appState.api else {
+        guard isPinnedScopeActive, let api = appState.api else {
             showAIToast("AI-strukturering feilet — prøv igjen", error: true)
             return
         }
@@ -4006,7 +4085,9 @@ struct LeadbookCreateExampleSheet: View {
         guard raw.count >= 40, !isStructuring else { return }
         isStructuring = true
         do {
-            let s = try await api.structureLeadbookExample(rawText: raw)
+            let s = try await api.structureLeadbookExample(
+                projectId: projectId,
+                rawText: raw)
             applyAISuggestions(s)
             aiApplied = true
             showAIToast("AI-forslag lagt inn — sjekk og juster", error: false)
@@ -4058,7 +4139,7 @@ struct LeadbookCreateExampleSheet: View {
 
     @MainActor
     private func save() async {
-        guard let api = appState.api, let organizationId = appState.activeOrganizationId else {
+        guard isPinnedScopeActive, let api = appState.api else {
             errorText = "Ikke innlogget — prøv igjen"
             return
         }
@@ -4117,7 +4198,10 @@ struct LeadbookCreateExampleSheet: View {
         if let ps = aiPondusScore { body["pondus_score"] = ps }
 
         let disposition = await OfflineResilientActions.createLeadbookExample(
-            api: api, organizationId: organizationId, body: body)
+            api: api,
+            organizationId: organizationId,
+            projectId: projectId,
+            body: body)
         switch disposition {
         case .sent:
             onCreated(t)
@@ -4223,6 +4307,8 @@ struct LeadbookCreateExampleSheet: View {
 /// Tap på rad → åpner eksempelets detail-sheet hvis eksempelet er lastet;
 /// ellers ekspanderes raden inline med svar-tråd + svar-composer.
 struct LeadbookFeedbackInboxSheet: View {
+    let organizationId: String
+    let projectId: String
     let items: [APIClient.LeadbookExampleFeedbackDTO]
     var resolveExample: (String) -> LeadbookExample?
     var onOpenExample: (LeadbookExample) -> Void
@@ -4233,6 +4319,11 @@ struct LeadbookFeedbackInboxSheet: View {
     @State private var expandedId: String?
     @State private var replyText = ""
     @State private var isSendingReply = false
+
+    private var isPinnedScopeActive: Bool {
+        appState.activeOrganizationId == organizationId
+            && appState.activeProjectId == projectId
+    }
     @State private var extraReplies: [String: [APIClient.LeadbookFeedbackReplyDTO]] = [:]
     @State private var locallyRead: Set<String> = []
     @State private var toast: String?
@@ -4398,9 +4489,15 @@ struct LeadbookFeedbackInboxSheet: View {
     }
 
     private func markRead(_ fb: APIClient.LeadbookExampleFeedbackDTO) {
-        guard fb.readAt == nil, !locallyRead.contains(fb.id), let api = appState.api else { return }
+        guard isPinnedScopeActive, fb.readAt == nil,
+              !locallyRead.contains(fb.id), let api = appState.api else { return }
         locallyRead.insert(fb.id)
-        Task { try? await api.markLeadbookFeedbackRead(feedbackId: fb.id) }
+        Task {
+            guard isPinnedScopeActive else { return }
+            try? await api.markLeadbookFeedbackRead(
+                feedbackId: fb.id,
+                projectId: projectId)
+        }
     }
 
     // MARK: Svar (inline)
@@ -4478,12 +4575,16 @@ struct LeadbookFeedbackInboxSheet: View {
 
     @MainActor
     private func sendReply(_ fb: APIClient.LeadbookExampleFeedbackDTO) async {
-        guard let api = appState.api, let organizationId = appState.activeOrganizationId else { return }
+        guard isPinnedScopeActive, let api = appState.api else { return }
         let text = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isSendingReply else { return }
         isSendingReply = true
         let disposition = await OfflineResilientActions.replyLeadbookFeedback(
-            api: api, organizationId: organizationId, feedbackId: fb.id, body: text)
+            api: api,
+            organizationId: organizationId,
+            projectId: projectId,
+            feedbackId: fb.id,
+            body: text)
         switch disposition {
         case .sent, .queued:
             // Innboksen er selger-scopet → optimistisk svar som «selger»
@@ -4512,6 +4613,8 @@ struct LeadbookFeedbackInboxSheet: View {
 /// totalt + denne måneden + per bruker. Åpnes fra AI-kortet i create-sheeten
 /// (som allerede er canEdit-gated) — og kun når AI-featuren er eksplisitt på.
 struct LeadbookAIUsageSheet: View {
+    let organizationId: String
+    let projectId: String
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
 
@@ -4689,7 +4792,9 @@ struct LeadbookAIUsageSheet: View {
 
     @MainActor
     private func load() async {
-        guard let api = appState.api else {
+        guard appState.activeOrganizationId == organizationId,
+              appState.activeProjectId == projectId,
+              let api = appState.api else {
             isLoading = false
             loadError = "Ikke innlogget"
             return
@@ -4697,7 +4802,11 @@ struct LeadbookAIUsageSheet: View {
         isLoading = true
         loadError = nil
         do {
-            usage = try await api.fetchLeadbookAIUsage()
+            let response = try await api.fetchLeadbookAIUsage(projectId: projectId)
+            guard appState.activeOrganizationId == organizationId,
+                  appState.activeProjectId == projectId,
+                  response.projectId == projectId else { return }
+            usage = response
         } catch {
             loadError = "Kunne ikke hente AI-bruk"
         }

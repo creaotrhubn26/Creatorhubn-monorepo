@@ -17,6 +17,7 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import Anthropic from "@anthropic-ai/sdk";
 import { aiRateLimit } from "./ai-rate-limiter.js";
+import { loadAccessibleLeadgridLead } from "./leadgrid-lead-access.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
@@ -145,6 +146,13 @@ export function registerLeadMapTranscriptRoutes({ app, pool, activeSessions }: D
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
       try {
+        const leadScope = await loadAccessibleLeadgridLead(pool, {
+          leadId: req.params.id,
+          userId: session.userId,
+        });
+        if (!leadScope) {
+          return res.status(404).json({ error: "lead_ikke_funnet" });
+        }
         const leadRes = await pool.query<{
           name: string; address: string | null; city: string | null;
           lead_status: string; lead_category: string | null;
@@ -159,9 +167,11 @@ export function registerLeadMapTranscriptRoutes({ app, pool, activeSessions }: D
                   ai_opportunity_score, claude_recommendation_reason,
                   notes, next_action, assigned_user_id, project_id
              FROM crm_customers
-            WHERE id = $1 AND (owner_user_id = $2 OR assigned_user_id = $2)
+            WHERE id = $1::uuid
+              AND organization_id = $2::uuid
+              AND project_id = $3
             LIMIT 1`,
-          [req.params.id, session.userId],
+          [leadScope.id, leadScope.organizationId, leadScope.projectId],
         );
         if (leadRes.rows.length === 0) return res.status(404).json({ error: "lead_ikke_funnet" });
         const lead = leadRes.rows[0];
@@ -179,9 +189,12 @@ export function registerLeadMapTranscriptRoutes({ app, pool, activeSessions }: D
           }>(
             `SELECT o.name, o.description, o.website, o.industry, o.meta
                FROM organizations o
-               JOIN leadgrid_projects cp ON cp.organization_id = o.id
-              WHERE cp.id = $1 LIMIT 1`,
-            [lead.project_id],
+               JOIN leadgrid_projects cp
+                 ON cp.organization_id = o.id
+                AND cp.id = $2
+              WHERE o.id = $1::uuid
+              LIMIT 1`,
+            [leadScope.organizationId, leadScope.projectId],
           );
           sellerOrg = sellerRes.rows[0] ?? null;
         }
@@ -193,13 +206,12 @@ export function registerLeadMapTranscriptRoutes({ app, pool, activeSessions }: D
           const wonRes = await pool.query<{ name: string; notes: string | null }>(
             `SELECT c.name, c.notes
                FROM crm_customers c
-               JOIN leadgrid_projects cp ON cp.id = c.project_id
-               JOIN leadgrid_projects cp2 ON cp2.organization_id = cp.organization_id
-              WHERE cp2.id = $1
+              WHERE c.organization_id = $1::uuid
+                AND c.project_id = $2
                 AND c.lead_status = 'won'
-                AND c.id != $2
+                AND c.id != $3::uuid
               ORDER BY c.updated_at DESC LIMIT 3`,
-            [lead.project_id, req.params.id],
+            [leadScope.organizationId, leadScope.projectId, leadScope.id],
           );
           wonExamples = wonRes.rows;
         }
@@ -216,10 +228,14 @@ export function registerLeadMapTranscriptRoutes({ app, pool, activeSessions }: D
           `SELECT visit_datetime::text, visit_type, previous_status, new_status,
                   contact_person, conversation_summary, objection_reason,
                   next_action, notes
-             FROM crm_visits
-            WHERE customer_id = $1
-            ORDER BY visit_datetime DESC LIMIT 5`,
-          [req.params.id],
+             FROM crm_visits visit
+             JOIN crm_customers lead_scope
+               ON lead_scope.id = visit.customer_id
+              AND lead_scope.organization_id = $2::uuid
+              AND lead_scope.project_id = $3
+            WHERE visit.customer_id = $1::uuid
+            ORDER BY visit.visit_datetime DESC LIMIT 5`,
+          [leadScope.id, leadScope.organizationId, leadScope.projectId],
         );
 
         const claude = getClaude();
@@ -243,8 +259,11 @@ export function registerLeadMapTranscriptRoutes({ app, pool, activeSessions }: D
           `SELECT
               COALESCE(brreg_company_data, '{}'::jsonb) AS brreg_data,
               COALESCE(proff_company_data, '{}'::jsonb) AS proff_data
-             FROM crm_customers WHERE id = $1`,
-          [req.params.id],
+             FROM crm_customers
+            WHERE id = $1::uuid
+              AND organization_id = $2::uuid
+              AND project_id = $3`,
+          [leadScope.id, leadScope.organizationId, leadScope.projectId],
         ).catch(() => ({ rows: [{ brreg_data: null, proff_data: null }] }));
         const brregData = enrichmentRes.rows[0]?.brreg_data ?? null;
         const proffData = enrichmentRes.rows[0]?.proff_data ?? null;
@@ -335,13 +354,23 @@ export function registerLeadMapTranscriptRoutes({ app, pool, activeSessions }: D
         return res.status(400).json({ error: "transkript_for_kort" });
       }
 
-      // Hent lead-navn for kontekst + sjekk eierskap
-      const r = await pool.query<{ name: string; assigned_user_id: string | null }>(
-        `SELECT name, assigned_user_id
+      // Hent lead-navn fra den autoritative prosjekt-tuplen. Eierskap eller
+      // tildeling alene gir aldri fortsatt tilgang etter prosjekt-revoke.
+      const leadScope = await loadAccessibleLeadgridLead(pool, {
+        leadId: body.lead_id,
+        userId: session.userId,
+      });
+      if (!leadScope) {
+        return res.status(404).json({ error: "lead_ikke_funnet" });
+      }
+      const r = await pool.query<{ name: string }>(
+        `SELECT name
            FROM crm_customers
-          WHERE id = $1 AND (owner_user_id = $2 OR assigned_user_id = $2)
+          WHERE id = $1::uuid
+            AND organization_id = $2::uuid
+            AND project_id = $3
           LIMIT 1`,
-        [body.lead_id, session.userId],
+        [leadScope.id, leadScope.organizationId, leadScope.projectId],
       );
       if (r.rows.length === 0) return res.status(404).json({ error: "lead_ikke_funnet" });
       const leadName = r.rows[0].name;

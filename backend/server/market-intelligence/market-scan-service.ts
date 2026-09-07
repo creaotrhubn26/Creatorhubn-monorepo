@@ -23,6 +23,7 @@
 
 import type { Pool } from "pg";
 import { analyzeWebsite } from "../role-room-website-analyzer.js";
+import { ssrfSafeFetchWithMetadata } from "../ssrf-guard.js";
 import {
   getBrandKit,
   toBaseline,
@@ -53,21 +54,60 @@ import type {
 // ─────────────────────────────────────────────────────────────────────
 
 async function fetchHtml(rawUrl: string): Promise<{ html: string; finalUrl: string } | null> {
-  const url = rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`;
+  const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+  const maxBytes = 2_000_000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
   try {
-    const r = await fetch(url, {
-      method: "GET",
-      headers: {
-        "User-Agent": "Mozilla/5.0 TheRoleRoom-MarketIntel/1.0",
-        "Accept": "text/html,application/xhtml+xml",
+    const { response, finalUrl } = await ssrfSafeFetchWithMetadata(
+      url,
+      {
+        method: "GET",
+        headers: {
+          "User-Agent": "Mozilla/5.0 Leadgrid-MarketIntelligence/2.0",
+          Accept: "text/html,application/xhtml+xml",
+        },
+        signal: controller.signal,
       },
-      redirect: "follow",
-    });
-    if (!r.ok) return null;
-    const text = await r.text();
-    return { html: text, finalUrl: r.url };
+      3,
+    );
+    if (!response.ok) return null;
+    const contentType = response.headers.get("content-type")?.toLowerCase();
+    if (contentType && !contentType.includes("text/html") && !contentType.includes("application/xhtml+xml")) {
+      await response.body?.cancel();
+      return null;
+    }
+    const declaredLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+      await response.body?.cancel();
+      return null;
+    }
+    if (!response.body) return null;
+
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return { html: new TextDecoder().decode(bytes), finalUrl };
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -78,6 +118,7 @@ async function fetchHtml(rawUrl: string): Promise<{ html: string; finalUrl: stri
 interface MarketScanRow {
   id: string;
   workspace_owner_user_id: string;
+  organization_id: string | null;
   project_id: string | null;
   brand_kit_id: string | null;
   name: string;
@@ -101,6 +142,7 @@ function rowToScan(r: MarketScanRow): MarketScan {
   return {
     id: r.id,
     workspaceOwnerUserId: r.workspace_owner_user_id,
+    organizationId: r.organization_id ?? undefined,
     projectId: r.project_id ?? undefined,
     brandKitId: r.brand_kit_id,
     name: r.name,
@@ -127,6 +169,7 @@ function rowToScan(r: MarketScanRow): MarketScan {
 
 export interface CreateScanInput {
   workspaceOwnerUserId: string;
+  organizationId?: string | null;
   projectId?: string | null;
   brandKitId?: string | null;
   name: string;
@@ -143,15 +186,16 @@ export async function createMarketScan(
 ): Promise<MarketScan> {
   const r = await pool.query<MarketScanRow>(
     `INSERT INTO market_scans (
-       workspace_owner_user_id, project_id, brand_kit_id,
+       workspace_owner_user_id, organization_id, project_id, brand_kit_id,
        name, market_query, region, industry, target_audience, goal,
        status, confidence_summary
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'draft', 'low')
+     ) VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, 'draft', 'low')
      RETURNING *,
        id::text, brand_kit_id::text, created_at::text, updated_at::text,
        started_at::text, completed_at::text`,
     [
       input.workspaceOwnerUserId,
+      input.organizationId ?? null,
       input.projectId ?? null,
       input.brandKitId ?? null,
       input.name,
@@ -167,14 +211,20 @@ export async function createMarketScan(
 
 export async function listMarketScans(
   pool: Pool,
-  args: { workspaceOwnerUserId: string; projectId?: string; limit?: number },
+  args: {
+    workspaceOwnerUserId: string;
+    organizationId?: string;
+    projectId?: string;
+    limit?: number;
+  },
 ): Promise<MarketScan[]> {
-  const conditions = ["workspace_owner_user_id = $1"];
-  const params: unknown[] = [args.workspaceOwnerUserId];
-  if (args.projectId) {
-    params.push(args.projectId);
-    conditions.push(`project_id = $${params.length}`);
-  }
+  const projectScoped = Boolean(args.organizationId && args.projectId);
+  const conditions = projectScoped
+    ? ["organization_id = $1::uuid", "project_id = $2"]
+    : ["workspace_owner_user_id = $1"];
+  const params: unknown[] = projectScoped
+    ? [args.organizationId, args.projectId]
+    : [args.workspaceOwnerUserId];
   const r = await pool.query<MarketScanRow>(
     `SELECT *,
        id::text, brand_kit_id::text, created_at::text, updated_at::text,
@@ -264,12 +314,14 @@ export async function runMarketScan(
       const fetched = await fetchHtml(cand.domain);
       if (!fetched) {
         // Lagrer competitor likevel, med low confidence
-        const compRow = await insertCompetitor(pool, scanId, cand, [`https://${cand.domain}`]);
+        const compRow = await insertCompetitor(
+          pool, scan, cand, [`https://${cand.domain}`],
+        );
         competitors.push(compRow);
         continue;
       }
 
-      const compRow = await insertCompetitor(pool, scanId, cand, [fetched.finalUrl]);
+      const compRow = await insertCompetitor(pool, scan, cand, [fetched.finalUrl]);
       competitors.push(compRow);
 
       // Pattern-detection (deterministisk — rask)
@@ -344,30 +396,6 @@ export async function runMarketScan(
           started_at::text, completed_at::text`,
       [scanId, competitors.length, opportunities.length, confidenceSummary],
     );
-
-    // 7. Beriker konkurrentene med Google Places-data (lat/lng/rating)
-    //    så de havner direkte på Lead Map sammen med leads.
-    //    Best-effort — feiler aldri runMarketScan-resultatet.
-    void (async () => {
-      try {
-        const { enrichCompetitorsWithPlaces } = await import(
-          "../competitor-place-enrichment.js"
-        );
-        const result = await enrichCompetitorsWithPlaces(pool, {
-          scanId,
-          ownerUserId: scan.workspaceOwnerUserId,
-          region: scan.region,
-        });
-        if (result.enriched > 0) {
-          console.log(
-            `[market-scan] Berikket ${result.enriched} konkurrenter m/ Places ` +
-              `(skipped ${result.skipped}, failed ${result.failed})`,
-          );
-        }
-      } catch (err) {
-        console.warn("[market-scan] auto-Places-berikkelse feilet:", (err as Error).message);
-      }
-    })();
 
     return {
       scan: rowToScan(finalScan.rows[0]),
@@ -501,51 +529,6 @@ export async function addScanLeadsCreatedCount(
       : `UPDATE market_scans SET leads_created_count = leads_created_count + $2 WHERE id = $1::uuid`,
     [scanId, args.created],
   );
-}
-
-/** Places-berikelsen (lat/lng/rating) lagret på konkurrent-radene. */
-export interface CompetitorPlaceEnrichment {
-  latitude: number | null;
-  longitude: number | null;
-  googlePlaceId: string | null;
-  googleAddress: string | null;
-  googlePhone: string | null;
-  googleRating: number | null;
-}
-
-export async function getScanCompetitorsWithPlaces(
-  pool: Pool,
-  scanId: string,
-): Promise<Array<Competitor & CompetitorPlaceEnrichment>> {
-  const competitors = await getScanCompetitors(pool, scanId);
-  const r = await pool.query<{
-    id: string;
-    latitude: number | null;
-    longitude: number | null;
-    google_place_id: string | null;
-    google_address: string | null;
-    google_phone: string | null;
-    google_rating: number | null;
-  }>(
-    `SELECT id::text, latitude, longitude, google_place_id,
-            google_address, google_phone, google_rating
-       FROM market_scan_competitors
-      WHERE market_scan_id = $1::uuid`,
-    [scanId],
-  );
-  const placeById = new Map(r.rows.map((row) => [row.id, row]));
-  return competitors.map((c) => {
-    const p = placeById.get(c.id);
-    return {
-      ...c,
-      latitude: p?.latitude != null ? Number(p.latitude) : null,
-      longitude: p?.longitude != null ? Number(p.longitude) : null,
-      googlePlaceId: p?.google_place_id ?? null,
-      googleAddress: p?.google_address ?? null,
-      googlePhone: p?.google_phone ?? null,
-      googleRating: p?.google_rating != null ? Number(p.google_rating) : null,
-    };
-  });
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -685,21 +668,28 @@ export async function getScanOpportunities(pool: Pool, scanId: string): Promise<
 
 async function insertCompetitor(
   pool: Pool,
-  scanId: string,
+  scan: MarketScan,
   cand: CompetitorCandidate,
   sourceUrls: string[],
 ): Promise<Competitor> {
   const r = await pool.query(
     `INSERT INTO market_scan_competitors (
-       market_scan_id, name, domain, category, positioning,
+       market_scan_id, workspace_owner_user_id, organization_id, project_id,
+       name, domain, category, positioning,
        primary_offer, primary_cta, pricing_signal, social_proof_signal,
        confidence, source_urls, last_scanned_at
-     ) VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, NOW())
+     ) VALUES (
+       $1::uuid, $2, $3::uuid, $4, $5, $6, $7, $8,
+       $9, $10, $11, $12, $13, $14::jsonb, NOW()
+     )
      RETURNING id::text, market_scan_id::text, name, domain, category, positioning,
                primary_offer, primary_cta, pricing_signal, social_proof_signal,
                confidence, source_urls, last_scanned_at::text`,
     [
-      scanId,
+      scan.id,
+      scan.workspaceOwnerUserId,
+      scan.organizationId ?? null,
+      scan.projectId ?? null,
       cand.name,
       cand.domain,
       cand.category ?? null,

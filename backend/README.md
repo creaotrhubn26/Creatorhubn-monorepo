@@ -136,9 +136,20 @@ until a user approves them. Runs use a fenced database queue, single-use
 WebSocket tickets, per-organization monthly capacity, a maximum of five active
 automatic profiles, and schedules no more frequent than once daily.
 
-Google Places is not part of v2 search, radius filtering, scoring, candidate
-persistence, or CRM promotion. The optional adapter is available only as a
-user-initiated, transient detail view:
+The persisted BRREG `source_cursor_map` resumes at an exact raw-row offset
+for each query fingerprint, so local caps and mid-page filtering do not discard
+the remaining rows while the upstream ordering is stable. BRREG offset pages
+are not a locked snapshot: insertions or deletions ahead of a stored cursor
+between runs can cause repeats or, rarely, skips. Leadgrid identity deduplication
+absorbs repeats, but the integration does not claim snapshot consistency.
+
+Google Places is not part of v2 search, radius filtering, scoring, or candidate
+persistence. The optional adapter is available only as a user-initiated,
+transient detail view. CRM promotion has one narrow exception: when the user
+explicitly confirms a match, only its Google Place ID may be persisted together
+with confirmation time and Discovery provenance. Place IDs are exempt from
+Google Maps Platform content-cache restrictions; all other Places content stays
+transient:
 
 - the Discovery profile must explicitly set `places_details_enabled=true`;
   existing and profile-less runs fail closed
@@ -149,7 +160,19 @@ user-initiated, transient detail view:
   `GOOGLE_PLACES_API_KEY`; the client cannot provide a query, URL, field mask,
   key, radius or result count
 - the response is capped at three matches, carries `Cache-Control: no-store`,
-  is not written to Discovery or CRM, and never contributes to a score
+  is not written to Discovery, and never contributes to a score
+- names, ratings, phone numbers, addresses, websites and other Place details
+  are never copied into CRM; for later choice validation, the backend stores at
+  most the three returned Place IDs as user-, candidate-, project- and
+  run-scoped attestations
+- an attestation is usable for 15 minutes; both consumed and unconsumed expired
+  attestations are scheduled for deletion by the existing daily retention cron
+- each run deletes at most 20 batches of 500 rows (10,000 total); if an
+  index-backed remainder probe still finds expired rows, the endpoint returns
+  `place_confirmation_retention_backlog` with HTTP 503 so the workflow alerts,
+  and later successful runs continue the bounded cleanup
+- only an explicitly confirmed, still-valid attested Place ID is stored during
+  CRM promotion and then follows the lead's retention lifecycle
 - Google Maps and third-party attribution are rendered in a separate detail
   sheet, never on Apple Map
 - set `LEADGRID_DISCOVERY_PLACES_DETAILS_ENABLED=false` as an immediate kill
@@ -159,17 +182,100 @@ Restrict the Google Cloud key to Places API (New). When the production host has
 stable outbound addresses, also apply server-IP restrictions. Never ship this
 key in the iOS app or configure it as a browser-referrer key.
 
-Discovery must be rolled out in two phases:
+Apply `0522_leadgrid_discovery_profile_targeting.sql` before enabling the
+adapter. Apply `0556_leadgrid_discovery_place_confirmation_retention.sql`
+before deploying the retention-aware backend so cleanup is index-backed across
+both consumed and unconsumed attestations.
 
-1. Apply `migrations/0473_leadgrid_discovery_platform.sql` before deploying
-   this code. The shared worker queue reads `background_jobs.lease_token`
-   independently of the Discovery feature flag.
-2. Deploy every web and worker instance with
-   `LEADGRID_DISCOVERY_ENABLED=false`.
-3. Verify the migration, application health, queue heartbeats and that all old
-   worker instances have been replaced.
-4. Enable `LEADGRID_DISCOVERY_ENABLED=true` in a separate deploy. Roll back by
-   disabling the flag; do not roll back the additive migration.
+### Leadgrid Discovery campaign runs
+
+An ordered Discovery campaign is one project-scoped server workflow, not four
+client-side start calls. Apply `0554_leadgrid_discovery_campaign_runs.sql` and
+then `0555_leadgrid_discovery_source_cursor_map.sql` before deploying a backend
+or worker that exposes campaign routes. The iOS client may close after start;
+the durable `leadgrid_discovery_campaign_tick` worker advances exactly one
+profile at a time and the client only reads status.
+
+Campaign endpoints are scoped below
+`/api/leadgrid/projects/:projectId/discovery/campaign-runs`: `POST /` starts an
+ordered list of `{profile_id, expected_version}` snapshots, `GET /` lists
+history, `GET /:campaignId` returns items and attempts, and idempotent
+`POST /:campaignId/{advance,retry,cancel}` commands control the state machine.
+Campaign states are `queued → running → completed|partial|failed`, with
+`cancel_requested → cancelled` for cancellation. Item/attempt history retains
+the child run IDs so each territory's candidates remain directly accessible.
+
+Start confirmation freezes the canonical brief, profile version and BRREG
+cursor map for every ordered item. Later profile edits apply only to the next
+campaign. Every new child launch still revalidates the original initiator's
+current project membership and `lead_research.run` permission. Tenant/project
+scope, deterministic child idempotency keys, generation-fenced worker ticks and
+terminal worker-exhaustion handling are server invariants; client polling must
+never be required for progression.
+
+### Leadgrid release order and evidence
+
+Migration filenames are dependency order, not an instruction to cherry-pick
+individual SQL files. From `backend/`, the canonical
+`node scripts/run-production-migrations.mjs` runner applies every pending
+migration in `sort -V` order under one advisory lock and verifies checksums.
+It requires the direct PostgreSQL endpoint and the configured migration roles;
+a pooled `-pooler` endpoint is rejected.
+
+Use this expand-first release sequence:
+
+1. Keep `LEADGRID_DISCOVERY_ENABLED=false`. Before migration `0526`, inventory
+   Public API key owners and warn owners whose organization has zero or multiple
+   eligible customer projects. `0526` auto-binds only the unambiguous
+   single-project case; every ambiguous legacy key is revoked with
+   `project_scope_migration_requires_rotation` and needs a deliberately issued
+   replacement key.
+2. Run the canonical migration runner for all pending files. Relevant gates are:
+   - `0473` before campaign orchestration (`0554`) and BRREG cursor state
+     (`0555`)
+   - `0522` before transient Places details and its retention index (`0556`)
+   - `0523` before server-derived outcome attribution (`0553`)
+   - `0527` and `0528` before the new idempotent iOS contact logging and its
+     distinct SMS/WhatsApp channel values
+3. Rotate any key revoked by `0526`, bind the replacement to its intended
+   customer project, and update the connector secret. A plaintext replacement
+   key is shown only when it is created.
+4. Run `node scripts/run-production-migrations.mjs --expect-zero`; do not
+   continue while the migration ledger reports pending or checksum-invalid
+   files.
+5. Deploy every backend and worker instance with Discovery still disabled.
+   Verify application health, worker lease/heartbeat behavior, campaign polling,
+   Public API project boundaries, outcome replay, and the daily retention cron.
+6. Enable Discovery in a separate configuration deploy only after every old
+   worker is gone. The rollback lever is the feature flag; do not roll back the
+   additive migrations.
+7. Release iOS/TestFlight last, after the deployed backend contract and
+   migrations have been verified end to end.
+
+This checklist is a release gate, not deployment evidence. A migration or source
+file being present in this repository does not mean it has run in production,
+and no backend deployment or TestFlight upload is implied by this document.
+
+### External contact and calendar proof boundaries
+
+Phone, SMS, WhatsApp and email actions hand off to another iOS app. A successful
+OS open means only that the external app opened; it is not a carrier/provider
+delivery receipt. Leadgrid writes a CRM activity only after the user explicitly
+answers that the call or message was completed. A cancelled confirmation or
+failed app open writes nothing. Organization, customer project and lead scope
+are checked again before persistence.
+
+If that confirmed CRM write is queued offline, the queue later sends only the
+idempotent activity log; it never sends the call, SMS, WhatsApp message or
+email. Reports must therefore describe these rows as user-attested contact
+activities, not independently verified delivery.
+
+The map's `ScheduleMeetingSheet` is a known calendar boundary: its invite and
+calendar controls are currently preview-only. The primary action shows that
+persistence is unavailable; it neither creates a meeting record nor sends an
+invitation nor writes to a calendar until a verified, project-scoped meeting
+write and calendar integration are connected. It must not be counted as a
+booked or completed meeting.
 
 ## Project Structure
 

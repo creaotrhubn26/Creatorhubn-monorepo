@@ -5,50 +5,66 @@
  * `forecasting.view` (admin/salgssjef/teamleder, jf. mig 323).
  *
  * Endepunkter:
- *   GET  /api/leadgrid/forecasting/pipeline?horizon=90
+ *   GET  /api/leadgrid/forecasting/pipeline?projectId=...&horizon=90
  *   POST /api/leadgrid/forecasting/pipeline/refresh   (sletter cache + recompute)
- *   GET  /api/leadgrid/forecasting/attribution?windowDays=90
+ *   GET  /api/leadgrid/forecasting/attribution?projectId=...&windowDays=90
  */
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
 import { getOrComputeForecast, computeAttribution } from "./leadgrid-forecasting-service.js";
-import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
+import {
+  getLeadgridSession,
+  loadAccessibleLeadgridProject,
+  type LeadgridSession,
+} from "./leadgrid-project-access.js";
 
-type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
   app: Express;
   pool: Pool;
-  activeSessions: Map<string, SessionData>;
+  activeSessions: Map<string, LeadgridSession>;
 }
 
-function getSession(req: Request, activeSessions: Map<string, SessionData>) {
-  const auth = req.headers.authorization;
-  if (auth?.startsWith("Bearer ")) {
-    const s = activeSessions.get(auth.slice(7));
-    if (s) return s;
+function requestedProjectId(req: Request): string | null {
+  const raw =
+    (req.query as Record<string, unknown> | undefined)?.projectId
+    ?? (req.query as Record<string, unknown> | undefined)?.project_id
+    ?? (req.body as Record<string, unknown> | undefined)?.projectId
+    ?? (req.body as Record<string, unknown> | undefined)?.project_id;
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "string") throw new Error("invalid_project_id");
+  const projectId = raw.trim();
+  if (!projectId || projectId.length > 255) {
+    throw new Error("invalid_project_id");
   }
-  return null;
+  return projectId;
 }
 
-async function resolveOrgIdSmart(
+async function resolveProjectOrgId(
   req: Request,
   pool: Pool,
   userId: string,
 ): Promise<string | null> {
-  // Native clients send the active workspace in X-Leadgrid-Organization-Id.
-  // The request-context resolver validates membership and prevents the old
-  // "first organization wins" behavior for users in several workspaces.
-  if (req.get("X-Leadgrid-Organization-Id")) {
-    return resolveOrgIdForUser(pool, userId);
+  try {
+    const projectId = requestedProjectId(req);
+    if (!projectId) return null;
+    const project = await loadAccessibleLeadgridProject(pool, projectId, userId);
+    return project?.organizationId ?? null;
+  } catch {
+    return null;
   }
-  const explicit =
-    (req.query?.organization_id ?? (req.body as { organization_id?: string } | undefined)?.organization_id) as
-      | string
-      | undefined;
-  if (typeof explicit === "string" && explicit.length > 0) return explicit;
-  return resolveOrgIdForUser(pool, userId);
+}
+
+function boundedInteger(
+  raw: unknown,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const parsed = typeof raw === "number" ? raw : Number.parseInt(String(raw ?? ""), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(maximum, Math.max(minimum, Math.floor(parsed)));
 }
 
 export function registerLeadgridForecastingRoutes(deps: Deps): void {
@@ -56,7 +72,7 @@ export function registerLeadgridForecastingRoutes(deps: Deps): void {
   const perm = requireLeadMapPermission("forecasting.view", {
     pool,
     activeSessions,
-    resolveOrgId: resolveOrgIdSmart,
+    resolveOrgId: resolveProjectOrgId,
   });
 
   // GET /api/leadgrid/forecasting/pipeline?horizon=90
@@ -64,23 +80,40 @@ export function registerLeadgridForecastingRoutes(deps: Deps): void {
     "/api/leadgrid/forecasting/pipeline",
     perm,
     async (req: Request, res: Response): Promise<void> => {
-      const session = getSession(req, activeSessions);
+      const session = getLeadgridSession(req, activeSessions);
       if (!session) {
         res.status(401).json({ error: "Innlogging kreves" });
         return;
       }
-      const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-      if (!orgId) {
-        res.status(400).json({ error: "mangler_organization_id" });
+      let projectId: string | null;
+      try {
+        projectId = requestedProjectId(req);
+      } catch {
+        res.status(400).json({ error: "invalid_project_id" });
         return;
       }
-      const horizon = Math.min(
-        365,
-        Math.max(7, parseInt(String(req.query.horizon ?? "90"), 10)),
-      );
+      if (!projectId) {
+        res.status(400).json({ error: "project_id_required" });
+        return;
+      }
       try {
-        const forecast = await getOrComputeForecast(pool, orgId, horizon);
-        res.json({ forecast });
+        const project = await loadAccessibleLeadgridProject(
+          pool,
+          projectId,
+          session.userId,
+        );
+        if (!project) {
+          res.status(404).json({ error: "project_not_found" });
+          return;
+        }
+        const horizon = boundedInteger(req.query.horizon, 90, 7, 365);
+        const forecast = await getOrComputeForecast(
+          pool,
+          project.organizationId,
+          project.id,
+          horizon,
+        );
+        res.json({ project_id: project.id, forecast });
       } catch (err) {
         console.error("[forecasting] pipeline failed", err);
         res.status(500).json({ error: "forecast_failed" });
@@ -93,27 +126,52 @@ export function registerLeadgridForecastingRoutes(deps: Deps): void {
     "/api/leadgrid/forecasting/pipeline/refresh",
     perm,
     async (req: Request, res: Response): Promise<void> => {
-      const session = getSession(req, activeSessions);
+      const session = getLeadgridSession(req, activeSessions);
       if (!session) {
         res.status(401).json({ error: "Innlogging kreves" });
         return;
       }
-      const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-      if (!orgId) {
-        res.status(400).json({ error: "mangler_organization_id" });
+      let projectId: string | null;
+      try {
+        projectId = requestedProjectId(req);
+      } catch {
+        res.status(400).json({ error: "invalid_project_id" });
         return;
       }
-      const horizon = Math.min(
-        365,
-        Math.max(7, parseInt(String((req.body as { horizon?: number | string } | undefined)?.horizon ?? "90"), 10)),
-      );
+      if (!projectId) {
+        res.status(400).json({ error: "project_id_required" });
+        return;
+      }
       try {
-        await pool.query(
-          `DELETE FROM leadgrid_forecast_cache WHERE organization_id = $1::uuid AND horizon_days = $2`,
-          [orgId, horizon],
+        const project = await loadAccessibleLeadgridProject(
+          pool,
+          projectId,
+          session.userId,
         );
-        const forecast = await getOrComputeForecast(pool, orgId, horizon);
-        res.json({ forecast });
+        if (!project) {
+          res.status(404).json({ error: "project_not_found" });
+          return;
+        }
+        const horizon = boundedInteger(
+          (req.body as { horizon?: unknown } | undefined)?.horizon,
+          90,
+          7,
+          365,
+        );
+        await pool.query(
+          `DELETE FROM leadgrid_forecast_cache
+            WHERE organization_id = $1::uuid
+              AND project_id = $2
+              AND horizon_days = $3`,
+          [project.organizationId, project.id, horizon],
+        );
+        const forecast = await getOrComputeForecast(
+          pool,
+          project.organizationId,
+          project.id,
+          horizon,
+        );
+        res.json({ project_id: project.id, forecast });
       } catch (err) {
         console.error("[forecasting] refresh failed", err);
         res.status(500).json({ error: "refresh_failed" });
@@ -126,23 +184,40 @@ export function registerLeadgridForecastingRoutes(deps: Deps): void {
     "/api/leadgrid/forecasting/attribution",
     perm,
     async (req: Request, res: Response): Promise<void> => {
-      const session = getSession(req, activeSessions);
+      const session = getLeadgridSession(req, activeSessions);
       if (!session) {
         res.status(401).json({ error: "Innlogging kreves" });
         return;
       }
-      const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-      if (!orgId) {
-        res.status(400).json({ error: "mangler_organization_id" });
+      let projectId: string | null;
+      try {
+        projectId = requestedProjectId(req);
+      } catch {
+        res.status(400).json({ error: "invalid_project_id" });
         return;
       }
-      const windowDays = Math.min(
-        365,
-        Math.max(7, parseInt(String(req.query.windowDays ?? "90"), 10)),
-      );
+      if (!projectId) {
+        res.status(400).json({ error: "project_id_required" });
+        return;
+      }
       try {
-        const attribution = await computeAttribution(pool, orgId, windowDays);
-        res.json({ attribution });
+        const project = await loadAccessibleLeadgridProject(
+          pool,
+          projectId,
+          session.userId,
+        );
+        if (!project) {
+          res.status(404).json({ error: "project_not_found" });
+          return;
+        }
+        const windowDays = boundedInteger(req.query.windowDays, 90, 7, 365);
+        const attribution = await computeAttribution(
+          pool,
+          project.organizationId,
+          project.id,
+          windowDays,
+        );
+        res.json({ project_id: project.id, attribution });
       } catch (err) {
         console.error("[forecasting] attribution failed", err);
         res.status(500).json({ error: "attribution_failed" });

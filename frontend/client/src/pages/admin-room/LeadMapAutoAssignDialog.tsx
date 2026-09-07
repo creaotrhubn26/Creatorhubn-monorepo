@@ -40,11 +40,23 @@ export default function LeadMapAutoAssignDialog({ open, organizationId, onClose,
 
   const handleAssign = useCallback(async () => {
     if (!organizationId) return;
+    const projectId = typeof window !== 'undefined'
+      ? localStorage.getItem('rr_lead_map_active_project')
+      : null;
+    if (!projectId) {
+      setError('Velg et kundeprosjekt før auto-tildeling.');
+      return;
+    }
     setLoading(true); setError(null); setResult(null);
     try {
       const r = await fetch('/api/admin-room/lead-map/leads/auto-assign', {
         method: 'POST', headers,
-        body: JSON.stringify({ organization_id: organizationId, strategy, limit }),
+        body: JSON.stringify({
+          organization_id: organizationId,
+          project_id: projectId,
+          strategy,
+          limit,
+        }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
@@ -78,7 +90,7 @@ export default function LeadMapAutoAssignDialog({ open, organizationId, onClose,
         ) : (
           <Stack spacing={3}>
             <Typography variant="body2" color="text.secondary">
-              Tildeler alle ikke-tildelte leads i organisasjonen til
+              Tildeler ikke-tildelte leads i valgt kundeprosjekt til
               salgskonsulenter/promotører basert på valgt strategi.
             </Typography>
 

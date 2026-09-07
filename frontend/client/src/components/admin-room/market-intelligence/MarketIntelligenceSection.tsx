@@ -112,7 +112,6 @@ function MarketIntelligenceSectionInner({
         <MarketScanDetailPanel
           scanId={activeScanId}
           projectId={projectId}
-          brandKey="theroleroom"
           onBack={() => setActiveScanId(null)}
         />
       ) : (
@@ -166,7 +165,7 @@ function MarketIntelligenceSectionInner({
           />
           <GeoVisibilityPanel />
           <AiTrafficPanel />
-          <LeadMapCampaignsPanel />
+          <LeadMapCampaignsPanel projectId={projectId} />
           <AgentContextPreviewPanel projectId={projectId} />
         </Stack>
       )}

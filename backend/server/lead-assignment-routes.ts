@@ -14,13 +14,20 @@
  *
  * Role-policy:
  *   - assign-team-leader: kun markedssjef/salgssjef/admin/super_admin
- *   - assign-rep:        teamleder (sin egen lead) ELLER markedssjef+
- *   - unassign/reassign:  hierarki-respekterende (kan ikke unassigne over deg)
+ *   - assign-rep:        teamleder eller markedssjef+ med prosjekttilgang
+ *   - unassign/reassign:  rollehierarki + eksplisitt prosjekttilgang
  */
 
 import type { Express, Request, Response } from "express";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { notifyAssignment } from "./lead-assignment-notification-service.js";
+import {
+  loadAccessibleLeadgridProject,
+  type LeadgridAccessibleProject,
+} from "./leadgrid-project-access.js";
+import {
+  loadAccessibleLeadgridLead,
+} from "./leadgrid-lead-access.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps { app: Express; pool: Pool; activeSessions: Map<string, SessionData>; }
@@ -28,6 +35,7 @@ interface Deps { app: Express; pool: Pool; activeSessions: Map<string, SessionDa
 const MGMT_ROLES = ["super_admin", "admin", "owner", "markedssjef", "salgssjef"];
 const TEAM_LEADER_ROLES = ["teamleder"];
 const REP_ROLES = ["salgskonsulent", "promotor"];
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function getSession(req: Request, sessions: Map<string, SessionData>): SessionData | null {
   const auth = req.headers.authorization;
@@ -36,21 +44,35 @@ function getSession(req: Request, sessions: Map<string, SessionData>): SessionDa
   return t ? sessions.get(t) ?? null : null;
 }
 
-async function getUserRole(pool: Pool, userId: string): Promise<{
-  globalRole: string | null; orgRole: string | null; orgId: string | null;
+function requestedOrganizationId(req: Request): string | null {
+  const queryValue = Array.isArray(req.query.organization_id)
+    ? req.query.organization_id[0]
+    : req.query.organization_id;
+  const raw = typeof queryValue === "string"
+    ? queryValue
+    : req.get("X-Leadgrid-Organization-Id");
+  const value = raw?.trim() ?? "";
+  return UUID_PATTERN.test(value) ? value : null;
+}
+
+async function getUserRoleForOrganization(
+  pool: Pick<Pool, "query">,
+  userId: string,
+  organizationId: string,
+): Promise<{
+  globalRole: string | null; orgRole: string | null;
 }> {
   const u = await pool.query<{ role: string | null }>(
     `SELECT role FROM users WHERE id = $1`, [userId],
   );
-  const m = await pool.query<{ organization_id: string; role: string }>(
-    `SELECT organization_id::text, role FROM organization_members
-      WHERE user_id = $1 ORDER BY role = 'owner' DESC LIMIT 1`,
-    [userId],
+  const m = await pool.query<{ role: string }>(
+    `SELECT role FROM organization_members
+      WHERE user_id = $1 AND organization_id = $2::uuid LIMIT 1`,
+    [userId, organizationId],
   );
   return {
     globalRole: u.rows[0]?.role ?? null,
     orgRole: m.rows[0]?.role ?? null,
-    orgId: m.rows[0]?.organization_id ?? null,
   };
 }
 
@@ -64,12 +86,12 @@ function canAssignRep(globalRole: string | null, orgRole: string | null): boolea
       || TEAM_LEADER_ROLES.includes(orgRole ?? "");
 }
 
-async function logAssignment(pool: Pool, params: {
+async function logAssignment(pool: Pick<Pool, "query">, params: {
   customerId: string;
   organizationId: string;
   assignedByUserId: string;
   fromUserId: string | null;
-  toUserId: string;
+  toUserId: string | null;
   reason: string;
   meta?: any;
 }): Promise<void> {
@@ -81,30 +103,87 @@ async function logAssignment(pool: Pool, params: {
     [params.customerId, params.organizationId, params.fromUserId,
      params.toUserId, params.assignedByUserId, params.reason,
      JSON.stringify(params.meta ?? {})],
-  ).catch((e) => console.warn("[lead-assignment] log-insert feilet", e));
+  );
 }
 
-// Cross-tenant guard for by-:id kunde-handlere. mig 320 denormaliserte
-// crm_customers.organization_id (backfill fra owner_user_id via
-// leadgrid-backfill-cron). Returnerer true når kunden tilhører innloggerens
-// org — eller er en legacy-rad uten org satt ennå (backfill kan henge etter).
-// Kunder i ANNEN org → false → handleren svarer 404 (blokkerer enumerering).
-// Rolle-gatene over verifiserer bare HVEM som tildeler + at MOTTAKER er i egen
-// org; UTEN denne sjekken kunne en org-A-leder sende en org-B-kunde-UUID og
-// overskrive/lese tildelingen på tvers av tenants.
-async function customerInOrg(
-  pool: Pool, customerId: string, orgId: string | null,
-): Promise<boolean> {
-  try {
-    const r = await pool.query<{ organization_id: string | null }>(
-      `SELECT organization_id::text FROM crm_customers WHERE id = $1::uuid`,
-      [customerId],
+function requestedProjectId(req: Request): string | null {
+  const raw = req.query.projectId ?? req.query.project_id;
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  return value && value.length <= 255 ? value : null;
+}
+
+function requestedLeadId(req: Request): string | null {
+  const raw = req.query.leadId ?? req.query.lead_id;
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  return UUID_PATTERN.test(value) ? value : null;
+}
+
+async function loadAssignmentProject(
+  pool: Pool,
+  req: Request,
+  userId: string,
+): Promise<LeadgridAccessibleProject | null> {
+  const hasLeadSelector =
+    req.query.leadId !== undefined || req.query.lead_id !== undefined;
+  const leadId = requestedLeadId(req);
+  if (hasLeadSelector) {
+    if (!leadId) return null;
+    const lead = await loadAccessibleLeadgridLead(pool, { leadId, userId });
+    if (!lead) return null;
+    const project = await loadAccessibleLeadgridProject(
+      pool,
+      lead.projectId,
+      userId,
     );
-    if (!r.rows[0]) return false;
-    const co = r.rows[0].organization_id;
-    return co === null || co === orgId;
-  } catch {
-    return false;
+    const hasProjectSelector =
+      req.query.projectId !== undefined || req.query.project_id !== undefined;
+    const selectedProjectId = requestedProjectId(req);
+    if (
+      !project ||
+      (hasProjectSelector && selectedProjectId === null) ||
+      (selectedProjectId !== null && selectedProjectId !== project.id)
+    ) {
+      return null;
+    }
+    return project;
+  }
+  const projectId = requestedProjectId(req);
+  return projectId
+    ? loadAccessibleLeadgridProject(pool, projectId, userId)
+    : null;
+}
+
+async function loadTargetProjectRoles(
+  pool: Pool,
+  project: LeadgridAccessibleProject,
+  userId: string,
+): Promise<string[] | null> {
+  const targetProject = await loadAccessibleLeadgridProject(pool, project.id, userId);
+  if (
+    !targetProject ||
+    targetProject.id !== project.id ||
+    targetProject.organizationId !== project.organizationId
+  ) {
+    return null;
+  }
+  const role = await getUserRoleForOrganization(pool, userId, project.organizationId);
+  return Array.from(new Set(
+    [role.orgRole, targetProject.memberRole].filter(
+      (value): value is string => Boolean(value),
+    ),
+  ));
+}
+
+async function beginTransaction(pool: Pool): Promise<PoolClient> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    return client;
+  } catch (error) {
+    client.release();
+    throw error;
   }
 }
 
@@ -116,8 +195,6 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
   app.get("/api/leadgrid/assignable-users", async (req, res) => {
     const s = getSession(req, activeSessions);
     if (!s) return res.status(401).json({ error: "Ikke innlogget" });
-    const { orgRole, orgId, globalRole } = await getUserRole(pool, s.userId);
-    if (!orgId) return res.status(403).json({ error: "Ikke i noen org" });
 
     const filterRole = (req.query.role as string) || "";
     const allowedRoles: string[] =
@@ -127,16 +204,30 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
       : [...TEAM_LEADER_ROLES, ...REP_ROLES];
 
     try {
+    const hasScopeSelector =
+      typeof (req.query.leadId ?? req.query.lead_id) === "string" ||
+      typeof (req.query.projectId ?? req.query.project_id) === "string";
+    if (!hasScopeSelector) {
+      return res.status(400).json({ error: "leadId_eller_projectId_pakrevd" });
+    }
+    const project = await loadAssignmentProject(pool, req, s.userId);
+    if (!project) return res.status(404).json({ error: "Ikke funnet" });
+
     const r = await pool.query(
       `SELECT om.user_id, om.role,
               u.first_name, u.last_name, u.email,
               u.profile_image_url,
-              -- Workload: antall aktive tildelinger
+              -- Workload er kun for samme prosjekt. Ellers ville en travel
+              -- bruker i et annet kundeprosjekt bli feilrangert her.
               (SELECT COUNT(*) FROM crm_customers c
                 WHERE c.assigned_user_id = om.user_id::text
+                  AND c.organization_id = $1::uuid
+                  AND c.project_id = $3
                   AND c.status NOT IN ('won', 'lost', 'archived')) AS active_leads,
               (SELECT COUNT(*) FROM crm_customers c
                 WHERE c.assigned_team_leader_id = om.user_id::text
+                  AND c.organization_id = $1::uuid
+                  AND c.project_id = $3
                   AND c.status NOT IN ('won', 'lost', 'archived')) AS team_leader_leads,
               -- Sist heartbeat (online-status) — fra user_presence.
               -- 🔴 up.user_id (uuid) = u.id (varchar) kastet «operator does
@@ -150,11 +241,24 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
         WHERE om.organization_id = $1
           AND om.role = ANY($2::text[])
         ORDER BY u.first_name, u.last_name`,
-      [orgId, allowedRoles],
+      [project.organizationId, allowedRoles, project.id],
     );
 
+    const visibleRows = (
+      await Promise.all(r.rows.map(async (row) => {
+        const targetProject = await loadAccessibleLeadgridProject(
+          pool,
+          project.id,
+          String(row.user_id),
+        );
+        return targetProject?.organizationId === project.organizationId
+          ? row
+          : null;
+      }))
+    ).filter((row): row is NonNullable<typeof row> => row !== null);
+
     res.json({
-      users: r.rows.map((row) => ({
+      users: visibleRows.map((row) => ({
         user_id: row.user_id,
         role: row.role,
         full_name: [row.first_name, row.last_name].filter(Boolean).join(" "),
@@ -182,91 +286,137 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
   app.post("/api/leadgrid/customers/:id/assign-team-leader", async (req, res) => {
     const s = getSession(req, activeSessions);
     if (!s) return res.status(401).json({ error: "Ikke innlogget" });
-    const { globalRole, orgRole, orgId } = await getUserRole(pool, s.userId);
-    if (!canAssignTeamLeader(globalRole, orgRole)) {
-      return res.status(403).json({ error: "Krever markedssjef-rolle eller høyere" });
+    const teamLeaderUserId =
+      typeof req.body?.team_leader_user_id === "string"
+        ? req.body.team_leader_user_id.trim()
+        : "";
+    const note = typeof req.body?.note === "string"
+      ? req.body.note.trim().slice(0, 4_000) || null
+      : null;
+    if (!teamLeaderUserId) {
+      return res.status(400).json({ error: "team_leader_user_id påkrevd" });
     }
 
-    const { team_leader_user_id, note } = req.body ?? {};
-    if (!team_leader_user_id) return res.status(400).json({ error: "team_leader_user_id påkrevd" });
-
-    // Ytre try/catch: enhver kastende query (UPDATE/logAssignment/verify)
-    // ville ellers gitt uhåndtert async → HENG (samme mønster som
-    // my-notifications/assignment-status; Notification-QA 2026-07-06).
+    let client: PoolClient | null = null;
     try {
-    // Cross-tenant: kunden må tilhøre innloggerens org (404 ellers).
-    if (!(await customerInOrg(pool, req.params.id, orgId))) {
-      return res.status(404).json({ error: "Ikke funnet" });
-    }
-    // Verifiser at brukeren er teamleder i samme org
-    const verify = await pool.query<{ role: string }>(
-      `SELECT role FROM organization_members
-        WHERE user_id = $1 AND organization_id = $2`,
-      [team_leader_user_id, orgId],
-    );
-    if (!verify.rows[0] || !TEAM_LEADER_ROLES.includes(verify.rows[0].role)) {
-      return res.status(400).json({ error: "Brukeren er ikke teamleder i din org" });
-    }
-
-    // Hent tidligere teamleder
-    const prev = await pool.query<{ assigned_team_leader_id: string | null }>(
-      `SELECT assigned_team_leader_id FROM crm_customers WHERE id = $1`,
-      [req.params.id],
-    );
-
-    await pool.query(
-      `UPDATE crm_customers SET
-         assigned_team_leader_id = $1::text,
-         assignment_note = COALESCE($2::text, assignment_note),
-         assignment_chain = COALESCE(assignment_chain, '[]'::jsonb)
-                            || jsonb_build_object(
-                                 'type', 'team_leader',
-                                 'user_id', $1::text,
-                                 'by_user_id', $3::text,
-                                 'at', now()::text,
-                                 'note', $2::text
-                               ),
-         updated_at = now()
-       WHERE id = $4::uuid`,
-      [team_leader_user_id, note ?? null, s.userId, req.params.id],
-    );
-
-    await logAssignment(pool, {
-      customerId: req.params.id,
-      organizationId: orgId!,
-      assignedByUserId: s.userId,
-      fromUserId: prev.rows[0]?.assigned_team_leader_id ?? null,
-      toUserId: team_leader_user_id,
-      reason: note ?? "team_leader_assignment",
-      meta: { type: "team_leader" },
-    });
-
-    // Multi-kanal notifikasjon
-    try {
-      const lead = await pool.query<{ name: string; lead_category: string | null }>(
-        `SELECT name, lead_category FROM crm_customers WHERE id = $1`,
-        [req.params.id],
+      const lead = await loadAccessibleLeadgridLead(pool, {
+        leadId: req.params.id,
+        userId: s.userId,
+      });
+      if (!lead) return res.status(404).json({ error: "Ikke funnet" });
+      const callerProject = await loadAccessibleLeadgridProject(
+        pool,
+        lead.projectId,
+        s.userId,
       );
-      // Fire-and-forget: notifyAssignment fan-outer til APNs (opptil 7
-      // tokens × 10s stream-timeout hvis døde), e-post + WhatsApp — dette
-      // MÅ IKKE blokkere HTTP-svaret (Notification-QA push-test 2026-07-06
-      // avdekket 45s+ heng da awaitet APNs-løkke låste request-stien).
-      void notifyAssignment(pool, {
-        recipientUserId: team_leader_user_id,
-        organizationId: orgId!,
-        eventType: "lead_assigned_as_team_leader",
-        customerId: req.params.id,
-        customerName: lead.rows[0]?.name ?? "Ny lead",
-        customerTier: lead.rows[0]?.lead_category ?? null,
-        triggeredByUserId: s.userId,
-        note: note ?? null,
-      }).catch((e) => console.warn("[assign-tl] notify feilet", e));
-    } catch (e) { console.warn("[assign-tl] lead-oppslag feilet", e); }
+      if (
+        !callerProject ||
+        callerProject.organizationId !== lead.organizationId
+      ) {
+        return res.status(404).json({ error: "Ikke funnet" });
+      }
+      const callerRole = await getUserRoleForOrganization(
+        pool,
+        s.userId,
+        lead.organizationId,
+      );
+      if (
+        !canAssignTeamLeader(callerRole.globalRole, callerRole.orgRole) &&
+        !canAssignTeamLeader(null, callerProject.memberRole)
+      ) {
+        return res.status(403).json({ error: "Krever markedssjef-rolle eller høyere" });
+      }
 
-    res.json({ ok: true });
+      const targetRoles = await loadTargetProjectRoles(
+        pool,
+        callerProject,
+        teamLeaderUserId,
+      );
+      if (
+        !targetRoles ||
+        !targetRoles.some((role) => TEAM_LEADER_ROLES.includes(role))
+      ) {
+        return res.status(400).json({
+          error: "Brukeren er ikke en tilgjengelig teamleder i prosjektet",
+        });
+      }
+
+      client = await beginTransaction(pool);
+      const current = await client.query<{
+        assigned_team_leader_id: string | null;
+        name: string;
+        lead_category: string | null;
+      }>(
+        `SELECT assigned_team_leader_id, name, lead_category
+           FROM crm_customers
+          WHERE id = $1::uuid
+            AND organization_id = $2::uuid
+            AND project_id = $3
+          FOR UPDATE`,
+        [lead.id, lead.organizationId, lead.projectId],
+      );
+      if (!current.rows[0]) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "Ikke funnet" });
+      }
+      const updated = await client.query(
+        `UPDATE crm_customers SET
+           assigned_team_leader_id = $4::text,
+           assignment_note = COALESCE($5::text, assignment_note),
+           assignment_chain = COALESCE(assignment_chain, '[]'::jsonb)
+                              || jsonb_build_object(
+                                   'type', 'team_leader',
+                                   'user_id', $4::text,
+                                   'by_user_id', $6::text,
+                                   'at', now()::text,
+                                   'note', $5::text
+                                 ),
+           updated_at = now()
+         WHERE id = $1::uuid
+           AND organization_id = $2::uuid
+           AND project_id = $3
+         RETURNING id`,
+        [
+          lead.id,
+          lead.organizationId,
+          lead.projectId,
+          teamLeaderUserId,
+          note,
+          s.userId,
+        ],
+      );
+      if (updated.rowCount !== 1) throw new Error("assignment_update_race");
+      await logAssignment(client, {
+        customerId: lead.id,
+        organizationId: lead.organizationId,
+        assignedByUserId: s.userId,
+        fromUserId: current.rows[0].assigned_team_leader_id,
+        toUserId: teamLeaderUserId,
+        reason: "team_leader_assignment",
+        meta: { type: "team_leader", project_id: lead.projectId, note },
+      });
+      await client.query("COMMIT");
+
+      // Varsling skjer etter COMMIT, slik at mottakeren aldri varsles om en
+      // tildeling som senere rulles tilbake.
+      void notifyAssignment(pool, {
+        recipientUserId: teamLeaderUserId,
+        organizationId: lead.organizationId,
+        eventType: "lead_assigned_as_team_leader",
+        customerId: lead.id,
+        customerName: current.rows[0].name ?? "Ny lead",
+        customerTier: current.rows[0].lead_category ?? null,
+        triggeredByUserId: s.userId,
+        note,
+      }).catch((e) => console.warn("[assign-tl] notify feilet", e));
+
+      return res.json({ ok: true });
     } catch (e) {
+      if (client) await client.query("ROLLBACK").catch(() => undefined);
       console.error("[assign-tl] tildeling feilet", e);
-      res.status(500).json({ error: "Kunne ikke tildele teamleder" });
+      return res.status(500).json({ error: "Kunne ikke tildele teamleder" });
+    } finally {
+      client?.release();
     }
   });
 
@@ -276,97 +426,131 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
   app.post("/api/leadgrid/customers/:id/assign-rep", async (req, res) => {
     const s = getSession(req, activeSessions);
     if (!s) return res.status(401).json({ error: "Ikke innlogget" });
-    const { globalRole, orgRole, orgId } = await getUserRole(pool, s.userId);
-    if (!canAssignRep(globalRole, orgRole)) {
-      return res.status(403).json({ error: "Krever teamleder-rolle eller høyere" });
-    }
+    const repUserId =
+      typeof req.body?.rep_user_id === "string"
+        ? req.body.rep_user_id.trim()
+        : "";
+    const note = typeof req.body?.note === "string"
+      ? req.body.note.trim().slice(0, 4_000) || null
+      : null;
+    if (!repUserId) return res.status(400).json({ error: "rep_user_id påkrevd" });
 
-    const { rep_user_id, note } = req.body ?? {};
-    if (!rep_user_id) return res.status(400).json({ error: "rep_user_id påkrevd" });
-
-    // Ytre try/catch (se assign-team-leader) — kastende query → 500, ikke heng.
+    let client: PoolClient | null = null;
     try {
-    // Cross-tenant: kunden må tilhøre innloggerens org (404 ellers).
-    if (!(await customerInOrg(pool, req.params.id, orgId))) {
-      return res.status(404).json({ error: "Ikke funnet" });
-    }
-    // Verifiser at brukeren er rep i samme org
-    const verify = await pool.query<{ role: string }>(
-      `SELECT role FROM organization_members
-        WHERE user_id = $1 AND organization_id = $2`,
-      [rep_user_id, orgId],
-    );
-    if (!verify.rows[0] || !REP_ROLES.includes(verify.rows[0].role)) {
-      return res.status(400).json({ error: "Brukeren er ikke salgskonsulent/promotør i din org" });
-    }
-
-    // Hvis teamleder → må være tildelt selv som team_leader på denne lead-en
-    if (orgRole === "teamleder") {
-      const own = await pool.query<{ tl: string | null }>(
-        `SELECT assigned_team_leader_id::text AS tl FROM crm_customers WHERE id = $1`,
-        [req.params.id],
+      const lead = await loadAccessibleLeadgridLead(pool, {
+        leadId: req.params.id,
+        userId: s.userId,
+      });
+      if (!lead) return res.status(404).json({ error: "Ikke funnet" });
+      const callerProject = await loadAccessibleLeadgridProject(
+        pool,
+        lead.projectId,
+        s.userId,
       );
-      if (own.rows[0]?.tl !== s.userId) {
-        return res.status(403).json({ error: "Du er ikke teamleder for denne leaden" });
+      if (
+        !callerProject ||
+        callerProject.organizationId !== lead.organizationId
+      ) {
+        return res.status(404).json({ error: "Ikke funnet" });
       }
-    }
-
-    const prev = await pool.query<{ assigned_user_id: string | null }>(
-      `SELECT assigned_user_id FROM crm_customers WHERE id = $1`,
-      [req.params.id],
-    );
-
-    await pool.query(
-      `UPDATE crm_customers SET
-         assigned_user_id = $1::text,
-         assigned_by_user_id = $2::text,
-         assigned_at = now(),
-         assignment_note = COALESCE($3::text, assignment_note),
-         assignment_chain = COALESCE(assignment_chain, '[]'::jsonb)
-                            || jsonb_build_object(
-                                 'type', 'rep',
-                                 'user_id', $1::text,
-                                 'by_user_id', $2::text,
-                                 'at', now()::text,
-                                 'note', $3::text
-                               ),
-         updated_at = now()
-       WHERE id = $4::uuid`,
-      [rep_user_id, s.userId, note ?? null, req.params.id],
-    );
-
-    await logAssignment(pool, {
-      customerId: req.params.id,
-      organizationId: orgId!,
-      assignedByUserId: s.userId,
-      fromUserId: prev.rows[0]?.assigned_user_id ?? null,
-      toUserId: rep_user_id,
-      reason: note ?? "rep_assignment",
-      meta: { type: "rep" },
-    });
-
-    try {
-      const lead = await pool.query<{ name: string; lead_category: string | null }>(
-        `SELECT name, lead_category FROM crm_customers WHERE id = $1`,
-        [req.params.id],
+      const callerRole = await getUserRoleForOrganization(
+        pool,
+        s.userId,
+        lead.organizationId,
       );
-      // Fire-and-forget (se assign-tl) — varsel-fan-out må ikke blokkere.
-      void notifyAssignment(pool, {
-        recipientUserId: rep_user_id,
-        organizationId: orgId!,
-        eventType: "lead_assigned_as_rep",
-        customerId: req.params.id,
-        customerName: lead.rows[0]?.name ?? "(uten navn)",
-        customerTier: lead.rows[0]?.lead_category ?? null,
-        triggeredByUserId: s.userId,
-        note: note ?? null,
-      }).catch((e) => console.warn("[assign-rep] notify feilet", e));
-    } catch (e) { console.warn("[assign-rep] lead-oppslag feilet", e); }
+      if (
+        !canAssignRep(callerRole.globalRole, callerRole.orgRole) &&
+        !canAssignRep(null, callerProject.memberRole)
+      ) {
+        return res.status(403).json({ error: "Krever teamleder-rolle eller høyere" });
+      }
 
-    res.json({ ok: true });
+      const targetRoles = await loadTargetProjectRoles(
+        pool,
+        callerProject,
+        repUserId,
+      );
+      if (!targetRoles || !targetRoles.some((role) => REP_ROLES.includes(role))) {
+        return res.status(400).json({
+          error: "Brukeren er ikke en tilgjengelig salgskonsulent/promotør i prosjektet",
+        });
+      }
+
+      client = await beginTransaction(pool);
+      const current = await client.query<{
+        assigned_user_id: string | null;
+        name: string;
+        lead_category: string | null;
+      }>(
+        `SELECT assigned_user_id, name, lead_category
+           FROM crm_customers
+          WHERE id = $1::uuid
+            AND organization_id = $2::uuid
+            AND project_id = $3
+          FOR UPDATE`,
+        [lead.id, lead.organizationId, lead.projectId],
+      );
+      if (!current.rows[0]) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "Ikke funnet" });
+      }
+      const updated = await client.query(
+        `UPDATE crm_customers SET
+           assigned_user_id = $4::text,
+           assigned_by_user_id = $5::text,
+           assigned_at = now(),
+           assignment_note = COALESCE($6::text, assignment_note),
+           assignment_chain = COALESCE(assignment_chain, '[]'::jsonb)
+                              || jsonb_build_object(
+                                   'type', 'rep',
+                                   'user_id', $4::text,
+                                   'by_user_id', $5::text,
+                                   'at', now()::text,
+                                   'note', $6::text
+                                 ),
+           updated_at = now()
+         WHERE id = $1::uuid
+           AND organization_id = $2::uuid
+           AND project_id = $3
+         RETURNING id`,
+        [
+          lead.id,
+          lead.organizationId,
+          lead.projectId,
+          repUserId,
+          s.userId,
+          note,
+        ],
+      );
+      if (updated.rowCount !== 1) throw new Error("assignment_update_race");
+      await logAssignment(client, {
+        customerId: lead.id,
+        organizationId: lead.organizationId,
+        assignedByUserId: s.userId,
+        fromUserId: current.rows[0].assigned_user_id,
+        toUserId: repUserId,
+        reason: "rep_assignment",
+        meta: { type: "rep", project_id: lead.projectId, note },
+      });
+      await client.query("COMMIT");
+
+      void notifyAssignment(pool, {
+        recipientUserId: repUserId,
+        organizationId: lead.organizationId,
+        eventType: "lead_assigned_as_rep",
+        customerId: lead.id,
+        customerName: current.rows[0].name ?? "(uten navn)",
+        customerTier: current.rows[0].lead_category ?? null,
+        triggeredByUserId: s.userId,
+        note,
+      }).catch((e) => console.warn("[assign-rep] notify feilet", e));
+      return res.json({ ok: true });
     } catch (e) {
+      if (client) await client.query("ROLLBACK").catch(() => undefined);
       console.error("[assign-rep] tildeling feilet", e);
-      res.status(500).json({ error: "Kunne ikke tildele rep" });
+      return res.status(500).json({ error: "Kunne ikke tildele rep" });
+    } finally {
+      client?.release();
     }
   });
 
@@ -376,77 +560,155 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
   app.post("/api/leadgrid/customers/:id/unassign", async (req, res) => {
     const s = getSession(req, activeSessions);
     if (!s) return res.status(401).json({ error: "Ikke innlogget" });
-    const { globalRole, orgRole, orgId } = await getUserRole(pool, s.userId);
-    if (!canAssignRep(globalRole, orgRole)) {
-      return res.status(403).json({ error: "Krever teamleder-rolle eller høyere" });
-    }
     const { unassign_type } = req.body ?? {}; // 'rep' | 'team_leader' | 'all'
     const t = unassign_type ?? "rep";
+    if (!["rep", "team_leader", "all"].includes(t)) {
+      return res.status(400).json({ error: "Ugyldig unassign_type" });
+    }
 
-    // Ytre try/catch: begge UPDATE-ene hadde utypet $1 i jsonb_build_object
-    // («could not determine data type») og hele handleren manglet try/catch
-    // → HENG på HVER unassign (Notification-QA 2026-07-07).
+    let client: PoolClient | null = null;
     try {
-    // Cross-tenant: kunden må tilhøre innloggerens org (404 ellers).
-    if (!(await customerInOrg(pool, req.params.id, orgId))) {
-      return res.status(404).json({ error: "Ikke funnet" });
-    }
-    const prev = await pool.query<{
-      assigned_user_id: string | null;
-      assigned_team_leader_id: string | null;
-    }>(
-      `SELECT assigned_user_id, assigned_team_leader_id
-         FROM crm_customers WHERE id = $1`,
-      [req.params.id],
-    );
-
-    if (t === "rep" || t === "all") {
-      await pool.query(
-        `UPDATE crm_customers SET
-           assigned_user_id = NULL, assigned_by_user_id = NULL, assigned_at = NULL,
-           assignment_chain = COALESCE(assignment_chain, '[]'::jsonb)
-                              || jsonb_build_object(
-                                   'type', 'unassign_rep',
-                                   'by_user_id', $1::text, 'at', now()::text
-                                 ),
-           updated_at = now()
-         WHERE id = $2::uuid`, [s.userId, req.params.id],
+      const lead = await loadAccessibleLeadgridLead(pool, {
+        leadId: req.params.id,
+        userId: s.userId,
+      });
+      if (!lead) return res.status(404).json({ error: "Ikke funnet" });
+      const callerProject = await loadAccessibleLeadgridProject(
+        pool,
+        lead.projectId,
+        s.userId,
       );
-      if (prev.rows[0]?.assigned_user_id) {
-        await logAssignment(pool, {
-          customerId: req.params.id, organizationId: orgId!,
-          assignedByUserId: s.userId, fromUserId: prev.rows[0].assigned_user_id,
-          toUserId: "(unassigned)", reason: "unassign_rep",
-        });
+      if (
+        !callerProject ||
+        callerProject.organizationId !== lead.organizationId
+      ) {
+        return res.status(404).json({ error: "Ikke funnet" });
       }
-    }
-    if (t === "team_leader" || t === "all") {
-      if (!canAssignTeamLeader(globalRole, orgRole)) {
+      const callerRole = await getUserRoleForOrganization(
+        pool,
+        s.userId,
+        lead.organizationId,
+      );
+      if (
+        !canAssignRep(callerRole.globalRole, callerRole.orgRole) &&
+        !canAssignRep(null, callerProject.memberRole)
+      ) {
+        return res.status(403).json({ error: "Krever teamleder-rolle eller høyere" });
+      }
+      if (
+        (t === "team_leader" || t === "all") &&
+        !canAssignTeamLeader(callerRole.globalRole, callerRole.orgRole) &&
+        !canAssignTeamLeader(null, callerProject.memberRole)
+      ) {
         return res.status(403).json({ error: "Krever markedssjef for å fjerne teamleder" });
       }
-      await pool.query(
-        `UPDATE crm_customers SET
-           assigned_team_leader_id = NULL,
-           assignment_chain = COALESCE(assignment_chain, '[]'::jsonb)
-                              || jsonb_build_object(
-                                   'type', 'unassign_team_leader',
-                                   'by_user_id', $1::text, 'at', now()::text
-                                 ),
-           updated_at = now()
-         WHERE id = $2::uuid`, [s.userId, req.params.id],
+
+      client = await beginTransaction(pool);
+      const current = await client.query<{
+        assigned_user_id: string | null;
+        assigned_team_leader_id: string | null;
+      }>(
+        `SELECT assigned_user_id, assigned_team_leader_id
+           FROM crm_customers
+          WHERE id = $1::uuid
+            AND organization_id = $2::uuid
+            AND project_id = $3
+          FOR UPDATE`,
+        [lead.id, lead.organizationId, lead.projectId],
       );
-      if (prev.rows[0]?.assigned_team_leader_id) {
-        await logAssignment(pool, {
-          customerId: req.params.id, organizationId: orgId!,
-          assignedByUserId: s.userId, fromUserId: prev.rows[0].assigned_team_leader_id,
-          toUserId: "(unassigned)", reason: "unassign_team_leader",
+      if (!current.rows[0]) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "Ikke funnet" });
+      }
+
+      const updated = await client.query(
+        `UPDATE crm_customers SET
+           assigned_user_id = CASE
+             WHEN $4::text IN ('rep', 'all') THEN NULL
+             ELSE assigned_user_id
+           END,
+           assigned_by_user_id = CASE
+             WHEN $4::text IN ('rep', 'all') THEN NULL
+             ELSE assigned_by_user_id
+           END,
+           assigned_at = CASE
+             WHEN $4::text IN ('rep', 'all') THEN NULL
+             ELSE assigned_at
+           END,
+           assigned_team_leader_id = CASE
+             WHEN $4::text IN ('team_leader', 'all') THEN NULL
+             ELSE assigned_team_leader_id
+           END,
+           assignment_chain = COALESCE(assignment_chain, '[]'::jsonb) ||
+             CASE $4::text
+               WHEN 'all' THEN jsonb_build_array(
+                 jsonb_build_object(
+                   'type', 'unassign_rep',
+                   'by_user_id', $5::text,
+                   'at', now()::text
+                 ),
+                 jsonb_build_object(
+                   'type', 'unassign_team_leader',
+                   'by_user_id', $5::text,
+                   'at', now()::text
+                 )
+               )
+               WHEN 'team_leader' THEN jsonb_build_object(
+                 'type', 'unassign_team_leader',
+                 'by_user_id', $5::text,
+                 'at', now()::text
+               )
+               ELSE jsonb_build_object(
+                 'type', 'unassign_rep',
+                 'by_user_id', $5::text,
+                 'at', now()::text
+               )
+             END,
+           updated_at = now()
+         WHERE id = $1::uuid
+           AND organization_id = $2::uuid
+           AND project_id = $3
+         RETURNING id`,
+        [lead.id, lead.organizationId, lead.projectId, t, s.userId],
+      );
+      if (updated.rowCount !== 1) throw new Error("unassignment_update_race");
+
+      if (
+        (t === "rep" || t === "all") &&
+        current.rows[0].assigned_user_id
+      ) {
+        await logAssignment(client, {
+          customerId: lead.id,
+          organizationId: lead.organizationId,
+          assignedByUserId: s.userId,
+          fromUserId: current.rows[0].assigned_user_id,
+          toUserId: null,
+          reason: "unassign_rep",
+          meta: { project_id: lead.projectId },
         });
       }
-    }
-    res.json({ ok: true });
+      if (
+        (t === "team_leader" || t === "all") &&
+        current.rows[0].assigned_team_leader_id
+      ) {
+        await logAssignment(client, {
+          customerId: lead.id,
+          organizationId: lead.organizationId,
+          assignedByUserId: s.userId,
+          fromUserId: current.rows[0].assigned_team_leader_id,
+          toUserId: null,
+          reason: "unassign_team_leader",
+          meta: { project_id: lead.projectId },
+        });
+      }
+      await client.query("COMMIT");
+      return res.json({ ok: true });
     } catch (e) {
+      if (client) await client.query("ROLLBACK").catch(() => undefined);
       console.error("[leadgrid] unassign feilet", e);
-      res.status(500).json({ error: "Kunne ikke fjerne tildeling" });
+      return res.status(500).json({ error: "Kunne ikke fjerne tildeling" });
+    } finally {
+      client?.release();
     }
   });
 
@@ -459,23 +721,30 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
     // Defensiv try/catch (Notification-QA 2026-07-08): malformet :id-uuid
     // eller DB-feil skal gi 500, ikke uhåndtert async → heng.
     try {
-      // Cross-tenant: skop loggen til innloggerens org — uten dette kunne
-      // enhver innlogget bruker lese HVEM som tildelte HVEM (navn) for en
-      // vilkårlig lead-UUID i en annen tenant.
-      const { orgId } = await getUserRole(pool, s.userId);
+      const lead = await loadAccessibleLeadgridLead(pool, {
+        leadId: req.params.id,
+        userId: s.userId,
+      });
+      if (!lead) return res.status(404).json({ error: "Ikke funnet" });
       const r = await pool.query(
         `SELECT l.id::text, l.from_user_id, l.to_user_id, l.assigned_by_user_id,
-                l.reason, l.assigned_at::text, l.meta,
+                COALESCE(NULLIF(l.meta ->> 'note', ''), l.reason) AS reason,
+                l.assigned_at::text, l.meta,
                 fr.first_name AS from_first, fr.last_name AS from_last,
                 to_.first_name AS to_first, to_.last_name AS to_last,
                 by_.first_name AS by_first, by_.last_name AS by_last
-           FROM lead_assignment_log l
+           FROM crm_customers c
+           JOIN lead_assignment_log l
+             ON l.lead_id = c.id
+            AND l.organization_id = c.organization_id
            LEFT JOIN users fr  ON fr.id = l.from_user_id
            LEFT JOIN users to_ ON to_.id = l.to_user_id
            LEFT JOIN users by_ ON by_.id = l.assigned_by_user_id
-          WHERE l.lead_id = $1 AND l.organization_id::text = $2
+          WHERE c.id = $1::uuid
+            AND c.organization_id = $2::uuid
+            AND c.project_id = $3
           ORDER BY l.assigned_at DESC LIMIT 50`,
-        [req.params.id, orgId],
+        [lead.id, lead.organizationId, lead.projectId],
       );
       res.json({ history: r.rows });
     } catch (e) {
@@ -485,13 +754,41 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
   });
 
   // ============================================================
-  // MINE ASSIGNMENTS — markerer også som "sett" når man åpner sin egen
+  // MINE ASSIGNMENTS — lesing av listen endrer ikke sett-status.
+  // Sett-status registreres først når brukeren åpner det enkelte leadet.
   // ============================================================
   app.get("/api/leadgrid/my-assignments", async (req, res) => {
     const s = getSession(req, activeSessions);
     if (!s) return res.status(401).json({ error: "Ikke innlogget" });
+    const organizationId = requestedOrganizationId(req);
+    if (!organizationId) {
+      return res.status(400).json({ error: "Gyldig organization_id er påkrevd" });
+    }
     try {
-    const { orgRole } = await getUserRole(pool, s.userId);
+    const projectRows = await pool.query<{ project_id: string }>(
+      `SELECT DISTINCT c.project_id
+         FROM crm_customers c
+        WHERE c.organization_id = $2::uuid
+          AND c.project_id IS NOT NULL
+          AND (
+            c.assigned_user_id = $1
+            OR c.assigned_team_leader_id = $1
+          )`,
+      [s.userId, organizationId],
+    );
+    const accessibleProjectIds = (
+      await Promise.all(projectRows.rows.map(async ({ project_id }) => {
+        const project = await loadAccessibleLeadgridProject(
+          pool,
+          project_id,
+          s.userId,
+        );
+        return project?.organizationId === organizationId ? project.id : null;
+      }))
+    ).filter((projectId): projectId is string => projectId !== null);
+    if (accessibleProjectIds.length === 0) {
+      return res.json({ items: [] });
+    }
 
     const r = await pool.query(
       `SELECT c.id::text, c.name, c.email, c.phone, c.status,
@@ -502,44 +799,25 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
               c.rep_first_opened_at::text,
               c.rep_last_seen_at::text,
               c.last_action_at::text, c.last_action_type,
+              c.project_id,
               p.name AS project_name
          FROM crm_customers c
-         LEFT JOIN leadgrid_projects p ON p.id = c.project_id
-        WHERE c.assigned_user_id = $1
-           OR c.assigned_team_leader_id = $1
+         LEFT JOIN leadgrid_projects p
+           ON p.id = c.project_id
+          AND p.organization_id = c.organization_id
+        WHERE c.organization_id = $2::uuid
+          AND c.project_id = ANY($3::text[])
+          AND (
+            c.assigned_user_id = $1
+            OR c.assigned_team_leader_id = $1
+          )
         ORDER BY
           CASE c.lead_category WHEN 'hot' THEN 1 WHEN 'warm' THEN 2
                                 WHEN 'cool' THEN 3 ELSE 4 END,
           c.assigned_at DESC NULLS LAST
         LIMIT 100`,
-      [s.userId],
+      [s.userId, organizationId, accessibleProjectIds],
     );
-
-    // Marker leads som "sett" når brukeren åpner sin liste —
-    // setter team_leader_first_opened_at / rep_first_opened_at + sist sett.
-    // Best-effort, ikke avbryt om noe feiler.
-    try {
-      const isTeamLeader = TEAM_LEADER_ROLES.includes(orgRole ?? "");
-      const isRep = REP_ROLES.includes(orgRole ?? "");
-      if (isTeamLeader) {
-        await pool.query(
-          `UPDATE crm_customers SET
-             team_leader_first_opened_at = COALESCE(team_leader_first_opened_at, now()),
-             team_leader_last_seen_at = now()
-           WHERE assigned_team_leader_id = $1`,
-          [s.userId],
-        );
-      }
-      if (isRep) {
-        await pool.query(
-          `UPDATE crm_customers SET
-             rep_first_opened_at = COALESCE(rep_first_opened_at, now()),
-             rep_last_seen_at = now()
-           WHERE assigned_user_id = $1`,
-          [s.userId],
-        );
-      }
-    } catch (e) { console.warn("[my-assignments] sett-tracking feilet", e); }
 
     res.json({ items: r.rows });
     } catch (e) {
@@ -555,50 +833,74 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
     const s = getSession(req, activeSessions);
     if (!s) return res.status(401).json({ error: "Ikke innlogget" });
     try {
-    const { orgRole, orgId } = await getUserRole(pool, s.userId);
-
-    // Cross-tenant: kunden må tilhøre innloggerens org (404 ellers) — ellers
-    // kunne view-log/opened-at settes på en vilkårlig annen-tenant-kunde.
-    if (!(await customerInOrg(pool, req.params.id, orgId))) {
+    const lead = await loadAccessibleLeadgridLead(pool, {
+      leadId: req.params.id,
+      userId: s.userId,
+    });
+    if (!lead) return res.status(404).json({ error: "Ikke funnet" });
+    const project = await loadAccessibleLeadgridProject(
+      pool,
+      lead.projectId,
+      s.userId,
+    );
+    if (!project || project.organizationId !== lead.organizationId) {
       return res.status(404).json({ error: "Ikke funnet" });
     }
+    const role = await getUserRoleForOrganization(
+      pool,
+      s.userId,
+      lead.organizationId,
+    );
+    const viewerRole = role.orgRole ?? project.memberRole;
 
-    const isTeamLeader = TEAM_LEADER_ROLES.includes(orgRole ?? "");
-    const isRep = REP_ROLES.includes(orgRole ?? "");
-
-    // Sjekk at brukeren faktisk er tildelt
     const r = await pool.query<{
       assigned_team_leader_id: string | null; assigned_user_id: string | null;
     }>(
-      `SELECT assigned_team_leader_id, assigned_user_id FROM crm_customers WHERE id = $1`,
-      [req.params.id],
+      `SELECT assigned_team_leader_id, assigned_user_id
+         FROM crm_customers
+        WHERE id = $1::uuid
+          AND organization_id = $2::uuid
+          AND project_id = $3`,
+      [lead.id, lead.organizationId, lead.projectId],
     );
     const row = r.rows[0];
     if (!row) return res.status(404).json({ error: "Ikke funnet" });
 
-    if (isTeamLeader && row.assigned_team_leader_id === s.userId) {
+    if (row.assigned_team_leader_id === s.userId) {
       await pool.query(
         `UPDATE crm_customers SET
            team_leader_first_opened_at = COALESCE(team_leader_first_opened_at, now()),
            team_leader_last_seen_at = now()
-         WHERE id = $1`,
-        [req.params.id],
+         WHERE id = $1::uuid
+           AND organization_id = $2::uuid
+           AND project_id = $3
+           AND assigned_team_leader_id = $4`,
+        [lead.id, lead.organizationId, lead.projectId, s.userId],
       );
     }
-    if (isRep && row.assigned_user_id === s.userId) {
+    if (row.assigned_user_id === s.userId) {
       await pool.query(
         `UPDATE crm_customers SET
            rep_first_opened_at = COALESCE(rep_first_opened_at, now()),
            rep_last_seen_at = now()
-         WHERE id = $1`,
-        [req.params.id],
+         WHERE id = $1::uuid
+           AND organization_id = $2::uuid
+           AND project_id = $3
+           AND assigned_user_id = $4`,
+        [lead.id, lead.organizationId, lead.projectId, s.userId],
       );
     }
 
     await pool.query(
-      `INSERT INTO crm_customer_view_log (customer_id, viewer_user_id, viewer_role)
-       VALUES ($1, $2, $3)`,
-      [req.params.id, s.userId, orgRole ?? null],
+      `INSERT INTO crm_customer_view_log (
+         customer_id, viewer_user_id, viewer_role
+       )
+       SELECT c.id, $4, $5
+         FROM crm_customers c
+        WHERE c.id = $1::uuid
+          AND c.organization_id = $2::uuid
+          AND c.project_id = $3`,
+      [lead.id, lead.organizationId, lead.projectId, s.userId, viewerRole],
     );
 
     res.json({ ok: true });
@@ -687,7 +989,9 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
     // seg aldri. Kvalifiser `n.id` + try/catch (Notification-QA 2026-07-06).
     try {
       const r = await pool.query(
-        `SELECT n.id, n.event_type, n.title, n.body, n.lead_id, n.deep_link,
+        `SELECT n.id, n.organization_id::text, n.project_id::text,
+                n.event_type, n.title, n.body,
+                n.lead_id, n.deep_link,
                 n.meta, n.read_at::text, n.created_at::text,
                 n.triggered_by_user_id,
                 tb.first_name AS by_first, tb.last_name AS by_last
@@ -809,13 +1113,11 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
     // svarte Express aldri → HENG. Cast users.id::uuid + try/catch
     // (Notification-QA 2026-07-06).
     try {
-      // Cross-tenant: kunden må tilhøre innloggerens org — uten dette lekket
-      // denne handleren tildelt teamleder/rep sitt navn, avatar OG live
-      // presence (current_route) for en vilkårlig annen-tenant-kunde.
-      const { orgId } = await getUserRole(pool, s.userId);
-      if (!(await customerInOrg(pool, req.params.id, orgId))) {
-        return res.status(404).json({ error: "Ikke funnet" });
-      }
+      const lead = await loadAccessibleLeadgridLead(pool, {
+        leadId: req.params.id,
+        userId: s.userId,
+      });
+      if (!lead) return res.status(404).json({ error: "Ikke funnet" });
       const r = await pool.query(
         `SELECT c.id::text,
                 c.assigned_team_leader_id, c.assigned_user_id,
@@ -838,8 +1140,10 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
            LEFT JOIN users rep ON rep.id = c.assigned_user_id
            LEFT JOIN user_presence tl_up  ON tl_up.user_id = tl.id::uuid
            LEFT JOIN user_presence rep_up ON rep_up.user_id = rep.id::uuid
-          WHERE c.id = $1`,
-        [req.params.id],
+          WHERE c.id = $1::uuid
+            AND c.organization_id = $2::uuid
+            AND c.project_id = $3`,
+        [lead.id, lead.organizationId, lead.projectId],
       );
       if (r.rows.length === 0) return res.status(404).json({ error: "Ikke funnet" });
       res.json(r.rows[0]);

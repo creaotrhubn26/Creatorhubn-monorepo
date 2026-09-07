@@ -214,41 +214,11 @@ struct LeadgridBulkUrlItemRetrySheet: View {
     }
 
     private func retry() async {
-        guard let api = appState.api else { return }
-        isRetrying = true
-        defer { isRetrying = false }
-        statusMessage = nil
-        do {
-            let r = try await api.retryBulkUrlItem(batchId: batchId, itemId: item.id)
-            retryResultStatus = r.status
-            if r.ok {
-                statusMessage = "Retry vellykket — URL prosessert."
-                onChanged()
-                // Re-last detalj for å vise oppdatert retry_count
-                await loadDetail()
-            } else {
-                statusMessage = "Retry feilet: \(r.errorMessage ?? "ukjent feil")"
-                onChanged()
-                await loadDetail()
-            }
-        } catch {
-            statusMessage = "Kunne ikke retry: \(error.localizedDescription)"
-        }
+        statusMessage = "URL Research er avviklet. Opprett en Discovery V2-profil for ny research."
     }
 
     private func skip() async {
-        guard let api = appState.api else { return }
-        isSkipping = true
-        defer { isSkipping = false }
-        statusMessage = nil
-        do {
-            _ = try await api.skipBulkUrlItem(batchId: batchId, itemId: item.id)
-            statusMessage = "Markert som irrelevant."
-            onChanged()
-            dismiss()
-        } catch {
-            statusMessage = "Kunne ikke markere: \(error.localizedDescription)"
-        }
+        statusMessage = "Den gamle URL-batchen er skrivebeskyttet. Bruk Discovery V2."
     }
 
     // MARK: - Formatting

@@ -17,7 +17,10 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
-import { dispatchNotification } from "./lead-map-notification-service.js";
+import {
+  dispatchNotification,
+  leadgridLeadDeepLink,
+} from "./lead-map-notification-service.js";
 
 interface Deps {
   app: Express;
@@ -47,16 +50,19 @@ export function registerLeadMapFollowupCronRoutes({ app, pool }: Deps): void {
       // schedule) would double-notify. A pg advisory lock makes overlap a
       // no-op skip rather than a duplicate dispatch.
       const FOLLOWUP_CRON_LOCK = 910_001;
-      const lk = await pool.query<{ locked: boolean }>(
-        "SELECT pg_try_advisory_lock($1) AS locked",
-        [FOLLOWUP_CRON_LOCK],
-      );
-      if (!lk.rows[0]?.locked) {
-        return res.json({ ok: true, skipped: true, reason: "another_run_in_progress" });
-      }
+      const lockClient = await pool.connect();
+      let lockAcquired = false;
 
       try {
-        // (LM-5 advisory-lock allerede satt via pool ovenfor med FOLLOWUP_CRON_LOCK.)
+        const lockResult = await lockClient.query<{ locked: boolean }>(
+          "SELECT pg_try_advisory_lock($1) AS locked",
+          [FOLLOWUP_CRON_LOCK],
+        );
+        lockAcquired = lockResult.rows[0]?.locked === true;
+        if (!lockAcquired) {
+          return res.json({ ok: true, skipped: true, reason: "another_run_in_progress" });
+        }
+
         // Finn forfalt follow-up som ikke har fått varsel siste 24t
         const r = await pool.query<{
           lead_id: string;
@@ -64,23 +70,36 @@ export function registerLeadMapFollowupCronRoutes({ app, pool }: Deps): void {
           address: string | null;
           assigned_user_id: string;
           next_follow_up_at: string;
-          organization_id: string | null;
+          organization_id: string;
+          project_id: string;
         }>(
           `SELECT c.id::text AS lead_id,
                   c.name AS lead_name,
                   c.address,
-                  c.assigned_user_id,
+                  c.assigned_user_id::text,
                   c.next_follow_up_at::text,
-                  cp.organization_id::text
+                  c.organization_id::text,
+                  c.project_id::text
              FROM crm_customers c
-             LEFT JOIN leadgrid_projects cp ON cp.id = c.project_id
+             JOIN leadgrid_projects project
+               ON project.id = c.project_id
+              AND project.organization_id = c.organization_id
+             JOIN organization_members recipient
+               ON recipient.organization_id = c.organization_id
+              AND recipient.user_id = c.assigned_user_id::text
             WHERE c.assigned_user_id IS NOT NULL
+              AND c.organization_id IS NOT NULL
+              AND c.project_id IS NOT NULL
+              AND c.archived_at IS NULL
               AND c.next_follow_up_at IS NOT NULL
               AND c.next_follow_up_at < NOW()
               AND c.lead_status NOT IN ('won', 'lost', 'do_not_contact')
+              AND (project.status IS NULL OR project.status NOT IN ('archived', 'deleted'))
               AND NOT EXISTS (
                 SELECT 1 FROM notification_events ne
                  WHERE ne.recipient_user_id = c.assigned_user_id
+                   AND ne.organization_id = c.organization_id
+                   AND ne.project_id = c.project_id
                    AND ne.lead_id = c.id
                    AND ne.event_type = 'follow_up_due'
                    AND ne.created_at > NOW() - INTERVAL '24 hours'
@@ -104,13 +123,17 @@ export function registerLeadMapFollowupCronRoutes({ app, pool }: Deps): void {
             pool,
             recipientUserId: row.assigned_user_id,
             organizationId: row.organization_id,
+            projectId: row.project_id,
             eventType: "follow_up_due",
             title: `⏰ Forfalt follow-up: ${row.lead_name}`,
             body: `Du skulle fulgt opp ${row.lead_name}${addr} ${timing}. Ta kontakt nå?`,
             leadId: row.lead_id,
             triggeredByUserId: "system",
-            deepLink: `https://theroleroom.com/admin-room?lead=${row.lead_id}`,
-            meta: { overdue_days: overdueDays },
+            deepLink: leadgridLeadDeepLink(row.project_id, row.lead_id),
+            meta: {
+              project_id: row.project_id,
+              overdue_days: overdueDays,
+            },
           });
           results.push({ leadId: row.lead_id, userId: row.assigned_user_id });
         }
@@ -123,9 +146,12 @@ export function registerLeadMapFollowupCronRoutes({ app, pool }: Deps): void {
       } catch (err) {
         return res.status(500).json({ error: "cron_failed", detail: "internal_error" });
       } finally {
-        await pool
-          .query("SELECT pg_advisory_unlock($1)", [FOLLOWUP_CRON_LOCK])
-          .catch(() => undefined);
+        if (lockAcquired) {
+          await lockClient
+            .query("SELECT pg_advisory_unlock($1)", [FOLLOWUP_CRON_LOCK])
+            .catch(() => undefined);
+        }
+        lockClient.release();
       }
     },
   );

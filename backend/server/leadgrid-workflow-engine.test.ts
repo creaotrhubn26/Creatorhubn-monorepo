@@ -20,6 +20,7 @@ function ev(
   return {
     pool: undefined as unknown as WorkflowEvent["pool"],
     organizationId: "00000000-0000-0000-0000-000000000000",
+    projectId: "test-project",
     type,
     leadId: null,
     actorUserId: null,

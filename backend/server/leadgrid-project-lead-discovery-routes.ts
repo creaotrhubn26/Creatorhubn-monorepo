@@ -73,6 +73,9 @@ import { lookupCompanyForNewLead } from "./lead-brreg-service.js";
 import { cpvForTekst } from "./leadgrid-cpv-routes.js";
 import Anthropic from "@anthropic-ai/sdk";
 import { withAIQuota } from "./leadgrid-ai-queue.js";
+import {
+  loadAccessibleLeadgridProject as loadAuthoritativeLeadgridProject,
+} from "./leadgrid-project-access.js";
 
 // =====================================================================
 // Types
@@ -190,43 +193,29 @@ async function resolveOrgId(
 /**
  * Load a Leadgrid project only when the current user can access its tenant.
  *
- * `requireLeadMapPermission` protects the HTTP route, while this row-level
- * check keeps the data helper safe when it is reused outside that middleware.
- * Organization projects are shared with current members of that organization.
- * Legacy projects without an organization are scoped strictly to their creator;
- * mutable child rows must never grant project authority.
+ * Keep the local return shape used by the legacy discovery pipeline, but
+ * delegate all authorization to the shared Leadgrid project ACL. This prevents
+ * an organization membership from bypassing explicit project membership or a
+ * projects.view_all revoke.
  */
 async function loadAccessibleLeadgridProject(
   pool: Pool,
   projectId: string,
   userId: string,
 ): Promise<LeadgridProjectRef | null> {
-  const result = await pool.query<LeadgridProjectRef>(
-    `SELECT p.id::text, p.name, p.description, p.industry,
-            p.organization_id::text
-       FROM leadgrid_projects p
-      WHERE p.id = $1
-        AND (p.status IS NULL OR p.status NOT IN ('archived', 'deleted'))
-        AND (p.project_type IS NULL OR p.project_type NOT IN (
-          'feature_film', 'documentary', 'film', 'short_film',
-          'tv_series', 'commercial', 'music_video', 'casting'
-        ))
-        AND (
-          (
-            p.organization_id IS NOT NULL
-            AND EXISTS (
-              SELECT 1
-                FROM organization_members om
-               WHERE om.organization_id = p.organization_id
-                 AND om.user_id = $2
-            )
-          )
-          OR (p.organization_id IS NULL AND p.created_by = $2)
-        )
-      LIMIT 1`,
-    [projectId, userId],
+  const project = await loadAuthoritativeLeadgridProject(
+    pool,
+    projectId,
+    userId,
   );
-  return result.rows[0] ?? null;
+  if (!project) return null;
+  return {
+    id: project.id,
+    name: project.name,
+    description: project.description,
+    industry: project.industry,
+    organization_id: project.organizationId,
+  };
 }
 
 interface LeadgridDiscoveryBatchRef {
@@ -1017,15 +1006,16 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
           await client.query("BEGIN");
           await client.query(
             `INSERT INTO leadgrid_url_research_batches (
-                id, organization_id, created_by, total_urls, status,
+                id, organization_id, project_id, created_by, total_urls, status,
                 category, discovery_meta
               ) VALUES (
-                $1::uuid, $2::uuid, $3, $4, 'pending',
-                'lead_discovery', $5::jsonb
+                $1::uuid, $2::uuid, $3, $4, $5, 'pending',
+                'lead_discovery', $6::jsonb
               )`,
             [
               batchId,
               orgId,
+              projectId,
               session.userId,
               candidates.length,
               JSON.stringify(discoveryMeta),

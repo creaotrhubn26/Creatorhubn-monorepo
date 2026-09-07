@@ -29,6 +29,8 @@ struct CanvasAnalyseSheet: View {
     @State private var feil: String?
     /// true = analysert on-device m/ Apple Intelligence (gratis/privat).
     @State private var onDeviceKilde = false
+    /// Stabil mens arket er åpent; retry etter tapt svar lager ikke nye oppgaver.
+    @State private var persistenceRequestId = UUID()
 
     var body: some View {
         NavigationStack {
@@ -296,6 +298,13 @@ struct CanvasAnalyseSheet: View {
     @MainActor
     private func analyser() async {
         feil = nil
+        let projectId = appState.activeProjectId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !DemoModeManager.isActiveNonisolated,
+           projectId?.isEmpty != false {
+            feil = "Velg et kundeprosjekt før analysen lagres."
+            return
+        }
         // Apple Intelligence: prøv on-device Foundation Models først
         // (iOS 26+, norsk-gate) — gratis, privat, offline. Backend
         // persisterer resultatet (oppgaver + møtelogg) uten AI-kost.
@@ -312,7 +321,9 @@ struct CanvasAnalyseSheet: View {
                 if let api = appState.api {
                     Task { try? await api.persisterCanvasAnalyse(
                         selskap: selskap.isEmpty ? nil : selskap,
-                        leadId: leadId, resultat: lokal) }
+                        leadId: leadId, resultat: lokal,
+                        projectId: projectId ?? "",
+                        requestId: persistenceRequestId) }
                 }
                 return
             }
@@ -341,7 +352,9 @@ struct CanvasAnalyseSheet: View {
                 : ocrTekst + "\n\nOBJEKTER PÅ FLATA (plassering): " + romligTillegg
             resultat = try await api.analyserCanvasNotat(
                 selskap: selskap.isEmpty ? nil : selskap,
-                tekst: full, leadId: leadId)
+                tekst: full, leadId: leadId,
+                projectId: projectId ?? "",
+                requestId: persistenceRequestId)
         } catch {
             feil = "Analysen feilet — sjekk nettet, og at «Møter · AI-møtebrief» er aktivert (Canvas-analysen bruker samme AI-nøkkel)."
         }
@@ -372,6 +385,8 @@ struct PdfAnalyseSheet: View {
     @State private var onDeviceKilde = false
     @State private var valgte: Set<Int> = []
     @State private var festet = false
+    @State private var analysisRequestId = UUID()
+    @State private var persistenceRequestId = UUID()
 
     /// Oppgaver + løfter samlet som avhukbare punkter.
     private var punkter: [CanvasAnalyseOppgaveDTO] {
@@ -552,10 +567,19 @@ struct PdfAnalyseSheet: View {
             feil = "Krever innlogget modus."
             return
         }
+        guard let projectId = appState.activeProjectId?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !projectId.isEmpty else {
+            feil = "Velg et kundeprosjekt før dokumentet analyseres."
+            return
+        }
         do {
             resultat = try await api.analyserCanvasNotat(
                 selskap: selskap.isEmpty ? nil : selskap,
-                tekst: dokTekst, leadId: leadId)
+                tekst: dokTekst, leadId: leadId,
+                projectId: projectId,
+                requestId: analysisRequestId,
+                persist: false)
             valgte = Set(punkter.indices)
         } catch {
             feil = "Analysen feilet — sjekk nettet, og at «Møter · AI-møtebrief» er aktivert."
@@ -572,13 +596,21 @@ struct PdfAnalyseSheet: View {
         guard !valgtePunkter.isEmpty, let res = resultat else { return }
         onLagPunktObjekter?(valgtePunkter)
         if !DemoModeManager.isActiveNonisolated, let api = appState.api {
+            guard let projectId = appState.activeProjectId?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !projectId.isEmpty else {
+                feil = "Velg et kundeprosjekt før punktene lagres."
+                return
+            }
             let dto = CanvasAnalyseDTO(
                 oppsummering: "Fra PDF «\(dokumentNavn)»: \(res.oppsummering)",
                 oppgaver: valgtePunkter,
                 lofter: [])
             try? await api.persisterCanvasAnalyse(
                 selskap: selskap.isEmpty ? nil : selskap,
-                leadId: leadId, resultat: dto)
+                leadId: leadId, resultat: dto,
+                projectId: projectId,
+                requestId: persistenceRequestId)
         }
         dismiss()
     }

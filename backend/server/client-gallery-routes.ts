@@ -2,6 +2,7 @@ import express from "express";
 import type { Pool } from "pg";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type Stripe from "stripe";
+import type sharpFactory from "sharp";
 import { createRequire } from "module";
 import * as schema from "../migrations/schema.js";
 import { broadcastUserEvent } from "./realtime-user-events.js";
@@ -2394,10 +2395,16 @@ export function setupClientGalleryRoutes(
       // Sharp-pipeline for on-the-fly watermark. Importeres dynamisk så
       // vi unngår å laste ~50MB av sharp's binær når galleriet ikke
       // krever det. Cached på første call.
-      let sharpModulePromise: Promise<typeof import('sharp').default> | null = null;
+      type SharpFactory = typeof sharpFactory;
+      let sharpModulePromise: Promise<SharpFactory> | null = null;
       const getSharp = () => {
         if (!sharpModulePromise) {
-          sharpModulePromise = import('sharp').then((m) => (m as any).default ?? m);
+          sharpModulePromise = import('sharp').then((module) => {
+            const interoperable = module as unknown as {
+              default?: SharpFactory;
+            };
+            return interoperable.default ?? (module as unknown as SharpFactory);
+          });
         }
         return sharpModulePromise;
       };

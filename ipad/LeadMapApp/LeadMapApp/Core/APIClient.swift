@@ -9,6 +9,113 @@
 import Foundation
 import CoreLocation
 
+enum LeadgridScoutScopeError: LocalizedError, Equatable {
+    case invalidLeadID
+    case missingProjectID
+    case invalidIdempotencyKey
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidLeadID:
+            return "Scout krever en persistert Leadgrid CRM-ID."
+        case .missingProjectID:
+            return "Velg et Leadgrid-kundeprosjekt før du bruker Scout."
+        case .invalidIdempotencyKey:
+            return "Scout-forespørselen mangler en stabil retry-nøkkel."
+        }
+    }
+}
+
+private func requiredScoutLeadID(_ rawValue: String) throws -> String {
+    let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard UUID(uuidString: value) != nil else {
+        throw LeadgridScoutScopeError.invalidLeadID
+    }
+    return value.lowercased()
+}
+
+private func requiredScoutProjectID(_ rawValue: String) throws -> String {
+    let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !value.isEmpty, value.count <= 255 else {
+        throw LeadgridScoutScopeError.missingProjectID
+    }
+    return value
+}
+
+private func requiredScoutIdempotencyKey(_ rawValue: String) throws -> String {
+    let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard (8...200).contains(value.count) else {
+        throw LeadgridScoutScopeError.invalidIdempotencyKey
+    }
+    return value
+}
+
+enum LeadgridCollaborationScopeError: LocalizedError, Equatable {
+    case missingProjectID
+
+    var errorDescription: String? {
+        "Velg et Leadgrid-prosjekt før du åpner eller endrer samarbeidsdata."
+    }
+}
+
+private func requiredCollaborationProjectID(_ rawValue: String) throws -> String {
+    let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !value.isEmpty, value.count <= 255 else {
+        throw LeadgridCollaborationScopeError.missingProjectID
+    }
+    return value
+}
+
+enum LeadgridAssignmentScopeError: LocalizedError, Equatable {
+    case invalidRole
+    case invalidCRMLeadID
+    case missingProjectID
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidRole:
+            return "Ugyldig tildelingsrolle."
+        case .invalidCRMLeadID:
+            return "Tildeling krever en persistert Leadgrid CRM-ID."
+        case .missingProjectID:
+            return "Velg et Leadgrid-prosjekt før tildeling."
+        }
+    }
+}
+
+enum LeadgridAssignmentScope {
+    static func assignableUsersPath(
+        role: String,
+        customerId: String,
+        projectId: String
+    ) throws -> String {
+        let role = role.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard ["team_leader", "rep", "all"].contains(role) else {
+            throw LeadgridAssignmentScopeError.invalidRole
+        }
+        let customerId = customerId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard UUID(uuidString: customerId) != nil else {
+            throw LeadgridAssignmentScopeError.invalidCRMLeadID
+        }
+        let projectId = projectId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !projectId.isEmpty, projectId.count <= 255 else {
+            throw LeadgridAssignmentScopeError.missingProjectID
+        }
+
+        var components = URLComponents()
+        components.path = "/api/leadgrid/assignable-users"
+        components.queryItems = [
+            URLQueryItem(name: "role", value: role),
+            URLQueryItem(name: "leadId", value: customerId),
+            URLQueryItem(name: "projectId", value: projectId),
+        ]
+        guard let path = components.string else {
+            throw URLError(.badURL)
+        }
+        return path
+    }
+}
+
 actor APIClient {
     private static let productionBaseURL = "https://creatorhub-backend-rtbl.onrender.com"
 
@@ -37,10 +144,18 @@ actor APIClient {
     /// Request-local tenant context. Sent on every authenticated Leadgrid call
     /// so legacy endpoint families resolve the same workspace as the UI.
     private var activeOrganizationId: String?
+    /// Stable `/api/auth/user` identity used to bind durable offline writes.
+    private var authenticatedActorUserId: String?
 
-    init(token: String, baseURL: URL = URL(string: APIClient.baseURL)!) {
+    init(
+        token: String,
+        baseURL: URL = URL(string: APIClient.baseURL)!,
+        actorUserId: String? = nil
+    ) {
         self.token = token
         self.baseURL = baseURL
+        let actor = actorUserId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.authenticatedActorUserId = actor?.isEmpty == false ? actor : nil
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 20
         config.waitsForConnectivity = true
@@ -52,6 +167,13 @@ actor APIClient {
         activeOrganizationId = value?.isEmpty == false ? value : nil
     }
 
+    func setAuthenticatedActorUserId(_ userId: String?) {
+        let value = userId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        authenticatedActorUserId = value?.isEmpty == false ? value : nil
+    }
+
+    func offlineActorUserId() -> String? { authenticatedActorUserId }
+
     private static func validatedBaseURL(_ rawValue: String) -> URL? {
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: trimmed),
@@ -61,15 +183,6 @@ actor APIClient {
                 (scheme == "http" && ["127.0.0.1", "localhost"].contains(host))
         else { return nil }
         return url
-    }
-
-    // MARK: - GET-endepunkter
-
-    /// Bygg ?projectId=… query-string når aktivt prosjekt er satt.
-    private func projectQuery(_ projectId: String?, sep: String = "?") -> String {
-        guard let p = projectId, !p.isEmpty else { return "" }
-        let encoded = p.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? p
-        return "\(sep)projectId=\(encoded)"
     }
 
     // MARK: - GET-endepunkter
@@ -147,23 +260,36 @@ actor APIClient {
         try await get("/api/admin-room/lead-map/projects/\(id)/summary")
     }
 
-    func fetchEnrichment(leadId: String, organizationId: String?) async throws -> EnrichmentModel? {
+    func fetchEnrichment(
+        leadId: String,
+        projectId: String?,
+        organizationId: String?
+    ) async throws -> EnrichmentModel? {
         let resp: EnrichmentEnvelope = try await get(
-            "/api/admin-room/lead-map/leads/\(leadId)/enrichment\(scopeQuery(projectId: nil, organizationId: organizationId))"
+            "/api/admin-room/lead-map/leads/\(leadId)/enrichment\(scopeQuery(projectId: projectId, organizationId: organizationId))"
         )
         return resp.enrichment
     }
 
-    func fetchDemographics(leadId: String, organizationId: String?) async throws -> DemographicsModel? {
+    func fetchDemographics(
+        leadId: String,
+        projectId: String?,
+        organizationId: String?
+    ) async throws -> DemographicsModel? {
         let resp: DemographicsEnvelope = try await get(
-            "/api/admin-room/lead-map/leads/\(leadId)/demographics\(scopeQuery(projectId: nil, organizationId: organizationId))"
+            "/api/admin-room/lead-map/leads/\(leadId)/demographics\(scopeQuery(projectId: projectId, organizationId: organizationId))"
         )
         return resp.demographics
     }
 
-    func fetchLeadNotes(leadId: String, organizationId: String?) async throws -> [LeadNoteModel] {
+    func fetchLeadNotes(
+        leadId: String,
+        projectId rawProjectId: String,
+        organizationId: String?
+    ) async throws -> [LeadNoteModel] {
+        let projectId = try requiredCollaborationProjectID(rawProjectId)
         let response: LeadNotesResponse = try await get(
-            "/api/admin-room/lead-map/leads/\(leadId)/notes\(scopeQuery(projectId: nil, organizationId: organizationId))"
+            "/api/admin-room/lead-map/leads/\(leadId)/notes\(scopeQuery(projectId: projectId, organizationId: organizationId))"
         )
         return response.notes
     }
@@ -175,8 +301,19 @@ actor APIClient {
         return response.files
     }
 
-    func createLeadNote(leadId: String, body: String, pinned: Bool, organizationId: String?) async throws -> LeadNoteModel {
-        var payload: [String: Any] = ["body": body, "pinned": pinned]
+    func createLeadNote(
+        leadId: String,
+        body: String,
+        pinned: Bool,
+        projectId rawProjectId: String,
+        organizationId: String?
+    ) async throws -> LeadNoteModel {
+        let projectId = try requiredCollaborationProjectID(rawProjectId)
+        var payload: [String: Any] = [
+            "body": body,
+            "pinned": pinned,
+            "projectId": projectId,
+        ]
         if let organizationId, !organizationId.isEmpty { payload["organization_id"] = organizationId }
         let response: LeadNoteResponse = try await post(
             "/api/admin-room/lead-map/leads/\(leadId)/notes", body: payload
@@ -184,8 +321,17 @@ actor APIClient {
         return response.note
     }
 
-    func setLeadFavorite(leadId: String, favorite: Bool, organizationId: String?) async throws -> Bool {
-        var payload: [String: Any] = ["favorite": favorite]
+    func setLeadFavorite(
+        leadId: String,
+        favorite: Bool,
+        projectId rawProjectId: String,
+        organizationId: String?
+    ) async throws -> Bool {
+        let projectId = try requiredCollaborationProjectID(rawProjectId)
+        var payload: [String: Any] = [
+            "favorite": favorite,
+            "projectId": projectId,
+        ]
         if let organizationId, !organizationId.isEmpty { payload["organization_id"] = organizationId }
         let response: LeadFavoriteResponse = try await put(
             "/api/admin-room/lead-map/leads/\(leadId)/favorite", body: payload
@@ -232,8 +378,13 @@ actor APIClient {
         try Self.validate(response)
     }
 
-    func generateStrategy(leadId: String, organizationId: String?) async throws -> StrategyModel {
+    func generateStrategy(
+        leadId: String,
+        projectId: String?,
+        organizationId: String?
+    ) async throws -> StrategyModel {
         var body: [String: Any] = [:]
+        if let projectId, !projectId.isEmpty { body["projectId"] = projectId }
         if let organizationId, !organizationId.isEmpty { body["organization_id"] = organizationId }
         let resp: StrategyEnvelope = try await post(
             "/api/admin-room/lead-map/leads/\(leadId)/strategy", body: body
@@ -241,8 +392,13 @@ actor APIClient {
         return resp.strategy
     }
 
-    func triggerEnrichment(leadId: String, organizationId: String?) async throws -> EnrichmentModel? {
+    func triggerEnrichment(
+        leadId: String,
+        projectId: String?,
+        organizationId: String?
+    ) async throws -> EnrichmentModel? {
         var body: [String: Any] = [:]
+        if let projectId, !projectId.isEmpty { body["projectId"] = projectId }
         if let organizationId, !organizationId.isEmpty { body["organization_id"] = organizationId }
         let resp: EnrichmentEnvelope = try await post(
             "/api/admin-room/lead-map/leads/\(leadId)/enrich", body: body
@@ -250,11 +406,29 @@ actor APIClient {
         return resp.enrichment
     }
 
-    func triggerEnrichment(leadId: String, forceRefresh: Bool) async throws -> EnrichmentModel? {
-        struct Body: Encodable { let force: Bool }
+    func triggerEnrichment(
+        leadId: String,
+        forceRefresh: Bool,
+        projectId: String,
+        organizationId: String
+    ) async throws -> EnrichmentModel? {
+        struct Body: Encodable {
+            let force: Bool
+            let projectId: String
+            let organizationId: String
+
+            enum CodingKeys: String, CodingKey {
+                case force, projectId
+                case organizationId = "organization_id"
+            }
+        }
         let resp: EnrichmentEnvelope = try await _post(
             "/api/admin-room/lead-map/leads/\(leadId)/enrich",
-            body: Body(force: forceRefresh)
+            body: Body(
+                force: forceRefresh,
+                projectId: projectId,
+                organizationId: organizationId
+            )
         )
         return resp.enrichment
     }
@@ -262,13 +436,14 @@ actor APIClient {
     // MARK: - Min dag (PR #616)
 
     func fetchWorkload(
-        organizationId: String?,
+        organizationId: String,
+        projectId: String,
         location: CLLocation? = nil
     ) async throws -> WorkloadResponse {
-        var qs: [String] = []
-        if let orgId = organizationId {
-            qs.append("organization_id=\(orgId)")
-        }
+        var qs: [String] = [
+            "organization_id=\(organizationId)",
+            "project_id=\(projectId)"
+        ]
         if let loc = location {
             qs.append("lat=\(loc.coordinate.latitude)")
             qs.append("lng=\(loc.coordinate.longitude)")
@@ -361,26 +536,46 @@ actor APIClient {
 
     func fetchLeaderboard(
         organizationId: String,
+        projectId: String,
         period: String = "this_month",
         teamId: String? = nil,
         sort: String = "progress"
     ) async throws -> LeaderboardResponse {
-        var qs = "?period=\(period)&sort=\(sort)"
+        var components = URLComponents()
+        components.path = "/api/admin-room/lead-map/organizations/\(organizationId)/leaderboard"
+        components.queryItems = [
+            URLQueryItem(name: "projectId", value: projectId),
+            URLQueryItem(name: "period", value: period),
+            URLQueryItem(name: "sort", value: sort)
+        ]
         if let tid = teamId, !tid.isEmpty {
-            qs += "&team_id=\(tid)"
+            components.queryItems?.append(URLQueryItem(name: "team_id", value: tid))
         }
-        return try await get(
-            "/api/admin-room/lead-map/organizations/\(organizationId)/leaderboard\(qs)"
-        )
+        guard let path = components.string else {
+            throw URLError(.badURL)
+        }
+        return try await get(path)
     }
 
     func fetchLeaderboardSummary(
         organizationId: String,
-        period: String = "this_month"
+        projectId: String,
+        period: String = "this_month",
+        teamId: String? = nil
     ) async throws -> LeaderboardSummary {
-        try await get(
-            "/api/admin-room/lead-map/organizations/\(organizationId)/leaderboard-summary?period=\(period)"
-        )
+        var components = URLComponents()
+        components.path = "/api/admin-room/lead-map/organizations/\(organizationId)/leaderboard-summary"
+        components.queryItems = [
+            URLQueryItem(name: "projectId", value: projectId),
+            URLQueryItem(name: "period", value: period)
+        ]
+        if let tid = teamId, !tid.isEmpty {
+            components.queryItems?.append(URLQueryItem(name: "team_id", value: tid))
+        }
+        guard let path = components.string else {
+            throw URLError(.badURL)
+        }
+        return try await get(path)
     }
 
     // MARK: - Kart-annotasjoner (PR #629)
@@ -628,6 +823,7 @@ actor APIClient {
     }
 
     struct LeadbookExamplesResponse: Codable {
+        let projectId: String
         let examples: [LeadbookExampleDTO]
         let canEdit: Bool
         let canGiveFeedback: Bool
@@ -636,10 +832,12 @@ actor APIClient {
     }
 
     func fetchLeadbookExamples(
+        projectId: String,
         limit: Int = 30,
         cursor: String? = nil
     ) async throws -> LeadbookExamplesResponse {
-        var path = "/api/leadgrid/leadbook/examples?limit=\(max(1, min(limit, 50)))"
+        let scope = scopeQuery(projectId: projectId, organizationId: nil)
+        var path = "/api/leadgrid/leadbook/examples\(scope)&limit=\(max(1, min(limit, 50)))"
         if let cursor,
            let encoded = cursor.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
             path += "&cursor=\(encoded)"
@@ -648,32 +846,41 @@ actor APIClient {
     }
 
     struct LeadbookExampleDetailResponse: Codable {
+        let projectId: String
         let example: LeadbookExampleDTO
         let canEdit: Bool
         let canGiveFeedback: Bool
         let canCreateDraft: Bool?
     }
 
-    func fetchLeadbookExample(id: String) async throws -> LeadbookExampleDetailResponse {
-        try await get("/api/leadgrid/leadbook/examples/\(id)")
+    func fetchLeadbookExample(id: String, projectId: String) async throws -> LeadbookExampleDetailResponse {
+        try await get(
+            "/api/leadgrid/leadbook/examples/\(id)\(scopeQuery(projectId: projectId, organizationId: nil))"
+        )
     }
 
     /// Opprett eksempel (leder). `transcript` = [{speaker, text, at_sec}].
-    func createLeadbookExample(_ body: [String: Any]) async throws -> String {
+    func createLeadbookExample(_ body: [String: Any], projectId: String) async throws -> String {
         struct Resp: Codable { let id: String }
-        let r: Resp = try await post("/api/leadgrid/leadbook/examples", body: body)
+        let r: Resp = try await post(
+            "/api/leadgrid/leadbook/examples\(scopeQuery(projectId: projectId, organizationId: nil))",
+            body: body
+        )
         return r.id
     }
 
-    func updateLeadbookExample(id: String, _ fields: [String: Any]) async throws {
-        try await patch("/api/leadgrid/leadbook/examples/\(id)", body: fields)
+    func updateLeadbookExample(id: String, projectId: String, _ fields: [String: Any]) async throws {
+        try await patch(
+            "/api/leadgrid/leadbook/examples/\(id)\(scopeQuery(projectId: projectId, organizationId: nil))",
+            body: fields
+        )
     }
 
     /// `transcriptIndex`/`atSec` ankrer tilbakemeldingen til en konkret
     /// replikk/tidspunkt (valgfritt). Backend varsler selgeren (in-app +
     /// push) via notification-pipelinen.
     func addLeadbookExampleFeedback(
-        exampleId: String, body text: String, dimension: String?,
+        exampleId: String, projectId: String, body text: String, dimension: String?,
         transcriptIndex: Int? = nil, atSec: Int? = nil
     ) async throws {
         struct Resp: Codable { let id: String }
@@ -682,34 +889,39 @@ actor APIClient {
         if let i = transcriptIndex { payload["transcript_index"] = i }
         if let s = atSec { payload["at_sec"] = s }
         let _: Resp = try await post(
-            "/api/leadgrid/leadbook/examples/\(exampleId)/feedback", body: payload)
+            "/api/leadgrid/leadbook/examples/\(exampleId)/feedback\(scopeQuery(projectId: projectId, organizationId: nil))",
+            body: payload)
     }
 
     // Dialog-utvidelsen (2026-07-17): lest-kvittering + svar + samleflate.
 
     struct MyLeadbookFeedbackResponse: Codable {
+        let projectId: String
         let feedback: [LeadbookExampleFeedbackDTO]
         let unread: Int
     }
 
     /// «Mine tilbakemeldinger» — all tilbakemelding på innlogget selgers
     /// eksempler, m/ eksempel-kontekst, svar-tråd og ulest-teller.
-    func fetchMyLeadbookFeedback() async throws -> MyLeadbookFeedbackResponse {
-        try await get("/api/leadgrid/leadbook/feedback/mine")
+    func fetchMyLeadbookFeedback(projectId: String) async throws -> MyLeadbookFeedbackResponse {
+        try await get(
+            "/api/leadgrid/leadbook/feedback/mine\(scopeQuery(projectId: projectId, organizationId: nil))"
+        )
     }
 
     /// Lest-kvittering — kun eksempelets selger (backend håndhever).
-    func markLeadbookFeedbackRead(feedbackId: String) async throws {
+    func markLeadbookFeedbackRead(feedbackId: String, projectId: String) async throws {
         struct Resp: Codable { let ok: Bool? }
         let _: Resp = try await post(
-            "/api/leadgrid/leadbook/feedback/\(feedbackId)/read", body: [:])
+            "/api/leadgrid/leadbook/feedback/\(feedbackId)/read\(scopeQuery(projectId: projectId, organizationId: nil))",
+            body: [:])
     }
 
     /// Svar i tråden (selger eller leder). Motparten varsles av backend.
-    func replyToLeadbookFeedback(feedbackId: String, body text: String) async throws {
+    func replyToLeadbookFeedback(feedbackId: String, projectId: String, body text: String) async throws {
         struct Resp: Codable { let id: String }
         let _: Resp = try await post(
-            "/api/leadgrid/leadbook/feedback/\(feedbackId)/replies",
+            "/api/leadgrid/leadbook/feedback/\(feedbackId)/replies\(scopeQuery(projectId: projectId, organizationId: nil))",
             body: ["body": text])
     }
 
@@ -736,16 +948,18 @@ actor APIClient {
         }
     }
 
-    func structureLeadbookExample(rawText: String) async throws -> StructuredExampleDTO {
+    func structureLeadbookExample(projectId: String, rawText: String) async throws -> StructuredExampleDTO {
         struct Resp: Codable { let structured: StructuredExampleDTO }
         let r: Resp = try await post(
-            "/api/leadgrid/leadbook/examples/structure", body: ["raw_text": rawText])
+            "/api/leadgrid/leadbook/examples/structure\(scopeQuery(projectId: projectId, organizationId: nil))",
+            body: ["raw_text": rawText])
         return r.structured
     }
 
     /// Ekte Innsikt-aggregering (2026-08-02): org-ens publiserte eksempler
     /// + tilbakemeldinger for perioden, med forrige periode som baseline.
     struct LeadbookInnsiktDTO: Codable {
+        let projectId: String
         struct Totals: Codable {
             let examples: Int
             let won: Int
@@ -852,7 +1066,7 @@ actor APIClient {
         let bottomExample: CaseRow?
 
         enum CodingKeys: String, CodingKey {
-            case period, totals, previous, trend
+            case projectId, period, totals, previous, trend
             case bySeller = "by_seller"
             case byDimension = "by_dimension"
             case byChannel = "by_channel"
@@ -861,29 +1075,32 @@ actor APIClient {
         }
     }
 
-    func fetchLeadbookInnsikt(period: String) async throws -> LeadbookInnsiktDTO {
-        try await get("/api/leadgrid/leadbook/innsikt?period=\(period)")
+    func fetchLeadbookInnsikt(projectId: String, period: String) async throws -> LeadbookInnsiktDTO {
+        let scope = scopeQuery(projectId: projectId, organizationId: nil)
+        return try await get("/api/leadgrid/leadbook/innsikt\(scope)&period=\(period)")
     }
 
     /// Ekte AI bak «AI-foreslå sterkere» i mal-editoren (2026-08-02).
     /// Samme gating som structure: leder + leadbookAiStruktur-entitlement.
-    func strengthenLeadbookPhrase(text: String, maxChars: Int?) async throws -> String {
+    func strengthenLeadbookPhrase(projectId: String, text: String, maxChars: Int?) async throws -> String {
         struct Resp: Codable { let suggestion: String }
         var body: [String: Any] = ["text": text]
         if let maxChars { body["max_chars"] = maxChars }
         let r: Resp = try await post(
-            "/api/leadgrid/leadbook/templates/strengthen", body: body)
+            "/api/leadgrid/leadbook/templates/strengthen\(scopeQuery(projectId: projectId, organizationId: nil))",
+            body: body)
         return r.suggestion
     }
 
     /// Ekte AI bak Leadbook «AI-foreslå»-knappen i innvending-editoren
     /// (2026-08-17). Samme gating som strengthen: leder + AI-entitlement.
-    func suggestObjectionResponse(objection: String, category: String?) async throws -> String {
+    func suggestObjectionResponse(projectId: String, objection: String, category: String?) async throws -> String {
         struct Resp: Codable { let suggestion: String }
         var body: [String: Any] = ["objection": objection]
         if let category, !category.isEmpty { body["category"] = category }
         let r: Resp = try await post(
-            "/api/leadgrid/leadbook/objections/ai-suggest", body: body)
+            "/api/leadgrid/leadbook/objections/ai-suggest\(scopeQuery(projectId: projectId, organizationId: nil))",
+            body: body)
         return r.suggestion
     }
 
@@ -964,6 +1181,7 @@ actor APIClient {
     }
 
     struct AIUsageResponse: Codable {
+        let projectId: String
         let total: AIUsageBucketDTO
         let thisMonth: AIUsageBucketDTO
         let byUser: [AIUsageUserDTO]
@@ -971,23 +1189,26 @@ actor APIClient {
         var byFeature: [AIUsageFeatureDTO]? = nil
 
         enum CodingKeys: String, CodingKey {
-            case total
+            case projectId, total
             case thisMonth = "this_month"
             case byUser = "by_user"
             case byFeature = "by_feature"
         }
     }
 
-    func fetchLeadbookAIUsage() async throws -> AIUsageResponse {
-        try await get("/api/leadgrid/leadbook/examples/ai-usage")
+    func fetchLeadbookAIUsage(projectId: String) async throws -> AIUsageResponse {
+        try await get(
+            "/api/leadgrid/leadbook/examples/ai-usage\(scopeQuery(projectId: projectId, organizationId: nil))"
+        )
     }
 
     /// Visnings-registrering («Ukens samtale»-distribusjonen) — kalles når
     /// detail-sheeten åpnes i ekte modus. Fire-and-forget-vennlig.
-    func recordLeadbookExampleView(exampleId: String) async throws {
+    func recordLeadbookExampleView(exampleId: String, projectId: String) async throws {
         struct Resp: Codable { let ok: Bool? }
         let _: Resp = try await post(
-            "/api/leadgrid/leadbook/examples/\(exampleId)/view", body: [:])
+            "/api/leadgrid/leadbook/examples/\(exampleId)/view\(scopeQuery(projectId: projectId, organizationId: nil))",
+            body: [:])
     }
 
     // MARK: - Krasjrapportering (MetricKit, 2026-07-18)
@@ -1343,7 +1564,7 @@ actor APIClient {
         let city: String?
         let locationConfidence: String
         let leadSource: String
-        let projectID: String?
+        let projectID: String
         let idempotencyKey: UUID
 
         init(
@@ -1371,7 +1592,7 @@ actor APIClient {
             city: String? = nil,
             locationConfidence: String = "exact",
             leadSource: String = "manual_pin_drop",
-            projectID: String? = nil,
+            projectID: String,
             idempotencyKey: UUID = UUID()
         ) {
             self.companyName = companyName
@@ -1685,31 +1906,6 @@ actor APIClient {
 
     // MARK: - Lead Research (gated på lead_research.run)
 
-    func startLeadResearch(
-        industry: String, region: String,
-        targetAudience: String?, goal: String?,
-        organizationId: String?
-    ) async throws -> LeadResearchStartResponse {
-        var body: [String: Any] = [
-            "industry": industry,
-            "region": region,
-        ]
-        if let t = targetAudience, !t.isEmpty { body["target_audience"] = t }
-        if let g = goal, !g.isEmpty           { body["goal"] = g }
-        if let o = organizationId             { body["organization_id"] = o }
-        return try await post(
-            "/api/admin-room/lead-map/research/start",
-            body: body
-        )
-    }
-
-    func runLeadResearch(researchId: String) async throws {
-        try await post(
-            "/api/admin-room/lead-map/research/\(researchId)/run",
-            body: [:]
-        )
-    }
-
     func fetchLeadResearchStatus(researchId: String) async throws -> LeadResearchStatusResponse {
         return try await get(
             "/api/admin-room/lead-map/research/\(researchId)"
@@ -1718,16 +1914,29 @@ actor APIClient {
 
     // MARK: - Lead Scout (needs/signals/scores)
 
-    func fetchLeadNeedsOverview(leadId: String) async throws -> LeadNeedsOverviewResponse {
+    func fetchLeadNeedsOverview(
+        leadId rawLeadId: String,
+        projectId rawProjectId: String
+    ) async throws -> LeadNeedsOverviewResponse {
+        let leadId = try requiredScoutLeadID(rawLeadId)
+        let projectId = try requiredScoutProjectID(rawProjectId)
         return try await get(
-            "/api/admin-room/lead-map/leads/\(leadId)/needs-overview"
+            "/api/admin-room/lead-map/leads/\(leadId)/needs-overview\(scopeQuery(projectId: projectId, organizationId: nil))"
         )
     }
 
-    func runScoutForLead(leadId: String) async throws -> LeadScoutResult {
+    func runScoutForLead(
+        leadId rawLeadId: String,
+        projectId rawProjectId: String,
+        idempotencyKey rawIdempotencyKey: String
+    ) async throws -> LeadScoutResult {
+        let leadId = try requiredScoutLeadID(rawLeadId)
+        let projectId = try requiredScoutProjectID(rawProjectId)
+        let idempotencyKey = try requiredScoutIdempotencyKey(rawIdempotencyKey)
         return try await post(
             "/api/admin-room/lead-map/leads/\(leadId)/scout",
-            body: [:]
+            body: ["project_id": projectId],
+            headers: ["Idempotency-Key": idempotencyKey]
         )
     }
 
@@ -1744,50 +1953,76 @@ actor APIClient {
     func autoOnboardCustomer(
         websiteUrl: String, contactEmail: String,
         contactName: String?, contactPhone: String?,
-        organizationId: String, presetId: String?
+        projectId: String, presetId: String?,
+        idempotencyKey: String
     ) async throws -> AutoOnboardResponse {
         var body: [String: Any] = [
             "website_url": websiteUrl,
             "contact_email": contactEmail,
-            "organization_id": organizationId,
+            "project_id": projectId,
         ]
         if let n = contactName  { body["contact_name"] = n }
         if let p = contactPhone { body["contact_phone"] = p }
         if let id = presetId    { body["preset_id"] = id }
         return try await post(
-            "/api/admin-room/lead-map/customers/auto-onboard", body: body
+            "/api/admin-room/lead-map/customers/auto-onboard",
+            body: body,
+            headers: ["Idempotency-Key": idempotencyKey]
         )
     }
 
-    func fetchAutoOnboardStatus(auditId: String) async throws -> AutoOnboardStatusResponse {
+    func fetchAutoOnboardStatus(
+        auditId: String,
+        projectId: String
+    ) async throws -> AutoOnboardStatusResponse {
+        let encodedProjectId = projectId.addingPercentEncoding(
+            withAllowedCharacters: .urlQueryAllowed
+        ) ?? projectId
         return try await get(
-            "/api/admin-room/lead-map/customers/auto-onboard/\(auditId)"
+            "/api/admin-room/lead-map/customers/auto-onboard/\(auditId)?project_id=\(encodedProjectId)"
         )
     }
 
-    func fetchFocusRequests(orgId: String, status: String?) async throws -> FocusRequestsResponse {
-        var path = "/api/admin-room/lead-map/focus-requests?organization_id=\(orgId)"
+    func fetchFocusRequests(
+        projectId: String,
+        status: String?
+    ) async throws -> FocusRequestsResponse {
+        let encodedProjectId = projectId.addingPercentEncoding(
+            withAllowedCharacters: .urlQueryAllowed
+        ) ?? projectId
+        var path = "/api/admin-room/lead-map/focus-requests?project_id=\(encodedProjectId)"
         if let s = status { path += "&status=\(s)" }
         return try await get(path)
     }
 
-    func startDeliveryFromFocusRequest(focusRequestId: String) async throws -> StartDeliveryResponse {
+    func startDeliveryFromFocusRequest(
+        focusRequestId: String,
+        projectId: String
+    ) async throws -> StartDeliveryResponse {
         return try await post(
             "/api/admin-room/lead-map/focus-requests/\(focusRequestId)/start-delivery",
-            body: [:]
+            body: ["project_id": projectId]
         )
     }
 
-    func fetchDeliverable(deliverableId: String) async throws -> DeliverableResponse {
+    func fetchDeliverable(
+        deliverableId: String,
+        projectId: String
+    ) async throws -> DeliverableResponse {
+        let encodedProjectId = projectId.addingPercentEncoding(
+            withAllowedCharacters: .urlQueryAllowed
+        ) ?? projectId
         return try await get(
-            "/api/admin-room/lead-map/deliverables/\(deliverableId)"
+            "/api/admin-room/lead-map/deliverables/\(deliverableId)?project_id=\(encodedProjectId)"
         )
     }
 
     func updateDeliverableStep(
-        deliverableId: String, stepNumber: Int, status: String, notes: String?
+        deliverableId: String, projectId: String,
+        stepNumber: Int, status: String, notes: String?
     ) async throws -> DeliverableResponse {
         var body: [String: Any] = [
+            "project_id": projectId,
             "step_number": stepNumber,
             "status": status,
         ]
@@ -1799,11 +2034,16 @@ actor APIClient {
     }
 
     func toggleDeliverableRequirement(
-        deliverableId: String, requirementIndex: Int, received: Bool
+        deliverableId: String, projectId: String,
+        requirementIndex: Int, received: Bool
     ) async throws -> DeliverableResponse {
         return try await patchReturning(
             "/api/admin-room/lead-map/deliverables/\(deliverableId)/step",
-            body: ["requirement_index": requirementIndex, "received": received]
+            body: [
+                "project_id": projectId,
+                "requirement_index": requirementIndex,
+                "received": received,
+            ]
         )
     }
 
@@ -1933,10 +2173,20 @@ actor APIClient {
 
     // -- Hierarkisk tildeling -------------------------------------
 
-    /// Henter tildelbare brukere med workload-info.
-    /// role-parameter: "team_leader" | "rep" | "all"
-    func fetchAssignableUsers(role: String = "all") async throws -> AssignableUsersResponse {
-        try await get("/api/leadgrid/assignable-users?role=\(role)")
+    /// Henter tildelbare brukere med workload-info. Både den persisterte CRM-
+    /// lead-ID-en og prosjekt-ID-en sendes, slik at backend kan verifisere at
+    /// klientens aktive kontekst matcher leadets autoritative scope.
+    func fetchAssignableUsers(
+        role: String = "all",
+        customerId: String,
+        projectId: String
+    ) async throws -> AssignableUsersResponse {
+        let path = try LeadgridAssignmentScope.assignableUsersPath(
+            role: role,
+            customerId: customerId,
+            projectId: projectId
+        )
+        return try await get(path)
     }
 
     func assignTeamLeader(
@@ -1963,8 +2213,11 @@ actor APIClient {
     // -- Sett-tracking --------------------------------------------
 
     /// Marker en lead som sett (kalles automatisk når selger åpner LeadDetailView).
-    func markLeadSeen(customerId: String) async throws {
-        try await post("/api/leadgrid/customers/\(customerId)/mark-seen", body: [:])
+    func markLeadSeen(customerId: String, organizationId: String) async throws {
+        try await post(
+            "/api/leadgrid/customers/\(customerId)/mark-seen?organization_id=\(organizationId)",
+            body: [:]
+        )
     }
 
     func fetchAssignmentStatus(customerId: String) async throws -> AssignmentStatusResponse {
@@ -1973,8 +2226,12 @@ actor APIClient {
 
     // -- Mine tildelinger -----------------------------------------
 
-    func fetchMyAssignments() async throws -> MyAssignmentsResponse {
-        try await get("/api/leadgrid/my-assignments")
+    func fetchMyAssignments(
+        organizationId: String
+    ) async throws -> MyAssignmentsResponse {
+        try await get(
+            "/api/leadgrid/my-assignments?organization_id=\(organizationId)"
+        )
     }
 
     // -- Lead-detail ----------------------------------------------
@@ -1986,8 +2243,17 @@ actor APIClient {
     // -- Won/Lost-stats -------------------------------------------
 
     /// period: "7d" | "30d" | "90d"
-    func fetchWonLostStats(period: String = "30d") async throws -> WonLostStatsResponse {
-        try await get("/api/leadgrid/won-lost-stats?period=\(period)")
+    func fetchWonLostStats(
+        period: String = "30d",
+        projectId: String
+    ) async throws -> WonLostStatsResponse {
+        var components = URLComponents()
+        components.queryItems = [
+            URLQueryItem(name: "period", value: period),
+            URLQueryItem(name: "projectId", value: projectId),
+        ]
+        let query = components.percentEncodedQuery ?? ""
+        return try await get("/api/leadgrid/won-lost-stats?\(query)")
     }
 
     // -- Notification-prefs (intern) ------------------------------
@@ -2013,30 +2279,60 @@ actor APIClient {
 
     // -- Schedulerte rapporter ------------------------------------
 
-    func fetchScheduledReports() async throws -> ScheduledReportsResponse {
-        try await get("/api/leadgrid/scheduled-reports")
+    func fetchScheduledReports(
+        organizationId: String
+    ) async throws -> ScheduledReportsResponse {
+        try await get(
+            "/api/leadgrid/scheduled-reports?organization_id=\(organizationId)"
+        )
     }
 
-    func createScheduledReport(_ payload: [String: Any]) async throws {
-        try await post("/api/leadgrid/scheduled-reports", body: payload)
+    func createScheduledReport(
+        organizationId: String,
+        projectId: String,
+        payload: [String: Any]
+    ) async throws {
+        var scopedPayload = payload
+        scopedPayload["organization_id"] = organizationId
+        scopedPayload["project_id"] = projectId
+        try await post("/api/leadgrid/scheduled-reports", body: scopedPayload)
     }
 
-    func updateScheduledReport(id: String, payload: [String: Any]) async throws {
-        try await put("/api/leadgrid/scheduled-reports/\(id)", body: payload)
+    func updateScheduledReport(
+        id: String,
+        organizationId: String,
+        payload: [String: Any]
+    ) async throws {
+        var scopedPayload = payload
+        scopedPayload["organization_id"] = organizationId
+        try await put("/api/leadgrid/scheduled-reports/\(id)", body: scopedPayload)
     }
 
-    func deleteScheduledReport(id: String) async throws {
-        try await delete("/api/leadgrid/scheduled-reports/\(id)")
+    func deleteScheduledReport(id: String, organizationId: String) async throws {
+        try await delete(
+            "/api/leadgrid/scheduled-reports/\(id)?organization_id=\(organizationId)"
+        )
     }
 
-    func sendScheduledReportNow(id: String) async throws {
-        try await post("/api/leadgrid/scheduled-reports/\(id)/send-now", body: [:])
-    }
-
-    func autoCreateReportsPerPerson() async throws -> AutoCreateReportsResponse {
+    func sendScheduledReportNow(
+        id: String,
+        organizationId: String
+    ) async throws {
         try await post(
+            "/api/leadgrid/scheduled-reports/\(id)/send-now",
+            body: ["organization_id": organizationId]
+        )
+    }
+
+    func autoCreateReportsPerPerson(
+        organizationId: String,
+        projectId: String
+    ) async throws -> AutoCreateReportsResponse {
+        return try await post(
             "/api/leadgrid/scheduled-reports/auto-create-for-team",
-            body: ["frequency": "weekly", "day_of_week": 1, "time_of_day": "08:00",
+            body: ["organization_id": organizationId,
+                    "project_id": projectId,
+                    "frequency": "weekly", "day_of_week": 1, "time_of_day": "08:00",
                     "period_days": 7, "report_type": "summary",
                     "include_reps": true, "include_team_leaders": true]
         )
@@ -2077,9 +2373,20 @@ actor APIClient {
     // -- CSV-eksport (returnerer rådata) ---------------------------
 
     /// Returnerer CSV-data klar for å vises i UIActivityViewController/iOS Share.
-    func exportLeadsCsv(period: String = "30d", status: String = "all") async throws -> Data {
+    func exportLeadsCsv(
+        period: String = "30d",
+        status: String = "all",
+        projectId: String? = nil
+    ) async throws -> Data {
         let req = makeRequest(
-            "/api/leadgrid/leads/export?format=csv&period=\(period)&status=\(status)",
+            LeadgridAnalyticsRequestPath.make(
+                "/api/leadgrid/leads/export",
+                queryItems: [
+                    .init(name: "format", value: "csv"),
+                    .init(name: "period", value: period),
+                    .init(name: "status", value: status),
+                ],
+                projectId: projectId),
             method: "GET",
         )
         let (data, response) = try await session.data(for: req)
@@ -2089,8 +2396,18 @@ actor APIClient {
 
     /// KPI-summary for export-knapp (antall + period). Brukes for å vise
     /// "Eksporterer 142 leads fra siste 30 dager" før shareSheet.
-    func fetchLeadsExportSummary(period: String = "30d", status: String = "all") async throws -> LeadsExportSummary {
-        try await get("/api/leadgrid/leads/export-summary?period=\(period)&status=\(status)")
+    func fetchLeadsExportSummary(
+        period: String = "30d",
+        status: String = "all",
+        projectId: String? = nil
+    ) async throws -> LeadsExportSummary {
+        try await get(LeadgridAnalyticsRequestPath.make(
+            "/api/leadgrid/leads/export-summary",
+            queryItems: [
+                .init(name: "period", value: period),
+                .init(name: "status", value: status),
+            ],
+            projectId: projectId))
     }
 
     // -- Plan-quota (Fase 16: PlanUsageBar i HubView) ---------------
@@ -2099,7 +2416,8 @@ actor APIClient {
     /// usage (customers_active, auto_onboards_this_month) + pct (0-100).
     /// Brukes for å vise plan-bar øverst i HubView.
     func fetchLeadgridPlanSummary(orgId: String) async throws -> LeadgridPlanSummary {
-        try await get("/api/leadgrid/plan/summary?orgId=\(orgId)")
+        let encoded = orgId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? orgId
+        return try await get("/api/leadgrid/plan/summary?orgId=\(encoded)")
     }
 
     // -- Assignment-historikk (Fase 16: vis hvem som har eid leaden) -
@@ -2130,16 +2448,29 @@ actor APIClient {
 
     // -- Billing (Fase 16: faktura-historikk + Stripe portal) --------
 
-    /// Liste over fakturaer for org-en (fra Stripe). Markedssjef kan se
-    /// status + beløp i felt før møte.
-    func fetchLeadgridBillingInvoices() async throws -> LeadgridBillingInvoicesResponse {
-        try await get("/api/leadgrid/billing/invoices")
+    /// Liste over fakturaer for aktiv organisasjon. Kun org-admin får data.
+    func fetchLeadgridBillingInvoices(
+        organizationId: String? = nil
+    ) async throws -> LeadgridBillingInvoicesResponse {
+        guard let orgId = organizationId ?? activeOrganizationId else {
+            throw APIError.serverError(400, "Velg en organisasjon før fakturaer hentes")
+        }
+        let encoded = orgId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? orgId
+        return try await get("/api/leadgrid/billing/invoices?orgId=\(encoded)")
     }
 
-    /// Generer Stripe billing-portal-session — returnerer URL som åpnes
-    /// i Safari for å oppdatere betalingsmetode/se historikk.
-    func createBillingPortalSession() async throws -> BillingPortalSessionResponse {
-        try await post("/api/leadgrid/billing/portal-session", body: [:])
+    /// Generer Stripe billing-portal-session for aktiv organisasjon.
+    /// Backend autoriserer org-admin og bruker orgId som eksplisitt tenant-scope.
+    func createBillingPortalSession(
+        organizationId: String? = nil
+    ) async throws -> BillingPortalSessionResponse {
+        guard let orgId = organizationId ?? activeOrganizationId else {
+            throw APIError.serverError(400, "Velg en organisasjon før betaling administreres")
+        }
+        return try await post(
+            "/api/leadgrid/billing/portal-session",
+            body: ["orgId": orgId]
+        )
     }
 
     // -- Partners (Fase 16: Partner-program landing-strip) -----------
@@ -2219,43 +2550,6 @@ actor APIClient {
         return resp.scan
     }
 
-    /// Kicker orkestratoren — returnerer ny scan-rad fra DB via
-    /// progress-poll (backend's run-endepunkt sender bare {scanId, name}).
-    func runLeadgridMarketScan(input: RunLeadgridMarketScanInput) async throws -> LeadgridMarketScan {
-        var body: [String: Any] = [
-            "industry": input.industry.trimmingCharacters(in: .whitespaces),
-            "region":   input.region.trimmingCharacters(in: .whitespaces),
-            "auto_create_leads": input.autoCreateLeads,
-        ]
-        let trimmedName = input.name.trimmingCharacters(in: .whitespaces)
-        if !trimmedName.isEmpty { body["name"] = trimmedName }
-        let trimmedAudience = input.targetAudience.trimmingCharacters(in: .whitespaces)
-        if !trimmedAudience.isEmpty { body["target_audience"] = trimmedAudience }
-        let trimmedGoal = input.goal.trimmingCharacters(in: .whitespaces)
-        if !trimmedGoal.isEmpty { body["goal"] = trimmedGoal }
-        if let orgId = input.organizationId, !orgId.isEmpty {
-            body["organization_id"] = orgId
-        }
-        let runResp: LeadgridMarketScanRunResponse = try await post(
-            "/api/leadgrid/market-scan/run",
-            body: body,
-        )
-        // Hent kanonisk scan-rad så caller får hele Leadgrid-Market-Scan-shape.
-        return try await fetchLeadgridMarketScanProgress(id: runResp.scanId)
-    }
-
-    /// Manuell trigger for å auto-opprette leads etter en scan som
-    /// kjørte med auto_create_leads=false. Returnerer oppdatert scan
-    /// (med ny leads_created_count).
-    @discardableResult
-    func createLeadgridLeadsFromScan(id: String) async throws -> LeadgridMarketScan {
-        let _: LeadgridMarketScanCreateLeadsResponse = try await post(
-            "/api/leadgrid/market-scan/\(id)/create-leads",
-            body: [:],
-        )
-        return try await fetchLeadgridMarketScanProgress(id: id)
-    }
-
     // MARK: - Leadgrid Forecasting (PR #885, mig 323)
     //
     // Predikert revenue for konfigurert horisont (default 90d) m/
@@ -2264,18 +2558,28 @@ actor APIClient {
     // ============================================================
 
     /// Hent siste cached forecast (eller fresh hvis cache er kald).
-    func fetchPipelineForecast(horizon: Int = 90) async throws -> LeadgridForecast {
+    func fetchPipelineForecast(
+        projectId: String,
+        horizon: Int = 90
+    ) async throws -> LeadgridForecast {
+        let scope = scopeQuery(projectId: projectId, organizationId: nil)
         let resp: LeadgridForecastResponse = try await get(
-            "/api/leadgrid/forecasting/pipeline?horizon=\(horizon)"
+            "/api/leadgrid/forecasting/pipeline\(scope)&horizon=\(horizon)"
         )
         return resp.forecast
     }
 
     /// Tving fresh recompute (Claude-kall + DB-skriv).
-    func refreshPipelineForecast(horizon: Int = 90) async throws -> LeadgridForecast {
+    func refreshPipelineForecast(
+        projectId: String,
+        horizon: Int = 90
+    ) async throws -> LeadgridForecast {
         let resp: LeadgridForecastResponse = try await post(
             "/api/leadgrid/forecasting/pipeline/refresh",
-            body: ["horizon": horizon],
+            body: [
+                "projectId": projectId,
+                "horizon": horizon,
+            ] as [String: Any],
         )
         return resp.forecast
     }
@@ -2323,17 +2627,19 @@ actor APIClient {
     /// Last opp en CSV- eller XLSX-fil og få tilbake preview-data
     /// (file_token, columns, rows). Bruker multipart/form-data.
     func uploadImportFile(
+        projectId: String,
         data: Data,
         fileName: String,
         mimeType: String
     ) async throws -> LeadgridImportPreview {
         let boundary = "Boundary-\(UUID().uuidString)"
-        var req = URLRequest(url: baseURL.appendingPathComponent("/api/leadgrid/import/csv/preview"))
-        req.httpMethod = "POST"
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        if let activeOrganizationId {
-            req.setValue(activeOrganizationId, forHTTPHeaderField: "X-Leadgrid-Organization-Id")
-        }
+        let encodedProjectId = projectId.addingPercentEncoding(
+            withAllowedCharacters: .urlQueryAllowed
+        ) ?? projectId
+        var req = makeRequest(
+            "/api/leadgrid/import/csv/preview?projectId=\(encodedProjectId)",
+            method: "POST"
+        )
         req.setValue(
             "multipart/form-data; boundary=\(boundary)",
             forHTTPHeaderField: "Content-Type"
@@ -2358,6 +2664,7 @@ actor APIClient {
 
     /// Commit en preview-batch m/ valgt mapping + dedupe.
     func commitImportCsv(
+        projectId: String,
         fileToken: String,
         mapping: [String: String],
         dedupeStrategy: String
@@ -2366,6 +2673,7 @@ actor APIClient {
             "file_token": fileToken,
             "mapping": mapping,
             "dedupe_strategy": dedupeStrategy,
+            "project_id": projectId,
         ]
         var req = makeRequest("/api/leadgrid/import/csv/commit", method: "POST")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -2374,53 +2682,9 @@ actor APIClient {
         return try Self.decoder.decode(LeadgridImportCommit.self, from: data)
     }
 
-    // MARK: - URL Research (mig 328) — URL → draft-lead → pin på kartet
-    //
-    // Gjenbruker Role Room Agents orchestrator-stack (Brreg + Places +
-    // Claude). Brukeren limer inn EN URL, vi oppretter en draft, kjører
-    // research, og lar brukeren bekrefte/justere før commit.
-
-    /// Steg 1 — opprett draft-rad i crm_customers og returner ID-er.
-    func startUrlResearch(_ url: String) async throws -> UrlResearchStartResponse {
-        let body: [String: Any] = ["url": url]
-        var req = makeRequest("/api/leadgrid/url-research/start", method: "POST")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await session.data(for: req)
-        try Self.validate(response)
-        return try Self.decoder.decode(UrlResearchStartResponse.self, from: data)
-    }
-
-    /// Steg 2 — kjør orchestrator-pipeline. Returnerer companyProfile +
-    /// resolved lokasjon (m/ confidence-badge).
-    func runUrlResearch(draftLeadId: String) async throws -> UrlResearchRunResponse {
-        let body: [String: Any] = ["draft_lead_id": draftLeadId]
-        var req = makeRequest("/api/leadgrid/url-research/run", method: "POST")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await session.data(for: req)
-        try Self.validate(response)
-        return try Self.decoder.decode(UrlResearchRunResponse.self, from: data)
-    }
-
-    /// Steg 3 — bruker aksepterer (eller forkaster). overrides lar UI
-    /// sende kirurgiske rettelser (manuell pin, korrigert by, navn).
-    func commitDraftLead(
-        draftLeadId: String,
-        accept: Bool,
-        overrides: UrlResearchOverrides? = nil,
-    ) async throws -> UrlResearchCommitResponse {
-        var body: [String: Any] = [
-            "draft_lead_id": draftLeadId,
-            "accept": accept,
-        ]
-        if let o = overrides {
-            body["overrides"] = o.toDict()
-        }
-        var req = makeRequest("/api/leadgrid/url-research/commit", method: "POST")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await session.data(for: req)
-        try Self.validate(response)
-        return try Self.decoder.decode(UrlResearchCommitResponse.self, from: data)
-    }
+    // MARK: - Historical URL Research reads
+    // Mutating URL Research endpoints were retired in favor of Discovery V2,
+    // which requires an explicit project, profile, review and Places attestation.
 
     /// Hent preview-state for en draft-lead (brukes når UI re-monteres).
     func fetchUrlResearchPreview(
@@ -2429,44 +2693,7 @@ actor APIClient {
         return try await get("/api/leadgrid/url-research/preview/\(draftLeadId)")
     }
 
-    /// Rekjør én del av research (orchestrator-driv hele pipeline igjen
-    /// for nå; backend respekterer `section` for fremtidig optimering).
-    func refreshUrlResearchSection(
-        draftLeadId: String,
-        section: String,
-    ) async throws -> UrlResearchRefreshResponse {
-        let body: [String: Any] = [
-            "draft_lead_id": draftLeadId,
-            "section": section,
-        ]
-        var req = makeRequest(
-            "/api/leadgrid/url-research/refresh-section",
-            method: "POST",
-        )
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await session.data(for: req)
-        try Self.validate(response)
-        return try Self.decoder.decode(UrlResearchRefreshResponse.self, from: data)
-    }
-
-    // MARK: - Bulk URL Research (mig 0351)
-    //
-    // Selger limer inn flere URLer (1-100). Backend kjører dem gjennom samme
-    // research-pipeline som enkelt-URL-flyten med max 3 parallelle. iPad
-    // poller hvert 2. sek for progress og rendrer "X / Y leads lagt til på
-    // kartet"-counter mens batchen kjører.
-
-    /// Steg 1 — opprett batch + draft-leads, trigger bakgrunns-prosessor.
-    func startBulkUrlResearch(_ urls: [String]) async throws -> BulkUrlBatchStartResponse {
-        let body: [String: Any] = ["urls": urls]
-        var req = makeRequest("/api/leadgrid/url-research/batch", method: "POST")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await session.data(for: req)
-        try Self.validate(response)
-        return try Self.decoder.decode(BulkUrlBatchStartResponse.self, from: data)
-    }
-
-    /// Lett-vekt progress for live-counter. Kall hvert 2. sek.
+    /// Historical read-only progress for batches created by older builds.
     func pollBulkUrlResearchProgress(batchId: String) async throws -> BulkUrlBatchProgress {
         return try await get("/api/leadgrid/url-research/batches/\(batchId)/poll")
     }
@@ -2477,41 +2704,7 @@ actor APIClient {
         return try await get("/api/leadgrid/url-research/batches/\(batchId)")
     }
 
-    /// Bulk-commit av alle research-erte drafts. Filter på confidence (default = alle).
-    func commitAllInBulkBatch(
-        batchId: String,
-        onlyWithConfidence: [LocationConfidence]? = nil,
-        skipUnknownLocation: Bool = false,
-    ) async throws -> BulkUrlCommitAllResponse {
-        var body: [String: Any] = [:]
-        if let only = onlyWithConfidence {
-            body["only_with_confidence"] = only.map { $0.rawValue }
-        }
-        if skipUnknownLocation {
-            body["skip_unknown_location"] = true
-        }
-        var req = makeRequest(
-            "/api/leadgrid/url-research/batches/\(batchId)/commit-all",
-            method: "POST",
-        )
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await session.data(for: req)
-        try Self.validate(response)
-        return try Self.decoder.decode(BulkUrlCommitAllResponse.self, from: data)
-    }
-
-    /// Avbryt pågående batch.
-    func cancelBulkUrlBatch(batchId: String) async throws {
-        var req = makeRequest(
-            "/api/leadgrid/url-research/batches/\(batchId)/cancel",
-            method: "POST",
-        )
-        req.httpBody = Data("{}".utf8)
-        let (_, response) = try await session.data(for: req)
-        try Self.validate(response)
-    }
-
-    // MARK: - Fix 5 (mig 0353) — per-URL retry/skip/detail
+    // MARK: - Historical per-URL detail
 
     /// Hent full detail for én URL i en batch (m/ retry_count + sist-prøvd-tid +
     /// error-melding). Brukes av "Prøv på nytt"-sheet.
@@ -2524,82 +2717,7 @@ actor APIClient {
         )
     }
 
-    /// Retry én feilet URL — backend kjører bare denne ene gjennom processoren
-    /// med samme retry-logikk (3 forsøk m/ expo backoff på transiente feil).
-    /// Returnerer ny status — kan være .completed, .failed, eller .running.
-    @discardableResult
-    func retryBulkUrlItem(
-        batchId: String,
-        itemId: String,
-    ) async throws -> BulkUrlItemRetryResponse {
-        var req = makeRequest(
-            "/api/leadgrid/url-research/batches/\(batchId)/items/\(itemId)/retry",
-            method: "POST",
-        )
-        req.httpBody = Data("{}".utf8)
-        let (data, response) = try await session.data(for: req)
-        try Self.validate(response)
-        return try Self.decoder.decode(BulkUrlItemRetryResponse.self, from: data)
-    }
-
-    /// Marker en URL som irrelevant ('skipped') — fjernes fra UI-listen og
-    /// teller ikke som feil i totalen.
-    @discardableResult
-    func skipBulkUrlItem(
-        batchId: String,
-        itemId: String,
-    ) async throws -> BulkUrlItemSkipResponse {
-        var req = makeRequest(
-            "/api/leadgrid/url-research/batches/\(batchId)/items/\(itemId)/skip",
-            method: "POST",
-        )
-        req.httpBody = Data("{}".utf8)
-        let (data, response) = try await session.data(for: req)
-        try Self.validate(response)
-        return try Self.decoder.decode(BulkUrlItemSkipResponse.self, from: data)
-    }
-
-    // MARK: - AI Lead-discovery for prosjekt (mig 0352)
-    //
-    // "Finn leads for {prosjekt}" → backend kombinerer prosjekt-context
-    // (bransje + by fra brand-kit / market-scan) med override fra UI,
-    // spør Google Places, filtrerer eksisterende leads, og kjører hver
-    // kandidat gjennom samme runUrlResearch som bulk-URL. Pings tilbake
-    // via samme WebSocket-kanal (url_research.batch.progress) slik at
-    // MapScreen kan animere pins idet de dukker opp.
-
-    /// Steg 1 — start lead-discovery for et prosjekt. Backend returnerer
-    /// batch_id + found_count (hvor mange URL-er ble lagt i kø).
-    /// Hvis foundCount==0, var alle Places-kandidater allerede importert.
-    func discoverLeadsForProject(
-        projectId: String,
-        request: LeadDiscoveryRequest,
-    ) async throws -> LeadDiscoveryStartResponse {
-        var req = makeRequest(
-            "/api/leadgrid/projects/\(projectId)/discover-leads",
-            method: "POST",
-        )
-        req.httpBody = try JSONSerialization.data(withJSONObject: request.toDict())
-        let (data, response) = try await session.data(for: req)
-        // 2026-08-19: HTTP 400 `industry_required` kan bære en Anbud/CPV-
-        // forslags-payload (broad-NACE-selgere) — dekod denne FØR generisk
-        // validate() kaster en tom APIError.statusCode(400) som mister den.
-        if let http = response as? HTTPURLResponse, http.statusCode == 400,
-           let errResp = try? Self.decoder.decode(LeadDiscoveryIndustryRequiredResponse.self, from: data),
-           errResp.error == "industry_required" {
-            throw LeadDiscoveryError.industryRequired(
-                cpvSuggestion: errResp.suggestAnbudCpv ?? [],
-                reason: errResp.suggestAnbudReason,
-            )
-        }
-        try Self.validate(response)
-        return try Self.decoder.decode(LeadDiscoveryStartResponse.self, from: data)
-    }
-
-    /// Hent full batch + items + breakdown for en lead-discovery-batch.
-    /// Polling-loop bruker eksisterende pollBulkUrlResearchProgress for
-    /// lett-vekt counter — denne kalles når UI trenger full breakdown
-    /// (success-hero-card).
+    /// Historical read-only result for a discovery batch created by old builds.
     func fetchLeadDiscoveryResult(
         projectId: String,
         batchId: String,
@@ -3916,20 +4034,6 @@ extension APIClient {
 
     // -- Lead Map detalj-sub --------------------------------------
 
-    /// Søk steder via Google Places API.
-    func searchLeadMapPlaces(query: String) async throws -> LeadMapPlacesSearchResponse {
-        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-        return try await get("/api/admin-room/lead-map/places/search?q=\(encoded)")
-    }
-
-    /// Importer søkeresultater som leads.
-    func importLeadMapPlaces(placeIds: [String]) async throws -> LeadMapPlaceImportResult {
-        try await post(
-            "/api/admin-room/lead-map/places/import",
-            body: ["place_ids": placeIds],
-        )
-    }
-
     /// Generer Claude AI-pitch for en gitt lead.
     func generateLeadPitch(leadId: String) async throws -> LeadMapPitch {
         try await post(
@@ -4188,64 +4292,181 @@ struct OrgProfileEnvelope: Decodable {
 
 // MARK: - Leadgrid Intelligence (PR #855)
 
+enum LeadgridNBARequestPath {
+    static func make(projectId: String, priority: String?, limit: Int) -> String {
+        var queryItems = [URLQueryItem(name: "limit", value: String(min(200, max(1, limit))))]
+        if let priority = priority?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !priority.isEmpty {
+            queryItems.append(.init(name: "priority", value: priority))
+        }
+        return LeadgridAnalyticsRequestPath.make(
+            "/api/leadgrid/intelligence/recommendations",
+            queryItems: queryItems,
+            projectId: projectId)
+    }
+
+    static func mutation(id: String, action: String, projectId: String) -> String {
+        let encodedId = LeadgridPathSegment.encode(id)
+        return LeadgridAnalyticsRequestPath.makePercentEncoded(
+            "/api/leadgrid/intelligence/recommendations/\(encodedId)/\(action)",
+            projectId: projectId)
+    }
+
+    static func followUpQueue(projectId: String) -> String {
+        LeadgridAnalyticsRequestPath.make(
+            "/api/leadgrid/intelligence/follow-up-queue",
+            projectId: projectId)
+    }
+}
+
+enum LeadgridPipelineRequestPath {
+    static func update(leadId: String, projectId: String) -> String {
+        let encodedLeadId = LeadgridPathSegment.encode(leadId)
+        return LeadgridAnalyticsRequestPath.makePercentEncoded(
+            "/api/leadgrid/intelligence/leads/\(encodedLeadId)/pipeline-stage",
+            projectId: projectId)
+    }
+}
+
+enum LeadgridIntelligenceRequestPath {
+    static func lead(
+        _ leadId: String,
+        action: String? = nil,
+        projectId: String
+    ) -> String {
+        let encodedLeadId = LeadgridPathSegment.encode(leadId)
+        let suffix = action.map { "/\($0)" } ?? ""
+        return LeadgridAnalyticsRequestPath.makePercentEncoded(
+            "/api/leadgrid/intelligence/leads/\(encodedLeadId)\(suffix)",
+            projectId: projectId)
+    }
+}
+
+private enum LeadgridPathSegment {
+    static func encode(_ value: String) -> String {
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "/?#")
+        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
+    }
+}
+
 extension APIClient {
 
-    func fetchLeadIntelligence(leadId: String) async throws -> LeadgridIntelligenceForLead {
-        try await get("/api/leadgrid/intelligence/leads/\(leadId)")
+    func fetchLeadIntelligence(
+        leadId: String,
+        projectId: String
+    ) async throws -> LeadgridIntelligenceForLead {
+        try await get(LeadgridIntelligenceRequestPath.lead(
+            leadId, projectId: projectId))
     }
 
-    func recomputeLeadIntelligence(leadId: String) async throws -> LeadgridIntelligenceForLead {
-        try await post("/api/leadgrid/intelligence/leads/\(leadId)/recompute", body: nil)
+    func recomputeLeadIntelligence(
+        leadId: String,
+        projectId: String
+    ) async throws -> LeadgridIntelligenceForLead {
+        try await post(
+            LeadgridIntelligenceRequestPath.lead(
+                leadId, action: "recompute", projectId: projectId),
+            body: nil)
     }
 
-    func fetchNBARecommendations(priority: String? = nil, limit: Int = 50) async throws -> [LeadgridNBARecommendation] {
-        var path = "/api/leadgrid/intelligence/recommendations?limit=\(limit)"
-        if let p = priority { path += "&priority=\(p)" }
-        let resp: NBARecommendationsResponse = try await get(path)
+    func fetchNBARecommendations(
+        projectId: String,
+        priority: String? = nil,
+        limit: Int = 50
+    ) async throws -> [LeadgridNBARecommendation] {
+        let resp: NBARecommendationsResponse = try await get(
+            LeadgridNBARequestPath.make(
+                projectId: projectId,
+                priority: priority,
+                limit: limit))
         return resp.recommendations
     }
 
-    func acceptRecommendation(_ id: String) async throws -> LeadgridNBARecommendation {
-        try await post("/api/leadgrid/intelligence/recommendations/\(id)/accept", body: nil)
+    func acceptRecommendation(
+        _ id: String,
+        projectId: String
+    ) async throws -> LeadgridNBAMutationResult {
+        try await post(
+            LeadgridNBARequestPath.mutation(id: id, action: "accept", projectId: projectId),
+            body: nil)
     }
 
-    func executeRecommendation(_ id: String, outcome: String, notes: String?) async throws -> LeadgridNBARecommendation {
-        var body: [String: Any] = ["outcome": outcome]
+    func executeRecommendation(
+        _ id: String,
+        projectId: String,
+        outcome: LeadgridNBAOutcome,
+        notes: String?
+    ) async throws -> LeadgridNBAExecutionResult {
+        var body: [String: Any] = ["outcome": outcome.rawValue]
         if let n = notes { body["outcome_notes"] = n }
-        return try await post("/api/leadgrid/intelligence/recommendations/\(id)/execute", body: body)
+        return try await post(
+            LeadgridNBARequestPath.mutation(id: id, action: "execute", projectId: projectId),
+            body: body)
     }
 
-    func dismissRecommendation(_ id: String) async throws -> LeadgridNBARecommendation {
-        try await post("/api/leadgrid/intelligence/recommendations/\(id)/dismiss", body: nil)
+    func dismissRecommendation(
+        _ id: String,
+        projectId: String
+    ) async throws -> LeadgridNBAMutationResult {
+        try await post(
+            LeadgridNBARequestPath.mutation(id: id, action: "dismiss", projectId: projectId),
+            body: nil)
     }
 
     /// Snooze en NBA-anbefaling i N timer (1-168).
     /// Backend: POST /api/leadgrid/intelligence/recommendations/:id/snooze (PR #882).
     /// Emiter `recommendation.snoozed`-webhook server-side.
     @discardableResult
-    func snoozeRecommendation(_ id: String, hours: Int) async throws -> SnoozeResult {
+    func snoozeRecommendation(
+        _ id: String,
+        projectId: String,
+        hours: Int
+    ) async throws -> SnoozeResult {
         try await post(
-            "/api/leadgrid/intelligence/recommendations/\(id)/snooze",
+            LeadgridNBARequestPath.mutation(id: id, action: "snooze", projectId: projectId),
             body: ["hours": hours]
         )
     }
 
-    func fetchFollowUpQueue() async throws -> [LeadgridFollowUpItem] {
-        let resp: FollowUpQueueResponse = try await get("/api/leadgrid/intelligence/follow-up-queue")
+    func fetchFollowUpQueue(projectId: String) async throws -> [LeadgridFollowUpItem] {
+        let resp: FollowUpQueueResponse = try await get(
+            LeadgridNBARequestPath.followUpQueue(projectId: projectId))
         return resp.items
     }
 
-    func fetchLeadScoreHistory(leadId: String) async throws -> [LeadgridScoreHistoryEntry] {
-        let resp: ScoreHistoryResponse = try await get("/api/leadgrid/intelligence/leads/\(leadId)/history")
+    func fetchLeadScoreHistory(
+        leadId: String,
+        projectId: String
+    ) async throws -> [LeadgridScoreHistoryEntry] {
+        let resp: ScoreHistoryResponse = try await get(
+            LeadgridIntelligenceRequestPath.lead(
+                leadId, action: "history", projectId: projectId))
         return resp.history
+    }
+
+    func overrideLeadScore(
+        leadId: String,
+        projectId: String,
+        score: Int,
+        reason: String
+    ) async throws -> LeadgridScoreOverrideResult {
+        try await post(
+            LeadgridIntelligenceRequestPath.lead(
+                leadId, action: "score-override", projectId: projectId),
+            body: ["lead_score": score, "reason": reason])
     }
 
     // PR #882 — drag-and-drop pipeline stage. Backend trigger Intelligence
     // rescore + emit lead.pipeline_stage_changed webhook.
     @discardableResult
-    func updateLeadPipelineStage(leadId: String, stage: String) async throws -> PipelineStageUpdateResult {
+    func updateLeadPipelineStage(
+        leadId: String,
+        projectId: String,
+        stage: String
+    ) async throws -> PipelineStageUpdateResult {
         try await patchReturning(
-            "/api/leadgrid/intelligence/leads/\(leadId)/pipeline-stage",
+            LeadgridPipelineRequestPath.update(leadId: leadId, projectId: projectId),
             body: ["pipeline_stage": stage]
         )
     }
@@ -4256,6 +4477,12 @@ struct PipelineStageUpdateResult: Decodable {
     let leadId: String?
     let oldStage: String?
     let newStage: String?
+}
+
+struct LeadgridScoreOverrideResult: Decodable {
+    let ok: Bool
+    let leadId: String
+    let leadScore: Int
 }
 
 private struct NBARecommendationsResponse: Decodable { let recommendations: [LeadgridNBARecommendation] }
@@ -4417,18 +4644,52 @@ extension APIClient {
 // MARK: - Leadgrid Momentum (Daniels Momentum Engine)
 
 extension APIClient {
+    private func requiredMomentumProjectID(_ rawProjectId: String) throws -> String {
+        let projectId = rawProjectId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !projectId.isEmpty, projectId.count <= 255 else {
+            throw LeadgridMomentumScopeError.missingProjectID
+        }
+        return projectId
+    }
 
-    func fetchMomentumToday() async throws -> LeadgridMomentum {
-        let resp: LeadgridMomentumResponse = try await get("/api/leadgrid/momentum/today")
+    private func momentumPath(
+        _ endpoint: String,
+        projectId: String,
+        queryItems: [URLQueryItem] = []
+    ) throws -> String {
+        var components = URLComponents()
+        components.path = "/api/leadgrid/momentum/\(endpoint)"
+        components.queryItems = [
+            URLQueryItem(name: "projectId", value: projectId)
+        ] + queryItems
+        guard let path = components.string else {
+            throw URLError(.badURL)
+        }
+        return path
+    }
+
+    func fetchMomentumToday(projectId rawProjectId: String) async throws -> LeadgridMomentum {
+        let projectId = try requiredMomentumProjectID(rawProjectId)
+        let path = try momentumPath("today", projectId: projectId)
+        let resp: LeadgridMomentumResponse = try await get(path)
+        guard resp.projectId == projectId, resp.momentum.projectId == projectId else {
+            throw LeadgridMomentumScopeError.responseProjectMismatch
+        }
         return resp.momentum
     }
 
-    func fetchSalesGoal() async throws -> LeadgridSalesGoal {
-        let resp: LeadgridSalesGoalResponse = try await get("/api/leadgrid/momentum/goal")
+    func fetchSalesGoal(projectId rawProjectId: String) async throws -> LeadgridSalesGoal {
+        let projectId = try requiredMomentumProjectID(rawProjectId)
+        let path = try momentumPath("goal", projectId: projectId)
+        let resp: LeadgridSalesGoalResponse = try await get(path)
+        guard resp.projectId == projectId, resp.goal.projectId == projectId else {
+            throw LeadgridMomentumScopeError.responseProjectMismatch
+        }
         return resp.goal
     }
 
     func saveSalesGoal(
+        projectId rawProjectId: String,
         revenueTarget: Double?,
         dealsTarget: Int?,
         meetingsTarget: Int?,
@@ -4437,7 +4698,9 @@ extension APIClient {
         dailyMeetingsTarget: Int,
         dailyPipelineMovesTarget: Int
     ) async throws -> LeadgridSalesGoal {
+        let projectId = try requiredMomentumProjectID(rawProjectId)
         var body: [String: Any] = [
+            "projectId": projectId,
             "daily_contacts_target": dailyContactsTarget,
             "daily_followups_target": dailyFollowupsTarget,
             "daily_meetings_target": dailyMeetingsTarget,
@@ -4447,13 +4710,28 @@ extension APIClient {
         if let d = dealsTarget { body["deals_target"] = d }
         if let m = meetingsTarget { body["meetings_target"] = m }
         let resp: LeadgridSalesGoalResponse = try await post("/api/leadgrid/momentum/goal", body: body)
+        guard resp.projectId == projectId, resp.goal.projectId == projectId else {
+            throw LeadgridMomentumScopeError.responseProjectMismatch
+        }
         return resp.goal
     }
 
     /// Henter momentum-trend siste N dager (clamp 7-180).
-    func fetchMomentumTrend(days: Int = 30) async throws -> LeadgridMomentumTrend {
+    func fetchMomentumTrend(
+        projectId rawProjectId: String,
+        days: Int = 30
+    ) async throws -> LeadgridMomentumTrend {
+        let projectId = try requiredMomentumProjectID(rawProjectId)
         let clamped = max(7, min(180, days))
-        let resp: LeadgridMomentumTrendResponse = try await get("/api/leadgrid/momentum/trend?days=\(clamped)")
+        let path = try momentumPath(
+            "trend",
+            projectId: projectId,
+            queryItems: [URLQueryItem(name: "days", value: String(clamped))]
+        )
+        let resp: LeadgridMomentumTrendResponse = try await get(path)
+        guard resp.trend.projectId == projectId else {
+            throw LeadgridMomentumScopeError.responseProjectMismatch
+        }
         return resp.trend
     }
 }
@@ -4471,50 +4749,139 @@ extension APIClient {
 //
 // Brukes av LeadgridAnalyticsDashboardView (5 SwiftUI Charts-seksjoner).
 
+enum LeadgridAnalyticsRequestPath {
+    static func make(
+        _ path: String,
+        queryItems: [URLQueryItem] = [],
+        projectId: String? = nil
+    ) -> String {
+        var components = URLComponents()
+        components.path = path
+        var items = queryItems
+        if let projectId = projectId?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !projectId.isEmpty {
+            items.append(.init(name: "projectId", value: projectId))
+        }
+        components.queryItems = items.isEmpty ? nil : items
+        return components.string ?? path
+    }
+
+    static func makePercentEncoded(
+        _ percentEncodedPath: String,
+        queryItems: [URLQueryItem] = [],
+        projectId: String? = nil
+    ) -> String {
+        var components = URLComponents()
+        components.percentEncodedPath = percentEncodedPath
+        var items = queryItems
+        if let projectId = projectId?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !projectId.isEmpty {
+            items.append(.init(name: "projectId", value: projectId))
+        }
+        components.queryItems = items.isEmpty ? nil : items
+        return components.string ?? percentEncodedPath
+    }
+}
+
 extension APIClient {
 
-    func fetchAnalyticsOverview(sinceDays: Int = 90) async throws -> LeadgridAnalyticsOverview {
+    func fetchAnalyticsOverview(
+        sinceDays: Int = 90,
+        projectId: String? = nil
+    ) async throws -> LeadgridAnalyticsOverview {
         let resp: AnalyticsOverviewResponse = try await get(
-            "/api/leadgrid/analytics/overview?sinceDays=\(sinceDays)"
+            LeadgridAnalyticsRequestPath.make(
+                "/api/leadgrid/analytics/overview",
+                queryItems: [.init(name: "sinceDays", value: String(sinceDays))],
+                projectId: projectId)
         )
         return resp.overview
     }
 
-    func fetchAnalyticsChannels(sinceDays: Int = 90) async throws -> [LeadgridChannelPerf] {
+    func fetchAnalyticsChannels(
+        sinceDays: Int = 90,
+        projectId: String? = nil
+    ) async throws -> [LeadgridChannelPerf] {
         let resp: AnalyticsChannelsResponse = try await get(
-            "/api/leadgrid/analytics/channels?sinceDays=\(sinceDays)"
+            LeadgridAnalyticsRequestPath.make(
+                "/api/leadgrid/analytics/channels",
+                queryItems: [.init(name: "sinceDays", value: String(sinceDays))],
+                projectId: projectId)
         )
         return resp.channels
     }
 
-    func fetchAnalyticsSources() async throws -> [LeadgridSourcePerf] {
-        let resp: AnalyticsSourcesResponse = try await get("/api/leadgrid/analytics/sources")
+    func fetchAnalyticsSources(projectId: String? = nil) async throws -> [LeadgridSourcePerf] {
+        let resp: AnalyticsSourcesResponse = try await get(
+            LeadgridAnalyticsRequestPath.make(
+                "/api/leadgrid/analytics/sources",
+                projectId: projectId))
         return resp.sources
     }
 
     /// `by` accepts "category", "city", or "pipeline_stage".
-    func fetchAnalyticsSegments(by: String = "category") async throws -> [LeadgridSegmentPerf] {
+    func fetchAnalyticsSegments(
+        by: String = "category",
+        projectId: String? = nil
+    ) async throws -> [LeadgridSegmentPerf] {
         let resp: AnalyticsSegmentsResponse = try await get(
-            "/api/leadgrid/analytics/segments?by=\(by)"
+            LeadgridAnalyticsRequestPath.make(
+                "/api/leadgrid/analytics/segments",
+                queryItems: [.init(name: "by", value: by)],
+                projectId: projectId)
         )
         return resp.segments
     }
 
-    func fetchAnalyticsTerritories() async throws -> [LeadgridTerritoryPerf] {
-        let resp: AnalyticsTerritoriesResponse = try await get("/api/leadgrid/analytics/territories")
+    func fetchAnalyticsTerritories(projectId: String? = nil) async throws -> [LeadgridTerritoryPerf] {
+        let resp: AnalyticsTerritoriesResponse = try await get(
+            LeadgridAnalyticsRequestPath.make(
+                "/api/leadgrid/analytics/territories",
+                projectId: projectId))
         return resp.territories
     }
 
-    func fetchAnalyticsVelocity(days: Int = 90) async throws -> [LeadgridVelocityPoint] {
+    func fetchAnalyticsVelocity(
+        days: Int = 90,
+        projectId: String? = nil
+    ) async throws -> [LeadgridVelocityPoint] {
         let resp: AnalyticsVelocityResponse = try await get(
-            "/api/leadgrid/analytics/velocity-history?days=\(days)"
+            LeadgridAnalyticsRequestPath.make(
+                "/api/leadgrid/analytics/velocity-history",
+                queryItems: [.init(name: "days", value: String(days))],
+                projectId: projectId)
         )
         return resp.history
     }
 
-    func fetchAnalyticsFunnel() async throws -> [LeadgridFunnelStage] {
-        let resp: AnalyticsFunnelResponse = try await get("/api/leadgrid/analytics/conversion-funnel")
+    func fetchAnalyticsFunnel(projectId: String? = nil) async throws -> [LeadgridFunnelStage] {
+        let resp: AnalyticsFunnelResponse = try await get(
+            LeadgridAnalyticsRequestPath.make(
+                "/api/leadgrid/analytics/conversion-funnel",
+                projectId: projectId))
         return resp.funnel
+    }
+
+    func fetchAnalyticsOutcomeReport(
+        sinceDays: Int = 90,
+        projectId: String? = nil
+    ) async throws -> AnalyticsOutcomesResponse {
+        try await get(
+            LeadgridAnalyticsRequestPath.make(
+                "/api/leadgrid/analytics/outcomes",
+                queryItems: [.init(name: "sinceDays", value: String(sinceDays))],
+                projectId: projectId)
+        )
+    }
+
+    func fetchAnalyticsOutcomes(
+        sinceDays: Int = 90,
+        projectId: String? = nil
+    ) async throws -> [LeadgridOutcomePerformance] {
+        try await fetchAnalyticsOutcomeReport(
+            sinceDays: sinceDays,
+            projectId: projectId
+        ).outcomes
     }
 }
 
@@ -4564,21 +4931,26 @@ extension APIClient {
 
 // MARK: - Leadgrid AI Usage (PR #871)
 //
-// Eksponerer org-ens AI-kost over tid. Gated på backend via
-// billing.view_ai_usage (admin/salgssjef). 403 fra backend
-// håndteres via APIError.statusCode hos kalleren.
+// Eksponerer valgt workspaces AI-kost over tid. Backend krever eksplisitt
+// workspace-scope og org-admin/superadmin.
 
 extension APIClient {
 
     /// Aggregert per-provider-bruk siste N dager.
-    func fetchAIUsageSummary(sinceDays: Int = 30) async throws -> LeadgridAIUsageSummary {
-        try await get("/api/leadgrid/ai-usage/summary?sinceDays=\(sinceDays)")
+    func fetchAIUsageSummary(
+        organizationId: String,
+        sinceDays: Int = 30
+    ) async throws -> LeadgridAIUsageSummary {
+        try await get("/api/leadgrid/ai-usage/summary?organization_id=\(organizationId)&sinceDays=\(sinceDays)")
     }
 
     /// Daglig kost-historikk per provider for siste N dager
     /// (bruker bar-stack i UI).
-    func fetchAIUsageHistory(days: Int = 30) async throws -> LeadgridAIUsageHistory {
-        try await get("/api/leadgrid/ai-usage/history?days=\(days)")
+    func fetchAIUsageHistory(
+        organizationId: String,
+        days: Int = 30
+    ) async throws -> LeadgridAIUsageHistory {
+        try await get("/api/leadgrid/ai-usage/history?organization_id=\(organizationId)&days=\(days)")
     }
 }
 
@@ -4701,26 +5073,38 @@ struct IndustryAssignmentPayload {
 // MARK: - Leadgrid Deal Management (#154/#155, mig 0349)
 
 extension APIClient {
-    /// Hent weighted pipeline-forecast for innlogget brukers org.
-    func fetchDealForecast(horizonDays: Int = 365) async throws -> LeadgridDealForecast {
+    /// Hent weighted pipeline-forecast for ett tilgjengelig kundeprosjekt.
+    func fetchDealForecast(
+        projectId: String,
+        horizonDays: Int = 365
+    ) async throws -> LeadgridDealForecast {
+        let scope = scopeQuery(projectId: projectId, organizationId: nil)
         let resp: LeadgridDealForecastResponse = try await get(
-            "/api/leadgrid/deals/forecast?horizon=\(horizonDays)"
+            "/api/leadgrid/deals/forecast\(scope)&horizon=\(horizonDays)"
         )
         return resp.forecast
     }
 
     /// Hent månedlig weighted-forecast.
-    func fetchDealsByMonth(horizonDays: Int = 365) async throws -> [LeadgridDealPeriodBucket] {
+    func fetchDealsByMonth(
+        projectId: String,
+        horizonDays: Int = 365
+    ) async throws -> [LeadgridDealPeriodBucket] {
+        let scope = scopeQuery(projectId: projectId, organizationId: nil)
         let resp: LeadgridDealByMonthResponse = try await get(
-            "/api/leadgrid/deals/by-month?horizon=\(horizonDays)"
+            "/api/leadgrid/deals/by-month\(scope)&horizon=\(horizonDays)"
         )
         return resp.byMonth
     }
 
     /// Hent deals som er overdue (expected_close < idag, pipeline != won/lost).
-    func fetchDealsAtRisk(limit: Int = 20) async throws -> [LeadgridDealAtRisk] {
+    func fetchDealsAtRisk(
+        projectId: String,
+        limit: Int = 20
+    ) async throws -> [LeadgridDealAtRisk] {
+        let scope = scopeQuery(projectId: projectId, organizationId: nil)
         let resp: LeadgridDealsAtRiskResponse = try await get(
-            "/api/leadgrid/deals/at-risk?limit=\(limit)"
+            "/api/leadgrid/deals/at-risk\(scope)&limit=\(limit)"
         )
         return resp.deals
     }
@@ -4766,28 +5150,109 @@ extension APIClient {
 
 // MARK: - Leadgrid Workflows (#203, mig 0349)
 
+enum LeadgridWorkflowScopeError: LocalizedError, Equatable {
+    case missingProjectID
+    case invalidWorkflowID
+
+    var errorDescription: String? {
+        switch self {
+        case .missingProjectID:
+            return "Velg et Leadgrid-kundeprosjekt før du bruker workflows."
+        case .invalidWorkflowID:
+            return "Workflow-ID-en er ugyldig."
+        }
+    }
+}
+
+/// Central path builder for the workflow API. A non-empty project is required
+/// at compile-time and validated again here so no caller can silently fall
+/// back to organization-wide workflow data.
+enum LeadgridWorkflowRequestPath {
+    static func make(
+        _ path: String,
+        projectId: String,
+        queryItems: [URLQueryItem] = []
+    ) throws -> String {
+        let projectId = try validatedProjectID(projectId)
+        var components = URLComponents()
+        components.path = path
+        components.queryItems = queryItems + [
+            URLQueryItem(name: "projectId", value: projectId)
+        ]
+        guard let scopedPath = components.string else {
+            throw URLError(.badURL)
+        }
+        return scopedPath
+    }
+
+    static func workflow(
+        _ id: String,
+        suffix: String = "",
+        projectId: String,
+        queryItems: [URLQueryItem] = []
+    ) throws -> String {
+        let id = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty else {
+            throw LeadgridWorkflowScopeError.invalidWorkflowID
+        }
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "/?#")
+        guard let encodedID = id.addingPercentEncoding(withAllowedCharacters: allowed) else {
+            throw LeadgridWorkflowScopeError.invalidWorkflowID
+        }
+
+        let projectId = try validatedProjectID(projectId)
+        var components = URLComponents()
+        components.percentEncodedPath = "/api/leadgrid/workflows/\(encodedID)\(suffix)"
+        components.queryItems = queryItems + [
+            URLQueryItem(name: "projectId", value: projectId)
+        ]
+        guard let scopedPath = components.string else {
+            throw URLError(.badURL)
+        }
+        return scopedPath
+    }
+
+    private static func validatedProjectID(_ rawValue: String) throws -> String {
+        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, value.count <= 255 else {
+            throw LeadgridWorkflowScopeError.missingProjectID
+        }
+        return value
+    }
+}
+
 extension APIClient {
-    /// Liste alle workflows i orgen.
-    func fetchWorkflows(activeOnly: Bool = false) async throws -> [LeadgridWorkflow] {
-        let qs = activeOnly ? "?active=true" : ""
+    /// Liste workflows for ett eksplisitt Leadgrid-kundeprosjekt.
+    func fetchWorkflows(
+        projectId: String,
+        activeOnly: Bool = false
+    ) async throws -> [LeadgridWorkflow] {
         let resp: LeadgridWorkflowsResponse = try await get(
-            "/api/leadgrid/workflows\(qs)"
+            try LeadgridWorkflowRequestPath.make(
+                "/api/leadgrid/workflows",
+                projectId: projectId,
+                queryItems: activeOnly ? [.init(name: "active", value: "true")] : []
+            )
         )
         return resp.workflows
     }
 
     /// Detalj på én workflow.
-    func fetchWorkflow(_ id: String) async throws -> LeadgridWorkflow {
+    func fetchWorkflow(_ id: String, projectId: String) async throws -> LeadgridWorkflow {
         let resp: LeadgridWorkflowDetailResponse = try await get(
-            "/api/leadgrid/workflows/\(id)"
+            try LeadgridWorkflowRequestPath.workflow(id, projectId: projectId)
         )
         return resp.workflow
     }
 
     /// Liste forhåndsbygde templates.
-    func fetchWorkflowTemplates() async throws -> [LeadgridWorkflowTemplate] {
+    func fetchWorkflowTemplates(projectId: String) async throws -> [LeadgridWorkflowTemplate] {
         let resp: LeadgridWorkflowTemplatesResponse = try await get(
-            "/api/leadgrid/workflows/templates"
+            try LeadgridWorkflowRequestPath.make(
+                "/api/leadgrid/workflows/templates",
+                projectId: projectId
+            )
         )
         return resp.templates
     }
@@ -4795,6 +5260,7 @@ extension APIClient {
     /// Opprett ny workflow fra template-key (overstyr name/beskrivelse hvis ønskelig).
     func createWorkflowFromTemplate(
         templateKey: String,
+        projectId: String,
         name: String? = nil,
         description: String? = nil,
     ) async throws -> String {
@@ -4802,7 +5268,10 @@ extension APIClient {
         if let name { body["name"] = name }
         if let description { body["description"] = description }
         let resp: LeadgridWorkflowCreatedResponse = try await post(
-            "/api/leadgrid/workflows",
+            try LeadgridWorkflowRequestPath.make(
+                "/api/leadgrid/workflows",
+                projectId: projectId
+            ),
             body: body,
         )
         return resp.id
@@ -4811,10 +5280,13 @@ extension APIClient {
     /// Opprett ny workflow med full payload, pre-serialisert til JSON Data.
     /// Caller bygger payload-objektet og JSON-serialiserer på MainActor.
     /// Dette unngår Swift 6 sendability-issues på `[[String: Any]]`.
-    func createWorkflow(jsonBody: Data) async throws -> String {
+    func createWorkflow(projectId: String, jsonBody: Data) async throws -> String {
         let data = try await executeRaw(
             method: "POST",
-            path: "/api/leadgrid/workflows",
+            path: try LeadgridWorkflowRequestPath.make(
+                "/api/leadgrid/workflows",
+                projectId: projectId
+            ),
             body: jsonBody,
         )
         let resp = try Self.workflowDecoder.decode(
@@ -4832,38 +5304,60 @@ extension APIClient {
     }()
 
     /// Aktiver/deaktiver workflow.
-    func setWorkflowActive(_ id: String, active: Bool) async throws {
+    func setWorkflowActive(
+        _ id: String,
+        active: Bool,
+        projectId: String
+    ) async throws {
         try await patch(
-            "/api/leadgrid/workflows/\(id)",
+            try LeadgridWorkflowRequestPath.workflow(id, projectId: projectId),
             body: ["is_active": active],
         )
     }
 
     /// Soft-delete (is_active = false).
-    func deleteWorkflow(_ id: String) async throws {
-        try await delete("/api/leadgrid/workflows/\(id)")
+    func deleteWorkflow(_ id: String, projectId: String) async throws {
+        try await delete(
+            try LeadgridWorkflowRequestPath.workflow(id, projectId: projectId)
+        )
     }
 
     /// Dry-run mot evt. test-lead.
-    func testWorkflow(_ id: String, leadId: String? = nil)
+    func testWorkflow(
+        _ id: String,
+        projectId: String,
+        leadId: String? = nil
+    )
         async throws -> LeadgridWorkflowExecution
     {
         var body: [String: Any] = [:]
         if let leadId { body["lead_id"] = leadId }
         struct R: Decodable { let result: LeadgridWorkflowExecution }
         let resp: R = try await post(
-            "/api/leadgrid/workflows/\(id)/test",
+            try LeadgridWorkflowRequestPath.workflow(
+                id,
+                suffix: "/test",
+                projectId: projectId
+            ),
             body: body,
         )
         return resp.result
     }
 
     /// Manuelt trigge workflow mot lead.
-    func executeWorkflow(_ id: String, leadId: String?) async throws {
+    func executeWorkflow(
+        _ id: String,
+        projectId: String,
+        leadId: String?
+    ) async throws {
         var body: [String: Any] = [:]
         if let leadId { body["lead_id"] = leadId }
         try await post(
-            "/api/leadgrid/workflows/\(id)/execute",
+            try LeadgridWorkflowRequestPath.workflow(
+                id,
+                suffix: "/execute",
+                projectId: projectId
+            ),
             body: body,
         )
     }
@@ -4874,24 +5368,40 @@ extension APIClient {
     @discardableResult
     func executeWorkflowBulk(
         _ id: String,
+        projectId: String,
         leadIds: [String],
     ) async throws -> LeadgridWorkflowExecuteResponse {
         let body: [String: Any] = [
             "lead_ids": leadIds,
         ]
         let resp: LeadgridWorkflowExecuteResponse = try await post(
-            "/api/leadgrid/workflows/\(id)/execute",
+            try LeadgridWorkflowRequestPath.workflow(
+                id,
+                suffix: "/execute",
+                projectId: projectId
+            ),
             body: body,
         )
         return resp
     }
 
     /// Hent eksekverings-historikk.
-    func fetchWorkflowExecutions(_ id: String, limit: Int = 50)
+    func fetchWorkflowExecutions(
+        _ id: String,
+        projectId: String,
+        limit: Int = 50
+    )
         async throws -> [LeadgridWorkflowExecution]
     {
         let resp: LeadgridWorkflowExecutionsResponse = try await get(
-            "/api/leadgrid/workflows/\(id)/executions?limit=\(limit)"
+            try LeadgridWorkflowRequestPath.workflow(
+                id,
+                suffix: "/executions",
+                projectId: projectId,
+                queryItems: [
+                    .init(name: "limit", value: String(max(1, min(200, limit))))
+                ]
+            )
         )
         return resp.executions
     }

@@ -269,6 +269,7 @@ export const TECH_STACK_CATEGORY_LABELS: Record<TechStackCategory, string> = {
 export interface MarketScan {
   id: string;
   workspaceOwnerUserId: string;
+  organizationId?: string;
   projectId?: string;
   brandKitId?: string | null;
   name: string;

@@ -1243,13 +1243,17 @@ struct CanvasView: View {
                     vedleggURL: url,
                     vedleggNavn: "\(dok.navn).pdf") { sendte in
                     sendDokument = nil
-                    guard sendte, !isDemo, let api = appState.api else { return }
+                    guard sendte, !isDemo, let api = appState.api,
+                          let projectId = appState.activeProjectId,
+                          !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    else { return }
                     let logg = CanvasAnalyseDTO(
                         oppsummering: "Sendte annotert «\(dok.navn)» til \(epost)",
                         oppgaver: [], lofter: [])
                     Task { try? await api.persisterCanvasAnalyse(
                         selskap: context?.selskap, leadId: context?.leadID,
-                        resultat: logg) }
+                        resultat: logg, projectId: projectId,
+                        requestId: UUID()) }
                 }
             }
         }
@@ -2601,7 +2605,10 @@ struct CanvasView: View {
             }
         }
         if let api = appState.api {
-            let oppgaver = try? await api.hentMoteOppgaver()
+            guard let projectId = appState.activeProjectId,
+                  !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else { return }
+            let oppgaver = try? await api.hentMoteOppgaver(projectId: projectId)
             guard !Task.isCancelled, canvasDraftScope == scope else { return }
             oppgaverCache = oppgaver ?? []
             if let p = try? await api.hentCanvasRollePolicy() {
@@ -2858,7 +2865,10 @@ struct CanvasView: View {
             tittel: "📌 \(String(forslag.tekst.prefix(60)))",
             detalj: "Ta opp på møtet"))
         withAnimation(.easeInOut(duration: 0.12)) { markeringForslag = nil }
-        guard !isDemo, let api = appState.api else { return }
+        guard !isDemo, let api = appState.api,
+              let projectId = appState.activeProjectId,
+              !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
         let selskap = kobletSelskap
         let leadID = kobletLeadId
         let dto = CanvasAnalyseDTO(
@@ -2867,7 +2877,8 @@ struct CanvasView: View {
                 tittel: String(forslag.tekst.prefix(80)), frist: nil)],
             lofter: [])
         Task { try? await api.persisterCanvasAnalyse(
-            selskap: selskap, leadId: leadID, resultat: dto) }
+            selskap: selskap, leadId: leadID, resultat: dto,
+            projectId: projectId, requestId: UUID()) }
     }
 
     // MARK: Tilbuds-diff

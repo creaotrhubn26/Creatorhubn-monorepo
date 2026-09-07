@@ -18,10 +18,20 @@ final class QualityService {
     }
     private struct Ack: Decodable { let ok: Bool?; let error: String? }
 
-    /// Maler for org-en (server seeder «Standard velkomstsamtale» ved første kall).
-    func templates(using api: APIClient?) async -> [VerificationTemplate] {
-        guard let api else { return [] }
-        let r: TemplatesResponse? = try? await api._get("/api/leadgrid/quality/templates")
+    private func scopedPath(_ endpoint: String, projectId: String) -> String? {
+        let clean = projectId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty,
+              let encoded = clean.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+        else { return nil }
+        return "\(endpoint)?projectId=\(encoded)"
+    }
+
+    /// Maler for det valgte kundeprosjektet (server seeder standardmal ved første kall).
+    func templates(projectId: String, using api: APIClient?) async -> [VerificationTemplate] {
+        guard let api,
+              let path = scopedPath("/api/leadgrid/quality/templates", projectId: projectId)
+        else { return [] }
+        let r: TemplatesResponse? = try? await api._get(path)
         return r?.templates ?? []
     }
 
@@ -31,11 +41,14 @@ final class QualityService {
         var introScript: String = ""
         var questions: [TemplateQuestion] = []
         var outroScript: String = ""
+        var projectId: String = ""
     }
 
-    func createTemplate(_ draft: TemplateDraft, using api: APIClient?) async -> Bool {
-        guard let api else { return false }
-        do { let _: Ack = try await api._post("/api/leadgrid/quality/templates", body: draft); return true }
+    func createTemplate(_ draft: TemplateDraft, projectId: String, using api: APIClient?) async -> Bool {
+        guard let api, !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        var scoped = draft
+        scoped.projectId = projectId
+        do { let _: Ack = try await api._post("/api/leadgrid/quality/templates", body: scoped); return true }
         catch { return false }
     }
 
@@ -46,18 +59,23 @@ final class QualityService {
         var questions: [TemplateQuestion]?
         var outroScript: String?
         var isActive: Bool?
+        var projectId: String?
     }
 
-    func updateTemplate(id: String, _ patch: TemplatePatch, using api: APIClient?) async -> Bool {
-        guard let api else { return false }
-        do { try await api._patch("/api/leadgrid/quality/templates/\(id)", body: patch); return true }
+    func updateTemplate(id: String, _ patch: TemplatePatch, projectId: String, using api: APIClient?) async -> Bool {
+        guard let api, !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        var scoped = patch
+        scoped.projectId = projectId
+        do { try await api._patch("/api/leadgrid/quality/templates/\(id)", body: scoped); return true }
         catch { return false }
     }
 
     /// Køen (server backfiller pending for vunnede salg). Nil ved 403/feil.
-    func queue(using api: APIClient?) async -> (items: [SalesVerification], counts: [String: Int])? {
-        guard let api else { return nil }
-        guard let r: QueueResponse = try? await api._get("/api/leadgrid/quality/queue") else { return nil }
+    func queue(projectId: String, using api: APIClient?) async -> (items: [SalesVerification], counts: [String: Int])? {
+        guard let api,
+              let path = scopedPath("/api/leadgrid/quality/queue", projectId: projectId)
+        else { return nil }
+        guard let r: QueueResponse = try? await api._get(path) else { return nil }
         return (r.verifications, r.counts)
     }
 
@@ -67,9 +85,11 @@ final class QualityService {
     }
 
     /// Kvalitetsgrad per selger + årsaksfordeling. Nil ved 403/feil.
-    func stats(using api: APIClient?) async -> (sellers: [QualitySellerStat], reasons: [QualityReasonStat])? {
-        guard let api else { return nil }
-        guard let r: StatsResponse = try? await api._get("/api/leadgrid/quality/stats") else { return nil }
+    func stats(projectId: String, using api: APIClient?) async -> (sellers: [QualitySellerStat], reasons: [QualityReasonStat])? {
+        guard let api,
+              let path = scopedPath("/api/leadgrid/quality/stats", projectId: projectId)
+        else { return nil }
+        guard let r: StatsResponse = try? await api._get(path) else { return nil }
         return (r.sellers, r.reasons)
     }
 
@@ -83,13 +103,16 @@ final class QualityService {
         /// «Flagg som eksempel» (2026-07-17): samtalen var verdt å lære av →
         /// backend oppretter draft i Leadbook-eksempel-køen (mig 0379).
         var flagAsExample: Bool?
+        var projectId: String?
     }
 
     /// Fell verdikt. Returnerer nil ved suksess, ellers feilkode.
-    func submitVerdict(id: String, _ body: VerdictBody, using api: APIClient?) async -> String? {
-        guard let api else { return "no_api" }
+    func submitVerdict(id: String, _ body: VerdictBody, projectId: String, using api: APIClient?) async -> String? {
+        guard let api, !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "project_required" }
+        var scoped = body
+        scoped.projectId = projectId
         do {
-            let r: Ack = try await api._post("/api/leadgrid/quality/verifications/\(id)/verdict", body: body)
+            let r: Ack = try await api._post("/api/leadgrid/quality/verifications/\(id)/verdict", body: scoped)
             return r.ok == true ? nil : (r.error ?? "failed")
         } catch { return "failed" }
     }

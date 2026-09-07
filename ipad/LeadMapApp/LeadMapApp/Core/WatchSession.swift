@@ -8,7 +8,7 @@
 // LeadgridWatchApp/ (separat watchOS-app, single-target).
 //
 // Aktivering: kall `WatchSession.shared.activate()` fra LeadMapApp.swift
-// + `WatchSession.shared.pushLeads(_:organizationId:)` etter hver lead-refresh.
+// + `WatchSession.shared.pushLeads(...)` etter hver lead-refresh.
 
 import Foundation
 import WatchConnectivity
@@ -28,7 +28,9 @@ final class WatchSession: NSObject, ObservableObject {
     var onQuickAction: ((
         _ leadId: String,
         _ action: String,
+        _ actorUserId: String,
         _ organizationId: String,
+        _ projectId: String,
         _ actionId: UUID
     ) -> Void)?
 
@@ -54,10 +56,15 @@ final class WatchSession: NSObject, ObservableObject {
     /// `updateApplicationContext` overskriver alltid forrige snapshot.
     func pushLeads(
         _ leads: [LeadModel],
+        actorUserId: String,
         organizationId: String,
+        projectId: String,
         userLocation: CLLocation? = nil
     ) {
-        guard !organizationId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        let actorUserId = actorUserId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let organizationId = organizationId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let projectId = projectId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !actorUserId.isEmpty, !organizationId.isEmpty, !projectId.isEmpty else {
             return
         }
         guard session.isPaired, session.isWatchAppInstalled else {
@@ -84,7 +91,9 @@ final class WatchSession: NSObject, ObservableObject {
             "leads": trimmed.map { lead -> [String: Any] in
                 [
                     "id": lead.id,
+                    "actor_user_id": actorUserId,
                     "organization_id": organizationId,
+                    "project_id": projectId,
                     "name": lead.name ?? lead.company ?? "Ukjent",
                     "address": lead.address ?? NSNull(),
                     "latitude": lead.latitude ?? 0,
@@ -92,7 +101,9 @@ final class WatchSession: NSObject, ObservableObject {
                     "lead_status": lead.status ?? "unvisited",
                 ]
             },
+            "actor_user_id": actorUserId,
             "organization_id": organizationId,
+            "project_id": projectId,
             "ts": Date().timeIntervalSince1970,
         ]
 
@@ -101,6 +112,25 @@ final class WatchSession: NSObject, ObservableObject {
             lastPush = Date()
         } catch {
             // Quietly fail — Watch får forrige snapshot ved neste push.
+        }
+    }
+
+    /// Fjerner et tidligere prosjekt-/brukersnapshot ved utlogging eller
+    /// kontekstbytte. Tom kontekst overskriver også en snapshotleveranse som
+    /// fortsatt ligger i WatchConnectivity-køen.
+    func clearLeads() {
+        guard WCSession.isSupported() else { return }
+        let payload: [String: Any] = [
+            "leads": [],
+            "cleared": true,
+            "ts": Date().timeIntervalSince1970,
+        ]
+        do {
+            try session.updateApplicationContext(payload)
+            lastPush = Date()
+        } catch {
+            // Ingen aktiv Watch-forbindelse. Neste gyldige push erstatter
+            // uansett hele application context.
         }
     }
 
@@ -157,8 +187,12 @@ extension WatchSession: WCSessionDelegate {
                   !leadId.isEmpty,
                   let action = userInfo["action"] as? String,
                   !action.isEmpty,
+                  let actorUserId = userInfo["actor_user_id"] as? String,
+                  !actorUserId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   let organizationId = userInfo["organization_id"] as? String,
-                  !organizationId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                  !organizationId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  let projectId = userInfo["project_id"] as? String,
+                  !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             else {
                 Task { @MainActor in
                     self.sendQuickActionRejection(
@@ -176,7 +210,7 @@ extension WatchSession: WCSessionDelegate {
                     )
                     return
                 }
-                handler(leadId, action, organizationId, actionId)
+                handler(leadId, action, actorUserId, organizationId, projectId, actionId)
             }
             return
         }

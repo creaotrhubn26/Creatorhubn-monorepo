@@ -27,9 +27,9 @@ const META_GRAPH_VERSION = "v22.0";
 import {
   getLeadgridWaTemplate, type LeadgridWaTemplate,
 } from "./leadgrid-whatsapp-templates.js";
+import { leadgridPublicOrigin } from "./leadgrid-public-origin.js";
 
-const PORTAL_BASE = process.env.LEADGRID_PORTAL_BASE_URL
-  ?? "https://leadgrid.theroleroom.com";
+const PORTAL_BASE = leadgridPublicOrigin();
 
 export type NotificationEvent =
   | "deliverable_completed"
@@ -40,6 +40,8 @@ export type NotificationEvent =
 
 export interface NotificationData {
   customerId: string;
+  organizationId?: string;
+  projectId?: string;
   event: NotificationEvent;
   customerName?: string;
   portalToken?: string;
@@ -125,7 +127,10 @@ async function logSend(
 /** Hent WhatsApp Cloud API-config for kunden:
  *  per-org først (role_room_org_whatsapp_config), så env-fallback. */
 async function getWhatsAppConfigForCustomer(
-  pool: Pool, customerId: string,
+  pool: Pool,
+  customerId: string,
+  organizationId?: string,
+  projectId?: string,
 ): Promise<WhatsAppSenderConfig | null> {
   try {
     const r = await pool.query<{
@@ -136,12 +141,14 @@ async function getWhatsAppConfigForCustomer(
     }>(
       `SELECT w.access_token_encrypted, w.phone_number_id,
               w.display_name, w.template_language
-         FROM role_room_org_whatsapp_config w
-         JOIN casting_projects p ON p.organization_id::text = w.org_key
-         JOIN crm_customers c ON c.project_id = p.id
+         FROM crm_customers c
+         JOIN role_room_org_whatsapp_config w
+           ON w.org_key = c.organization_id::text
         WHERE c.id::text = $1
+          AND ($2::text IS NULL OR c.organization_id::text = $2)
+          AND ($3::text IS NULL OR c.project_id = $3)
         LIMIT 1`,
-      [customerId],
+      [customerId, organizationId ?? null, projectId ?? null],
     );
     if (r.rows[0]?.access_token_encrypted && r.rows[0]?.phone_number_id) {
       const row = r.rows[0];
@@ -165,12 +172,20 @@ async function getWhatsAppConfigForCustomer(
  *  Inkluderer URL-button-parameteren (portal-token) som Meta krever
  *  for hver template som har dynamisk URL-button. */
 async function sendWhatsApp(
-  pool: Pool, customerId: string, to: string,
+  pool: Pool, customerId: string,
+  organizationId: string | undefined,
+  projectId: string | undefined,
+  to: string,
   event: LeadgridWaTemplate, params: string[],
   buttonParam: string,
   language: "nb" | "en" = "nb",
 ): Promise<{ ok: boolean; messageId?: string; templateName?: string; error?: string }> {
-  const config = await getWhatsAppConfigForCustomer(pool, customerId);
+  const config = await getWhatsAppConfigForCustomer(
+    pool,
+    customerId,
+    organizationId,
+    projectId,
+  );
   if (!config) return { ok: false, error: "WhatsApp Cloud API ikke konfigurert" };
 
   const normalized = normalizePhoneE164(to);
@@ -236,7 +251,12 @@ interface EmailBranding {
 }
 
 /** Hent branding-config for kundens org, fall til global default. */
-async function getEmailBranding(pool: Pool, customerId: string): Promise<EmailBranding> {
+async function getEmailBranding(
+  pool: Pool,
+  customerId: string,
+  organizationId?: string,
+  projectId?: string,
+): Promise<EmailBranding> {
   const r = await pool.query<EmailBranding>(
     `SELECT eb.from_name, eb.from_email, eb.reply_to_email,
             eb.sender_full_name, eb.sender_title, eb.sender_phone, eb.sender_email,
@@ -244,12 +264,13 @@ async function getEmailBranding(pool: Pool, customerId: string): Promise<EmailBr
             eb.brand_accent_color, eb.footer_html, eb.footer_address,
             eb.custom_variables
        FROM crm_customers c
-       JOIN casting_projects p ON p.id = c.project_id
        LEFT JOIN leadgrid_email_branding_config eb
-              ON eb.org_key = p.organization_id::text
+              ON eb.org_key = c.organization_id::text
       WHERE c.id::text = $1
+        AND ($2::text IS NULL OR c.organization_id::text = $2)
+        AND ($3::text IS NULL OR c.project_id = $3)
       LIMIT 1`,
-    [customerId],
+    [customerId, organizationId ?? null, projectId ?? null],
   );
   if (r.rows[0]?.brand_name) return r.rows[0];
 
@@ -272,8 +293,10 @@ async function getEmailBranding(pool: Pool, customerId: string): Promise<EmailBr
 }
 
 async function sendEmail(
+  pool: Pool,
   to: string, subject: string, html: string,
   branding: EmailBranding,
+  projectId?: string,
 ): Promise<{ ok: boolean; id?: string; error?: string }> {
   try {
     const { sendTransactionalEmail } = await import("./transactional-email-service.js");
@@ -281,9 +304,16 @@ async function sendEmail(
       to, subject, html,
       text: html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
       fromLabel: branding.from_name,
-      fromAddress: branding.from_email,
+      fromAddress:
+        branding.from_email
+        ?? process.env.LEADGRID_EMAIL_FROM
+        ?? process.env.CREATORHUB_RESEND_FROM_EMAIL
+        ?? "no-reply@leadgrid.no",
       replyTo: branding.reply_to_email,
+      credentialScope: "creatorhub",
       kind: "leadgrid_client_notification",
+      projectId,
+      pool,
     });
     if (r.sent) return { ok: true, id: r.messageId ?? undefined };
     return { ok: false, error: r.errorMessage ?? r.reason ?? "Ukjent feil" };
@@ -294,7 +324,7 @@ async function sendEmail(
 
 function htmlBody(data: NotificationData, body: string, brand: EmailBranding): string {
   const portal = data.portalToken
-    ? `${PORTAL_BASE}/c/${data.portalToken}` : null;
+    ? `${PORTAL_BASE}/c/${encodeURIComponent(data.portalToken)}` : null;
 
   const brandColor = brand.brand_primary_color || "#a78bfa";
   const subject = SUBJECT_PER_EVENT[data.event](data);
@@ -497,6 +527,9 @@ function escapeHtml(s: string): string {
 export async function notifyClient(
   pool: Pool, data: NotificationData,
 ): Promise<{ attempted: number; sent: number; channels: string[] }> {
+  if (Boolean(data.organizationId) !== Boolean(data.projectId)) {
+    throw new Error("organizationId og projectId må oppgis sammen");
+  }
   // 1. Hent prefs
   const r = await pool.query<Prefs>(
     `SELECT contact_name, contact_email, contact_phone,
@@ -504,15 +537,31 @@ export async function notifyClient(
             notify_deliverable_completed, notify_focus_request_received,
             notify_score_changed, notify_new_finding, notify_monthly_report,
             unsubscribed_at::text
-       FROM client_notification_prefs
-      WHERE customer_id = $1`,
-    [data.customerId],
+       FROM client_notification_prefs prefs
+       JOIN crm_customers customer
+         ON customer.id::text = prefs.customer_id::text
+      WHERE prefs.customer_id::text = $1
+        AND ($2::text IS NULL OR customer.organization_id::text = $2)
+        AND ($3::text IS NULL OR customer.project_id = $3)`,
+    [
+      data.customerId,
+      data.organizationId ?? null,
+      data.projectId ?? null,
+    ],
   );
   if (r.rows.length === 0) {
     // Fallback: bruk kundens primær-e-post fra crm_customers
     const cr = await pool.query<{ email: string | null; name: string }>(
-      `SELECT email, name FROM crm_customers WHERE id = $1`,
-      [data.customerId],
+      `SELECT email, name
+         FROM crm_customers
+        WHERE id::text = $1
+          AND ($2::text IS NULL OR organization_id::text = $2)
+          AND ($3::text IS NULL OR project_id = $3)`,
+      [
+        data.customerId,
+        data.organizationId ?? null,
+        data.projectId ?? null,
+      ],
     );
     if (!cr.rows[0]?.email) return { attempted: 0, sent: 0, channels: [] };
     // Auto-init prefs med default-værdier (email på)
@@ -545,9 +594,15 @@ export async function notifyClient(
   // 2. E-post (m/ org-branding)
   if (prefs.notify_email && prefs.contact_email) {
     attempted++;
-    const branding = await getEmailBranding(pool, data.customerId);
-    const res = await sendEmail(prefs.contact_email, subject,
-                                  htmlBody(data, body, branding), branding);
+    const branding = await getEmailBranding(
+      pool,
+      data.customerId,
+      data.organizationId,
+      data.projectId,
+    );
+    const res = await sendEmail(pool, prefs.contact_email, subject,
+                                  htmlBody(data, body, branding), branding,
+                                  data.projectId);
     if (res.ok) { sent++; channels.push("email"); }
     await logSend(pool, data.customerId, "email", data.event,
                    prefs.contact_email, subject, body,
@@ -562,7 +617,8 @@ export async function notifyClient(
     const waEvent: LeadgridWaTemplate = `leadgrid_${data.event}` as LeadgridWaTemplate;
     const buttonParam = data.portalToken ?? "portal";
     const res = await sendWhatsApp(
-      pool, data.customerId, prefs.contact_phone, waEvent, params, buttonParam,
+      pool, data.customerId, data.organizationId, data.projectId,
+      prefs.contact_phone, waEvent, params, buttonParam,
     );
     if (res.ok) { sent++; channels.push("whatsapp"); }
     await logSend(pool, data.customerId, "whatsapp", data.event,

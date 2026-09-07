@@ -22,11 +22,19 @@ struct LeaderboardView: View {
         return ["admin", "salgssjef", "teamleder"].contains(role)
     }
 
+    private var scopeKey: String {
+        [state.activeOrganizationId, state.activeProjectId, state.roleInOrg]
+            .map { $0 ?? "" }
+            .joined(separator: "|")
+    }
+
     var body: some View {
         NavigationStack {
             Group {
                 if !hasAccess {
                     accessGate
+                } else if state.activeProjectId == nil {
+                    projectGate
                 } else {
                     content
                 }
@@ -47,7 +55,7 @@ struct LeaderboardView: View {
             .sheet(isPresented: $showTerritory) {
                 TerritoryDashboardView()
             }
-            .task { await load() }
+            .task(id: scopeKey) { await load() }
             .refreshable { await load() }
         }
     }
@@ -62,6 +70,22 @@ struct LeaderboardView: View {
             Text("Kun for admin, salgssjef og teamleder")
                 .font(.headline)
             Text("Salgskonsulent og promotør har ikke tilgang til leaderboard for å unngå intern konkurranse-press.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var projectGate: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "folder.badge.questionmark")
+                .font(.largeTitle)
+                .foregroundStyle(.secondary)
+            Text("Velg et kundeprosjekt")
+                .font(.headline)
+            Text("Leaderboardet viser bare resultater fra det aktive Leadgrid-prosjektet.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -188,9 +212,17 @@ struct LeaderboardView: View {
     @MainActor
     private func load() async {
         guard let api = state.api, let orgId = state.activeOrganizationId,
-              hasAccess else { return }
+              let projectId = state.activeProjectId, hasAccess else {
+            entries = []
+            summary = nil
+            return
+        }
         loading = true
         defer { loading = false }
+        let isCurrentScope = {
+            state.activeOrganizationId == orgId
+                && state.activeProjectId == projectId
+        }
         // Hent teams hvis tomt
         if teams.isEmpty {
             do { teams = try await api.fetchSalesTeams(orgId) } catch { /* noop */ }
@@ -198,22 +230,29 @@ struct LeaderboardView: View {
         do {
             let resp = try await api.fetchLeaderboard(
                 organizationId: orgId,
+                projectId: projectId,
                 period: period.rawValue,
                 teamId: teamFilter.isEmpty ? nil : teamFilter,
                 sort: sort.rawValue
             )
+            guard resp.projectId == projectId, isCurrentScope() else { return }
             entries = resp.leaderboard
             error = nil
         } catch {
+            guard isCurrentScope() else { return }
             self.error = String(describing: error)
         }
         do {
-            summary = try await api.fetchLeaderboardSummary(
+            let response = try await api.fetchLeaderboardSummary(
                 organizationId: orgId,
-                period: period.rawValue
+                projectId: projectId,
+                period: period.rawValue,
+                teamId: teamFilter.isEmpty ? nil : teamFilter
             )
+            guard response.projectId == projectId, isCurrentScope() else { return }
+            summary = response
         } catch {
-            // Summary er ikke kritisk
+            if isCurrentScope() { summary = nil }
         }
     }
 }

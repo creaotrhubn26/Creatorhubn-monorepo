@@ -297,7 +297,9 @@ struct LeadgridAgentSkillExecutor {
             case .enrichCompany(let leadId, let forceRefresh):
                 let enrichment = try await api.triggerEnrichment(
                     leadId: leadId,
-                    forceRefresh: forceRefresh
+                    forceRefresh: forceRefresh,
+                    projectId: projectId,
+                    organizationId: organizationId
                 )
                 guard let enrichment, enrichment.found else {
                     return .init(
@@ -318,6 +320,7 @@ struct LeadgridAgentSkillExecutor {
                 let disposition = await OfflineResilientActions.logVisit(
                     api: api,
                     organizationId: organizationId,
+                    projectId: projectId,
                     leadId: visit.leadId,
                     payload: .init(
                         visitType: visit.visitType,
@@ -336,10 +339,26 @@ struct LeadgridAgentSkillExecutor {
                 guard NetworkMonitor.shared.isOnline else {
                     return .init(state: .failed, title: "Ingen nettforbindelse", detail: "Koble til nettet og prøv synkronisering på nytt.")
                 }
-                let before = await OfflineActionQueue.shared.pendingCount(organizationId: organizationId)
-                let drain = await OfflineActionQueue.shared.drain(api: api, organizationId: organizationId)
-                let remaining = await OfflineActionQueue.shared.pendingCount(organizationId: organizationId)
-                let permanent = await OfflineActionQueue.shared.failedCount(organizationId: organizationId)
+                guard let actorUserId = await api.offlineActorUserId() else {
+                    return .init(state: .failed, title: "Innlogging må bekreftes", detail: "Logg inn på nytt før offline-handlinger synkroniseres.")
+                }
+                let before = await OfflineActionQueue.shared.pendingCount(
+                    organizationId: organizationId,
+                    actorUserId: actorUserId,
+                    projectId: projectId)
+                let drain = await OfflineActionQueue.shared.drain(
+                    api: api,
+                    organizationId: organizationId,
+                    actorUserId: actorUserId,
+                    projectId: projectId)
+                let remaining = await OfflineActionQueue.shared.pendingCount(
+                    organizationId: organizationId,
+                    actorUserId: actorUserId,
+                    projectId: projectId)
+                let permanent = await OfflineActionQueue.shared.failedCount(
+                    organizationId: organizationId,
+                    actorUserId: actorUserId,
+                    projectId: projectId)
                 return .init(
                     state: permanent > 0 ? .failed : .completed,
                     title: "Offline-synkronisering fullført",
@@ -350,6 +369,7 @@ struct LeadgridAgentSkillExecutor {
                 let disposition = await OfflineResilientActions.planFollowUp(
                     api: api,
                     organizationId: organizationId,
+                    projectId: projectId,
                     leadId: leadId,
                     payload: .init(nextFollowUpAt: at, nextAction: action),
                     actionId: Self.stableActionID(organizationId: organizationId, toolID: tool.id)

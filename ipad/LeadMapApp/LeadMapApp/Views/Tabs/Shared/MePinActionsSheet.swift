@@ -350,6 +350,10 @@ struct MePinActionsSheet: View {
             errorMessage = "Velg en organisasjon før du oppretter lead."
             return
         }
+        guard let projectId = appState.activeLeadgridProjectId else {
+            errorMessage = "Velg et kundeprosjekt før du oppretter lead."
+            return
+        }
         creatingLead = true
         errorMessage = nil
         defer { creatingLead = false }
@@ -387,7 +391,7 @@ struct MePinActionsSheet: View {
             nextAction: nil,
             locationConfidence: resolvedAddress == nil ? "unknown" : "geocoded",
             leadSource: "map_drop",
-            projectId: appState.activeProjectId,
+            projectId: projectId,
             rawText: nil,
             allowDuplicate: false
         )

@@ -13,16 +13,33 @@ import React, { useState } from "react";
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Stack, Typography,
   TextField, MenuItem, Button, Box, ToggleButtonGroup, ToggleButton,
-  Chip, Alert, CircularProgress, FormControl, RadioGroup, FormControlLabel, Radio,
+  Alert, CircularProgress, FormControl, RadioGroup, FormControlLabel, Radio,
 } from "@mui/material";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import TableViewIcon from "@mui/icons-material/TableView";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 
-interface Props { open: boolean; onClose: () => void; }
+function authHeaders(): HeadersInit {
+  const token = typeof window === "undefined"
+    ? null
+    : localStorage.getItem("rr_bearer");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
-export function LeadExportDialog({ open, onClose }: Props) {
+interface Props {
+  open: boolean;
+  onClose: () => void;
+  projectId: string;
+  projectName: string;
+}
+
+export function LeadExportDialog({
+  open,
+  onClose,
+  projectId,
+  projectName,
+}: Props) {
   const [mode, setMode] = useState<"list" | "summary">("list");
   const [format, setFormat] = useState<"csv" | "pdf">("csv");
   const [period, setPeriod] = useState<"7d" | "30d" | "90d" | "all">("30d");
@@ -33,10 +50,18 @@ export function LeadExportDialog({ open, onClose }: Props) {
   const download = async () => {
     setDownloading(true); setError(null);
     try {
+      const params = new URLSearchParams({ period, projectId });
+      if (mode === "list") {
+        params.set("format", format);
+        params.set("status", statusFilter);
+      }
       const url = mode === "summary"
-        ? `/api/leadgrid/leads/export-summary?period=${period}`
-        : `/api/leadgrid/leads/export?format=${format}&period=${period}&status=${statusFilter}`;
-      const r = await fetch(url, { credentials: "include" });
+        ? `/api/leadgrid/leads/export-summary?${params.toString()}`
+        : `/api/leadgrid/leads/export?${params.toString()}`;
+      const r = await fetch(url, {
+        credentials: "include",
+        headers: authHeaders(),
+      });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
         setError(j?.error ?? "Eksport feilet");
@@ -69,7 +94,7 @@ export function LeadExportDialog({ open, onClose }: Props) {
           <Box>
             Eksporter leads
             <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-              For rapportering, regnskap eller backup
+              Kundeprosjekt: {projectName}
             </Typography>
           </Box>
         </Stack>
@@ -148,8 +173,8 @@ export function LeadExportDialog({ open, onClose }: Props) {
 
           {mode === "summary" && (
             <Alert severity="info" icon={<AssessmentIcon />}>
-              Salgs-rapporten inkluderer din organisasjons branding (logo + farger).
-              Format: A4 portrett. Klar for ledermøtet eller å sende til styret.
+              Rapporten inneholder bare data fra {projectName} og inkluderer
+              organisasjonens branding. Format: A4 portrett.
             </Alert>
           )}
         </Stack>

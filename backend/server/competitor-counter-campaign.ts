@@ -61,7 +61,8 @@ export async function generateCounterCampaign(
   args: {
     competitorId: string;
     workspaceOwnerUserId: string;
-    organizationId?: string | null;
+    organizationId: string;
+    projectId: string;
     apiKey?: string;
   },
 ): Promise<CounterCampaign> {
@@ -70,15 +71,15 @@ export async function generateCounterCampaign(
     throw new Error("ANTHROPIC_API_KEY mangler — kan ikke generere kampanje");
   }
 
-  const scopeColumn = args.organizationId ? "organization_id" : "workspace_owner_user_id";
-  const scopeValue = args.organizationId ?? args.workspaceOwnerUserId;
   // 1. Konkurrent m/ scope-sjekk
   const cr = await pool.query<CompetitorRow>(
     `SELECT id::text, name, domain, category, positioning, primary_offer,
             threat_level, claude_threat_summary, claude_what_to_worry_about
        FROM market_scan_competitors
-      WHERE id = $1 AND ${scopeColumn} = $2`,
-    [args.competitorId, scopeValue],
+      WHERE id = $1::uuid
+        AND organization_id = $2::uuid
+        AND project_id = $3`,
+    [args.competitorId, args.organizationId, args.projectId],
   );
   if (cr.rows.length === 0) {
     throw new Error("competitor_not_found");
@@ -95,9 +96,9 @@ export async function generateCounterCampaign(
             (brand_profile->>'tone')::text AS tone,
             (brand_profile->>'target_audience')::text AS audience
        FROM brand_kits
-      WHERE workspace_owner_user_id = $1
+      WHERE project_id = $1
       ORDER BY updated_at DESC LIMIT 1`,
-    [args.workspaceOwnerUserId],
+    [args.projectId],
   );
   const myProfile = bk.rows[0]?.profile ?? "(ingen brand-kit registrert)";
   const myTone = bk.rows[0]?.tone ?? "profesjonell";
@@ -111,7 +112,7 @@ export async function generateCounterCampaign(
     messages: [
       {
         role: "user",
-        content: `Du er Role Room Agent. Generer en konkret mot-kampanje for vår bedrift
+        content: `Du er Leadgrids markedsanalytiker. Generer en konkret mot-kampanje for vår bedrift
 mot denne spesifikke konkurrenten — kampanjen skal nå konkurrentens
 potensielle kunder med tilbud de ikke kan motstå.
 
@@ -195,14 +196,66 @@ Skriv på norsk. Tone: ${myTone}.`,
     content_drafts: ContentDraft[];
     channel_mix: Array<{ channel: string; weight: number; rationale: string }>;
   };
+  const allowedDraftTypes = new Set<ContentDraft["type"]>([
+    "social_post", "email", "ad_copy", "landing_hero", "outreach_dm",
+  ]);
+  if (
+    typeof parsed.target_segment !== "string"
+    || !parsed.target_segment.trim()
+    || !Array.isArray(parsed.key_messages)
+    || !Array.isArray(parsed.content_drafts)
+    || !Array.isArray(parsed.channel_mix)
+  ) {
+    throw new Error("claude_invalid_campaign_payload");
+  }
+  const keyMessages = parsed.key_messages
+    .filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
+    .slice(0, 5)
+    .map((value) => value.trim().slice(0, 1000));
+  const contentDrafts = parsed.content_drafts
+    .filter((draft): draft is ContentDraft => Boolean(
+      draft
+      && allowedDraftTypes.has(draft.type)
+      && typeof draft.title === "string"
+      && typeof draft.body === "string"
+      && typeof draft.rationale === "string"
+      && draft.title.trim()
+      && draft.body.trim()
+    ))
+    .slice(0, 5)
+    .map((draft) => ({
+      type: draft.type,
+      title: draft.title.trim().slice(0, 500),
+      body: draft.body.trim().slice(0, 10000),
+      rationale: draft.rationale.trim().slice(0, 2000),
+    }));
+  const channelMix = parsed.channel_mix
+    .filter((item) => Boolean(
+      item
+      && typeof item.channel === "string"
+      && item.channel.trim()
+      && Number.isFinite(Number(item.weight))
+      && Number(item.weight) >= 0
+      && Number(item.weight) <= 100
+      && typeof item.rationale === "string"
+    ))
+    .slice(0, 10)
+    .map((item) => ({
+      channel: item.channel.trim().slice(0, 100),
+      weight: Number(item.weight),
+      rationale: item.rationale.trim().slice(0, 2000),
+    }));
+  if (keyMessages.length === 0 || contentDrafts.length === 0 || channelMix.length === 0) {
+    throw new Error("claude_invalid_campaign_payload");
+  }
 
   return {
     competitorName: comp.name,
     threatLevel: comp.threat_level,
-    targetSegment: parsed.target_segment,
-    keyMessages: parsed.key_messages,
-    contentDrafts: parsed.content_drafts,
-    channelMix: parsed.channel_mix,
+    targetSegment: parsed.target_segment.trim().slice(0, 2000),
+    keyMessages,
+    contentDrafts,
+    channelMix,
     generatedAt: new Date().toISOString(),
   };
 }
@@ -222,17 +275,18 @@ export async function saveCounterCampaignToWorkflow(
   args: {
     workspaceOwnerUserId: string;
     competitorId: string;
-    organizationId?: string | null;
+    organizationId: string;
+    projectId: string;
     campaign: CounterCampaign;
   },
 ): Promise<{ workflowId: string }> {
-  const scopeColumn = args.organizationId ? "organization_id" : "workspace_owner_user_id";
-  const scopeValue = args.organizationId ?? args.workspaceOwnerUserId;
   const competitor = await pool.query(
     `SELECT 1 FROM market_scan_competitors
-      WHERE id = $1::uuid AND ${scopeColumn} = $2
+      WHERE id = $1::uuid
+        AND organization_id = $2::uuid
+        AND project_id = $3
       LIMIT 1`,
-    [args.competitorId, scopeValue],
+    [args.competitorId, args.organizationId, args.projectId],
   );
   if (!competitor.rows.length) throw new Error("competitor_not_found");
 
@@ -250,18 +304,24 @@ export async function saveCounterCampaignToWorkflow(
   const wf = await pool.query<{ id: string }>(
     `INSERT INTO marketing_workflows (
        workspace_owner_user_id,
+       organization_id,
+       project_id,
        current_status,
        initiating_action,
        notes,
        next_recommended_action
      ) VALUES (
-       $1, 'campaign_draft_created', 'create_campaign', $2, $3
+       $1, $2::uuid, $3, 'campaign_draft_created', 'create_campaign', $4, $5
      )
      RETURNING id::text`,
     [
       args.workspaceOwnerUserId,
+      args.organizationId,
+      args.projectId,
       JSON.stringify({
         source: "lead_map_counter_campaign",
+        organization_id: args.organizationId,
+        project_id: args.projectId,
         competitor_id: args.competitorId,
         competitor_name: args.campaign.competitorName,
         threat_level: args.campaign.threatLevel,

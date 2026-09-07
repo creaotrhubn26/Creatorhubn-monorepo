@@ -28,7 +28,7 @@ import { sendTransactionalEmail } from "./transactional-email-service.js";
 import { publishEvent } from "./leadgrid-workflow-engine.js";
 import { applyStageChange } from "./leadgrid-deals-service.js";
 import { LEADGRID_LOGO_BUFFER } from "./leadgrid-brand-assets.js";
-import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
+import { loadAccessibleLeadgridLead } from "./leadgrid-lead-access.js";
 
 type SessionUser = {
   userId: string;
@@ -54,6 +54,9 @@ interface ProposalLine {
   description: string;
   amount_nok: number;
 }
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function parseLines(raw: unknown): ProposalLine[] {
   if (!Array.isArray(raw)) return [];
@@ -417,7 +420,6 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
   app.post("/api/leadgrid/leads/:id/proposals", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
-    const orgId = await resolveOrgIdForUser(pool, session.userId);
     const leadId = String(req.params.id ?? "");
     const body = (req.body ?? {}) as Record<string, unknown>;
     const title = typeof body.title === "string" ? body.title.trim().slice(0, 200) : "";
@@ -432,9 +434,22 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
     if (lines.length === 0) return res.status(400).json({ error: "mangler_linjer" });
 
     try {
+      const leadScope = await loadAccessibleLeadgridLead(pool, {
+        leadId,
+        userId: session.userId,
+      });
+      if (!leadScope) {
+        return res.status(404).json({ error: "lead_ikke_funnet" });
+      }
+      const orgId = leadScope.organizationId;
       const leadR = await pool.query<{ id: string; name: string; email: string | null }>(
-        `SELECT id::text, name, email FROM crm_customers WHERE id = $1::uuid LIMIT 1`,
-        [leadId],
+        `SELECT id::text, name, email
+           FROM crm_customers
+          WHERE id = $1::uuid
+            AND organization_id = $2::uuid
+            AND project_id = $3
+          LIMIT 1`,
+        [leadScope.id, orgId, leadScope.projectId],
       );
       const lead = leadR.rows[0];
       if (!lead) return res.status(404).json({ error: "lead_ikke_funnet" });
@@ -450,11 +465,18 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
         `INSERT INTO leadgrid_proposals
            (organization_id, lead_id, title, message, lines, total_amount_nok,
             valid_until, public_token, sent_to_email, sent_by_user_id)
-         VALUES ($1, $2::uuid, $3, $4, $5::jsonb, $6, $7, $8, $9, $10)
+         SELECT $1, c.id, $4, $5, $6::jsonb, $7, $8, $9, $10, $11
+           FROM crm_customers c
+          WHERE c.id = $2::uuid
+            AND c.organization_id = $1::uuid
+            AND c.project_id = $3
          RETURNING *`,
-        [orgId, leadId, title, message, JSON.stringify(lines), total,
-         validUntil, token, toEmail, session.userId],
+        [orgId, leadScope.id, leadScope.projectId, title, message,
+         JSON.stringify(lines), total, validUntil, token, toEmail, session.userId],
       );
+      if (!ins.rows[0]) {
+        return res.status(404).json({ error: "lead_ikke_funnet" });
+      }
 
       // E-post m/ offentlig lenke (Resend → SMTP-fallback, logges).
       // Org-branding (accent/navn) — best-effort, default Leadgrid-lilla.
@@ -509,9 +531,13 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
       // Stage → 'proposal' + aktivitetslogg (best-effort — tilbudet er
       // sendt uansett; stage-endring kan feile på custom-stage-orgs).
       try {
-        await applyStageChange(pool, leadId, session.userId, "proposal", {
+        await applyStageChange(pool, leadScope.id, session.userId, "proposal", {
           source: "proposal_sent",
           notes: title,
+          scope: {
+            organizationId: orgId,
+            projectId: leadScope.projectId,
+          },
         });
       } catch (err) {
         console.warn("[proposals] stage-endring feilet:", (err as Error).message);
@@ -520,9 +546,15 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
         await pool.query(
           `INSERT INTO crm_lead_activities
              (customer_id, user_id, activity_type, description, metadata)
-           VALUES ($1::uuid, $2, 'proposal_sent', $3, $4::jsonb)`,
-          [leadId, session.userId, `Tilbud sendt: ${title} (${fmtNok(total)} kr)`,
-           JSON.stringify({ proposal_id: ins.rows[0].id, total_amount_nok: total })],
+           SELECT c.id, $2, 'proposal_sent', $3, $4::jsonb
+             FROM crm_customers c
+            WHERE c.id = $1::uuid
+              AND c.organization_id = $5::uuid
+              AND c.project_id = $6`,
+          [leadScope.id, session.userId,
+           `Tilbud sendt: ${title} (${fmtNok(total)} kr)`,
+           JSON.stringify({ proposal_id: ins.rows[0].id, total_amount_nok: total }),
+           orgId, leadScope.projectId],
         );
       } catch (err) {
         console.warn("[proposals] aktivitetslogg feilet:", (err as Error).message);
@@ -544,13 +576,22 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
   app.get("/api/leadgrid/leads/:id/proposals", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
-    const orgId = await resolveOrgIdForUser(pool, session.userId);
     try {
+      const lead = await loadAccessibleLeadgridLead(pool, {
+        leadId: String(req.params.id ?? ""),
+        userId: session.userId,
+      });
+      if (!lead) return res.status(404).json({ error: "lead_ikke_funnet" });
       const r = await pool.query(
-        `SELECT * FROM leadgrid_proposals
-          WHERE lead_id = $1::uuid AND organization_id = $2
-          ORDER BY created_at DESC LIMIT 50`,
-        [String(req.params.id ?? ""), orgId],
+        `SELECT p.*
+           FROM leadgrid_proposals p
+           JOIN crm_customers c ON c.id = p.lead_id
+          WHERE p.lead_id = $1::uuid
+            AND p.organization_id = $2
+            AND c.organization_id = $2::uuid
+            AND c.project_id = $3
+          ORDER BY p.created_at DESC LIMIT 50`,
+        [lead.id, lead.organizationId, lead.projectId],
       );
       return res.json({ proposals: r.rows.map(mapProposalRow) });
     } catch (err) {
@@ -563,18 +604,45 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
   app.patch("/api/leadgrid/proposals/:id", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
-    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    const proposalId = String(req.params.id ?? "");
+    if (!UUID_PATTERN.test(proposalId)) {
+      return res.status(404).json({ error: "ikke_funnet" });
+    }
     const status = String((req.body ?? {}).status ?? "");
     if (!["accepted", "rejected", "expired"].includes(status)) {
       return res.status(400).json({ error: "ugyldig_status" });
     }
     try {
+      const proposalRef = await pool.query<{ lead_id: string }>(
+        `SELECT lead_id::text
+           FROM leadgrid_proposals
+          WHERE id = $1::uuid
+          LIMIT 1`,
+        [proposalId],
+      );
+      const leadId = proposalRef.rows[0]?.lead_id;
+      if (!leadId) return res.status(404).json({ error: "ikke_funnet" });
+      const lead = await loadAccessibleLeadgridLead(pool, {
+        leadId,
+        userId: session.userId,
+      });
+      if (!lead) return res.status(404).json({ error: "ikke_funnet" });
       const r = await pool.query(
-        `UPDATE leadgrid_proposals
+        `UPDATE leadgrid_proposals p
             SET status = $1, responded_at = NOW(), updated_at = NOW()
-          WHERE id = $2::uuid AND organization_id = $3
-          RETURNING *`,
-        [status, String(req.params.id ?? ""), orgId],
+          WHERE p.id = $2::uuid
+            AND p.organization_id = $3
+            AND p.lead_id = $4::uuid
+            AND EXISTS (
+              SELECT 1
+                FROM crm_customers c
+               WHERE c.id = p.lead_id
+                 AND c.organization_id = $3::uuid
+                 AND c.project_id = $5
+            )
+          RETURNING p.*`,
+        [status, proposalId, lead.organizationId,
+         lead.id, lead.projectId],
       );
       if (r.rowCount === 0) return res.status(404).json({ error: "ikke_funnet" });
       return res.json({ proposal: mapProposalRow(r.rows[0]) });
@@ -592,10 +660,14 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
     }
     try {
       const r = await pool.query(
-        `SELECT p.*, c.name AS lead_name
+        `SELECT p.*, c.name AS lead_name,
+                c.organization_id::text AS lead_organization_id,
+                c.project_id::text AS project_id
            FROM leadgrid_proposals p
            JOIN crm_customers c ON c.id = p.lead_id
           WHERE p.public_token = $1
+            AND c.organization_id::text = p.organization_id
+            AND c.project_id IS NOT NULL
           LIMIT 1`,
         [token],
       );
@@ -604,36 +676,58 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
 
       // Første åpning: marker opened + logg view + fyr workflow-event.
       if (row.status === "sent") {
-        await pool.query(
+        const opened = await pool.query(
           `UPDATE leadgrid_proposals
               SET status = 'opened', opened_at = NOW(), updated_at = NOW()
-            WHERE id = $1::uuid AND status = 'sent'`,
-          [row.id],
+            WHERE id = $1::uuid
+              AND status = 'sent'
+              AND organization_id = $2
+              AND lead_id = $3::uuid
+              AND EXISTS (
+                SELECT 1
+                  FROM crm_customers c
+                 WHERE c.id = $3::uuid
+                   AND c.organization_id::text = $2
+                   AND c.project_id = $4
+              )
+          RETURNING id`,
+          [
+            row.id,
+            row.lead_organization_id,
+            row.lead_id,
+            row.project_id,
+          ],
         );
-        // leadgrid_proposal_views har UUID-org — hopp over når org er
-        // slug/user-id (samme begrensning som triggers-ruta).
-        try {
-          await pool.query(
-            `INSERT INTO leadgrid_proposal_views
-               (organization_id, customer_id, proposal_id, device_type, user_agent)
-             VALUES ($1::uuid, $2::uuid, $3, 'email_link', $4)`,
-            [row.organization_id, row.lead_id, String(row.id),
-             String(req.headers["user-agent"] ?? "").slice(0, 400)],
-          );
-        } catch {
-          // org ikke uuid — view-loggen er best-effort.
+        // Samtidige/retryede åpninger taper CAS-en og skal verken skrive en
+        // ny «første visning» eller trigge workflowen på nytt.
+        if (opened.rowCount) {
+          // leadgrid_proposal_views har UUID-org — hopp over når org er
+          // slug/user-id (samme begrensning som triggers-ruta).
+          try {
+            await pool.query(
+              `INSERT INTO leadgrid_proposal_views
+                 (organization_id, project_id, customer_id, proposal_id, device_type, user_agent)
+               VALUES ($1::uuid, $2, $3::uuid, $4, 'email_link', $5)`,
+              [row.lead_organization_id, row.project_id, row.lead_id, String(row.id),
+               String(req.headers["user-agent"] ?? "").slice(0, 400)],
+            );
+          } catch {
+            // org ikke uuid — view-loggen er best-effort.
+          }
+          void publishEvent({
+            pool,
+            organizationId: String(row.lead_organization_id),
+            projectId: String(row.project_id),
+            type: "proposal.opened",
+            leadId: String(row.lead_id),
+            actorUserId: null,
+            data: {
+              proposal_id: String(row.id),
+              project_id: String(row.project_id),
+              occurred_at: new Date().toISOString(),
+            },
+          });
         }
-        void publishEvent({
-          pool,
-          organizationId: String(row.organization_id),
-          type: "proposal.opened",
-          leadId: String(row.lead_id),
-          actorUserId: null,
-          data: {
-            proposal_id: String(row.id),
-            occurred_at: new Date().toISOString(),
-          },
-        });
       }
 
       // Branding: prøv organizations-oppslag (uuid), fall til Leadgrid.

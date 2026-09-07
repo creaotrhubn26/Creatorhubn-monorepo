@@ -42,7 +42,8 @@ export async function assessCompetitorThreat(
   args: {
     competitorId: string;
     workspaceOwnerUserId: string;
-    organizationId?: string | null;
+    organizationId: string;
+    projectId: string;
     apiKey?: string;
   },
 ): Promise<CompetitorThreatAssessment> {
@@ -51,14 +52,14 @@ export async function assessCompetitorThreat(
     throw new Error("ANTHROPIC_API_KEY mangler — kan ikke kjøre threat-vurdering");
   }
 
-  const scopeColumn = args.organizationId ? "organization_id" : "workspace_owner_user_id";
-  const scopeValue = args.organizationId ?? args.workspaceOwnerUserId;
   // 1. Hent konkurrent + scope-sjekk
   const cr = await pool.query<CompetitorRow>(
     `SELECT id::text, name, domain, category, positioning, primary_offer
        FROM market_scan_competitors
-      WHERE id = $1 AND ${scopeColumn} = $2`,
-    [args.competitorId, scopeValue],
+      WHERE id = $1::uuid
+        AND organization_id = $2::uuid
+        AND project_id = $3`,
+    [args.competitorId, args.organizationId, args.projectId],
   );
   if (cr.rows.length === 0) {
     throw new Error("competitor_not_found");
@@ -69,9 +70,9 @@ export async function assessCompetitorThreat(
   const bk = await pool.query<{ profile: string | null }>(
     `SELECT (brand_profile->>'positioning_summary')::text AS profile
        FROM brand_kits
-      WHERE workspace_owner_user_id = $1
+      WHERE project_id = $1
       ORDER BY updated_at DESC LIMIT 1`,
-    [args.workspaceOwnerUserId],
+    [args.projectId],
   );
   const myProfile =
     bk.rows[0]?.profile ?? "(ingen brand-kit-summary registrert)";
@@ -84,7 +85,7 @@ export async function assessCompetitorThreat(
     messages: [
       {
         role: "user",
-        content: `Du er Role Room Agent. Vurder en konkurrent for vår egen bedrift.
+        content: `Du er Leadgrids markedsanalytiker. Vurder en konkurrent for vår egen bedrift.
 
 VÅR EGEN POSISJONERING:
 ${myProfile}
@@ -123,33 +124,54 @@ Returner strengt JSON:
     what_to_worry_about: string;
     what_to_ignore: string;
   };
+  const allowedLevels = new Set(["near", "medium", "far"]);
+  const threatScore = Number(parsed.threat_score);
+  if (
+    !allowedLevels.has(parsed.threat_level)
+    || !Number.isFinite(threatScore)
+    || threatScore < 0
+    || threatScore > 100
+  ) {
+    throw new Error("claude_invalid_threat_payload");
+  }
+  const requiredText = [
+    parsed.threat_summary,
+    parsed.what_to_worry_about,
+    parsed.what_to_ignore,
+  ];
+  if (requiredText.some((value) => typeof value !== "string" || !value.trim())) {
+    throw new Error("claude_invalid_threat_payload");
+  }
 
   // 4. Persistere på konkurrent-raden
   await pool.query(
     `UPDATE market_scan_competitors
-        SET threat_level = $3,
-            threat_score = $4,
-            claude_threat_summary = $5,
-            claude_what_to_worry_about = $6,
-            claude_what_to_ignore = $7,
+        SET threat_level = $4,
+            threat_score = $5,
+            claude_threat_summary = $6,
+            claude_what_to_worry_about = $7,
+            claude_what_to_ignore = $8,
             claude_assessed_at = NOW()
-      WHERE id = $1 AND ${scopeColumn} = $2`,
+      WHERE id = $1::uuid
+        AND organization_id = $2::uuid
+        AND project_id = $3`,
     [
       comp.id,
-      scopeValue,
+      args.organizationId,
+      args.projectId,
       parsed.threat_level,
-      parsed.threat_score,
-      parsed.threat_summary,
-      parsed.what_to_worry_about,
-      parsed.what_to_ignore,
+      threatScore,
+      parsed.threat_summary.trim().slice(0, 4000),
+      parsed.what_to_worry_about.trim().slice(0, 4000),
+      parsed.what_to_ignore.trim().slice(0, 4000),
     ],
   );
 
   return {
     threatLevel: parsed.threat_level,
-    threatScore: parsed.threat_score,
-    threatSummary: parsed.threat_summary,
-    whatToWorryAbout: parsed.what_to_worry_about,
-    whatToIgnore: parsed.what_to_ignore,
+    threatScore,
+    threatSummary: parsed.threat_summary.trim().slice(0, 4000),
+    whatToWorryAbout: parsed.what_to_worry_about.trim().slice(0, 4000),
+    whatToIgnore: parsed.what_to_ignore.trim().slice(0, 4000),
   };
 }

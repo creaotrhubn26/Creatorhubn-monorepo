@@ -4,10 +4,10 @@
  * Momentum Engine — 3 endepunkter (mig 327):
  *   GET  /api/leadgrid/momentum/today  — composite score 0-100 +
  *        breakdown + next-best-actions + trend vs i går.
- *   GET  /api/leadgrid/momentum/goal   — månedsmål for org.
+ *   GET  /api/leadgrid/momentum/goal   — månedsmål for prosjekt.
  *   POST /api/leadgrid/momentum/goal   — sett/oppdater månedsmål.
  *
- * Alle gated på `momentum.view` (set_goal på POST).
+ * Alle krever et tilgjengelig projectId og er RBAC-gated.
  */
 
 import type { Express, Request, Response } from "express";
@@ -17,42 +17,87 @@ import {
   getOrCreateGoal,
   setGoal,
   computeTodayMomentum,
-  type SalesGoal,
+  type SalesGoalPatch,
 } from "./leadgrid-momentum-service.js";
+import {
+  getLeadgridSession,
+  loadAccessibleLeadgridProject,
+  type LeadgridSession,
+} from "./leadgrid-project-access.js";
+import {
+  requestedLeadMapProjectId,
+  LeadMapProjectScopeError,
+} from "./lead-map-project-scope.js";
 
-type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
   app: Express;
   pool: Pool;
-  activeSessions: Map<string, SessionData>;
+  activeSessions: Map<string, LeadgridSession>;
 }
 
-function getSession(req: Request, activeSessions: Map<string, SessionData>) {
-  const auth = req.headers.authorization;
-  if (auth?.startsWith("Bearer ")) {
-    const s = activeSessions.get(auth.slice(7));
-    if (s) return s;
-  }
-  return null;
+type MomentumRequestScope =
+  | { organizationId: string; projectId: string }
+  | {
+      error: "invalid_project_id" | "project_id_required" | "project_not_found";
+      status: 400 | 404;
+    };
+
+const requestScopeCache = new WeakMap<Request, Promise<MomentumRequestScope>>();
+
+function resolveMomentumRequestScope(
+  req: Request,
+  pool: Pool,
+  userId: string,
+): Promise<MomentumRequestScope> {
+  const cached = requestScopeCache.get(req);
+  if (cached) return cached;
+
+  const resolution = (async (): Promise<MomentumRequestScope> => {
+    let projectId: string | null;
+    try {
+      projectId = requestedLeadMapProjectId(req);
+    } catch (error) {
+      if (error instanceof LeadMapProjectScopeError) {
+        return { error: "invalid_project_id", status: 400 };
+      }
+      throw error;
+    }
+    if (!projectId) {
+      return { error: "project_id_required", status: 400 };
+    }
+    const project = await loadAccessibleLeadgridProject(pool, projectId, userId);
+    if (!project) {
+      return { error: "project_not_found", status: 404 };
+    }
+    return {
+      organizationId: project.organizationId,
+      projectId: project.id,
+    };
+  })();
+  requestScopeCache.set(req, resolution);
+  return resolution;
 }
 
-async function resolveOrgIdSmart(
+async function resolveProjectOrgId(
   req: Request,
   pool: Pool,
   userId: string,
 ): Promise<string | null> {
-  const explicit =
-    (req.query?.organization_id
-      ?? (req.body as { organization_id?: string } | undefined)?.organization_id) as
-      | string
-      | undefined;
-  if (typeof explicit === "string" && explicit.length > 0) return explicit;
-  const r = await pool.query<{ organization_id: string }>(
-    `SELECT organization_id::text FROM organization_members
-      WHERE user_id = $1 ORDER BY joined_at ASC LIMIT 1`,
-    [userId],
-  );
-  return r.rows[0]?.organization_id ?? null;
+  try {
+    const scope = await resolveMomentumRequestScope(req, pool, userId);
+    return "error" in scope ? null : scope.organizationId;
+  } catch {
+    return null;
+  }
+}
+
+function sendScopeError(
+  scope: MomentumRequestScope,
+  res: Response,
+): scope is Extract<MomentumRequestScope, { error: string }> {
+  if (!("error" in scope)) return false;
+  res.status(scope.status).json({ error: scope.error });
+  return true;
 }
 
 export function registerLeadgridMomentumRoutes(deps: Deps): void {
@@ -60,29 +105,30 @@ export function registerLeadgridMomentumRoutes(deps: Deps): void {
   const permView = requireLeadMapPermission("momentum.view", {
     pool,
     activeSessions,
-    resolveOrgId: resolveOrgIdSmart,
+    resolveOrgId: resolveProjectOrgId,
   });
   const permSet = requireLeadMapPermission("momentum.set_goal", {
     pool,
     activeSessions,
-    resolveOrgId: resolveOrgIdSmart,
+    resolveOrgId: resolveProjectOrgId,
   });
 
   // GET /api/leadgrid/momentum/today
   app.get("/api/leadgrid/momentum/today", permView, async (req: Request, res: Response) => {
-    const session = getSession(req, activeSessions);
+    const session = getLeadgridSession(req, activeSessions);
     if (!session) {
       res.status(401).json({ error: "Innlogging kreves" });
       return;
     }
-    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-    if (!orgId) {
-      res.status(400).json({ error: "mangler_organization_id" });
-      return;
-    }
     try {
-      const momentum = await computeTodayMomentum(pool, orgId);
-      res.json({ momentum });
+      const scope = await resolveMomentumRequestScope(req, pool, session.userId);
+      if (sendScopeError(scope, res)) return;
+      const momentum = await computeTodayMomentum(
+        pool,
+        scope.organizationId,
+        scope.projectId,
+      );
+      res.json({ project_id: scope.projectId, momentum });
     } catch (err) {
       console.error("[momentum/today] feilet", err);
       res.status(500).json({ error: "compute_failed", detail: "internal_error" });
@@ -91,19 +137,20 @@ export function registerLeadgridMomentumRoutes(deps: Deps): void {
 
   // GET /api/leadgrid/momentum/goal
   app.get("/api/leadgrid/momentum/goal", permView, async (req: Request, res: Response) => {
-    const session = getSession(req, activeSessions);
+    const session = getLeadgridSession(req, activeSessions);
     if (!session) {
       res.status(401).json({ error: "Innlogging kreves" });
       return;
     }
-    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-    if (!orgId) {
-      res.status(400).json({ error: "mangler_organization_id" });
-      return;
-    }
     try {
-      const goal = await getOrCreateGoal(pool, orgId);
-      res.json({ goal });
+      const scope = await resolveMomentumRequestScope(req, pool, session.userId);
+      if (sendScopeError(scope, res)) return;
+      const goal = await getOrCreateGoal(
+        pool,
+        scope.organizationId,
+        scope.projectId,
+      );
+      res.json({ project_id: scope.projectId, goal });
     } catch (err) {
       console.error("[momentum/goal:get] feilet", err);
       res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
@@ -112,21 +159,19 @@ export function registerLeadgridMomentumRoutes(deps: Deps): void {
 
   // POST /api/leadgrid/momentum/goal
   app.post("/api/leadgrid/momentum/goal", permSet, async (req: Request, res: Response) => {
-    const session = getSession(req, activeSessions);
+    const session = getLeadgridSession(req, activeSessions);
     if (!session) {
       res.status(401).json({ error: "Innlogging kreves" });
       return;
     }
-    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-    if (!orgId) {
-      res.status(400).json({ error: "mangler_organization_id" });
-      return;
-    }
     try {
+      const scope = await resolveMomentumRequestScope(req, pool, session.userId);
+      if (sendScopeError(scope, res)) return;
       const patch = (req.body ?? {}) as Record<string, unknown> & {
-        notes?: string;
+        notes?: string | null;
       };
-      const goalPatch: Partial<SalesGoal> & { notes?: string } = {
+      const goalPatch: SalesGoalPatch = {
+        yearMonth: (patch.year_month ?? patch.yearMonth) as string | undefined,
         revenueTarget: (patch.revenue_target ?? patch.revenueTarget) as number | null | undefined,
         dealsTarget: (patch.deals_target ?? patch.dealsTarget) as number | null | undefined,
         meetingsTarget: (patch.meetings_target ?? patch.meetingsTarget) as number | null | undefined,
@@ -138,8 +183,14 @@ export function registerLeadgridMomentumRoutes(deps: Deps): void {
         monthlyLeadsNeeded: (patch.monthly_leads_needed ?? patch.monthlyLeadsNeeded) as number | null | undefined,
         notes: patch.notes,
       };
-      const goal = await setGoal(pool, orgId, session.userId, goalPatch);
-      res.json({ goal });
+      const goal = await setGoal(
+        pool,
+        scope.organizationId,
+        scope.projectId,
+        session.userId,
+        goalPatch,
+      );
+      res.json({ project_id: scope.projectId, goal });
     } catch (err) {
       console.error("[momentum/goal:post] feilet", err);
       res.status(500).json({ error: "save_failed", detail: "internal_error" });
@@ -147,16 +198,16 @@ export function registerLeadgridMomentumRoutes(deps: Deps): void {
   });
 
   // GET /api/leadgrid/momentum/trend?days=30 — siste N dager fra
-  // leadgrid_momentum_snapshots. Returnerer points + avg/best/worst +
+  // leadgrid_project_momentum_snapshots. Returnerer points + avg/best/worst +
   // directionChange (siste minus første) når vi har minst 7 dager.
   app.get("/api/leadgrid/momentum/trend", permView, async (req: Request, res: Response) => {
-    const session = getSession(req, activeSessions);
+    const session = getLeadgridSession(req, activeSessions);
     if (!session) { res.status(401).json({ error: "Innlogging kreves" }); return; }
-    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-    if (!orgId) { res.status(400).json({ error: "mangler_organization_id" }); return; }
     const parsed = parseInt(String(req.query.days ?? "30"), 10);
     const days = Math.min(180, Math.max(7, Number.isFinite(parsed) ? parsed : 30));
     try {
+      const scope = await resolveMomentumRequestScope(req, pool, session.userId);
+      if (sendScopeError(scope, res)) return;
       const r = await pool.query<{
         snapshot_date: string;
         momentum_score: string;
@@ -176,11 +227,12 @@ export function registerLeadgridMomentumRoutes(deps: Deps): void {
                 decay_score::text,
                 overdue_penalty::text,
                 contacts_today, followups_today, meetings_today, pipeline_moves_today
-           FROM leadgrid_momentum_snapshots
+           FROM leadgrid_project_momentum_snapshots
           WHERE organization_id = $1::uuid
-            AND snapshot_date >= CURRENT_DATE - ($2 || ' days')::interval
+            AND project_id = $2
+            AND snapshot_date >= CURRENT_DATE - ($3 || ' days')::interval
           ORDER BY snapshot_date ASC`,
-        [orgId, String(days)],
+        [scope.organizationId, scope.projectId, String(days)],
       );
       const points = r.rows.map((row) => ({
         date: row.snapshot_date,
@@ -203,7 +255,8 @@ export function registerLeadgridMomentumRoutes(deps: Deps): void {
         : 0;
       res.json({
         trend: {
-          organizationId: orgId,
+          organizationId: scope.organizationId,
+          projectId: scope.projectId,
           days,
           points,
           avg, best, worst,

@@ -7,6 +7,7 @@
 import SwiftUI
 
 struct LeadgridAllRecommendationsView: View {
+    @Environment(AppState.self) private var appState
     let api: APIClient
 
     @State private var recs: [LeadgridNBARecommendation] = []
@@ -24,8 +25,14 @@ struct LeadgridAllRecommendationsView: View {
             }
             .pickerStyle(.segmented)
             .listRowBackground(Color.clear)
+            .disabled(appState.activeLeadgridProjectId == nil)
 
-            if loading && recs.isEmpty {
+            if appState.activeLeadgridProjectId == nil {
+                ContentUnavailableView(
+                    "Velg kundeprosjekt",
+                    systemImage: "folder.badge.questionmark",
+                    description: Text("Anbefalinger vises bare for det aktive Leadgrid-kundeprosjektet."))
+            } else if loading && recs.isEmpty {
                 HStack { Spacer(); ProgressView(); Spacer() }
             } else if filtered.isEmpty {
                 ContentUnavailableView(
@@ -73,7 +80,7 @@ struct LeadgridAllRecommendationsView: View {
             }
         }
         .navigationTitle("Alle anbefalinger")
-        .task { await load() }
+        .task(id: appState.activeLeadgridProjectId) { await load() }
         .refreshable { await load() }
     }
 
@@ -137,8 +144,15 @@ struct LeadgridAllRecommendationsView: View {
     private func load() async {
         loading = true
         errorText = nil
+        guard let projectId = appState.activeLeadgridProjectId else {
+            recs = []
+            loading = false
+            return
+        }
         do {
-            recs = try await api.fetchNBARecommendations(limit: 200)
+            recs = try await api.fetchNBARecommendations(
+                projectId: projectId,
+                limit: 200)
         } catch {
             errorText = "Kunne ikke laste: \(error.localizedDescription)"
         }

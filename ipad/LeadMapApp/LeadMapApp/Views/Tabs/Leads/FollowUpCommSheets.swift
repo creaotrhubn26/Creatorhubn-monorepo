@@ -1,7 +1,7 @@
 // FollowUpCommSheets.swift
 //
 // Tre kommunikasjons-pickere som åpnes fra FollowUpDetailSheet:
-//   - VideoMeetingPicker:    FaceTime / Google Meet (auto-genererte lenker)
+//   - VideoMeetingPicker:    FaceTime / Google Meet (ekte tjeneste-handoff)
 //   - SMSPicker:             Vanlig SMS / WhatsApp
 //   - EmailTemplatePicker:   6 maler → velg Apple Mail / Outlook → mailto: pre-fylt
 
@@ -53,11 +53,16 @@ struct VideoMeetingPicker: View {
         }
     }
 
-    private func generatedLink() -> String {
-        let short = String(UUID().uuidString.prefix(8)).lowercased()
+    private var providerURL: URL? {
         switch selected {
-        case .facetime:   return "https://facetime.apple.com/join#v=1&p=\(short)&k=abc123"
-        case .googleMeet: return "https://meet.google.com/\(short.prefix(3))-\(short.dropFirst(3).prefix(4))-\(short.suffix(3))"
+        case .facetime:
+            let destination = lead.displayPhone ?? lead.displayEmail
+            guard let destination, !destination.isEmpty else { return nil }
+            let encoded = destination.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+                ?? destination
+            return URL(string: "facetime://\(encoded)")
+        case .googleMeet:
+            return URL(string: "https://meet.google.com/new")
         }
     }
 
@@ -76,6 +81,10 @@ struct VideoMeetingPicker: View {
                     }
                 }
                 .padding(.horizontal, 20)
+                Text("Leadgrid lager ikke en syntetisk møtelenke. Tjenesten åpnes og oppretter eller starter møtet selv.")
+                    .font(.appScaled(size: 10))
+                    .foregroundStyle(FcBrand.textSecondary)
+                    .padding(.horizontal, 20)
                 Spacer()
                 startBar
             }
@@ -158,16 +167,13 @@ struct VideoMeetingPicker: View {
 
     private var startBar: some View {
         Button {
-            let link = generatedLink()
-            if let url = URL(string: link) {
-                UIApplication.shared.open(url)
-            }
-            dismiss()
+            guard let providerURL else { return }
+            UIApplication.shared.open(providerURL)
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: selected.icon)
                     .font(.appScaled(size: 14, weight: .bold))
-                Text("Start \(selected.rawValue)-møte")
+                Text("Åpne \(selected.rawValue)")
                     .font(.appScaled(size: 14, weight: .bold))
             }
             .foregroundStyle(.white)
@@ -180,6 +186,8 @@ struct VideoMeetingPicker: View {
             )
         }
         .buttonStyle(.plain)
+        .disabled(providerURL == nil)
+        .opacity(providerURL == nil ? 0.45 : 1)
         .padding(.horizontal, 20).padding(.bottom, 20)
     }
 }
@@ -190,8 +198,17 @@ struct SMSPicker: View {
     let lead: LeadRow
     let phoneNumber: String
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selected: Channel = .sms
     @State private var quickMessage: String = ""
+    @State private var contactAttempt = LeadgridExternalContactAttempt()
+    @State private var completionPresentation = LeadgridExternalContactPresentationState()
+    @State private var completionConfirmationPresented = false
+    @State private var completionError: String?
+    @State private var completionAlertTitle = "Kunne ikke loggføre"
+    @State private var isRecordingCompletion = false
+    @State private var isOpeningExternalApp = false
 
     enum Channel: String, CaseIterable, Hashable {
         case sms = "Vanlig SMS"
@@ -220,7 +237,7 @@ struct SMSPicker: View {
         "Hei! Har du tid til en kort prat denne uka?",
         "Hei! Ringer deg om 5 min — fungerer det?",
         "Hei! Sender deg en e-post nå med info. La meg vite hva du tenker!",
-        "Hei! Bekrefter møtet vårt 10:00 i morgen. Ses!",
+        "Hei! Ville bare sjekke om tidspunktet vi avtalte fortsatt passer.",
     ]
 
     var body: some View {
@@ -249,6 +266,44 @@ struct SMSPicker: View {
             .safeAreaInset(edge: .bottom, spacing: 0) { startBar }
         }
         .presentationDetents([.medium, .large])
+        .onChange(of: scenePhase) { _, phase in
+            presentCompletionConfirmationIfPossible(phase)
+        }
+        .confirmationDialog(
+            contactAttempt.channel.map { "Ble \($0.title) sendt?" } ?? "Ble meldingen sendt?",
+            isPresented: $completionConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Ja, loggfør som sendt") {
+                Task { await recordConfirmedCompletion() }
+            }
+            Button("Nei, ikke loggfør") {
+                isOpeningExternalApp = false
+                completionPresentation.cancel()
+                contactAttempt.cancel()
+                dismiss()
+            }
+            Button("Tilbake", role: .cancel) {
+                isOpeningExternalApp = false
+                completionPresentation.cancel()
+                contactAttempt.cancel()
+            }
+        } message: {
+            Text("Å åpne en ekstern app betyr ikke at meldingen faktisk ble sendt. Leadgrid logger bare svaret ditt.")
+        }
+        .alert(completionAlertTitle, isPresented: Binding(
+            get: { completionError != nil },
+            set: { if !$0 { completionError = nil } }
+        )) {
+            if contactAttempt.canConfirmOrRetry {
+                Button("Prøv igjen") { Task { await recordConfirmedCompletion() } }
+            }
+            Button(contactAttempt.isFinalized ? "Lukk" : "OK", role: .cancel) {
+                if contactAttempt.isFinalized { dismiss() }
+            }
+        } message: {
+            Text(completionError ?? "Ukjent feil")
+        }
     }
 
     private var leadHeader: some View {
@@ -360,7 +415,6 @@ struct SMSPicker: View {
     private var startBar: some View {
         Button {
             sendMessage()
-            dismiss()
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: selected.icon)
@@ -378,6 +432,12 @@ struct SMSPicker: View {
             )
         }
         .buttonStyle(.plain)
+        .disabled(
+            isRecordingCompletion
+                || isOpeningExternalApp
+                || completionPresentation.hasPendingConfirmation
+                || completionConfirmationPresented
+                || contactAttempt.isFinalized)
         .padding(.horizontal, 20).padding(.vertical, 12)
         .background(
             FcBrand.bg.opacity(0.95)
@@ -386,27 +446,171 @@ struct SMSPicker: View {
     }
 
     private func sendMessage() {
+        guard !isOpeningExternalApp,
+              !completionPresentation.hasPendingConfirmation,
+              !completionConfirmationPresented else { return }
+        let actionId = UUID()
+        let scope = LeadgridExternalContactScope.resolve(
+            activeOrganizationId: appState.activeOrganizationId,
+            activeProjectId: appState.activeLeadgridProjectId,
+            leadId: lead.backendId,
+            leadProjectId: lead.projectId)
         let cleaned = phoneNumber.filter { $0.isNumber || $0 == "+" }
+        guard !cleaned.isEmpty else {
+            completionAlertTitle = "Kunne ikke åpne melding"
+            completionError = "Telefonnummeret er ugyldig. Ingenting er loggført."
+            return
+        }
         let encodedMsg = quickMessage.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let initiatedChannel: LeadgridExternalContactChannel
         let urlString: String
         switch selected {
         case .sms:
+            initiatedChannel = .sms
             urlString = "sms:\(cleaned)&body=\(encodedMsg)"
         case .whatsapp:
-            // WhatsApp deep-link: whatsapp://send?phone=...&text=...
+            initiatedChannel = .whatsapp
             let waPhone = cleaned.hasPrefix("+") ? String(cleaned.dropFirst()) : cleaned
             urlString = "whatsapp://send?phone=\(waPhone)&text=\(encodedMsg)"
         }
-        if let url = URL(string: urlString) {
-            UIApplication.shared.open(url) { ok in
-                if !ok {
-                    // WhatsApp ikke installert — fallback til SMS
-                    if selected == .whatsapp,
-                       let smsUrl = URL(string: "sms:\(cleaned)&body=\(encodedMsg)") {
-                        UIApplication.shared.open(smsUrl)
+        guard let url = URL(string: urlString) else {
+            completionAlertTitle = "Kunne ikke åpne melding"
+            completionError = "Meldingslenken er ugyldig. Ingenting er loggført."
+            return
+        }
+
+        completionPresentation.beginHandoff()
+        isOpeningExternalApp = true
+        UIApplication.shared.open(url) { opened in
+            Task { @MainActor in
+                if opened {
+                    isOpeningExternalApp = false
+                    contactAttempt.begin(
+                        channel: initiatedChannel,
+                        actionId: actionId,
+                        scope: scope)
+                    completionPresentation.externalAppDidOpen()
+                    completionPresentation.sceneActivityDidChange(
+                        isActive: scenePhase == .active)
+                    presentCompletionConfirmationIfPossible(scenePhase)
+                    scheduleCompletionConfirmationFallback(for: actionId)
+                    return
+                }
+                guard initiatedChannel == .whatsapp,
+                      let smsURL = URL(string: "sms:\(cleaned)&body=\(encodedMsg)") else {
+                    isOpeningExternalApp = false
+                    completionPresentation.cancel()
+                    contactAttempt.cancel()
+                    completionAlertTitle = "Kunne ikke åpne melding"
+                    completionError = "Meldingsappen kunne ikke åpnes. Ingenting er loggført."
+                    return
+                }
+                UIApplication.shared.open(smsURL) { smsOpened in
+                    Task { @MainActor in
+                        guard smsOpened else {
+                            isOpeningExternalApp = false
+                            completionPresentation.cancel()
+                            contactAttempt.cancel()
+                            completionAlertTitle = "Kunne ikke åpne melding"
+                            completionError =
+                                "Verken WhatsApp eller Meldinger kunne åpnes. Ingenting er loggført."
+                            return
+                        }
+                        isOpeningExternalApp = false
+                        contactAttempt.begin(
+                            channel: .sms,
+                            actionId: actionId,
+                            scope: scope)
+                        completionPresentation.externalAppDidOpen()
+                        completionPresentation.sceneActivityDidChange(
+                            isActive: scenePhase == .active)
+                        presentCompletionConfirmationIfPossible(scenePhase)
+                        scheduleCompletionConfirmationFallback(for: actionId)
                     }
                 }
             }
+        }
+    }
+
+    @MainActor
+    private func scheduleCompletionConfirmationFallback(for actionId: UUID) {
+        Task { @MainActor in
+            do {
+                try await Task.sleep(for: .milliseconds(750))
+            } catch {
+                return
+            }
+            guard contactAttempt.actionId == actionId,
+                  scenePhase == .active else { return }
+            if completionPresentation.consumeContinuousActiveFallback(true) {
+                completionConfirmationPresented = true
+            }
+        }
+    }
+
+    @MainActor
+    private func presentCompletionConfirmationIfPossible(_ phase: ScenePhase) {
+        completionPresentation.sceneActivityDidChange(isActive: phase == .active)
+        if completionPresentation.consumeConfirmationIfActive(phase == .active) {
+            completionConfirmationPresented = true
+        }
+    }
+
+    @MainActor
+    private func recordConfirmedCompletion() async {
+        guard !isRecordingCompletion,
+              let channel = contactAttempt.channel,
+              let actionId = contactAttempt.actionId,
+              let occurredAt = contactAttempt.occurredAt,
+              contactAttempt.canConfirmOrRetry else { return }
+        guard let record = LeadgridExternalContactRecord.make(
+            channel: channel,
+            lifecycle: .completed,
+            occurredAt: occurredAt,
+            actionId: actionId
+        ) else { return }
+        guard let scope = contactAttempt.scope else {
+            isOpeningExternalApp = false
+            completionPresentation.cancel()
+            contactAttempt.cancel()
+            completionAlertTitle = "Kan ikke loggføre sikkert"
+            completionError =
+                "Leaden mangler en entydig kobling til aktivt kundeprosjekt. Kontakten er ikke registrert."
+            return
+        }
+        guard scope.isStillActive(
+            organizationId: appState.activeOrganizationId,
+            projectId: appState.activeLeadgridProjectId
+        ) else {
+            completionAlertTitle = "Kundeprosjektet er byttet"
+            completionError =
+                "Gå tilbake til prosjektet kontakten ble startet fra og prøv loggføringen igjen."
+            return
+        }
+        guard let api = appState.api else {
+            completionAlertTitle = "Kunne ikke loggføre"
+            completionError = "Du må være innlogget. Kontakten er ikke registrert."
+            return
+        }
+        isRecordingCompletion = true
+        defer { isRecordingCompletion = false }
+        switch await record.persist(
+            api: api,
+            organizationId: scope.organizationId,
+            projectId: scope.projectId,
+            leadId: scope.leadId
+        ) {
+        case .sent:
+            await appState.refreshAll()
+            contactAttempt.finalize()
+            dismiss()
+        case .queued:
+            contactAttempt.finalize()
+            completionAlertTitle = "Lagret for synkronisering"
+            completionError = LeadgridExternalContactCopy.queuedLoggingMessage
+        case .rejected(let message):
+            completionAlertTitle = "Kunne ikke loggføre"
+            completionError = message
         }
     }
 }
@@ -417,11 +621,20 @@ struct EmailTemplatePicker: View {
     let lead: LeadRow
     let toEmail: String
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTemplate: EmailTemplate = .followUp
     @State private var subject: String = ""
     @State private var messageBody: String = ""
     @State private var emailApp: EmailApp = .appleMail
     @State private var customized: Bool = false
+    @State private var completionConfirmationPresented = false
+    @State private var contactAttempt = LeadgridExternalContactAttempt()
+    @State private var completionPresentation = LeadgridExternalContactPresentationState()
+    @State private var completionError: String?
+    @State private var completionAlertTitle = "Kunne ikke loggføre"
+    @State private var isRecordingCompletion = false
+    @State private var isOpeningExternalApp = false
 
     enum EmailTemplate: String, CaseIterable, Hashable {
         case followUp = "Vennlig oppfølging"
@@ -462,7 +675,7 @@ struct EmailTemplatePicker: View {
             }
         }
 
-        func body(lead: LeadRow, contactName: String) -> String {
+        func body(lead: LeadRow, contactName: String, senderName: String) -> String {
             let firstName = contactName.split(separator: " ").first.map(String.init) ?? contactName
             switch self {
             case .followUp:
@@ -474,8 +687,7 @@ struct EmailTemplatePicker: View {
                 Jeg er fleksibel hvis du vil ta en kort prat denne uka.
 
                 Med vennlig hilsen,
-                Lars Kristensen
-                Leadgrid · Salgssjef
+                \(senderName)
                 """
             case .proposalReminder:
                 return """
@@ -483,10 +695,10 @@ struct EmailTemplatePicker: View {
 
                 Jeg ville bare sjekke at tilbudet jeg sendte for noen dager siden kom frem og at du har hatt tid til å se på det. Hvis det er noe som er uklart eller noe du vil at jeg endrer, gi gjerne beskjed.
 
-                Vi har en god kapasitet i Q3 hvis vi skulle gå videre.
+                Hvis dere ønsker å gå videre, kan vi sammen avklare en realistisk fremdrift.
 
                 Med vennlig hilsen,
-                Lars Kristensen
+                \(senderName)
                 """
             case .quickChat:
                 return """
@@ -494,23 +706,21 @@ struct EmailTemplatePicker: View {
 
                 Har du tid til en 15-min prat denne uka? Jeg vil gjerne høre kort hva som er prioritetene deres for 2026, så jeg kan se om vi i det hele tatt passer dere best.
 
-                Foreslår: tirsdag 10:00, onsdag 14:00 eller torsdag 09:30 — passer noen?
+                Hvilke tidspunkt passer best for deg?
 
                 Mvh,
-                Lars
+                \(senderName)
                 """
             case .referenceRequest:
                 return """
                 Hei \(firstName),
 
-                Vi er i dialog med et selskap i samme bransje som dere, og de spør om referanseprosjekt. Ville det vært ok om jeg gir dem ditt navn + e-post som referanse?
-
-                De kommer trolig til å spørre kort om hvordan vi har levert hos dere.
+                Ville det vært greit at jeg kontakter deg dersom en potensiell kunde senere ønsker å høre om erfaringen deres med oss? Jeg deler ingen kontaktinformasjon uten at vi avtaler det først.
 
                 Tusen takk for å vurdere det!
 
                 Mvh,
-                Lars Kristensen
+                \(senderName)
                 """
             case .missedCall:
                 return """
@@ -521,7 +731,7 @@ struct EmailTemplatePicker: View {
                 Alternativt kan du svare med 1-2 ord på hva som passer.
 
                 Mvh,
-                Lars
+                \(senderName)
                 """
             case .meetingPrep:
                 return """
@@ -530,14 +740,13 @@ struct EmailTemplatePicker: View {
                 Ser frem til møtet vårt! For at det skal bli mest mulig nyttig, har jeg satt opp en kort agenda:
 
                 1. Kort status — der dere står i dag
-                2. Hva ville endret bildet for dere?
-                3. Demonstrasjon av løsningen
-                4. Pris og veien videre
+                2. Demonstrasjon av løsningen
+                3. Pris og veien videre
 
                 Si fra om du vil legge til noe.
 
                 Mvh,
-                Lars
+                \(senderName)
                 """
             }
         }
@@ -597,11 +806,52 @@ struct EmailTemplatePicker: View {
                 }
             }
         }
+        .onChange(of: scenePhase) { _, phase in
+            presentCompletionConfirmationIfPossible(phase)
+        }
+        .confirmationDialog(
+            "Ble e-posten sendt?",
+            isPresented: $completionConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Ja, loggfør som sendt") {
+                Task { await recordConfirmedCompletion() }
+            }
+            Button("Nei, ikke loggfør") {
+                isOpeningExternalApp = false
+                completionPresentation.cancel()
+                contactAttempt.cancel()
+                dismiss()
+            }
+            Button("Tilbake", role: .cancel) {
+                isOpeningExternalApp = false
+                completionPresentation.cancel()
+                contactAttempt.cancel()
+            }
+        } message: {
+            Text("E-postappen gir ikke Leadgrid leveringsstatus. Aktiviteten lagres bare når du bekrefter den.")
+        }
+        .alert(completionAlertTitle, isPresented: Binding(
+            get: { completionError != nil },
+            set: { if !$0 { completionError = nil } }
+        )) {
+            if contactAttempt.canConfirmOrRetry {
+                Button("Prøv igjen") { Task { await recordConfirmedCompletion() } }
+            }
+            Button(contactAttempt.isFinalized ? "Lukk" : "OK", role: .cancel) {
+                if contactAttempt.isFinalized { dismiss() }
+            }
+        } message: {
+            Text(completionError ?? "Ukjent feil")
+        }
     }
 
     private func applyTemplate(_ t: EmailTemplate) {
         subject = t.subject(lead: lead)
-        messageBody = t.body(lead: lead, contactName: lead.contactName)
+        messageBody = t.body(
+            lead: lead,
+            contactName: lead.contactName,
+            senderName: appState.displayName)
     }
 
     private var leadHeader: some View {
@@ -789,7 +1039,6 @@ struct EmailTemplatePicker: View {
     private var startBar: some View {
         Button {
             sendEmail()
-            dismiss()
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: emailApp.icon)
@@ -807,6 +1056,12 @@ struct EmailTemplatePicker: View {
             )
         }
         .buttonStyle(.plain)
+        .disabled(
+            isRecordingCompletion
+                || isOpeningExternalApp
+                || completionPresentation.hasPendingConfirmation
+                || completionConfirmationPresented
+                || contactAttempt.isFinalized)
         .padding(.horizontal, 20).padding(.vertical, 12)
         .background(
             FcBrand.bg.opacity(0.95)
@@ -815,6 +1070,15 @@ struct EmailTemplatePicker: View {
     }
 
     private func sendEmail() {
+        guard !isOpeningExternalApp,
+              !completionPresentation.hasPendingConfirmation,
+              !completionConfirmationPresented else { return }
+        let actionId = UUID()
+        let scope = LeadgridExternalContactScope.resolve(
+            activeOrganizationId: appState.activeOrganizationId,
+            activeProjectId: appState.activeLeadgridProjectId,
+            leadId: lead.backendId,
+            leadProjectId: lead.projectId)
         let encSubj = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let encBody = messageBody.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let urlString: String
@@ -826,15 +1090,146 @@ struct EmailTemplatePicker: View {
         case .gmail:
             urlString = "googlegmail://co?to=\(toEmail)&subject=\(encSubj)&body=\(encBody)"
         }
-        if let url = URL(string: urlString) {
-            UIApplication.shared.open(url) { ok in
-                if !ok {
-                    // Fallback til mailto:
-                    if let fb = URL(string: "mailto:\(toEmail)?subject=\(encSubj)&body=\(encBody)") {
-                        UIApplication.shared.open(fb)
+        guard let url = URL(string: urlString) else {
+            completionAlertTitle = "Kunne ikke åpne e-post"
+            completionError = "E-postlenken er ugyldig. Ingenting er loggført."
+            return
+        }
+
+        completionPresentation.beginHandoff()
+        isOpeningExternalApp = true
+        UIApplication.shared.open(url) { opened in
+            Task { @MainActor in
+                if opened {
+                    isOpeningExternalApp = false
+                    contactAttempt.begin(
+                        channel: .email,
+                        actionId: actionId,
+                        scope: scope)
+                    completionPresentation.externalAppDidOpen()
+                    completionPresentation.sceneActivityDidChange(
+                        isActive: scenePhase == .active)
+                    presentCompletionConfirmationIfPossible(scenePhase)
+                    scheduleCompletionConfirmationFallback(for: actionId)
+                    return
+                }
+                guard emailApp != .appleMail,
+                      let fallbackURL = URL(
+                        string: "mailto:\(toEmail)?subject=\(encSubj)&body=\(encBody)"
+                      ) else {
+                    isOpeningExternalApp = false
+                    completionPresentation.cancel()
+                    contactAttempt.cancel()
+                    completionAlertTitle = "Kunne ikke åpne e-post"
+                    completionError = "E-postappen kunne ikke åpnes. Ingenting er loggført."
+                    return
+                }
+                UIApplication.shared.open(fallbackURL) { fallbackOpened in
+                    Task { @MainActor in
+                        guard fallbackOpened else {
+                            isOpeningExternalApp = false
+                            completionPresentation.cancel()
+                            contactAttempt.cancel()
+                            completionAlertTitle = "Kunne ikke åpne e-post"
+                            completionError =
+                                "Ingen e-postapp kunne åpnes. Ingenting er loggført."
+                            return
+                        }
+                        isOpeningExternalApp = false
+                        contactAttempt.begin(
+                            channel: .email,
+                            actionId: actionId,
+                            scope: scope)
+                        completionPresentation.externalAppDidOpen()
+                        completionPresentation.sceneActivityDidChange(
+                            isActive: scenePhase == .active)
+                        presentCompletionConfirmationIfPossible(scenePhase)
+                        scheduleCompletionConfirmationFallback(for: actionId)
                     }
                 }
             }
+        }
+    }
+
+    @MainActor
+    private func scheduleCompletionConfirmationFallback(for actionId: UUID) {
+        Task { @MainActor in
+            do {
+                try await Task.sleep(for: .milliseconds(750))
+            } catch {
+                return
+            }
+            guard contactAttempt.actionId == actionId,
+                  scenePhase == .active else { return }
+            if completionPresentation.consumeContinuousActiveFallback(true) {
+                completionConfirmationPresented = true
+            }
+        }
+    }
+
+    @MainActor
+    private func presentCompletionConfirmationIfPossible(_ phase: ScenePhase) {
+        completionPresentation.sceneActivityDidChange(isActive: phase == .active)
+        if completionPresentation.consumeConfirmationIfActive(phase == .active) {
+            completionConfirmationPresented = true
+        }
+    }
+
+    @MainActor
+    private func recordConfirmedCompletion() async {
+        guard !isRecordingCompletion,
+              let actionId = contactAttempt.actionId,
+              let occurredAt = contactAttempt.occurredAt,
+              contactAttempt.canConfirmOrRetry,
+              let record = LeadgridExternalContactRecord.make(
+                channel: .email,
+                lifecycle: .completed,
+                occurredAt: occurredAt,
+                actionId: actionId)
+        else { return }
+        guard let scope = contactAttempt.scope else {
+            isOpeningExternalApp = false
+            completionPresentation.cancel()
+            contactAttempt.cancel()
+            completionAlertTitle = "Kan ikke loggføre sikkert"
+            completionError =
+                "Leaden mangler en entydig kobling til aktivt kundeprosjekt. E-posten er ikke registrert."
+            return
+        }
+        guard scope.isStillActive(
+            organizationId: appState.activeOrganizationId,
+            projectId: appState.activeLeadgridProjectId
+        ) else {
+            completionAlertTitle = "Kundeprosjektet er byttet"
+            completionError =
+                "Gå tilbake til prosjektet e-posten ble startet fra og prøv loggføringen igjen."
+            return
+        }
+        guard let api = appState.api else {
+            completionAlertTitle = "Kunne ikke loggføre"
+            completionError = "Du må være innlogget. E-posten er ikke registrert."
+            return
+        }
+        isRecordingCompletion = true
+        defer { isRecordingCompletion = false }
+        switch await record.persist(
+            api: api,
+            organizationId: scope.organizationId,
+            projectId: scope.projectId,
+            leadId: scope.leadId
+        ) {
+        case .sent:
+            await appState.refreshAll()
+            contactAttempt.finalize()
+            dismiss()
+        case .queued:
+            completionConfirmationPresented = false
+            contactAttempt.finalize()
+            completionAlertTitle = "Lagret for synkronisering"
+            completionError = LeadgridExternalContactCopy.queuedLoggingMessage
+        case .rejected(let message):
+            completionAlertTitle = "Kunne ikke loggføre"
+            completionError = message
         }
     }
 

@@ -14,10 +14,12 @@ import {
   discoveryCandidateQuerySchema,
   discoveryDecisionSchema,
   discoveryFeedbackSchema,
+  discoveryHash,
   discoveryPreviewSchema,
   discoveryRunCreateSchema,
   parseIdempotencyKey,
 } from "./leadgrid-discovery-contract.js";
+import { canonicalDiscoveryProfileBrief } from "./leadgrid-discovery-profile-brief.js";
 import {
   appendDiscoveryFeedback,
   cancelDiscoveryRun,
@@ -54,6 +56,22 @@ import {
   checkEndpointRateLimit,
   RateLimitExceededError,
 } from "./role-room-agent-ratelimit.js";
+import { marketingIntelligenceFeedbackSchema } from "./leadgrid-discovery-intelligence-contract.js";
+import {
+  generateMarketingIntelligence,
+  getMarketingIntelligence,
+  MarketingIntelligenceError,
+  reviewMarketingIntelligenceInsight,
+} from "./leadgrid-discovery-intelligence-service.js";
+import {
+  advanceDiscoveryCampaign,
+  cancelDiscoveryCampaign,
+  createDiscoveryCampaign,
+  DiscoveryCampaignError,
+  getDiscoveryCampaign,
+  listDiscoveryCampaigns,
+  retryDiscoveryCampaign,
+} from "./leadgrid-discovery-campaign-service.js";
 
 interface DiscoveryRouteDeps {
   app: Express;
@@ -141,6 +159,76 @@ const profilePatchSchema = z
     }
   });
 
+const profileBatchCreateSchema = z
+  .object({
+    profiles: z.array(profileCreateSchema).min(1).max(10),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const names = new Set<string>();
+    const territories = new Set<string>();
+    let defaultProfiles = 0;
+    value.profiles.forEach((profile, index) => {
+      const normalizedName = profile.name.trim().toLocaleLowerCase("nb-NO");
+      if (names.has(normalizedName)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["profiles", index, "name"],
+          message: "Profilnavn må være unike i samme batch.",
+        });
+      }
+      names.add(normalizedName);
+      const territoryCode = profile.brief.territory_code ?? null;
+      if (territoryCode && territories.has(territoryCode)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["profiles", index, "brief", "territory_code"],
+          message: "Territorium-koder må være unike i samme batch.",
+        });
+      }
+      if (territoryCode) territories.add(territoryCode);
+      if (profile.is_default) defaultProfiles += 1;
+    });
+    if (defaultProfiles > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["profiles"],
+        message: "Bare én profil i en batch kan være standardprofil.",
+      });
+    }
+  });
+
+const campaignCreateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120).default("Discovery-kampanje"),
+    profiles: z
+      .array(
+        z
+          .object({
+            profile_id: z.string().uuid(),
+            expected_version: z.number().int().min(1),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(10),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const profileIds = value.profiles.map((profile) => profile.profile_id);
+    if (new Set(profileIds).size !== profileIds.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["profiles"],
+        message: "En profil kan bare forekomme én gang i kampanjen.",
+      });
+    }
+  });
+
+const campaignListSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(20).default(5),
+});
+
 interface ProfileRow {
   id: string;
   organization_id: string;
@@ -154,6 +242,9 @@ interface ProfileRow {
   geography_lng: string | number | null;
   geography_radius_km: number;
   brief: Record<string, unknown>;
+  company_size_min: number | null;
+  company_size_max: number | null;
+  desired_signals: unknown[];
   source_config: Record<string, unknown>;
   approval_mode: string;
   max_candidates_per_run: number;
@@ -180,8 +271,9 @@ interface ProfileScheduleRow {
 const PROFILE_COLUMNS = `
   id::text, organization_id::text, project_id, name, is_default, status,
   target_customer_types, city_filters, geography_lat::text,
-  geography_lng::text, geography_radius_km, brief, source_config, approval_mode,
-  max_candidates_per_run, enrichment_count,
+  geography_lng::text, geography_radius_km, company_size_min, company_size_max,
+  brief, desired_signals, source_config, approval_mode, max_candidates_per_run,
+  enrichment_count,
   auto_discover_enabled, schedule_cron, schedule_timezone,
   last_run_at, next_run_at, version, created_at, updated_at`;
 
@@ -203,33 +295,7 @@ function profilePlacesDetailsEnabled(value: unknown): boolean {
 }
 
 function profileDto(row: ProfileRow) {
-  const latitude =
-    row.geography_lat === null ? null : Number(row.geography_lat);
-  const longitude =
-    row.geography_lng === null ? null : Number(row.geography_lng);
-  const storedBrief = row.brief ?? {};
-  const geo =
-    latitude !== null && longitude !== null
-      ? {
-          latitude,
-          longitude,
-          radius_km: row.geography_radius_km,
-        }
-      : null;
-  const city = row.city_filters[0] ?? (geo ? null : "Norge");
-  const minimumFitScore =
-    typeof storedBrief.minimum_fit_score === "number"
-      ? storedBrief.minimum_fit_score
-      : Number.NaN;
-  const idealCustomer =
-    typeof storedBrief.ideal_customer === "string" &&
-    storedBrief.ideal_customer.trim()
-      ? storedBrief.ideal_customer.trim()
-      : null;
-  const goal =
-    typeof storedBrief.goal === "string" && storedBrief.goal.trim()
-      ? storedBrief.goal.trim()
-      : null;
+  const canonicalBrief = canonicalDiscoveryProfileBrief(row);
   return {
     id: row.id,
     organization_id: row.organization_id,
@@ -237,26 +303,7 @@ function profileDto(row: ProfileRow) {
     name: row.name,
     is_default: row.is_default,
     status: row.status,
-    brief: {
-      industry_queries: row.target_customer_types,
-      exclusion_terms: Array.isArray(storedBrief.exclusion_terms)
-        ? storedBrief.exclusion_terms.filter(
-            (term): term is string => typeof term === "string",
-          )
-        : [],
-      city,
-      geo,
-      target_count: row.max_candidates_per_run,
-      enrichment_count: row.enrichment_count,
-      minimum_fit_score:
-        Number.isInteger(minimumFitScore) &&
-        minimumFitScore >= 0 &&
-        minimumFitScore <= 100
-          ? minimumFitScore
-          : 50,
-      ideal_customer: idealCustomer,
-      goal,
-    },
+    brief: canonicalBrief,
     // Rules-based approval is deliberately not part of the public contract.
     // Existing rows are rendered fail-closed until a real rules engine ships.
     approval_mode: "manual" as const,
@@ -289,6 +336,17 @@ function firstZodField(error: ZodError): string | undefined {
 }
 
 function handleRouteError(res: Response, error: unknown): void {
+  if (error instanceof DiscoveryCampaignError) {
+    sendError(
+      res,
+      error.status,
+      error.code,
+      error.message,
+      error.retryable,
+      error.field,
+    );
+    return;
+  }
   if (error instanceof RouteFailure) {
     sendError(
       res,
@@ -319,6 +377,10 @@ function handleRouteError(res: Response, error: unknown): void {
     sendError(res, error.status, error.code, error.message, error.retryable);
     return;
   }
+  if (error instanceof MarketingIntelligenceError) {
+    sendError(res, error.status, error.code, error.message, error.retryable);
+    return;
+  }
   if (error instanceof ZodError) {
     sendError(
       res,
@@ -332,7 +394,12 @@ function handleRouteError(res: Response, error: unknown): void {
   }
   const pgCode = (error as { code?: unknown } | null)?.code;
   if (pgCode === "23505") {
-    sendError(res, 409, "profile_conflict", "Profilnavnet er allerede i bruk.");
+    sendError(
+      res,
+      409,
+      "profile_conflict",
+      "Profilnavnet eller territoriet er allerede i bruk.",
+    );
     return;
   }
   console.error("[leadgrid-discovery] route failed", error);
@@ -498,12 +565,50 @@ async function transaction<T>(
 }
 
 function profileValues(brief: z.infer<typeof discoveryBriefSchema>) {
+  const desiredSignals: Array<Record<string, unknown>> = [];
+  if (brief.organization_structure !== "any") {
+    desiredSignals.push({
+      key: "organization_structure",
+      value: brief.organization_structure,
+      unknown_values_are_retained: true,
+    });
+  }
+  if (brief.website_requirement !== "any") {
+    desiredSignals.push({
+      key: "website_presence",
+      value: brief.website_requirement,
+      source: "brreg_registered_homepage",
+    });
+  }
+  if (brief.website_quality.minimum_score !== null) {
+    desiredSignals.push({
+      key: "website_quality",
+      minimum_score: brief.website_quality.minimum_score,
+      assessment: "safe_registered_url_crawl",
+      unknown_values_are_retained: true,
+    });
+  }
+  if (brief.commercial_signals.registered_in_vat_register !== null) {
+    desiredSignals.push({
+      key: "registered_in_vat_register",
+      value: brief.commercial_signals.registered_in_vat_register,
+    });
+  }
+  if (brief.commercial_signals.registered_in_business_register !== null) {
+    desiredSignals.push({
+      key: "registered_in_business_register",
+      value: brief.commercial_signals.registered_in_business_register,
+    });
+  }
   return {
     targetCustomerTypes: brief.industry_queries,
-    cityFilters: brief.city ? [brief.city] : [],
+    cityFilters: brief.city ? [brief.city] : brief.municipality_names,
     latitude: brief.geo?.latitude ?? null,
     longitude: brief.geo?.longitude ?? null,
     radiusKm: brief.geo?.radius_km ?? 25,
+    companySizeMin: brief.employee_count?.minimum ?? null,
+    companySizeMax: brief.employee_count?.maximum ?? null,
+    desiredSignals,
     targetCount: brief.target_count,
     enrichmentCount: brief.enrichment_count,
     exclusionRules: { terms: brief.exclusion_terms },
@@ -537,6 +642,21 @@ export function registerLeadgridDiscoveryRoutes({
 }: DiscoveryRouteDeps): void {
   const permission = createDiscoveryPermissionMiddleware(
     "lead_research.run",
+    pool,
+    activeSessions,
+  );
+  const marketingInsightViewPermission = createDiscoveryPermissionMiddleware(
+    "marketing.discovery_insights.view",
+    pool,
+    activeSessions,
+  );
+  const marketingInsightRunPermission = createDiscoveryPermissionMiddleware(
+    "marketing.discovery_insights.run",
+    pool,
+    activeSessions,
+  );
+  const marketingInsightReviewPermission = createDiscoveryPermissionMiddleware(
+    "marketing.discovery_insights.review",
     pool,
     activeSessions,
   );
@@ -646,6 +766,117 @@ export function registerLeadgridDiscoveryRoutes({
     }),
   );
 
+  app.post(
+    `${base}/campaign-runs`,
+    permission,
+    wrapped(async (req, res) => {
+      const context = await contextFor(req, res, pool, activeSessions);
+      if (!context) return;
+      const idempotencyKey = requiredIdempotencyKey(req, res);
+      if (!idempotencyKey) return;
+      const body = campaignCreateSchema.parse(req.body ?? {});
+      const result = await createDiscoveryCampaign(pool, {
+        project: context.project,
+        userId: context.userId,
+        name: body.name,
+        profiles: body.profiles.map((profile) => ({
+          profileId: profile.profile_id,
+          expectedVersion: profile.expected_version,
+        })),
+        idempotencyKey,
+      });
+      res.status(result.replayed ? 200 : 202).json(result);
+    }),
+  );
+
+  app.get(
+    `${base}/campaign-runs`,
+    permission,
+    wrapped(async (req, res) => {
+      const context = await contextFor(req, res, pool, activeSessions);
+      if (!context) return;
+      const query = campaignListSchema.parse(req.query);
+      res.json(
+        await listDiscoveryCampaigns(pool, {
+          project: context.project,
+          limit: query.limit,
+        }),
+      );
+    }),
+  );
+
+  app.get(
+    `${base}/campaign-runs/:campaignRunId`,
+    permission,
+    wrapped(async (req, res) => {
+      const context = await contextFor(req, res, pool, activeSessions);
+      if (!context) return;
+      res.json(
+        await getDiscoveryCampaign(pool, {
+          project: context.project,
+          campaignId: parseUuid(req.params.campaignRunId, "campaignRunId"),
+        }),
+      );
+    }),
+  );
+
+  app.post(
+    `${base}/campaign-runs/:campaignRunId/advance`,
+    permission,
+    wrapped(async (req, res) => {
+      const context = await contextFor(req, res, pool, activeSessions);
+      if (!context) return;
+      const idempotencyKey = requiredIdempotencyKey(req, res);
+      if (!idempotencyKey) return;
+      res.status(202).json(
+        await advanceDiscoveryCampaign(pool, {
+          project: context.project,
+          userId: context.userId,
+          campaignId: parseUuid(req.params.campaignRunId, "campaignRunId"),
+          idempotencyKey,
+        }),
+      );
+    }),
+  );
+
+  app.post(
+    `${base}/campaign-runs/:campaignRunId/retry`,
+    permission,
+    wrapped(async (req, res) => {
+      const context = await contextFor(req, res, pool, activeSessions);
+      if (!context) return;
+      const idempotencyKey = requiredIdempotencyKey(req, res);
+      if (!idempotencyKey) return;
+      res.status(202).json(
+        await retryDiscoveryCampaign(pool, {
+          project: context.project,
+          userId: context.userId,
+          campaignId: parseUuid(req.params.campaignRunId, "campaignRunId"),
+          idempotencyKey,
+        }),
+      );
+    }),
+  );
+
+  app.post(
+    `${base}/campaign-runs/:campaignRunId/cancel`,
+    permission,
+    wrapped(async (req, res) => {
+      const context = await contextFor(req, res, pool, activeSessions);
+      if (!context) return;
+      const idempotencyKey = requiredIdempotencyKey(req, res);
+      if (!idempotencyKey) return;
+      res.status(202).json(
+        await cancelDiscoveryCampaign(pool, {
+          project: context.project,
+          userId: context.userId,
+          campaignId: parseUuid(req.params.campaignRunId, "campaignRunId"),
+          idempotencyKey,
+        }),
+      );
+    }),
+  );
+
   app.get(
     `${base}/runs/:runId/candidates`,
     permission,
@@ -696,6 +927,7 @@ export function registerLeadgridDiscoveryRoutes({
           project: context.project,
           runId: parseUuid(req.params.runId, "runId"),
           candidateId: parseUuid(req.params.candidateId, "candidateId"),
+          userId: context.userId,
         }),
       );
     }),
@@ -760,6 +992,80 @@ export function registerLeadgridDiscoveryRoutes({
   );
 
   app.get(
+    `${base}/runs/:runId/marketing-intelligence`,
+    marketingInsightViewPermission,
+    wrapped(async (req, res) => {
+      const context = await contextFor(req, res, pool, activeSessions);
+      if (!context) return;
+      res.json(
+        await getMarketingIntelligence(pool, {
+          project: context.project,
+          runId: parseUuid(req.params.runId, "runId"),
+        }),
+      );
+    }),
+  );
+
+  app.post(
+    `${base}/runs/:runId/marketing-intelligence`,
+    marketingInsightRunPermission,
+    wrapped(async (req, res) => {
+      const context = await contextFor(req, res, pool, activeSessions);
+      if (!context) return;
+      const idempotencyKey = requiredIdempotencyKey(req, res);
+      if (!idempotencyKey) return;
+      try {
+        checkEndpointRateLimit(
+          context.userId,
+          "leadgrid_discovery_marketing_intelligence",
+          4,
+        );
+      } catch (error) {
+        if (error instanceof RateLimitExceededError) {
+          res.setHeader("Retry-After", String(error.retryAfterSeconds));
+          sendError(
+            res,
+            429,
+            "marketing_intelligence_rate_limited",
+            "Du har generert flere rapporter på kort tid. Vent litt og prøv igjen.",
+            true,
+          );
+          return;
+        }
+        throw error;
+      }
+      const result = await generateMarketingIntelligence(pool, {
+        project: context.project,
+        runId: parseUuid(req.params.runId, "runId"),
+        userId: context.userId,
+        idempotencyKey,
+      });
+      res.status(result.replayed ? 200 : 201).json(result);
+    }),
+  );
+
+  app.post(
+    `${base}/runs/:runId/marketing-intelligence/:reportId/insights/:insightId/feedback`,
+    marketingInsightReviewPermission,
+    wrapped(async (req, res) => {
+      const context = await contextFor(req, res, pool, activeSessions);
+      if (!context) return;
+      const idempotencyKey = requiredIdempotencyKey(req, res);
+      if (!idempotencyKey) return;
+      const result = await reviewMarketingIntelligenceInsight(pool, {
+        project: context.project,
+        runId: parseUuid(req.params.runId, "runId"),
+        reportId: parseUuid(req.params.reportId, "reportId"),
+        insightId: parseUuid(req.params.insightId, "insightId"),
+        userId: context.userId,
+        idempotencyKey,
+        feedback: marketingIntelligenceFeedbackSchema.parse(req.body ?? {}),
+      });
+      res.status(result.replayed ? 200 : 201).json(result);
+    }),
+  );
+
+  app.get(
     `${base}/profiles`,
     permission,
     wrapped(async (req, res) => {
@@ -775,6 +1081,196 @@ export function registerLeadgridDiscoveryRoutes({
         [context.project.organizationId, context.project.id],
       );
       res.json({ profiles: result.rows.map(profileDto) });
+    }),
+  );
+
+  app.post(
+    `${base}/profiles/batch`,
+    permission,
+    wrapped(async (req, res) => {
+      const context = await contextFor(req, res, pool, activeSessions);
+      if (!context) return;
+      const idempotencyKey = requiredIdempotencyKey(req, res);
+      if (!idempotencyKey) return;
+      const body = profileBatchCreateSchema.parse(req.body ?? {});
+      const prepared = body.profiles.map((profile) => {
+        const validatedNext = validatedNextRunAt(
+          profile.schedule_cron,
+          profile.schedule_timezone,
+        );
+        return {
+          profile,
+          values: profileValues(profile.brief),
+          nextRunAt:
+            profile.auto_discover_enabled && profile.status === "active"
+              ? validatedNext.toISOString()
+              : null,
+        };
+      });
+      const requestHash = discoveryHash(body);
+      const result = await transaction(pool, async (client) => {
+        await client.query(
+          `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+          [
+            [
+              context.project.organizationId,
+              context.project.id,
+              "discovery_profile_batch",
+              idempotencyKey,
+            ].join("|"),
+          ],
+        );
+        const replay = await client.query<{
+          request_hash: string;
+          profile_ids: string[];
+        }>(
+          `SELECT request_hash, profile_ids
+             FROM leadgrid_discovery_profile_batches
+            WHERE organization_id = $1::uuid
+              AND project_id = $2
+              AND idempotency_key = $3
+            FOR UPDATE`,
+          [context.project.organizationId, context.project.id, idempotencyKey],
+        );
+        const replayRow = replay.rows[0];
+        if (replayRow) {
+          if (replayRow.request_hash !== requestHash) {
+            throw new RouteFailure(
+              409,
+              "idempotency_conflict",
+              "Idempotency-Key er allerede brukt med et annet profiloppsett.",
+            );
+          }
+          const existing = await client.query<ProfileRow>(
+            `SELECT ${PROFILE_COLUMNS}
+               FROM leadgrid_discovery_profiles
+              WHERE organization_id = $1::uuid
+                AND project_id = $2
+                AND id = ANY($3::uuid[])
+              ORDER BY array_position($3::uuid[], id)`,
+            [
+              context.project.organizationId,
+              context.project.id,
+              replayRow.profile_ids,
+            ],
+          );
+          if (existing.rows.length !== replayRow.profile_ids.length) {
+            throw new RouteFailure(
+              409,
+              "idempotency_replay_unavailable",
+              "En tidligere profilbatch kan ikke spilles av fordi en profil mangler.",
+            );
+          }
+          return { rows: existing.rows, replayed: true };
+        }
+
+        await lockAutoDiscoveryProfileGovernance(
+          client,
+          context.project.organizationId,
+        );
+        if (prepared.some(({ profile }) => profile.is_default)) {
+          await client.query(
+            `UPDATE leadgrid_discovery_profiles
+                SET is_default = FALSE, version = version + 1,
+                    updated_by = $3
+              WHERE organization_id = $1::uuid
+                AND project_id = $2
+                AND is_default = TRUE
+                AND status <> 'archived'`,
+            [
+              context.project.organizationId,
+              context.project.id,
+              context.userId,
+            ],
+          );
+        }
+        const rows: ProfileRow[] = [];
+        for (const item of prepared) {
+          const { profile, values, nextRunAt } = item;
+          if (profile.auto_discover_enabled && profile.status === "active") {
+            await assertAutoDiscoveryProfileCapacity(client, {
+              organizationId: context.project.organizationId,
+            });
+          }
+          const inserted = await client.query<ProfileRow>(
+            `INSERT INTO leadgrid_discovery_profiles (
+               organization_id, project_id, name, is_default, status,
+               target_customer_types, city_filters, geography_lat,
+               geography_lng, geography_radius_km, company_size_min,
+               company_size_max, brief, desired_signals, exclusion_rules,
+               source_config, approval_mode, approval_rules,
+               max_candidates_per_run, enrichment_count, auto_discover_enabled,
+               schedule_cron, schedule_timezone, next_run_at, created_by, updated_by
+             ) VALUES (
+               $1::uuid, $2, $3, $4, $5, $6::text[], $7::text[],
+               $8::numeric, $9::numeric, $10, $11, $12, $13::jsonb,
+               $14::jsonb, $15::jsonb, $16::jsonb, $17, $18::jsonb,
+               $19, $20, $21, $22, $23, $24::timestamptz, $25, $25
+             ) RETURNING ${PROFILE_COLUMNS}`,
+            [
+              context.project.organizationId,
+              context.project.id,
+              profile.name,
+              profile.is_default,
+              profile.status,
+              values.targetCustomerTypes,
+              values.cityFilters,
+              values.latitude,
+              values.longitude,
+              values.radiusKm,
+              values.companySizeMin,
+              values.companySizeMax,
+              JSON.stringify(profile.brief),
+              JSON.stringify(values.desiredSignals),
+              JSON.stringify(values.exclusionRules),
+              JSON.stringify({
+                brreg_open_data: { enabled: true },
+                google_places: {
+                  enabled: profile.places_details_enabled,
+                  mode: "transient_details_only",
+                },
+              }),
+              profile.approval_mode,
+              JSON.stringify({}),
+              values.targetCount,
+              values.enrichmentCount,
+              profile.auto_discover_enabled,
+              profile.schedule_cron,
+              profile.schedule_timezone,
+              nextRunAt,
+              context.userId,
+            ],
+          );
+          if (!inserted.rows[0]) {
+            throw new RouteFailure(
+              500,
+              "profile_create_failed",
+              "Discovery-profilen kunne ikke opprettes.",
+              true,
+            );
+          }
+          rows.push(inserted.rows[0]);
+        }
+        await client.query(
+          `INSERT INTO leadgrid_discovery_profile_batches (
+             organization_id, project_id, idempotency_key, request_hash,
+             profile_ids, created_by
+           ) VALUES ($1::uuid, $2, $3, $4, $5::uuid[], $6)`,
+          [
+            context.project.organizationId,
+            context.project.id,
+            idempotencyKey,
+            requestHash,
+            rows.map((row) => row.id),
+            context.userId,
+          ],
+        );
+        return { rows, replayed: false };
+      });
+      res.status(result.replayed ? 200 : 201).json({
+        profiles: result.rows.map(profileDto),
+        replayed: result.replayed,
+      });
     }),
   );
 
@@ -820,15 +1316,16 @@ export function registerLeadgridDiscoveryRoutes({
           `INSERT INTO leadgrid_discovery_profiles (
              organization_id, project_id, name, is_default, status,
              target_customer_types, city_filters, geography_lat,
-             geography_lng, geography_radius_km, brief, exclusion_rules,
-             source_config, approval_mode, approval_rules, max_candidates_per_run,
-             enrichment_count, auto_discover_enabled, schedule_cron,
-             schedule_timezone, next_run_at, created_by, updated_by
+             geography_lng, geography_radius_km, company_size_min,
+             company_size_max, brief, desired_signals, exclusion_rules,
+             source_config, approval_mode, approval_rules,
+             max_candidates_per_run, enrichment_count, auto_discover_enabled,
+             schedule_cron, schedule_timezone, next_run_at, created_by, updated_by
            ) VALUES (
              $1::uuid, $2, $3, $4, $5, $6::text[], $7::text[],
-             $8::numeric, $9::numeric, $10, $11::jsonb, $12::jsonb,
-             $13::jsonb, $14, $15::jsonb, $16, $17, $18, $19, $20,
-             $21::timestamptz, $22, $22
+             $8::numeric, $9::numeric, $10, $11, $12, $13::jsonb,
+             $14::jsonb, $15::jsonb, $16::jsonb, $17, $18::jsonb,
+             $19, $20, $21, $22, $23, $24::timestamptz, $25, $25
            ) RETURNING ${PROFILE_COLUMNS}`,
           [
             context.project.organizationId,
@@ -841,7 +1338,10 @@ export function registerLeadgridDiscoveryRoutes({
             values.latitude,
             values.longitude,
             values.radiusKm,
+            values.companySizeMin,
+            values.companySizeMax,
             JSON.stringify(body.brief),
+            JSON.stringify(values.desiredSignals),
             JSON.stringify(values.exclusionRules),
             JSON.stringify({
               brreg_open_data: { enabled: true },
@@ -1010,7 +1510,14 @@ export function registerLeadgridDiscoveryRoutes({
           set("geography_lat", values.latitude, "::numeric");
           set("geography_lng", values.longitude, "::numeric");
           set("geography_radius_km", values.radiusKm);
+          set("company_size_min", values.companySizeMin);
+          set("company_size_max", values.companySizeMax);
           set("brief", JSON.stringify(body.brief), "::jsonb");
+          set(
+            "desired_signals",
+            JSON.stringify(values.desiredSignals),
+            "::jsonb",
+          );
           set(
             "exclusion_rules",
             JSON.stringify(values.exclusionRules),

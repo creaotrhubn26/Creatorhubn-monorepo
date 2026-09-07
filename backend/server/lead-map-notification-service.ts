@@ -17,6 +17,7 @@
 import type { Pool } from "pg";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
 import { sendAPNs } from "./lead-map-apns-client.js";
+import { leadgridPublicOrigin } from "./leadgrid-public-origin.js";
 
 export type NotificationEventType =
   | "lead_assigned"
@@ -28,7 +29,8 @@ export type NotificationEventType =
 interface DispatchArgs {
   pool: Pool;
   recipientUserId: string;
-  organizationId: string | null;
+  organizationId: string;
+  projectId: string;
   eventType: NotificationEventType;
   title: string;
   body: string;
@@ -44,6 +46,13 @@ interface DispatchResult {
   emailSent: boolean;
   apnsSent: boolean;
   reason?: string;
+}
+
+export function leadgridLeadDeepLink(projectId: string, leadId: string): string {
+  const url = new URL("/admin-room", leadgridPublicOrigin());
+  url.searchParams.set("projectId", projectId);
+  url.searchParams.set("lead", leadId);
+  return url.toString();
 }
 
 /**
@@ -97,7 +106,7 @@ export async function dispatchNotification(
   args: DispatchArgs,
 ): Promise<DispatchResult> {
   const {
-    pool, recipientUserId, organizationId, eventType,
+    pool, recipientUserId, organizationId, projectId, eventType,
     title, body, leadId, visitId, triggeredByUserId,
     deepLink, meta,
   } = args;
@@ -105,13 +114,13 @@ export async function dispatchNotification(
   // 1. ALLTID lagre in-app event
   const insertRes = await pool.query<{ id: string }>(
     `INSERT INTO notification_events (
-       recipient_user_id, organization_id, event_type,
+       recipient_user_id, organization_id, project_id, event_type,
        title, body, lead_id, visit_id,
        triggered_by_user_id, deep_link, meta
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      RETURNING id::text`,
     [
-      recipientUserId, organizationId, eventType,
+      recipientUserId, organizationId, projectId, eventType,
       title, body, leadId ?? null, visitId ?? null,
       triggeredByUserId ?? null, deepLink ?? null,
       meta ?? {},
@@ -135,6 +144,7 @@ export async function dispatchNotification(
     for (const t of tokRes.rows) {
       const r = await deliverAPNs(t.token, title, body, {
         event_type: eventType,
+        project_id: projectId,
         ...(leadId ? { lead_id: leadId } : {}),
         ...(deepLink ? { deep_link: deepLink } : {}),
         notification_id: notificationId,
@@ -191,8 +201,11 @@ export async function dispatchNotification(
   await pool.query(
     `UPDATE notification_events
         SET email_sent = $2, apns_sent = $3
-      WHERE id = $1`,
-    [notificationId, emailSent, apnsSent],
+      WHERE id = $1
+        AND recipient_user_id = $4
+        AND organization_id = $5::uuid
+        AND project_id = $6`,
+    [notificationId, emailSent, apnsSent, recipientUserId, organizationId, projectId],
   );
 
   return { notificationId, emailSent, apnsSent };
@@ -214,13 +227,22 @@ export async function notifyLeadAssigned(
   // Hent lead-info for å bygge nyttig melding
   const r = await pool.query<{
     name: string; address: string | null; city: string | null;
-    organization_id: string | null;
+    organization_id: string;
+    project_id: string;
   }>(
-    `SELECT c.name, c.address, c.city, cp.organization_id::text
+    `SELECT c.name, c.address, c.city,
+            c.organization_id::text,
+            c.project_id::text
        FROM crm_customers c
-       LEFT JOIN leadgrid_projects cp ON cp.id = c.project_id
-      WHERE c.id = $1 LIMIT 1`,
-    [args.leadId],
+       JOIN leadgrid_projects project
+         ON project.id = c.project_id
+        AND project.organization_id = c.organization_id
+      WHERE c.id = $1::uuid
+        AND c.assigned_user_id::text = $2
+        AND c.organization_id IS NOT NULL
+        AND c.project_id IS NOT NULL
+      LIMIT 1`,
+    [args.leadId, args.toUserId],
   );
   const lead = r.rows[0];
   if (!lead) return;
@@ -228,7 +250,8 @@ export async function notifyLeadAssigned(
   await dispatchNotification({
     pool,
     recipientUserId: args.toUserId,
-    organizationId: lead.organization_id ?? null,
+    organizationId: lead.organization_id,
+    projectId: lead.project_id,
     eventType: "lead_assigned",
     title: `Ny lead tildelt deg: ${lead.name}`,
     body: locationFragment
@@ -236,7 +259,7 @@ export async function notifyLeadAssigned(
       : `${lead.name} er tildelt deg. Åpne Min dag-listen.`,
     leadId: args.leadId,
     triggeredByUserId: args.triggeredByUserId,
-    deepLink: `https://theroleroom.com/admin-room?lead=${args.leadId}`,
+    deepLink: leadgridLeadDeepLink(lead.project_id, args.leadId),
   });
 }
 
@@ -252,12 +275,20 @@ export async function notifyStatusChanged(
   // Hent assigned_user + org_id
   const r = await pool.query<{
     name: string; assigned_user_id: string | null;
-    organization_id: string | null;
+    organization_id: string;
+    project_id: string;
   }>(
-    `SELECT c.name, c.assigned_user_id, cp.organization_id::text
+    `SELECT c.name, c.assigned_user_id,
+            c.organization_id::text,
+            c.project_id::text
        FROM crm_customers c
-       LEFT JOIN leadgrid_projects cp ON cp.id = c.project_id
-      WHERE c.id = $1 LIMIT 1`,
+       JOIN leadgrid_projects project
+         ON project.id = c.project_id
+        AND project.organization_id = c.organization_id
+      WHERE c.id = $1::uuid
+        AND c.organization_id IS NOT NULL
+        AND c.project_id IS NOT NULL
+      LIMIT 1`,
     [args.leadId],
   );
   const lead = r.rows[0];
@@ -275,13 +306,14 @@ export async function notifyStatusChanged(
   await dispatchNotification({
     pool,
     recipientUserId: lead.assigned_user_id,
-    organizationId: lead.organization_id ?? null,
+    organizationId: lead.organization_id,
+    projectId: lead.project_id,
     eventType: "lead_status_changed",
     title: `${lead.name}: ${statusLabel(args.newStatus)}`,
     body: `Status på din lead "${lead.name}" er endret til ${statusLabel(args.newStatus)}.`,
     leadId: args.leadId,
     triggeredByUserId: args.triggeredByUserId,
-    deepLink: `https://theroleroom.com/admin-room?lead=${args.leadId}`,
+    deepLink: leadgridLeadDeepLink(lead.project_id, args.leadId),
     meta: { oldStatus: args.oldStatus, newStatus: args.newStatus },
   });
 
@@ -292,8 +324,12 @@ export async function notifyStatusChanged(
     // re-run this query and re-spam every salgssjef/teamleder each time.
     const alreadyAnnounced = await pool.query(
       `SELECT 1 FROM notification_events
-        WHERE lead_id = $1 AND event_type = 'lead_won_on_team' LIMIT 1`,
-      [args.leadId],
+        WHERE organization_id = $1::uuid
+          AND project_id = $2
+          AND lead_id = $3::uuid
+          AND event_type = 'lead_won_on_team'
+        LIMIT 1`,
+      [lead.organization_id, lead.project_id, args.leadId],
     );
     if (alreadyAnnounced.rowCount) return;
     const teamLeads = await pool.query<{ user_id: string }>(
@@ -312,12 +348,13 @@ export async function notifyStatusChanged(
         pool,
         recipientUserId: tl.user_id,
         organizationId: lead.organization_id,
+        projectId: lead.project_id,
         eventType: "lead_won_on_team",
         title: `🏆 Lead vunnet i teamet: ${lead.name}`,
         body: `En selger i ditt team vant "${lead.name}".`,
         leadId: args.leadId,
         triggeredByUserId: args.triggeredByUserId,
-        deepLink: `https://theroleroom.com/admin-room?lead=${args.leadId}`,
+        deepLink: leadgridLeadDeepLink(lead.project_id, args.leadId),
       });
     }
   }
@@ -339,38 +376,46 @@ export async function notifyApproachingLead(
     distanceMeters?: number;
   },
 ): Promise<{ sent: boolean; suppressed: boolean; reason?: string }> {
-  // Throttle: ikke send hvis vi har sendt approaching_lead for samme
-  // (user, lead) siste 4 timer.
-  const throttleRes = await pool.query<{ n: number }>(
-    `SELECT COUNT(*)::int AS n
-       FROM notification_events
-      WHERE recipient_user_id = $1
-        AND lead_id = $2
-        AND event_type = 'approaching_lead'
-        AND created_at > NOW() - INTERVAL '4 hours'`,
-    [args.userId, args.leadId],
-  );
-  if ((throttleRes.rows[0]?.n ?? 0) > 0) {
-    return { sent: false, suppressed: true, reason: "throttled_4h" };
-  }
-
-  // Hent lead + org-id (lead må være assigned til brukeren — sikkerhet)
+  // Resolve the exact lead tuple before throttling. A caller-provided lead id
+  // is never enough to select a tenant/project notification bucket.
   const r = await pool.query<{
     name: string; address: string | null;
     assigned_user_id: string | null;
-    organization_id: string | null;
+    organization_id: string;
+    project_id: string;
   }>(
     `SELECT c.name, c.address, c.assigned_user_id,
-            cp.organization_id::text
+            c.organization_id::text,
+            c.project_id::text
        FROM crm_customers c
-       LEFT JOIN leadgrid_projects cp ON cp.id = c.project_id
-      WHERE c.id = $1 LIMIT 1`,
+       JOIN leadgrid_projects project
+         ON project.id = c.project_id
+        AND project.organization_id = c.organization_id
+      WHERE c.id = $1::uuid
+        AND c.organization_id IS NOT NULL
+        AND c.project_id IS NOT NULL
+      LIMIT 1`,
     [args.leadId],
   );
   const lead = r.rows[0];
   if (!lead) return { sent: false, suppressed: false, reason: "lead_not_found" };
   if (lead.assigned_user_id !== args.userId) {
     return { sent: false, suppressed: false, reason: "not_assigned_to_user" };
+  }
+
+  const throttleRes = await pool.query<{ n: number }>(
+    `SELECT COUNT(*)::int AS n
+       FROM notification_events
+      WHERE recipient_user_id = $1
+        AND organization_id = $2::uuid
+        AND project_id = $3
+        AND lead_id = $4::uuid
+        AND event_type = 'approaching_lead'
+        AND created_at > NOW() - INTERVAL '4 hours'`,
+    [args.userId, lead.organization_id, lead.project_id, args.leadId],
+  );
+  if ((throttleRes.rows[0]?.n ?? 0) > 0) {
+    return { sent: false, suppressed: true, reason: "throttled_4h" };
   }
 
   const distLabel = args.distanceMeters !== undefined
@@ -381,13 +426,14 @@ export async function notifyApproachingLead(
   await dispatchNotification({
     pool,
     recipientUserId: args.userId,
-    organizationId: lead.organization_id ?? null,
+    organizationId: lead.organization_id,
+    projectId: lead.project_id,
     eventType: "approaching_lead",
     title: `📍 Nær lead: ${lead.name}`,
     body: `Du er ${distLabel} fra ${lead.name}${addr}. Stikk innom for et besøk?`,
     leadId: args.leadId,
     triggeredByUserId: args.userId,
-    deepLink: `https://theroleroom.com/admin-room?lead=${args.leadId}`,
+    deepLink: leadgridLeadDeepLink(lead.project_id, args.leadId),
     meta: { distance_m: args.distanceMeters },
   });
 

@@ -36,6 +36,8 @@ type LeadStatus = "unvisited" | "visited" | "return" | "not_present" | "declined
 
 interface LeadMapCampaign {
   id: string;
+  organizationId: string;
+  projectId: string;
   name: string;
   description?: string | null;
   filterCategory?: string | null;
@@ -192,7 +194,7 @@ function PipelineBar({ agg }: { agg: CampaignAggregate }) {
 }
 
 // ── Main panel ────────────────────────────────────────────────────────
-export default function LeadMapCampaignsPanel() {
+export default function LeadMapCampaignsPanel({ projectId }: { projectId: string }) {
   const [campaigns, setCampaigns] = useState<LeadMapCampaign[]>([]);
   const [aggregates, setAggregates] = useState<Map<string, CampaignAggregate>>(new Map());
   const [categoryStats, setCategoryStats] = useState<CategoryStat[]>([]);
@@ -220,10 +222,11 @@ export default function LeadMapCampaignsPanel() {
     setLoading(true);
     setError(null);
     try {
+      const projectQuery = `projectId=${encodeURIComponent(projectId)}`;
       const [campResp, catResp, areaResp] = await Promise.all([
-        fetch("/api/lead-map/campaigns", { credentials: "include", headers: authHeaders() }),
-        fetch("/api/lead-map/analytics/category-conversion", { credentials: "include", headers: authHeaders() }),
-        fetch("/api/lead-map/analytics/area-response", { credentials: "include", headers: authHeaders() }),
+        fetch(`/api/lead-map/campaigns?${projectQuery}`, { credentials: "include", headers: authHeaders() }),
+        fetch(`/api/lead-map/analytics/category-conversion?${projectQuery}`, { credentials: "include", headers: authHeaders() }),
+        fetch(`/api/lead-map/analytics/area-response?${projectQuery}`, { credentials: "include", headers: authHeaders() }),
       ]);
       if (!campResp.ok) {
         const body = await campResp.json().catch(() => ({}));
@@ -237,7 +240,7 @@ export default function LeadMapCampaignsPanel() {
       // Hent aggregate for hver kampanje parallelt
       const aggMap = new Map<string, CampaignAggregate>();
       await Promise.all(list.map(async (c) => {
-        const r = await fetch(`/api/lead-map/campaigns/${c.id}/aggregate`, {
+        const r = await fetch(`/api/lead-map/campaigns/${c.id}/aggregate?${projectQuery}`, {
           credentials: "include", headers: authHeaders(),
         });
         if (r.ok) {
@@ -254,7 +257,7 @@ export default function LeadMapCampaignsPanel() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [projectId]);
 
   useEffect(() => { void fetchData(); }, [fetchData]);
 
@@ -270,6 +273,7 @@ export default function LeadMapCampaignsPanel() {
         credentials: "include",
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({
+          projectId,
           name: form.name.trim(),
           description: form.description.trim() || undefined,
           filterCategory: form.filterCategory.trim() || undefined,
@@ -304,6 +308,7 @@ export default function LeadMapCampaignsPanel() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ projectId }),
       });
       const body = await r.json();
       if (!r.ok) {
@@ -492,7 +497,7 @@ export default function LeadMapCampaignsPanel() {
                       </Typography>
                     </Stack>
                     <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
-                      Hvilke bransjer som faktisk konverterer best — på tvers av alle dine leads.
+                      Hvilke bransjer som faktisk konverterer best i dette kundeprosjektet.
                     </Typography>
                     <Stack spacing={0.75}>
                       {categoryStats.slice(0, 6).map((s) => (

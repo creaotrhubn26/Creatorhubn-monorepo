@@ -34,9 +34,17 @@
  * salgssjef+ (matcher isAdminLikeRole i sales-leadership-routes.ts).
  */
 
+import { createHash } from "node:crypto";
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
-import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
+import {
+  assertAnyEntitledForOrganization,
+  LEADGRID_GO_FEATURE_KEYS,
+} from "./leadgrid-entitlement-guard.js";
+import {
+  loadAccessibleLeadgridProject,
+  type LeadgridAccessibleProject,
+} from "./leadgrid-project-access.js";
 
 type SessionUser = {
   userId: string;
@@ -71,6 +79,17 @@ const VALID_ASSIGNMENT_STATUS = new Set([
   "skipped",
 ]);
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+type RouteStop = {
+  lead_id: string;
+  latitude: number;
+  longitude: number;
+  order_index: number;
+  planned_arrival_time: string | null;
+  planned_duration_min: number | null;
+  notes: string | null;
+};
+
 // ─────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────
@@ -84,8 +103,17 @@ function isSalesManagerRole(role: string | undefined): boolean {
     r === "org_admin" ||
     r === "super_admin" ||
     r === "admin" ||
-    r === "owner"
+    r === "owner" ||
+    r === "salgssjef" ||
+    r === "teamleder"
   );
+}
+
+function canManageRoutes(
+  session: SessionUser,
+  project: LeadgridAccessibleProject,
+): boolean {
+  return isSalesManagerRole(session.role) || isSalesManagerRole(project.memberRole);
 }
 
 function readString(v: unknown, fallback = ""): string {
@@ -99,6 +127,80 @@ function toNum(v: unknown): number | null {
     return Number.isFinite(n) ? n : null;
   }
   return null;
+}
+
+function requestedProjectId(req: Request): string {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const supplied = [
+    body.project_id,
+    body.projectId,
+    req.query.project_id,
+    req.query.projectId,
+  ]
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const unique = [...new Set(supplied)];
+  return unique.length === 1 && unique[0].length <= 255 ? unique[0] : "";
+}
+
+function requestIdempotencyKey(req: Request): string {
+  const raw = req.headers["idempotency-key"];
+  const value = (Array.isArray(raw) ? raw[0] : raw)?.trim() ?? "";
+  return value.length >= 8 && value.length <= 200 ? value : "";
+}
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function isDateOnly(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime())
+    && parsed.toISOString().slice(0, 10) === value;
+}
+
+function isValidCoordinate(lat: number, lon: number): boolean {
+  return lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+}
+
+async function resolveProjectScope(
+  req: Request,
+  res: Response,
+  pool: Pool,
+  session: SessionUser,
+): Promise<LeadgridAccessibleProject | null> {
+  const projectId = requestedProjectId(req);
+  if (!projectId) {
+    res.status(400).json({ error: "project_id_required" });
+    return null;
+  }
+  try {
+    const project = await loadAccessibleLeadgridProject(
+      pool,
+      projectId,
+      session.userId,
+    );
+    if (!project) {
+      res.status(404).json({ error: "project_not_found" });
+      return null;
+    }
+    const entitled = await assertAnyEntitledForOrganization(
+      pool,
+      project.organizationId,
+      LEADGRID_GO_FEATURE_KEYS,
+      res,
+    );
+    return entitled ? project : null;
+  } catch (error) {
+    console.error("[routes-adherence] project scope failed:", error);
+    res.status(500).json({
+      error: "project_scope_failed",
+      detail: "internal_error",
+    });
+    return null;
+  }
 }
 
 /**
@@ -174,25 +276,9 @@ function distanceToRoutePolyline(
  */
 function parseStops(
   raw: unknown,
-): Array<{
-  lead_id: string;
-  latitude: number;
-  longitude: number;
-  order_index: number;
-  planned_arrival_time: string | null;
-  planned_duration_min: number | null;
-  notes: string | null;
-}> {
+): RouteStop[] {
   if (!Array.isArray(raw)) return [];
-  const out: Array<{
-    lead_id: string;
-    latitude: number;
-    longitude: number;
-    order_index: number;
-    planned_arrival_time: string | null;
-    planned_duration_min: number | null;
-    notes: string | null;
-  }> = [];
+  const out: RouteStop[] = [];
   for (let i = 0; i < raw.length; i++) {
     const s = raw[i] as Record<string, unknown> | undefined;
     if (!s || typeof s !== "object") continue;
@@ -219,50 +305,52 @@ function parseStops(
   return out.sort((a, b) => a.order_index - b.order_index);
 }
 
-/**
- * Reverse-geocode via Google Places (best-effort). Faller til
- * lat/lon-basert placeholder-navn hvis Places-key mangler eller
- * spørring feiler. Returnerer et rimelig lead-navn + adresse.
- */
-async function reverseGeocode(
-  lat: number,
-  lon: number,
-): Promise<{ name: string; address: string | null; place_id: string | null }> {
-  const key = process.env.GOOGLE_PLACES_API_KEY;
-  if (!key) {
-    return {
-      name: `Nytt lead (${lat.toFixed(4)}, ${lon.toFixed(4)})`,
-      address: null,
-      place_id: null,
-    };
-  }
-  try {
-    // Google Places Nearby Search API — plukker nærmeste "establishment".
-    const url =
-      `https://maps.googleapis.com/maps/api/place/nearbysearch/json` +
-      `?location=${lat},${lon}&rankby=distance` +
-      `&type=establishment&key=${key}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Places API status ${res.status}`);
-    const data = (await res.json()) as {
-      results?: Array<{ name?: string; vicinity?: string; place_id?: string }>;
-    };
-    const first = data.results?.[0];
-    if (first?.name) {
-      return {
-        name: first.name,
-        address: first.vicinity ?? null,
-        place_id: first.place_id ?? null,
-      };
+function parseRequestedStops(raw: unknown): RouteStop[] | null {
+  if (!Array.isArray(raw)) return null;
+  for (const value of raw) {
+    const candidate = value as Record<string, unknown> | undefined;
+    const leadId = readString(candidate?.lead_id).trim();
+    const lat = toNum(candidate?.latitude);
+    const lon = toNum(candidate?.longitude);
+    if (
+      !leadId
+      || leadId.length > 255
+      || lat === null
+      || lon === null
+      || !isValidCoordinate(lat, lon)
+    ) {
+      return null;
     }
-  } catch (err) {
-    console.warn("[routes-adherence] reverse-geocode failed:", (err as Error).message);
   }
-  return {
-    name: `Nytt lead (${lat.toFixed(4)}, ${lon.toFixed(4)})`,
-    address: null,
-    place_id: null,
-  };
+  return parseStops(raw).map((stop) => ({
+    ...stop,
+    lead_id: stop.lead_id.trim(),
+  }));
+}
+
+async function uuidStopsBelongToProject(
+  pool: Pool,
+  project: LeadgridAccessibleProject,
+  stops: RouteStop[],
+): Promise<boolean> {
+  const ids = [...new Set(
+    stops
+      .map((stop) => stop.lead_id)
+      .filter((id) => UUID_PATTERN.test(id))
+      .map((id) => id.toLowerCase()),
+  )];
+  if (ids.length === 0) return true;
+  const result = await pool.query<{ id: string }>(
+    `SELECT id::text
+       FROM crm_customers
+      WHERE organization_id = $1::uuid
+        AND project_id = $2
+        AND id = ANY($3::uuid[])`,
+    [project.organizationId, project.id, ids],
+  );
+  return new Set(
+    result.rows.map((row) => row.id.toLowerCase()),
+  ).size === ids.length;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -284,9 +372,13 @@ export function registerRoutesAdherenceRoutes(
   app.post("/api/leadgrid/routes/positions", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
+    const project = await resolveProjectScope(req, res, pool, session);
+    if (!project) return;
     const body = (req.body ?? {}) as { samples?: unknown };
     const samples = Array.isArray(body.samples) ? body.samples : [];
-    if (samples.length === 0) return res.json({ inserted: 0 });
+    if (samples.length === 0) {
+      return res.json({ inserted: 0, project_id: project.id });
+    }
     if (samples.length > MAX_POSITIONS_PER_BATCH) {
       return res.status(400).json({
         error: "batch_too_large",
@@ -294,39 +386,75 @@ export function registerRoutesAdherenceRoutes(
       });
     }
     try {
-      let inserted = 0;
+      const validSamples: Array<{
+        latitude: number;
+        longitude: number;
+        speed_mps: number | null;
+        heading_deg: number | null;
+        sampled_at: string;
+      }> = [];
       for (const raw of samples) {
-        const s = raw as Record<string, unknown>;
-        const lat = toNum(s.lat);
-        const lon = toNum(s.lon);
-        const sampledAt = readString(s.sampledAt);
-        if (lat === null || lon === null || !sampledAt) continue;
-        const speed = toNum(s.speed);
-        const heading = toNum(s.heading);
-        try {
-          const r = await pool.query(
-            `INSERT INTO leadgrid_user_positions
-               (user_id, latitude, longitude, speed_mps, heading_deg, sampled_at, source)
-             VALUES ($1, $2, $3, $4, $5, $6, 'ios')
-             ON CONFLICT (user_id, sampled_at) DO NOTHING
-             RETURNING id`,
-            [session.userId, lat, lon, speed, heading, sampledAt],
-          );
-          if (r.rowCount && r.rowCount > 0) inserted += 1;
-        } catch (err) {
-          // Ikke abort hele batch på én dårlig row.
-          console.warn(
-            "[routes-adherence] position insert failed:",
-            (err as Error).message,
-          );
-        }
+        const sample = raw as Record<string, unknown>;
+        const lat = toNum(sample.lat);
+        const lon = toNum(sample.lon);
+        const sampledAt = readString(sample.sampledAt);
+        if (
+          lat === null
+          || lon === null
+          || !isValidCoordinate(lat, lon)
+          || !sampledAt
+          || Number.isNaN(Date.parse(sampledAt))
+        ) continue;
+        validSamples.push({
+          latitude: lat,
+          longitude: lon,
+          speed_mps: toNum(sample.speed),
+          heading_deg: toNum(sample.heading),
+          sampled_at: sampledAt,
+        });
       }
-      return res.json({ inserted });
-    } catch (err) {
-      console.error("[routes-adherence] positions POST failed:", err);
-      return res
-        .status(500)
-        .json({ error: "positions_save_failed", detail: String("internal_error") });
+      if (validSamples.length === 0) {
+        return res.json({ inserted: 0, project_id: project.id });
+      }
+      // One set-based write keeps foreground GPS flushes cheap even at the
+      // maximum batch size. The scoped unique key makes network retry safe.
+      const result = await pool.query(
+        `WITH samples AS (
+           SELECT latitude, longitude, speed_mps, heading_deg, sampled_at
+             FROM jsonb_to_recordset($4::jsonb) AS sample(
+               latitude double precision,
+               longitude double precision,
+               speed_mps double precision,
+               heading_deg double precision,
+               sampled_at timestamptz
+             )
+         )
+         INSERT INTO leadgrid_user_positions
+           (organization_id, project_id, user_id, latitude, longitude,
+            speed_mps, heading_deg, sampled_at, source)
+         SELECT $1::uuid, $2, $3, latitude, longitude, speed_mps, heading_deg,
+                sampled_at, 'ios'
+           FROM samples
+         ON CONFLICT (organization_id, project_id, user_id, sampled_at)
+         DO NOTHING
+         RETURNING id`,
+        [
+          project.organizationId,
+          project.id,
+          session.userId,
+          JSON.stringify(validSamples),
+        ],
+      );
+      return res.json({
+        inserted: result.rowCount ?? result.rows.length,
+        project_id: project.id,
+      });
+    } catch (error) {
+      console.error("[routes-adherence] positions POST failed:", error);
+      return res.status(500).json({
+        error: "positions_save_failed",
+        detail: "internal_error",
+      });
     }
   });
 
@@ -343,21 +471,30 @@ export function registerRoutesAdherenceRoutes(
   app.get("/api/leadgrid/routes/my-route", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
+    const project = await resolveProjectScope(req, res, pool, session);
+    if (!project) return;
     const date =
       readString(req.query.date) || new Date().toISOString().slice(0, 10);
+    if (!isDateOnly(date)) {
+      return res.status(400).json({ error: "invalid_date" });
+    }
     try {
       const asnRes = await pool.query(
-        `SELECT id, org_id, user_id, route_date, name, stops, total_stops, status,
-                created_at, updated_at
+        `SELECT id, organization_id, project_id, user_id, route_date, name,
+                stops, total_stops, status, created_at, updated_at
            FROM leadgrid_route_assignments
-          WHERE user_id = $1 AND route_date = $2
+          WHERE organization_id = $1::uuid
+            AND project_id = $2
+            AND user_id = $3
+            AND route_date = $4::date
           ORDER BY created_at DESC
           LIMIT 1`,
-        [session.userId, date],
+        [project.organizationId, project.id, session.userId, date],
       );
       const asn = asnRes.rows[0] as Record<string, unknown> | undefined;
       if (!asn) {
         return res.json({
+          project_id: project.id,
           assignment: null,
           visits: [],
           progress: {
@@ -372,13 +509,16 @@ export function registerRoutesAdherenceRoutes(
       }
       const stops = parseStops(asn.stops);
       const visitsRes = await pool.query(
-        `SELECT id, stop_lead_id, arrived_at, left_at,
+        `SELECT id, organization_id, project_id, assignment_id, stop_lead_id,
+                arrived_at, left_at,
                 actual_latitude, actual_longitude,
                 deviation_from_planned_m, was_on_route, notes
            FROM leadgrid_route_visits
-          WHERE assignment_id = $1
+          WHERE organization_id = $1::uuid
+            AND project_id = $2
+            AND assignment_id = $3::uuid
           ORDER BY arrived_at ASC`,
-        [asn.id],
+        [project.organizationId, project.id, asn.id],
       );
       const visits = visitsRes.rows;
       const visitedLeadIds = new Set(
@@ -411,10 +551,12 @@ export function registerRoutesAdherenceRoutes(
         }>(
           `SELECT latitude, longitude, speed_mps
              FROM leadgrid_user_positions
-            WHERE user_id = $1
+            WHERE organization_id = $1::uuid
+              AND project_id = $2
+              AND user_id = $3
             ORDER BY sampled_at DESC
             LIMIT 1`,
-          [session.userId],
+          [project.organizationId, project.id, session.userId],
         );
         const pos = posRes.rows[0];
         if (pos) {
@@ -433,9 +575,11 @@ export function registerRoutesAdherenceRoutes(
       }
 
       return res.json({
+        project_id: project.id,
         assignment: {
           id: asn.id,
-          org_id: asn.org_id,
+          organization_id: asn.organization_id,
+          project_id: asn.project_id,
           user_id: asn.user_id,
           route_date: asn.route_date,
           name: asn.name,
@@ -471,38 +615,107 @@ export function registerRoutesAdherenceRoutes(
   app.post("/api/leadgrid/routes/assignments", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
-    if (!isSalesManagerRole(session.role)) {
+    const project = await resolveProjectScope(req, res, pool, session);
+    if (!project) return;
+    if (!canManageRoutes(session, project)) {
       return res.status(403).json({ error: "forbidden", detail: "sales_manager_required" });
     }
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const userId = readString(body.user_id);
+    const userId = readString(body.user_id).trim();
     const routeDate = readString(body.route_date);
-    const name = readString(body.name) || "Rute";
-    const stops = parseStops(body.stops);
-    if (!userId || !routeDate) {
-      return res.status(400).json({ error: "user_id_and_route_date_required" });
+    const name = readString(body.name).trim() || "Rute";
+    const stops = parseRequestedStops(body.stops);
+    const idempotencyKey = requestIdempotencyKey(req);
+    if (!userId || !isDateOnly(routeDate)) {
+      return res.status(400).json({
+        error: "user_id_and_valid_route_date_required",
+      });
     }
-    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    if (!stops) {
+      return res.status(400).json({ error: "invalid_stops" });
+    }
+    if (!idempotencyKey) {
+      return res.status(400).json({ error: "idempotency_key_required" });
+    }
     try {
-      const r = await pool.query(
+      const assigneeProject = userId === session.userId
+        ? project
+        : await loadAccessibleLeadgridProject(pool, project.id, userId);
+      if (
+        !assigneeProject
+        || assigneeProject.organizationId !== project.organizationId
+      ) {
+        return res.status(400).json({ error: "assignee_not_in_project" });
+      }
+      if (!(await uuidStopsBelongToProject(pool, project, stops))) {
+        return res.status(400).json({
+          error: "route_stop_lead_not_in_project",
+        });
+      }
+      const requestHash = sha256(JSON.stringify({
+        organizationId: project.organizationId,
+        projectId: project.id,
+        userId,
+        routeDate,
+        name,
+        stops,
+      }));
+      const inserted = await pool.query(
         `INSERT INTO leadgrid_route_assignments
-           (org_id, user_id, route_date, name, stops, total_stops, status,
-            created_by, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5::jsonb, $6, 'planned', $7, NOW(), NOW())
-         RETURNING id, org_id, user_id, route_date, name, stops, total_stops,
-                   status, created_at, updated_at`,
-        [orgId, userId, routeDate, name, JSON.stringify(stops), stops.length, session.userId],
+           (org_id, organization_id, project_id, user_id, route_date, name,
+            stops, total_stops, status, created_by, idempotency_key,
+            request_hash, created_at, updated_at)
+         VALUES ($1::uuid, $1::uuid, $2, $3, $4::date, $5, $6::jsonb, $7,
+                 'planned', $8, $9, $10, NOW(), NOW())
+         ON CONFLICT (organization_id, project_id, idempotency_key)
+           WHERE idempotency_key IS NOT NULL
+         DO NOTHING
+         RETURNING id, organization_id, project_id, user_id, route_date, name,
+                   stops, total_stops, status, created_at, updated_at`,
+        [
+          project.organizationId,
+          project.id,
+          userId,
+          routeDate,
+          name,
+          JSON.stringify(stops),
+          stops.length,
+          session.userId,
+          idempotencyKey,
+          requestHash,
+        ],
       );
-      const row = r.rows[0] as Record<string, unknown>;
-      return res.status(201).json({
+      let row = inserted.rows[0] as Record<string, unknown> | undefined;
+      let responseStatus = 201;
+      if (!row) {
+        const existing = await pool.query(
+          `SELECT id, organization_id, project_id, user_id, route_date, name,
+                  stops, total_stops, status, created_at, updated_at,
+                  request_hash
+             FROM leadgrid_route_assignments
+            WHERE organization_id = $1::uuid
+              AND project_id = $2
+              AND idempotency_key = $3
+            LIMIT 1`,
+          [project.organizationId, project.id, idempotencyKey],
+        );
+        row = existing.rows[0] as Record<string, unknown> | undefined;
+        if (!row || row.request_hash !== requestHash) {
+          return res.status(409).json({ error: "idempotency_key_conflict" });
+        }
+        delete row.request_hash;
+        responseStatus = 200;
+      }
+      return res.status(responseStatus).json({
         ...row,
         stops: parseStops(row.stops),
       });
-    } catch (err) {
-      console.error("[routes-adherence] assignments POST failed:", err);
-      return res
-        .status(500)
-        .json({ error: "assignment_create_failed", detail: String("internal_error") });
+    } catch (error) {
+      console.error("[routes-adherence] assignments POST failed:", error);
+      return res.status(500).json({
+        error: "assignment_create_failed",
+        detail: "internal_error",
+      });
     }
   });
 
@@ -512,11 +725,15 @@ export function registerRoutesAdherenceRoutes(
   app.patch("/api/leadgrid/routes/assignments/:id", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
+    const project = await resolveProjectScope(req, res, pool, session);
+    if (!project) return;
     const id = readString(req.params.id);
-    if (!id) return res.status(400).json({ error: "id_required" });
+    if (!UUID_PATTERN.test(id)) {
+      return res.status(400).json({ error: "invalid_assignment_id" });
+    }
     // Tillat oppdatering av egen rute (status: active/completed/skipped),
     // eller salgssjef+ for full redigering.
-    const isManager = isSalesManagerRole(session.role);
+    const isManager = canManageRoutes(session, project);
     const body = (req.body ?? {}) as Record<string, unknown>;
     const status = readString(body.status);
     const name = readString(body.name);
@@ -528,8 +745,13 @@ export function registerRoutesAdherenceRoutes(
 
     try {
       const existing = await pool.query<{ user_id: string }>(
-        `SELECT user_id FROM leadgrid_route_assignments WHERE id = $1 LIMIT 1`,
-        [id],
+        `SELECT user_id
+           FROM leadgrid_route_assignments
+          WHERE organization_id = $1::uuid
+            AND project_id = $2
+            AND id = $3::uuid
+          LIMIT 1`,
+        [project.organizationId, project.id, id],
       );
       if (existing.rows.length === 0) {
         return res.status(404).json({ error: "assignment_not_found" });
@@ -550,8 +772,16 @@ export function registerRoutesAdherenceRoutes(
         sets.push(`name = $${i++}`);
         vals.push(name);
       }
-      if (Array.isArray(stopsRaw) && isManager) {
-        const stops = parseStops(stopsRaw);
+      if (stopsRaw !== undefined && isManager) {
+        const stops = parseRequestedStops(stopsRaw);
+        if (!stops) {
+          return res.status(400).json({ error: "invalid_stops" });
+        }
+        if (!(await uuidStopsBelongToProject(pool, project, stops))) {
+          return res.status(400).json({
+            error: "route_stop_lead_not_in_project",
+          });
+        }
         sets.push(`stops = $${i++}::jsonb`);
         vals.push(JSON.stringify(stops));
         sets.push(`total_stops = $${i++}`);
@@ -561,24 +791,35 @@ export function registerRoutesAdherenceRoutes(
         return res.status(400).json({ error: "no_fields_to_update" });
       }
       sets.push(`updated_at = NOW()`);
+      const orgIndex = i++;
+      vals.push(project.organizationId);
+      const projectIndex = i++;
+      vals.push(project.id);
+      const idIndex = i;
       vals.push(id);
       const r = await pool.query(
         `UPDATE leadgrid_route_assignments SET ${sets.join(", ")}
-          WHERE id = $${i}
-          RETURNING id, org_id, user_id, route_date, name, stops, total_stops,
-                    status, created_at, updated_at`,
+          WHERE organization_id = $${orgIndex}::uuid
+            AND project_id = $${projectIndex}
+            AND id = $${idIndex}::uuid
+          RETURNING id, organization_id, project_id, user_id, route_date,
+                    name, stops, total_stops, status, created_at, updated_at`,
         vals,
       );
-      const row = r.rows[0] as Record<string, unknown>;
+      const row = r.rows[0] as Record<string, unknown> | undefined;
+      if (!row) {
+        return res.status(404).json({ error: "assignment_not_found" });
+      }
       return res.json({
         ...row,
         stops: parseStops(row.stops),
       });
-    } catch (err) {
-      console.error("[routes-adherence] assignments PATCH failed:", err);
-      return res
-        .status(500)
-        .json({ error: "assignment_update_failed", detail: String("internal_error") });
+    } catch (error) {
+      console.error("[routes-adherence] assignments PATCH failed:", error);
+      return res.status(500).json({
+        error: "assignment_update_failed",
+        detail: "internal_error",
+      });
     }
   });
 
@@ -591,53 +832,130 @@ export function registerRoutesAdherenceRoutes(
   app.post("/api/leadgrid/routes/assignments/:id/visits", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
+    const project = await resolveProjectScope(req, res, pool, session);
+    if (!project) return;
     const id = readString(req.params.id);
-    if (!id) return res.status(400).json({ error: "id_required" });
+    if (!UUID_PATTERN.test(id)) {
+      return res.status(400).json({ error: "invalid_assignment_id" });
+    }
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const stopLeadId = readString(body.stop_lead_id);
+    const stopLeadId = readString(body.stop_lead_id).trim();
     const actualLat = toNum(body.actual_lat);
     const actualLon = toNum(body.actual_lon);
-    const notes = readString(body.notes) || null;
-    if (!stopLeadId || actualLat === null || actualLon === null) {
+    const notes = readString(body.notes).trim() || null;
+    const idempotencyKey = requestIdempotencyKey(req);
+    if (
+      !stopLeadId
+      || actualLat === null
+      || actualLon === null
+      || !isValidCoordinate(actualLat, actualLon)
+    ) {
       return res
         .status(400)
         .json({ error: "stop_lead_id_and_actual_lat_lon_required" });
     }
+    if (!idempotencyKey) {
+      return res.status(400).json({ error: "idempotency_key_required" });
+    }
     try {
       // Hent rute-stopp for deviation-beregning.
       const asnRes = await pool.query<{ user_id: string; stops: unknown }>(
-        `SELECT user_id, stops FROM leadgrid_route_assignments WHERE id = $1 LIMIT 1`,
-        [id],
+        `SELECT user_id, stops
+           FROM leadgrid_route_assignments
+          WHERE organization_id = $1::uuid
+            AND project_id = $2
+            AND id = $3::uuid
+          LIMIT 1`,
+        [project.organizationId, project.id, id],
       );
       if (asnRes.rows.length === 0) {
         return res.status(404).json({ error: "assignment_not_found" });
       }
       const asn = asnRes.rows[0];
-      if (asn.user_id !== session.userId && !isSalesManagerRole(session.role)) {
+      if (asn.user_id !== session.userId && !canManageRoutes(session, project)) {
         return res.status(403).json({ error: "forbidden" });
       }
       const stops = parseStops(asn.stops);
+      const stop = stops.find((candidate) => candidate.lead_id === stopLeadId);
+      if (!stop) {
+        return res.status(400).json({ error: "stop_not_in_assignment" });
+      }
+      if (!(await uuidStopsBelongToProject(pool, project, [stop]))) {
+        return res.status(400).json({
+          error: "route_stop_lead_not_in_project",
+        });
+      }
       const deviation = Math.round(
         distanceToRoutePolyline(actualLat, actualLon, stops),
       );
       const wasOnRoute = deviation < ON_ROUTE_THRESHOLD_M;
-
-      const r = await pool.query(
+      const requestHash = sha256(JSON.stringify({
+        organizationId: project.organizationId,
+        projectId: project.id,
+        assignmentId: id,
+        stopLeadId,
+        actualLat,
+        actualLon,
+        notes,
+      }));
+      const inserted = await pool.query(
         `INSERT INTO leadgrid_route_visits
-           (assignment_id, stop_lead_id, arrived_at, actual_latitude,
-            actual_longitude, deviation_from_planned_m, was_on_route, notes)
-         VALUES ($1, $2, NOW(), $3, $4, $5, $6, $7)
-         RETURNING id, assignment_id, stop_lead_id, arrived_at, left_at,
+           (organization_id, project_id, assignment_id, stop_lead_id,
+            arrived_at, actual_latitude, actual_longitude,
+            deviation_from_planned_m, was_on_route, notes,
+            idempotency_key, request_hash)
+         VALUES ($1::uuid, $2, $3::uuid, $4, NOW(), $5, $6, $7, $8, $9,
+                 $10, $11)
+         ON CONFLICT (organization_id, project_id, idempotency_key)
+           WHERE idempotency_key IS NOT NULL
+         DO NOTHING
+         RETURNING id, organization_id, project_id, assignment_id,
+                   stop_lead_id, arrived_at, left_at,
                    actual_latitude, actual_longitude, deviation_from_planned_m,
                    was_on_route, notes`,
-        [id, stopLeadId, actualLat, actualLon, deviation, wasOnRoute, notes],
+        [
+          project.organizationId,
+          project.id,
+          id,
+          stopLeadId,
+          actualLat,
+          actualLon,
+          deviation,
+          wasOnRoute,
+          notes,
+          idempotencyKey,
+          requestHash,
+        ],
       );
-      return res.status(201).json(r.rows[0]);
-    } catch (err) {
-      console.error("[routes-adherence] visits POST failed:", err);
-      return res
-        .status(500)
-        .json({ error: "visit_log_failed", detail: String("internal_error") });
+      let row = inserted.rows[0] as Record<string, unknown> | undefined;
+      let responseStatus = 201;
+      if (!row) {
+        const replay = await pool.query(
+          `SELECT id, organization_id, project_id, assignment_id,
+                  stop_lead_id, arrived_at, left_at, actual_latitude,
+                  actual_longitude, deviation_from_planned_m, was_on_route,
+                  notes, request_hash
+             FROM leadgrid_route_visits
+            WHERE organization_id = $1::uuid
+              AND project_id = $2
+              AND idempotency_key = $3
+            LIMIT 1`,
+          [project.organizationId, project.id, idempotencyKey],
+        );
+        row = replay.rows[0] as Record<string, unknown> | undefined;
+        if (!row || row.request_hash !== requestHash) {
+          return res.status(409).json({ error: "idempotency_key_conflict" });
+        }
+        delete row.request_hash;
+        responseStatus = 200;
+      }
+      return res.status(responseStatus).json(row);
+    } catch (error) {
+      console.error("[routes-adherence] visits POST failed:", error);
+      return res.status(500).json({
+        error: "visit_log_failed",
+        detail: "internal_error",
+      });
     }
   });
 
@@ -651,65 +969,86 @@ export function registerRoutesAdherenceRoutes(
   app.get("/api/leadgrid/routes/team-nearby", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
+    const project = await resolveProjectScope(req, res, pool, session);
+    if (!project) return;
     const lat = toNum(req.query.lat);
     const lon = toNum(req.query.lon);
     const radiusKm = toNum(req.query.radius_km) ?? 5;
-    if (lat === null || lon === null) {
+    if (lat === null || lon === null || !isValidCoordinate(lat, lon)) {
       return res.status(400).json({ error: "lat_and_lon_required" });
     }
-    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    if (radiusKm <= 0 || radiusKm > 50) {
+      return res.status(400).json({ error: "invalid_radius" });
+    }
     try {
-      // Hent team-medlemmer i org-en.
-      let userIds: string[] = [];
-      if (orgId !== session.userId) {
-        const t = await pool.query<{ user_id: string }>(
-          `SELECT DISTINCT user_id
-             FROM enterprise_team_members
-            WHERE organization_id = $1
-              AND status = 'active'
-              AND user_id IS NOT NULL`,
-          [orgId],
-        ).catch(() => ({ rows: [] as Array<{ user_id: string }> }));
-        userIds = t.rows.map((r) => String(r.user_id));
-      }
+      // Resolve the full authorized project audience in one query. This avoids
+      // one ACL round trip per position while preserving explicit revokes.
+      const audience = await pool.query<{ user_id: string }>(
+        `SELECT DISTINCT candidate.user_id
+           FROM (
+             SELECT p.created_by AS user_id
+               FROM leadgrid_projects p
+              WHERE p.id = $2 AND p.organization_id = $1::uuid
+             UNION ALL
+             SELECT pm.user_id
+               FROM leadgrid_project_members pm
+              WHERE pm.organization_id = $1::uuid AND pm.project_id = $2
+             UNION ALL
+             SELECT om.user_id
+               FROM organization_members om
+              WHERE om.organization_id = $1::uuid
+                AND NOT EXISTS (
+                  SELECT 1
+                    FROM leadgrid_user_permission_overrides denied
+                   WHERE denied.organization_id = om.organization_id
+                     AND denied.user_id = om.user_id
+                     AND denied.permission_key = 'projects.view_all'
+                     AND denied.effect = 'revoke'
+                )
+                AND (
+                  om.role = 'admin'
+                  OR EXISTS (
+                    SELECT 1 FROM role_permissions defaults
+                     WHERE defaults.role = om.role
+                       AND defaults.permission_key = 'projects.view_all'
+                  )
+                  OR EXISTS (
+                    SELECT 1
+                      FROM leadgrid_user_permission_overrides granted
+                     WHERE granted.organization_id = om.organization_id
+                       AND granted.user_id = om.user_id
+                       AND granted.permission_key = 'projects.view_all'
+                       AND granted.effect = 'grant'
+                  )
+                )
+           ) candidate
+          WHERE candidate.user_id IS NOT NULL`,
+        [project.organizationId, project.id],
+      );
+      const userIds = audience.rows.map((row) => String(row.user_id));
       if (!userIds.includes(session.userId)) userIds.push(session.userId);
-      if (userIds.length === 0) return res.json({ members: [] });
+      if (userIds.length === 0) {
+        return res.json({ project_id: project.id, members: [] });
+      }
 
-      // For hver bruker: siste kjent posisjon + navn/rolle. Kun de innenfor radius.
-      // Defensiv: hvis mig 0358 ikke er kjørt (leadgrid_user_positions mangler),
-      // returner tom liste i stedet for 500 så UI-en viser "ingen team-medlemmer".
-      const posRes = await pool
-        .query<{
+      // For hver bruker: siste kjente posisjon i dette prosjektet. Missing
+      // schema fails visibly; silently returning an empty team hides drift.
+      const posRes = await pool.query<{
           user_id: string;
           latitude: number;
           longitude: number;
           sampled_at: string;
           speed_mps: number | null;
         }>(
-          `SELECT DISTINCT ON (user_id) user_id, latitude, longitude, sampled_at, speed_mps
-             FROM leadgrid_user_positions
-            WHERE user_id = ANY($1::varchar[])
-            ORDER BY user_id, sampled_at DESC`,
-          [userIds],
-        )
-        .catch((e: unknown) => {
-          const msg = String((e as Error).message ?? "");
-          if (msg.includes("does not exist")) {
-            console.warn(
-              "[routes-adherence] leadgrid_user_positions mangler — kjør mig 0358",
-            );
-            return {
-              rows: [] as Array<{
-                user_id: string;
-                latitude: number;
-                longitude: number;
-                sampled_at: string;
-                speed_mps: number | null;
-              }>,
-            };
-          }
-          throw e;
-        });
+        `SELECT DISTINCT ON (user_id)
+                user_id, latitude, longitude, sampled_at, speed_mps
+           FROM leadgrid_user_positions
+          WHERE organization_id = $1::uuid
+            AND project_id = $2
+            AND user_id = ANY($3::varchar[])
+          ORDER BY user_id, sampled_at DESC`,
+        [project.organizationId, project.id, userIds],
+      );
 
       const usersRes = await pool.query<{
         id: string;
@@ -764,7 +1103,7 @@ export function registerRoutesAdherenceRoutes(
         )
         .sort((a, b) => a.distance_m - b.distance_m);
 
-      return res.json({ members });
+      return res.json({ project_id: project.id, members });
     } catch (err) {
       console.error("[routes-adherence] team-nearby GET failed:", err);
       return res
@@ -783,8 +1122,10 @@ export function registerRoutesAdherenceRoutes(
   app.get("/api/leadgrid/routes/adherence-report", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
+    const project = await resolveProjectScope(req, res, pool, session);
+    if (!project) return;
     const requestedUserId = readString(req.query.user_id);
-    const isManager = isSalesManagerRole(session.role);
+    const isManager = canManageRoutes(session, project);
     const userId =
       requestedUserId && requestedUserId !== session.userId
         ? isManager
@@ -800,7 +1141,20 @@ export function registerRoutesAdherenceRoutes(
         .toISOString()
         .slice(0, 10);
     const to = readString(req.query.to) || new Date().toISOString().slice(0, 10);
+    if (!isDateOnly(from) || !isDateOnly(to) || from > to) {
+      return res.status(400).json({ error: "invalid_date_range" });
+    }
     try {
+      if (userId !== session.userId) {
+        const targetAccess = await loadAccessibleLeadgridProject(
+          pool,
+          project.id,
+          userId,
+        );
+        if (!targetAccess || targetAccess.organizationId !== project.organizationId) {
+          return res.status(404).json({ error: "project_member_not_found" });
+        }
+      }
       const r = await pool.query(
         `SELECT a.route_date,
                 a.id AS assignment_id,
@@ -818,12 +1172,17 @@ export function registerRoutesAdherenceRoutes(
                   AVG(EXTRACT(EPOCH FROM (v.left_at - v.arrived_at)) / 60), 0
                 )::int AS avg_time_at_stop_min
            FROM leadgrid_route_assignments a
-           LEFT JOIN leadgrid_route_visits v ON v.assignment_id = a.id
-          WHERE a.user_id = $1
-            AND a.route_date BETWEEN $2 AND $3
+           LEFT JOIN leadgrid_route_visits v
+             ON v.organization_id = a.organization_id
+            AND v.project_id = a.project_id
+            AND v.assignment_id = a.id
+          WHERE a.organization_id = $1::uuid
+            AND a.project_id = $2
+            AND a.user_id = $3
+            AND a.route_date BETWEEN $4::date AND $5::date
           GROUP BY a.id, a.route_date, a.name, a.total_stops
           ORDER BY a.route_date DESC`,
-        [userId, from, to],
+        [project.organizationId, project.id, userId, from, to],
       );
       // Overall aggregates over hele perioden.
       let totalOnRoutePct = 0;
@@ -838,6 +1197,7 @@ export function registerRoutesAdherenceRoutes(
       }
       const days = r.rows.length || 1;
       return res.json({
+        project_id: project.id,
         user_id: userId,
         from,
         to,
@@ -868,11 +1228,15 @@ export function registerRoutesAdherenceRoutes(
   app.get("/api/leadgrid/routes/adherence-report/team-summary", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
-    if (!isSalesManagerRole(session.role)) {
+    const project = await resolveProjectScope(req, res, pool, session);
+    if (!project) return;
+    if (!canManageRoutes(session, project)) {
       return res.status(403).json({ error: "forbidden" });
     }
     const date = readString(req.query.date) || new Date().toISOString().slice(0, 10);
-    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    if (!isDateOnly(date)) {
+      return res.status(400).json({ error: "invalid_date" });
+    }
     try {
       const r = await pool.query(
         `SELECT a.user_id,
@@ -890,13 +1254,17 @@ export function registerRoutesAdherenceRoutes(
                   )::int
                   ELSE 0 END AS on_route_pct
            FROM leadgrid_route_assignments a
-           LEFT JOIN leadgrid_route_visits v ON v.assignment_id = a.id
+           LEFT JOIN leadgrid_route_visits v
+             ON v.organization_id = a.organization_id
+            AND v.project_id = a.project_id
+            AND v.assignment_id = a.id
            LEFT JOIN users u ON u.id = a.user_id
-          WHERE a.org_id = $1
-            AND a.route_date = $2
+          WHERE a.organization_id = $1::uuid
+            AND a.project_id = $2
+            AND a.route_date = $3::date
           GROUP BY a.user_id, u.first_name, u.last_name, u.email, u.role
           ORDER BY on_route_pct DESC, avg_deviation_m ASC`,
-        [orgId, date],
+        [project.organizationId, project.id, date],
       );
       // Aggregate summary
       let totalOn = 0;
@@ -911,6 +1279,7 @@ export function registerRoutesAdherenceRoutes(
       }
       const n = r.rows.length || 1;
       return res.json({
+        project_id: project.id,
         date,
         members: r.rows,
         summary: {
@@ -929,59 +1298,17 @@ export function registerRoutesAdherenceRoutes(
     }
   });
 
-  // ───────────────────────────────────────────────────────────────
-  // POST /leads/at-position — opprett lead på bestemt koordinat
-  //
-  // Body: { lat, lon, org_id? }
-  // Reverse-geocoder via Google Places + returnerer nytt lead-id.
-  // Klienten redirecter til AddLeadSheet med lead-id prefilled.
-  // ───────────────────────────────────────────────────────────────
+  // Legacy Nearby-Places lead creation bypassed project isolation and
+  // Discovery V2 attestation. Keep it authenticated, but fail closed.
   app.post("/api/leadgrid/routes/leads/at-position", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const lat = toNum(body.lat);
-    const lon = toNum(body.lon);
-    if (lat === null || lon === null) {
-      return res.status(400).json({ error: "lat_and_lon_required" });
-    }
-    const orgId = readString(body.org_id) || (await resolveOrgIdForUser(pool, session.userId));
-    try {
-      const geo = await reverseGeocode(lat, lon);
-      // Insert i crm_customers — samme mønster som eksisterende lead-oppretting.
-      // Vi bruker minimalt sett med kolonner som er trygt å inserte fra map-flyten.
-      // Fix 2026-07-02: To bug-fixes i denne INSERT-en:
-      //   (a) inconsistent-parameter-types: samme placeholder til to kolonner
-      //       med forskjellig type (owner_user_id TEXT, assigned_user_id
-      //       VARCHAR(255)) → separate parametere + eksplisitt cast.
-      //   (b) `id` UUID PRIMARY KEY har ingen DEFAULT i crm_customers-skjema
-      //       (drift fra mange migreringer), så NULL ble insert-et og krasjet
-      //       på not-null constraint. Genererer eksplisitt UUID i queryen
-      //       med `gen_random_uuid()`.
-      const r = await pool.query<{ id: string }>(
-        `INSERT INTO crm_customers
-           (id, name, owner_user_id, assigned_user_id, latitude, longitude,
-            address, google_place_id, lead_source, pipeline_stage, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1, $2::text, $3::varchar, $4, $5, $6, $7, 'map_drop', 'new', NOW(), NOW())
-         RETURNING id`,
-        [geo.name, session.userId, session.userId, lat, lon, geo.address, geo.place_id],
-      );
-      const leadId = r.rows[0]?.id;
-      return res.status(201).json({
-        lead_id: leadId,
-        name: geo.name,
-        address: geo.address,
-        google_place_id: geo.place_id,
-        latitude: lat,
-        longitude: lon,
-        org_id: orgId,
-      });
-    } catch (err) {
-      console.error("[routes-adherence] leads/at-position failed:", err);
-      return res
-        .status(500)
-        .json({ error: "lead_create_failed", detail: String("internal_error") });
-    }
+    return res.status(410).json({
+      error: "legacy_position_lead_creation_retired",
+      message:
+        "Opprett lead fra kartet eller godkjenn en kandidat i prosjektbundet Discovery V2.",
+      replacement: "/api/leadgrid/projects/:projectId/discovery/profiles",
+    });
   });
 
   // ───────────────────────────────────────────────────────────────
@@ -992,7 +1319,9 @@ export function registerRoutesAdherenceRoutes(
   app.delete("/api/leadgrid/routes/positions/before", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
-    if (!isSalesManagerRole(session.role)) {
+    const project = await resolveProjectScope(req, res, pool, session);
+    if (!project) return;
+    if (!canManageRoutes(session, project)) {
       return res.status(403).json({ error: "forbidden" });
     }
     const date =
@@ -1000,14 +1329,23 @@ export function registerRoutesAdherenceRoutes(
       new Date(Date.now() - DEFAULT_POSITION_RETENTION_DAYS * 24 * 3600 * 1000)
         .toISOString()
         .slice(0, 10);
+    if (!isDateOnly(date)) {
+      return res.status(400).json({ error: "invalid_date" });
+    }
     try {
       const r = await pool.query(
         `DELETE FROM leadgrid_user_positions
-          WHERE sampled_at < $1
+          WHERE organization_id = $1::uuid
+            AND project_id = $2
+            AND sampled_at < $3::date
           RETURNING id`,
-        [date],
+        [project.organizationId, project.id, date],
       );
-      return res.json({ deleted: r.rowCount ?? 0, before: date });
+      return res.json({
+        project_id: project.id,
+        deleted: r.rowCount ?? 0,
+        before: date,
+      });
     } catch (err) {
       console.error("[routes-adherence] positions DELETE failed:", err);
       return res

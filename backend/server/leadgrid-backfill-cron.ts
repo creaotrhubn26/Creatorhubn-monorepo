@@ -1,14 +1,13 @@
 /**
  * leadgrid-backfill-cron.ts
  *
- * Backfill av crm_customers.organization_id (mig 320). Resolverer
- * organization_id fra owner_user_id → organization_members (først
- * joined) i batcher. Idempotent — kjører kun på rader hvor
- * organization_id IS NULL.
+ * Reparasjon av crm_customers.organization_id for prosjektbundne Leadgrid-
+ * leads. leadgrid_projects er eneste autoritative kilde. Vi avleder aldri
+ * kundeprosjekt fra brukerens «første» organisasjonsmedlemskap, fordi samme
+ * bruker kan arbeide for flere kunder.
  *
  * Triggret av GitHub Actions @ 03:15 UTC daily som safety-net for
- * nye leads opprettet uten denormalisert org_id, samt manuelt etter
- * mig 320 første gang.
+ * legacy-rader der project_id allerede peker på et Leadgrid-prosjekt.
  *
  * Auth: x-cron-trigger-token + LEADGRID_INTELLIGENCE_CRON_TOKEN
  * (samme token som intelligence-cron — felles cron-infrastruktur).
@@ -33,9 +32,8 @@ export function registerLeadgridBackfillCron(deps: Deps): void {
   const { app, pool } = deps;
 
   /**
-   * Backfill crm_customers.organization_id basert på owner_user_id.
-   * Idempotent: kjører kun på rader hvor organization_id IS NULL.
-   * Trygt å kalle gjentatte ganger.
+   * Reparer crm_customers.organization_id fra det eksplisitte kundeprosjektet.
+   * Prosjektløse Universal CRM-rader blir bevisst ikke absorbert i Leadgrid.
    */
   app.post(
     "/api/leadgrid/cron/backfill-organization-id",
@@ -60,30 +58,26 @@ export function registerLeadgridBackfillCron(deps: Deps): void {
       let totalUpdated = 0;
       let batchesProcessed = 0;
       try {
-        // Loop til vi ikke finner flere rader
-         
+        // Bounded, lock-safe loop over kun rader med autoritativt prosjekt.
         while (true) {
           const r = await pool.query<{ updated: number }>(
             `WITH to_update AS (
-               SELECT c.id
+               SELECT c.id, p.organization_id
                  FROM crm_customers c
-                WHERE c.organization_id IS NULL
-                  AND c.owner_user_id IS NOT NULL
+                 JOIN leadgrid_projects p ON p.id = c.project_id
+                WHERE p.organization_id IS NOT NULL
+                  AND c.organization_id IS DISTINCT FROM p.organization_id
+                ORDER BY c.id
                 LIMIT $1
+                FOR UPDATE OF c SKIP LOCKED
              ),
              updated AS (
                UPDATE crm_customers c
-                  SET organization_id = (
-                    SELECT om.organization_id
-                      FROM organization_members om
-                     WHERE om.user_id = c.owner_user_id
-                     ORDER BY om.joined_at ASC LIMIT 1
-                  )
-                FROM to_update WHERE c.id = to_update.id
-                  AND EXISTS (
-                    SELECT 1 FROM organization_members
-                     WHERE user_id = c.owner_user_id LIMIT 1
-                  )
+                  SET organization_id = to_update.organization_id,
+                      updated_at = NOW()
+                 FROM to_update
+                WHERE c.id = to_update.id
+                  AND c.project_id IS NOT NULL
                 RETURNING c.id
              )
              SELECT COUNT(*)::int AS updated FROM updated`,
@@ -95,17 +89,27 @@ export function registerLeadgridBackfillCron(deps: Deps): void {
           if (updated === 0 || batchesProcessed > 100) break; // safety cap
         }
 
-        // Stats: hvor mange uten organization_id og uten owner_user_id?
+        // Skill mellom reparerbart Leadgrid-scope og bevisst urørte legacy-
+        // /Universal CRM-rader. Det gjør cron-resultatet handlingsrettet.
         const stats = await pool.query<{
           missing_org: string;
-          missing_owner: string;
+          repairable_project_scope: string;
+          unscoped_non_leadgrid: string;
           total: string;
         }>(
           `SELECT
-             COUNT(*) FILTER (WHERE organization_id IS NULL)::text AS missing_org,
-             COUNT(*) FILTER (WHERE owner_user_id IS NULL)::text AS missing_owner,
+             COUNT(*) FILTER (WHERE c.organization_id IS NULL)::text AS missing_org,
+             COUNT(*) FILTER (
+               WHERE p.id IS NOT NULL
+                 AND c.organization_id IS DISTINCT FROM p.organization_id
+             )::text AS repairable_project_scope,
+             COUNT(*) FILTER (
+               WHERE c.project_id IS NULL OR p.id IS NULL
+             )::text AS unscoped_non_leadgrid,
              COUNT(*)::text AS total
-             FROM crm_customers WHERE archived_at IS NULL`,
+             FROM crm_customers c
+             LEFT JOIN leadgrid_projects p ON p.id = c.project_id
+            WHERE c.archived_at IS NULL`,
         );
         const durationMs = Date.now() - start;
         res.json({
@@ -114,9 +118,11 @@ export function registerLeadgridBackfillCron(deps: Deps): void {
           batches: batchesProcessed,
           remaining: {
             missing_organization_id: Number(stats.rows[0].missing_org),
-            missing_owner_user_id: Number(stats.rows[0].missing_owner),
+            repairable_project_scope: Number(stats.rows[0].repairable_project_scope),
+            unscoped_non_leadgrid_rows: Number(stats.rows[0].unscoped_non_leadgrid),
             total_leads: Number(stats.rows[0].total),
           },
+          strategy: "authoritative_project_only",
           duration_ms: durationMs,
         });
       } catch (err) {

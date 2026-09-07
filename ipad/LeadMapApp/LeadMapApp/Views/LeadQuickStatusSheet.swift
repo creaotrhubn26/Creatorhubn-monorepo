@@ -141,7 +141,7 @@ struct LeadQuickStatusSheet: View {
         HStack(spacing: 8) {
             if let phone = lead.phone, !phone.isEmpty,
                let url = URL(string: "tel:\(phone.replacingOccurrences(of: " ", with: ""))") {
-                quickActionLink(label: "Ring", icon: "phone.fill", tint: .green, url: url)
+                contactQuickAction(label: "Ring", icon: "phone.fill", tint: .green, url: url, channel: .phone)
             }
             // Intern nav-motor (Kart-fanen), ikke Apple Maps.
             Button {
@@ -163,7 +163,7 @@ struct LeadQuickStatusSheet: View {
             .buttonStyle(.plain)
             if let email = lead.email, !email.isEmpty,
                let url = URL(string: "mailto:\(email)") {
-                quickActionLink(label: "E-post", icon: "envelope.fill", tint: .blue, url: url)
+                contactQuickAction(label: "E-post", icon: "envelope.fill", tint: .blue, url: url, channel: .email)
             }
             if let site = lead.websiteUrl, !site.isEmpty,
                let url = URL(string: site) {
@@ -172,16 +172,35 @@ struct LeadQuickStatusSheet: View {
         }
     }
 
+    private func contactQuickAction(
+        label: String,
+        icon: String,
+        tint: Color,
+        url: URL,
+        channel: LeadgridExternalContactChannel
+    ) -> some View {
+        LeadgridContactHandoffButton(
+            url: url, channel: channel, leadId: lead.id, projectId: lead.projectId
+        ) {
+            quickActionLabel(label: label, icon: icon, tint: tint)
+        }
+        .buttonStyle(.plain)
+    }
+
     private func quickActionLink(label: String, icon: String, tint: Color, url: URL) -> some View {
         Link(destination: url) {
-            VStack(spacing: 4) {
-                Image(systemName: icon).font(.subheadline)
-                Text(label).font(.caption2)
-            }
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .background(tint.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
-            .foregroundStyle(tint)
+            quickActionLabel(label: label, icon: icon, tint: tint)
         }
+    }
+
+    private func quickActionLabel(label: String, icon: String, tint: Color) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon).font(.subheadline)
+            Text(label).font(.caption2)
+        }
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .background(tint.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
+        .foregroundStyle(tint)
     }
 
     // MARK: - Status-knapper (5 store)

@@ -13,8 +13,10 @@ final class EntitlementStore: ObservableObject {
     static let shared = EntitlementStore()
 
     @Published var currentPlan: SubscriptionPlan = .enterprise
+    @Published var currentPlanDisplayName = "Enterprise"
     @Published var entitlements: [LeadgridFeature: Entitlement] = [:]
     @Published var demoMode: Bool = false
+    @Published private(set) var serverOrganizationId: String?
     /// true når backend har levert ekte overrides for brukerens org
     /// (`/api/leadgrid/me/entitlements`). Da gater vi på dem — også
     /// utenfor demo-modus. Ingen rader = alt åpent (bakoverkompatibelt).
@@ -35,6 +37,12 @@ final class EntitlementStore: ObservableObject {
 
     /// Ekte overrides fra backend. Tom liste rører ingenting.
     func applyServer(_ envelope: OrgEntitlementsEnvelope) {
+        if let organizationId = envelope.organizationId {
+            serverOrganizationId = organizationId
+        }
+        if let planKey = envelope.plan {
+            currentPlanDisplayName = LeadgridPlanPresentation.displayName(for: planKey)
+        }
         guard !envelope.entitlements.isEmpty else {
             hasServerEntitlements = false
             return
@@ -74,6 +82,19 @@ final class EntitlementStore: ObservableObject {
         }
         entitlements = dict
         hasServerEntitlements = true
+    }
+
+    /// Fjern forrige workspaces tilganger før nytt tenant-scope lastes.
+    /// Dette hindrer både feil plan-navn og funksjonsmatrise fra å lekke
+    /// visuelt mellom organisasjoner dersom neste kall er tregt eller feiler.
+    func resetForOrganization(_ organizationId: String?) {
+        guard serverOrganizationId != organizationId else { return }
+        serverOrganizationId = organizationId
+        guard !demoMode else { return }
+        currentPlan = .enterprise
+        currentPlanDisplayName = organizationId == nil ? "Enterprise" : "Laster …"
+        entitlements = [:]
+        hasServerEntitlements = false
     }
 
     #if DEBUG
@@ -129,6 +150,7 @@ final class EntitlementStore: ObservableObject {
 
     func applyPlan(_ plan: SubscriptionPlan) {
         currentPlan = plan
+        currentPlanDisplayName = plan.rawValue
         let ents = PlanDefaults.allEntitlements(for: plan)
         entitlements = Dictionary(uniqueKeysWithValues: ents.map { ($0.feature, $0) })
     }

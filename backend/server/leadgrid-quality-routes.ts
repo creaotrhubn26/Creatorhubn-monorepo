@@ -18,9 +18,12 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
-import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 import { resolveEffectivePermissions } from "./lead-map-permission-routes.js";
-import { assertAnyEntitled, LEADGRID_KVALITET_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
+import {
+  assertAnyEntitledForOrganization,
+  LEADGRID_KVALITET_FEATURE_KEYS,
+} from "./leadgrid-entitlement-guard.js";
+import { loadAccessibleLeadgridProject } from "./leadgrid-project-access.js";
 
 const QUALITY_FEATURE_KEYS = LEADGRID_KVALITET_FEATURE_KEYS;
 const QUALITY_ROLES = new Set(["admin", "salgssjef", "kvalitet"]);
@@ -29,66 +32,7 @@ const VALID_REASONS = new Set([
   "feil_pris", "kunde_angret", "mangelfull_dokumentasjon",
   "feilinformert_kunde", "ikke_kontakt", "annet",
 ]);
-const UUID_RE = /^[0-9a-fA-F-]{36}$/;
-
-let schemaReady = false;
-async function ensureSchema(pool: Pool): Promise<void> {
-  if (schemaReady) return;
-  // Samtale-maler (mig 0377) — per produkt: intro + spørsmål m/ sjekk-hint.
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS leadgrid_verification_templates (
-      id UUID PRIMARY KEY,
-      organization_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      product_name TEXT NOT NULL DEFAULT '',
-      intro_script TEXT NOT NULL DEFAULT '',
-      questions JSONB NOT NULL DEFAULT '[]',
-      outro_script TEXT NOT NULL DEFAULT '',
-      is_active BOOLEAN NOT NULL DEFAULT true,
-      sort_order INT NOT NULL DEFAULT 0,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    )
-  `);
-  await pool.query(
-    `CREATE INDEX IF NOT EXISTS idx_lg_vtempl_org ON leadgrid_verification_templates (organization_id, is_active)`,
-  );
-  // Verifiseringer — én pr vunnet salg (kø + historikk).
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS leadgrid_sales_verifications (
-      id UUID PRIMARY KEY,
-      organization_id TEXT NOT NULL,
-      customer_id TEXT NOT NULL,
-      customer_name TEXT NOT NULL DEFAULT '',
-      customer_phone TEXT,
-      seller_user_id TEXT,
-      seller_name TEXT,
-      deal_amount NUMERIC,
-      deal_currency TEXT,
-      won_at TIMESTAMPTZ,
-      status TEXT NOT NULL DEFAULT 'pending',
-      template_id UUID,
-      answers JSONB NOT NULL DEFAULT '[]',
-      reason_code TEXT,
-      note TEXT NOT NULL DEFAULT '',
-      call_outcome TEXT,
-      verified_by TEXT,
-      verified_by_name TEXT,
-      verified_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    )
-  `);
-  await pool.query(
-    `CREATE UNIQUE INDEX IF NOT EXISTS uq_lg_sverif_org_customer
-       ON leadgrid_sales_verifications (organization_id, customer_id)`,
-  );
-  await pool.query(
-    `CREATE INDEX IF NOT EXISTS idx_lg_sverif_org_status
-       ON leadgrid_sales_verifications (organization_id, status, created_at DESC)`,
-  );
-  schemaReady = true;
-}
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** Standard-mal seedes for org uten maler — kontrolløren skal aldri møte tomt verktøy. */
 const DEFAULT_TEMPLATE = {
@@ -125,13 +69,42 @@ export function registerLeadgridQualityRoutes(deps: {
   const { app, pool, requireUserSession } = deps;
 
   async function gate(req: Request, res: Response):
-      Promise<{ userId: string; orgId: string; isVerifier: boolean; isAdmin: boolean; name: string } | null> {
+      Promise<{
+        userId: string;
+        orgId: string;
+        projectId: string;
+        isVerifier: boolean;
+        isAdmin: boolean;
+        name: string;
+      } | null> {
     const session = requireUserSession(req, res);
     if (!session) return null;
-    const ok = await assertAnyEntitled(pool, session.userId, QUALITY_FEATURE_KEYS, res);
+    const projectId = String(req.body?.projectId ?? req.query.projectId ?? "").trim();
+    if (!projectId) {
+      res.status(400).json({ error: "project_id_required" });
+      return null;
+    }
+    const project = await loadAccessibleLeadgridProject(pool, projectId, session.userId);
+    if (!project) {
+      res.status(404).json({ error: "project_not_found" });
+      return null;
+    }
+    const claimedOrgId = String(
+      req.body?.organizationId ?? req.body?.organization_id
+        ?? req.query.organizationId ?? req.query.organization_id ?? "",
+    ).trim();
+    if (claimedOrgId && claimedOrgId !== project.organizationId) {
+      res.status(409).json({ error: "organization_project_mismatch" });
+      return null;
+    }
+    const ok = await assertAnyEntitledForOrganization(
+      pool,
+      project.organizationId,
+      QUALITY_FEATURE_KEYS,
+      res,
+    );
     if (!ok) return null;
-    await ensureSchema(pool);
-    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    const orgId = project.organizationId;
     const { role, permissions } = await resolveEffectivePermissions(pool, orgId, session.userId);
     const isAdmin = role === "admin" || role === "salgssjef" || permissions.has("leadgrid_quality.admin");
     const isVerifier = isAdmin || (role != null && QUALITY_ROLES.has(role)) ||
@@ -143,18 +116,19 @@ export function registerLeadgridQualityRoutes(deps: {
         WHERE u.id = $2`,
       [orgId, session.userId],
     );
-    return { userId: session.userId, orgId, isVerifier, isAdmin,
+    return { userId: session.userId, orgId, projectId: project.id, isVerifier, isAdmin,
              name: nameRow.rows[0]?.name ?? session.userId };
   }
 
   const templateDto = (t: any) => ({
-    id: t.id, name: t.name, product_name: t.product_name,
+    id: t.id, project_id: t.project_id, name: t.name, product_name: t.product_name,
     intro_script: t.intro_script, questions: t.questions,
     outro_script: t.outro_script, is_active: t.is_active, sort_order: t.sort_order,
   });
 
   const verificationDto = (v: any) => ({
-    id: v.id, customer_id: v.customer_id, customer_name: v.customer_name,
+    id: v.id, project_id: v.project_id,
+    customer_id: v.customer_id, customer_name: v.customer_name,
     customer_phone: v.customer_phone, seller_user_id: v.seller_user_id,
     seller_name: v.seller_name,
     deal_amount: v.deal_amount == null ? null : Number(v.deal_amount),
@@ -174,22 +148,24 @@ export function registerLeadgridQualityRoutes(deps: {
     try {
       const existing = await pool.query(
         `SELECT * FROM leadgrid_verification_templates
-          WHERE organization_id = $1 ORDER BY sort_order, name`,
-        [s.orgId],
+          WHERE organization_id = $1 AND project_id = $2
+          ORDER BY sort_order, name`,
+        [s.orgId, s.projectId],
       );
       if (existing.rowCount === 0) {
         const id = (globalThis.crypto as any).randomUUID();
         await pool.query(
           `INSERT INTO leadgrid_verification_templates
-             (id, organization_id, name, product_name, intro_script, questions, outro_script)
-           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-          [id, s.orgId, DEFAULT_TEMPLATE.name, DEFAULT_TEMPLATE.product_name,
+             (id, organization_id, project_id, name, product_name, intro_script, questions, outro_script)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [id, s.orgId, s.projectId, DEFAULT_TEMPLATE.name, DEFAULT_TEMPLATE.product_name,
            DEFAULT_TEMPLATE.intro_script, JSON.stringify(DEFAULT_TEMPLATE.questions),
            DEFAULT_TEMPLATE.outro_script],
         );
         const seeded = await pool.query(
-          `SELECT * FROM leadgrid_verification_templates WHERE organization_id = $1`,
-          [s.orgId],
+          `SELECT * FROM leadgrid_verification_templates
+            WHERE organization_id = $1 AND project_id = $2`,
+          [s.orgId, s.projectId],
         );
         return res.json({ templates: seeded.rows.map(templateDto) });
       }
@@ -213,9 +189,9 @@ export function registerLeadgridQualityRoutes(deps: {
       const id = (globalThis.crypto as any).randomUUID();
       await pool.query(
         `INSERT INTO leadgrid_verification_templates
-           (id, organization_id, name, product_name, intro_script, questions, outro_script, sort_order)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [id, s.orgId, name, String(b.productName ?? b.product_name ?? ""),
+           (id, organization_id, project_id, name, product_name, intro_script, questions, outro_script, sort_order)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [id, s.orgId, s.projectId, name, String(b.productName ?? b.product_name ?? ""),
          String(b.introScript ?? b.intro_script ?? ""), JSON.stringify(questions),
          String(b.outroScript ?? b.outro_script ?? ""), Number(b.sortOrder ?? b.sort_order ?? 0)],
       );
@@ -236,7 +212,7 @@ export function registerLeadgridQualityRoutes(deps: {
     try {
       const b = req.body || {};
       const sets: string[] = [];
-      const params: any[] = [id, s.orgId];
+      const params: any[] = [id, s.orgId, s.projectId];
       const push = (col: string, val: any) => { params.push(val); sets.push(`${col} = $${params.length}`); };
       if (b.name !== undefined) push("name", String(b.name));
       if (b.productName !== undefined || b.product_name !== undefined)
@@ -255,7 +231,7 @@ export function registerLeadgridQualityRoutes(deps: {
       sets.push("updated_at = now()");
       const r = await pool.query(
         `UPDATE leadgrid_verification_templates SET ${sets.join(", ")}
-          WHERE id = $1 AND organization_id = $2`,
+          WHERE id = $1 AND organization_id = $2 AND project_id = $3`,
         params,
       );
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
@@ -276,9 +252,9 @@ export function registerLeadgridQualityRoutes(deps: {
       // verifiseringsrad får en pending. ON CONFLICT gjør den idempotent.
       await pool.query(
         `INSERT INTO leadgrid_sales_verifications
-           (id, organization_id, customer_id, customer_name, customer_phone,
+           (id, organization_id, project_id, customer_id, customer_name, customer_phone,
             seller_user_id, seller_name, deal_amount, deal_currency, won_at)
-         SELECT gen_random_uuid(), $1, c.id::text, COALESCE(c.name, ''), c.phone,
+         SELECT gen_random_uuid(), $1, $2, c.id::text, COALESCE(c.name, ''), c.phone,
                 c.owner_user_id,
                 COALESCE(up.display_name, u.email, c.owner_user_id),
                 c.deal_amount, c.deal_currency, c.deal_stage_changed_at
@@ -288,15 +264,16 @@ export function registerLeadgridQualityRoutes(deps: {
              ON up.user_id::text = c.owner_user_id AND up.organization_id::text = $1
           WHERE c.archived_at IS NULL
             AND c.pipeline_stage = 'won'
-            AND c.owner_user_id IN (
-              SELECT user_id::text FROM organization_members WHERE organization_id = $1::uuid
-            )
-         ON CONFLICT (organization_id, customer_id) DO NOTHING`,
-        [s.orgId],
+            AND c.organization_id::text = $1
+            AND c.project_id = $2
+         ON CONFLICT (organization_id, project_id, customer_id)
+           WHERE project_id IS NOT NULL
+         DO NOTHING`,
+        [s.orgId, s.projectId],
       );
       const status = String(req.query.status || "");
-      const params: any[] = [s.orgId];
-      let where = "organization_id = $1";
+      const params: any[] = [s.orgId, s.projectId];
+      let where = "organization_id = $1 AND project_id = $2";
       if (status && ["pending", "verified", "rejected", "needs_followup"].includes(status)) {
         params.push(status); where += ` AND status = $${params.length}`;
       }
@@ -310,8 +287,8 @@ export function registerLeadgridQualityRoutes(deps: {
       );
       const counts = await pool.query(
         `SELECT status, COUNT(*)::int AS n FROM leadgrid_sales_verifications
-          WHERE organization_id = $1 GROUP BY status`,
-        [s.orgId],
+          WHERE organization_id = $1 AND project_id = $2 GROUP BY status`,
+        [s.orgId, s.projectId],
       );
       const byStatus: Record<string, number> = {};
       for (const row of counts.rows) byStatus[row.status] = row.n;
@@ -340,59 +317,72 @@ export function registerLeadgridQualityRoutes(deps: {
       const templateId = b.templateId ?? b.template_id ?? null;
       if (templateId && !UUID_RE.test(String(templateId)))
         return res.status(400).json({ error: "invalid_template_id" });
-      const r = await pool.query(
-        `UPDATE leadgrid_sales_verifications SET
-           status = $3, answers = $4, reason_code = $5, note = $6,
-           call_outcome = $7, template_id = $8,
-           verified_by = $9, verified_by_name = $10, verified_at = now(), updated_at = now()
-         WHERE id = $1 AND organization_id = $2`,
-        [id, s.orgId, status, JSON.stringify(answers),
-         status === "rejected" ? String(reason) : null,
-         String(b.note ?? ""), b.callOutcome ?? b.call_outcome ?? null,
-         templateId, s.userId, s.name],
-      );
-      if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
-
-      // «Flagg som eksempel» (2026-07-17): kontrolløren hørte en samtale
-      // verdt å lære av → opprett draft i Leadbook-eksempel-køen med
-      // CRM-kontekst. Idempotent via unik indeks på source_verification_id
-      // (mig 0379); leder kurerer og publiserer i Eksempler-fanen.
-      if (b.flagAsExample === true || b.flag_as_example === true) {
-        try {
-          const v = await pool.query(
-            `SELECT customer_name, seller_user_id, seller_name, deal_amount, won_at
-               FROM leadgrid_sales_verifications
-              WHERE id = $1 AND organization_id = $2 LIMIT 1`,
-            [id, s.orgId],
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        if (templateId) {
+          const template = await client.query(
+            `SELECT 1 FROM leadgrid_verification_templates
+              WHERE id = $1 AND organization_id = $2 AND project_id = $3
+              LIMIT 1`,
+            [templateId, s.orgId, s.projectId],
           );
-          const row = v.rows[0];
-          if (row) {
-            await pool.query(
-              `INSERT INTO leadbook_examples
-                 (id, organization_id, status, title, customer_label, outcome,
-                  seller_user_id, seller_name, happened_on, deal_value_nok,
-                  summary, source_verification_id, created_by, created_by_name)
-               VALUES ($1, $2, 'draft', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-               ON CONFLICT (source_verification_id) WHERE source_verification_id IS NOT NULL
-               DO NOTHING`,
-              [
-                (globalThis.crypto as { randomUUID: () => string }).randomUUID(), s.orgId,
-                `Samtale: ${row.customer_name || "kunde"}`,
-                String(row.customer_name ?? ""),
-                status === "verified" ? "won" : "lost",
-                row.seller_user_id, String(row.seller_name ?? ""),
-                row.won_at ?? null,
-                row.deal_amount != null ? Math.trunc(Number(row.deal_amount)) : null,
-                String(b.note ?? ""),
-                id, s.userId, s.name,
-              ],
-            );
+          if (template.rowCount === 0) {
+            await client.query("ROLLBACK");
+            return res.status(400).json({ error: "template_not_in_project" });
           }
-        } catch (flagErr) {
-          // Flagget skal aldri velte verdiktet — logg og fortsett.
-          console.warn("[leadgrid-quality] flag-as-example failed:",
-            (flagErr as Error).message);
         }
+        const r = await client.query(
+          `UPDATE leadgrid_sales_verifications SET
+             status = $4, answers = $5, reason_code = $6, note = $7,
+             call_outcome = $8, template_id = $9,
+             verified_by = $10, verified_by_name = $11,
+             verified_at = now(), updated_at = now()
+           WHERE id = $1 AND organization_id = $2 AND project_id = $3
+           RETURNING customer_name, seller_user_id, seller_name, deal_amount, won_at`,
+          [id, s.orgId, s.projectId, status, JSON.stringify(answers),
+           status === "rejected" ? String(reason) : null,
+           String(b.note ?? ""), b.callOutcome ?? b.call_outcome ?? null,
+           templateId, s.userId, s.name],
+        );
+        if (r.rowCount === 0) {
+          await client.query("ROLLBACK");
+          return res.status(404).json({ error: "not_found" });
+        }
+
+        // Verdikt + ønsket Leadbook-utkast er én atomisk brukerhandling. En
+        // feil skal derfor ikke kvitteres som suksess med et tapt eksempel.
+        if (b.flagAsExample === true || b.flag_as_example === true) {
+          const row = r.rows[0];
+          await client.query(
+            `INSERT INTO leadbook_examples
+               (id, organization_id, project_id, status, title, customer_label, outcome,
+                seller_user_id, seller_name, happened_on, deal_value_nok,
+                summary, source_verification_id, created_by, created_by_name)
+             VALUES ($1, $2, $3, 'draft', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+             ON CONFLICT (organization_id, project_id, source_verification_id)
+               WHERE project_id IS NOT NULL
+                 AND source_verification_id IS NOT NULL
+             DO NOTHING`,
+            [
+              (globalThis.crypto as { randomUUID: () => string }).randomUUID(),
+              s.orgId, s.projectId,
+              `Samtale: ${row.customer_name || "kunde"}`,
+              String(row.customer_name ?? ""),
+              status === "verified" ? "won" : "lost",
+              row.seller_user_id, String(row.seller_name ?? ""),
+              row.won_at ?? null,
+              row.deal_amount != null ? Math.trunc(Number(row.deal_amount)) : null,
+              String(b.note ?? ""), id, s.userId, s.name,
+            ],
+          );
+        }
+        await client.query("COMMIT");
+      } catch (transactionError) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw transactionError;
+      } finally {
+        client.release();
       }
 
       // Dørsalg-kobling (mig 0400): verifisert dørsalg = kontrolløren fikk
@@ -406,11 +396,12 @@ export function registerLeadgridQualityRoutes(deps: {
                                    THEN 'telefon_bekreftet' ELSE ds.verifisering END,
                updated_at = now()
              FROM leadgrid_sales_verifications v
-            WHERE v.id = $1 AND v.organization_id = $2
+            WHERE v.id = $1 AND v.organization_id = $2 AND v.project_id = $3
               AND v.customer_id LIKE 'dorsalg:%'
               AND ds.org_id = v.organization_id
+              AND ds.project_id = v.project_id
               AND ds.adresse_id = SUBSTRING(v.customer_id FROM 9)`,
-            [id, s.orgId],
+            [id, s.orgId, s.projectId],
           );
         } catch (dsErr) {
           console.warn("[leadgrid-quality] dorsalg-flip failed:", (dsErr as Error).message);
@@ -438,17 +429,18 @@ export function registerLeadgridQualityRoutes(deps: {
                 COUNT(*) FILTER (WHERE status = 'pending')::int AS pending,
                 COUNT(*) FILTER (WHERE status = 'needs_followup')::int AS followup
            FROM leadgrid_sales_verifications
-          WHERE organization_id = $1
+          WHERE organization_id = $1 AND project_id = $2
           GROUP BY seller_user_id
           ORDER BY rejected DESC, total DESC`,
-        [s.orgId],
+        [s.orgId, s.projectId],
       );
       const reasons = await pool.query(
         `SELECT reason_code, COUNT(*)::int AS n
            FROM leadgrid_sales_verifications
-          WHERE organization_id = $1 AND status = 'rejected' AND reason_code IS NOT NULL
+          WHERE organization_id = $1 AND project_id = $2
+            AND status = 'rejected' AND reason_code IS NOT NULL
           GROUP BY reason_code ORDER BY n DESC`,
-        [s.orgId],
+        [s.orgId, s.projectId],
       );
       return res.json({
         sellers: per.rows.map((x) => ({

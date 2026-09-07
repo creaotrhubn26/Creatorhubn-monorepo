@@ -29,6 +29,7 @@ struct LeadDetailFullSheet: View {
     @State private var showScheduleMeeting = false
     @State private var showAssign = false
     @State private var showApprovalRequest = false
+    @State private var contactHandoffRequest: LeadgridExternalContactRequest?
 
     // Demo-fallback brukes bare når demo eksplisitt er aktiv. Live skjuler
     // kontaktkanalen hvis LeadModel ikke leverer verdien.
@@ -40,11 +41,18 @@ struct LeadDetailFullSheet: View {
     }
 
     private func call(_ phone: String) {
-        let clean = phone.replacingOccurrences(of: " ", with: "")
-        if let url = URL(string: "tel://\(clean)") { UIApplication.shared.open(url) }
+        let clean = phone.filter { $0.isNumber || $0 == "+" }
+        guard !clean.isEmpty, let url = URL(string: "tel://\(clean)") else { return }
+        contactHandoffRequest = .init(
+            url: url, channel: .phone, leadId: lead.id,
+            leadProjectId: lead.projectId)
     }
+
     private func mail(_ email: String) {
-        if let url = URL(string: "mailto:\(email)") { UIApplication.shared.open(url) }
+        guard let url = URL(string: "mailto:\(email)") else { return }
+        contactHandoffRequest = .init(
+            url: url, channel: .email, leadId: lead.id,
+            leadProjectId: lead.projectId)
     }
     @Environment(\.dismiss) private var dismiss
     @State private var selectedSection: Section = .overview
@@ -187,6 +195,7 @@ struct LeadDetailFullSheet: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .macCatalystSheetSize(minWidth: 960, minHeight: 760)
+        .leadgridContactHandoff(request: $contactHandoffRequest)
     }
 
     // MARK: Hero-card

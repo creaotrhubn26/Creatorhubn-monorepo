@@ -72,6 +72,7 @@ export interface NextBestAction {
 export interface IntelligenceResult {
   leadId: string;
   organizationId: string;
+  projectId: string;
   facets: IntelligenceFacets;
   weights: IntelligenceWeights;
   leadScore: number;
@@ -551,6 +552,7 @@ export function determineNextBestAction(input: NbaInputs): NextBestAction {
 interface LeadRow {
   id: string;
   organization_id: string | null;
+  project_id: string | null;
   owner_user_id: string | null;
   assigned_user_id: string | null;
   lead_status: string;
@@ -571,16 +573,12 @@ interface LeadRow {
 }
 
 export async function fetchLead(pool: Pool, leadId: string): Promise<LeadRow | null> {
-  // Prefer the lead's explicit organization. Legacy rows without that field
-  // fall back to the owner's primary organization membership.
+  // Intelligence is a customer-project feature. Legacy leads without an
+  // authoritative organization/project tuple stay fail-closed.
   const r = await pool.query<LeadRow>(
     `SELECT c.id::text,
-            COALESCE(
-              c.organization_id::text,
-              (SELECT om.organization_id::text FROM organization_members om
-                WHERE om.user_id = c.owner_user_id ORDER BY om.joined_at ASC LIMIT 1)
-            )
-            AS organization_id,
+            c.organization_id::text AS organization_id,
+            c.project_id::text AS project_id,
             c.owner_user_id::text,
             c.assigned_user_id::text,
             c.lead_status,
@@ -599,7 +597,14 @@ export async function fetchLead(pool: Pool, leadId: string): Promise<LeadRow | n
             c.next_follow_up_at::text,
             c.ai_opportunity_score
        FROM crm_customers c
+       JOIN leadgrid_projects p
+         ON p.id = c.project_id
+        AND p.organization_id = c.organization_id
       WHERE c.id = $1::uuid
+        AND c.organization_id IS NOT NULL
+        AND c.project_id IS NOT NULL
+        AND (p.status IS NULL OR p.status NOT IN ('archived', 'deleted'))
+        AND c.archived_at IS NULL
       LIMIT 1`,
     [leadId],
   );
@@ -614,15 +619,21 @@ interface ActivityRow {
 export async function fetchRecentActivities(
   pool: Pool,
   leadId: string,
+  organizationId: string,
+  projectId: string,
   days = 60,
 ): Promise<ActivityRow[]> {
   const r = await pool.query<ActivityRow>(
-    `SELECT activity_type, created_at::text
-       FROM crm_lead_activities
-      WHERE customer_id = $1::uuid
-        AND created_at > NOW() - ($2::text || ' days')::interval
-      ORDER BY created_at DESC`,
-    [leadId, String(days)],
+    `SELECT activity.activity_type, activity.created_at::text
+       FROM crm_lead_activities activity
+       JOIN crm_customers customer
+         ON customer.id = activity.customer_id
+        AND customer.organization_id = $2::uuid
+        AND customer.project_id = $3
+      WHERE activity.customer_id = $1::uuid
+        AND activity.created_at > NOW() - ($4::text || ' days')::interval
+      ORDER BY activity.created_at DESC`,
+    [leadId, organizationId, projectId, String(days)],
   );
   return r.rows;
 }
@@ -633,14 +644,21 @@ interface NeedRow {
   priority: number | null;
 }
 
-export async function fetchNeeds(pool: Pool, leadId: string): Promise<NeedRow[]> {
+export async function fetchNeeds(
+  pool: Pool,
+  leadId: string,
+  organizationId: string,
+  projectId: string,
+): Promise<NeedRow[]> {
   try {
     const r = await pool.query<NeedRow>(
       `SELECT need_type, status, priority
          FROM crm_customer_needs
         WHERE customer_id = $1
+          AND organization_id = $2::uuid
+          AND project_id = $3
           AND status IN ('detected','accepted')`,
-      [leadId],
+      [leadId, organizationId, projectId],
     );
     return r.rows;
   } catch {
@@ -652,11 +670,20 @@ interface SignalRow {
   signal_type: string;
 }
 
-export async function fetchSignals(pool: Pool, leadId: string): Promise<SignalRow[]> {
+export async function fetchSignals(
+  pool: Pool,
+  leadId: string,
+  organizationId: string,
+  projectId: string,
+): Promise<SignalRow[]> {
   try {
     const r = await pool.query<SignalRow>(
-      `SELECT signal_type FROM crm_customer_signals WHERE customer_id = $1`,
-      [leadId],
+      `SELECT signal_type
+         FROM crm_customer_signals
+        WHERE customer_id = $1
+          AND organization_id = $2::uuid
+          AND project_id = $3`,
+      [leadId, organizationId, projectId],
     );
     return r.rows;
   } catch {
@@ -672,10 +699,9 @@ export async function fetchSignals(pool: Pool, leadId: string): Promise<SignalRo
  *
  * Effekt på 10k-leads cron: 4× → 1× DB-roundtrips = 40k → 10k queries.
  *
- * Returnerer `null` hvis lead ikke finnes. Hvis organization_id ikke kan
- * resolves (lead har ingen owner_user_id, eller eieren er ikke i noen
- * organization_members), settes `lead.organization_id = null` og
- * `weights` faller tilbake til DEFAULT_WEIGHTS.
+ * Returnerer `null` hvis leadet ikke har en autoritativ, aktiv
+ * organization/project-tuple. Ingen medlemskapsfallback eller antakelse om
+ * et workspace-standardprosjekt brukes.
  *
  * NB: De individuelle `fetchLead/fetchRecentActivities/fetchNeeds/
  * fetchSignals/fetchWeights`-funksjonene beholdes (eksporterte) fordi
@@ -700,12 +726,8 @@ export async function fetchLeadIntelContext(
   }>(
     `WITH lead AS (
        SELECT c.id::text AS id,
-              COALESCE(
-                c.organization_id::text,
-                (SELECT om.organization_id::text FROM organization_members om
-                   WHERE om.user_id = c.owner_user_id
-                   ORDER BY om.joined_at ASC LIMIT 1)
-              ) AS organization_id,
+              c.organization_id::text AS organization_id,
+              c.project_id::text AS project_id,
               c.owner_user_id::text AS owner_user_id,
               c.assigned_user_id::text AS assigned_user_id,
               c.lead_status,
@@ -722,32 +744,47 @@ export async function fetchLeadIntelContext(
               c.next_follow_up_at::text AS next_follow_up_at,
               c.ai_opportunity_score
          FROM crm_customers c
+         JOIN leadgrid_projects p
+           ON p.id = c.project_id
+          AND p.organization_id = c.organization_id
         WHERE c.id = $1::uuid
+          AND c.organization_id IS NOT NULL
+          AND c.project_id IS NOT NULL
+          AND c.archived_at IS NULL
+          AND (p.status IS NULL OR p.status NOT IN ('archived', 'deleted'))
         LIMIT 1
      ),
      activities AS (
        SELECT json_agg(row_to_json(a)) AS data FROM (
-         SELECT activity_type, created_at::text AS created_at
-           FROM crm_lead_activities
-          WHERE customer_id = $1::uuid
-            AND created_at > NOW() - INTERVAL '60 days'
-          ORDER BY created_at DESC
+         SELECT activity.activity_type,
+                activity.created_at::text AS created_at
+           FROM crm_lead_activities activity
+           JOIN lead
+             ON lead.id::uuid = activity.customer_id
+          WHERE activity.created_at > NOW() - INTERVAL '60 days'
+          ORDER BY activity.created_at DESC
           LIMIT 200
        ) a
      ),
      needs AS (
        SELECT json_agg(row_to_json(n)) AS data FROM (
-         SELECT need_type, status, priority
-           FROM crm_customer_needs
-          WHERE customer_id = $1::text
-            AND status IN ('detected','accepted')
+         SELECT fact.need_type, fact.status, fact.priority
+           FROM crm_customer_needs fact
+           JOIN lead
+             ON fact.customer_id = lead.id
+            AND fact.organization_id::text = lead.organization_id
+            AND fact.project_id = lead.project_id
+          WHERE fact.status IN ('detected','accepted')
        ) n
      ),
      signals AS (
        SELECT json_agg(row_to_json(s)) AS data FROM (
-         SELECT signal_type
-           FROM crm_customer_signals
-          WHERE customer_id = $1::text
+         SELECT fact.signal_type
+           FROM crm_customer_signals fact
+           JOIN lead
+             ON fact.customer_id = lead.id
+            AND fact.organization_id::text = lead.organization_id
+            AND fact.project_id = lead.project_id
        ) s
      ),
      weights AS (
@@ -986,6 +1023,10 @@ export interface ComputeOpts {
   trigger?: "cron" | "activity" | "enrichment" | "manual";
   persist?: boolean;
   userLocation?: { lat: number; lng: number } | null;
+  expectedScope?: {
+    organizationId: string;
+    projectId: string;
+  };
 }
 
 /**
@@ -1006,8 +1047,20 @@ export async function computeIntelligenceForLead(
   const ctx = await fetchLeadIntelContext(pool, leadId);
   if (!ctx) return null;
   const { lead, activities, needs, signals, weights } = ctx;
-  if (!lead.organization_id) {
-    // Vi krever org-tilhørighet for å persistere
+  const organizationId = lead.organization_id;
+  const projectId = lead.project_id;
+  if (!organizationId || !projectId) {
+    // Customer-project intelligence is never workspace-global.
+    return null;
+  }
+  if (
+    opts.expectedScope &&
+    (
+      opts.expectedScope.organizationId !== organizationId ||
+      opts.expectedScope.projectId !== projectId
+    )
+  ) {
+    // Lead moved between candidate selection/authorization and computation.
     return null;
   }
 
@@ -1092,7 +1145,8 @@ export async function computeIntelligenceForLead(
 
   const result: IntelligenceResult = {
     leadId,
-    organizationId: lead.organization_id,
+    organizationId,
+    projectId,
     facets,
     weights,
     leadScore,
@@ -1109,13 +1163,23 @@ export async function computeIntelligenceForLead(
 
   if (!persist) return result;
 
-  const recommendationId = await persistIntelligence(pool, lead, result, trigger);
+  const recommendationId = await persistIntelligence(
+    pool,
+    {
+      ...lead,
+      organization_id: organizationId,
+      project_id: projectId,
+    },
+    result,
+    trigger,
+  );
   result.recommendationId = recommendationId ?? undefined;
 
   // Webhooks (fire-and-forget for at vi ikke skal blokkere flowen)
   const scoredPayload = {
     lead_id: leadId,
-    organization_id: lead.organization_id,
+    organization_id: organizationId,
+    project_id: projectId,
     lead_score: leadScore,
     conversion_probability: probability,
     expected_value: expectedValue,
@@ -1126,11 +1190,18 @@ export async function computeIntelligenceForLead(
     triggered_by: trigger,
     computed_at: result.computedAt,
   };
-  void emitWebhook(pool, "lead.scored", scoredPayload, lead.organization_id);
+  void emitWebhook(
+    pool,
+    "lead.scored",
+    scoredPayload,
+    organizationId,
+    projectId,
+  );
   // Skalering nivå 3a: real-time push til alle iPad-klienter i org-en
-  if (lead.organization_id) {
-    broadcastLeadScored(lead.organization_id, leadId, scoredPayload);
-    broadcastNbaUpdated(lead.organization_id, leadId, {
+  {
+    broadcastLeadScored(organizationId, leadId, scoredPayload);
+    broadcastNbaUpdated(organizationId, leadId, {
+      project_id: projectId,
       next_best_action: nba.action,
       next_best_action_reason: nba.reason,
       next_best_action_channel: nba.channel,
@@ -1143,7 +1214,8 @@ export async function computeIntelligenceForLead(
     const recPayload = {
       recommendation_id: recommendationId,
       lead_id: leadId,
-      organization_id: lead.organization_id,
+      organization_id: organizationId,
+      project_id: projectId,
       action_type: nba.action,
       channel: nba.channel,
       priority: nba.priority,
@@ -1151,18 +1223,27 @@ export async function computeIntelligenceForLead(
       confidence: nba.confidence,
       expected_impact: nba.expectedImpact,
     };
-    void emitWebhook(pool, "recommendation.created", recPayload, lead.organization_id);
-    if (lead.organization_id) {
-      broadcastRecommendation(lead.organization_id, lead.assigned_user_id, recPayload);
-    }
+    void emitWebhook(
+      pool,
+      "recommendation.created",
+      recPayload,
+      organizationId,
+      projectId,
+    );
+    broadcastRecommendation(organizationId, lead.assigned_user_id, recPayload);
   }
 
   return result;
 }
 
+type AuthoritativeLeadRow = LeadRow & {
+  organization_id: string;
+  project_id: string;
+};
+
 async function persistIntelligence(
   pool: Pool,
-  lead: LeadRow,
+  lead: AuthoritativeLeadRow,
   result: IntelligenceResult,
   trigger: string,
 ): Promise<string | null> {
@@ -1182,7 +1263,9 @@ async function persistIntelligence(
               priority = $11,
               scored_at = NOW(),
               updated_at = NOW()
-        WHERE id = $1::uuid`,
+        WHERE id = $1::uuid
+          AND organization_id = $12::uuid
+          AND project_id = $13`,
       [
         lead.id,
         result.leadScore,
@@ -1195,6 +1278,8 @@ async function persistIntelligence(
         result.nextBestAction.channel,
         result.nextBestAction.confidence,
         result.nextBestAction.priority,
+        lead.organization_id,
+        lead.project_id,
       ],
     );
   } catch (err) {
@@ -1205,15 +1290,16 @@ async function persistIntelligence(
   try {
     await pool.query(
       `INSERT INTO lead_scores_history
-         (lead_id, organization_id, lead_score, conversion_probability,
+         (lead_id, organization_id, project_id, lead_score, conversion_probability,
           expected_value, follow_up_priority, lead_temperature, pipeline_stage,
           category_fit, digital_need, budget_potential, engagement, timing,
           location_fit, computed_by, triggered_by, reason)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8,
-               $9, $10, $11, $12, $13, $14, 'engine', $15, $16)`,
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9,
+               $10, $11, $12, $13, $14, $15, 'engine', $16, $17)`,
       [
         lead.id,
         lead.organization_id,
+        lead.project_id,
         result.leadScore,
         result.conversionProbability,
         result.expectedValue,
@@ -1246,26 +1332,29 @@ async function persistIntelligence(
     const existing = await pool.query<{ id: string }>(
       `SELECT id::text
          FROM lead_recommendations
-        WHERE lead_id = $1::uuid
+        WHERE organization_id = $1::uuid
+          AND project_id = $2
+          AND lead_id = $3::uuid
           AND status = 'pending'
-          AND action_type = $2
+          AND action_type = $4
           AND created_at > NOW() - INTERVAL '6 hours'
         LIMIT 1`,
-      [lead.id, result.nextBestAction.action],
+      [lead.organization_id, lead.project_id, lead.id, result.nextBestAction.action],
     );
     if (existing.rows[0]) return existing.rows[0].id;
 
     const r = await pool.query<{ id: string }>(
       `INSERT INTO lead_recommendations
-         (lead_id, organization_id, assigned_user_id, action_type, channel,
+         (lead_id, organization_id, project_id, assigned_user_id, action_type, channel,
           priority, reason, best_contact_time, suggested_message, confidence,
           expected_impact, expires_at)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8::jsonb, $9, $10,
-               $11, NOW() + INTERVAL '72 hours')
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11,
+               $12, NOW() + INTERVAL '72 hours')
        RETURNING id::text`,
       [
         lead.id,
         lead.organization_id,
+        lead.project_id,
         lead.assigned_user_id,
         result.nextBestAction.action,
         result.nextBestAction.channel,
@@ -1283,14 +1372,16 @@ async function persistIntelligence(
     // Workflow-QA 2026-07-05: recommendation.published-triggeren hadde
     // ingen publisher — nå fyrer den når motoren faktisk publiserer en
     // ny anbefaling (dedup-treffet over publiserer IKKE på nytt).
-    if (recId && lead.organization_id) {
+    if (recId && lead.organization_id && lead.project_id) {
       const recOrgId = lead.organization_id;
+      const recProjectId = lead.project_id;
       void (async () => {
         try {
           const bus = await import("./leadgrid-workflow-engine.js");
           await bus.publishEvent({
             pool,
             organizationId: recOrgId,
+            projectId: recProjectId,
             type: "recommendation.published",
             leadId: lead.id,
             actorUserId: lead.assigned_user_id ?? null,

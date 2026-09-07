@@ -69,17 +69,23 @@ final class PhoneSession: NSObject, ObservableObject {
     /// hen er i en kjeller uten signal.
     @discardableResult
     func sendQuickAction(_ action: LeadQuickAction, for lead: WatchLead) -> Bool {
-        guard let organizationId = lead.organizationId,
-              !organizationId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        guard let actorUserId = lead.actorUserId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !actorUserId.isEmpty,
+              let organizationId = lead.organizationId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !organizationId.isEmpty,
+              let projectId = lead.projectId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !projectId.isEmpty
         else {
-            quickActionError = "Lead-listen mangler organisasjonskontekst. Åpne Leadgrid på iPhone for å synkronisere før du prøver igjen."
+            quickActionError = "Lead-listen mangler sikker bruker-, workspace- eller prosjektkontekst. Åpne Leadgrid på iPhone og synkroniser før du prøver igjen."
             return false
         }
         let actionId = UUID()
         let payload: [String: Any] = [
             "type": "lead_action",
             "lead_id": lead.id,
+            "actor_user_id": actorUserId,
             "organization_id": organizationId,
+            "project_id": projectId,
             "action": action.rawValue,
             "action_id": actionId.uuidString,
             "ts": Date().timeIntervalSince1970,
@@ -145,12 +151,21 @@ final class PhoneSession: NSObject, ObservableObject {
         guard let data = UserDefaults.standard.data(forKey: storageKey),
               let decoded = try? JSONDecoder().decode([WatchLead].self, from: data)
         else { return }
-        leads = decoded
+        // Eldre snapshots manglet bruker-/prosjektbinding. De skal ikke
+        // vises på en klokke som kan være paret med en annen innlogget konto.
+        leads = decoded.filter(Self.hasCompleteSecurityScope)
+        if leads.count != decoded.count { saveToDisk() }
     }
 
     private func saveToDisk() {
         guard let data = try? JSONEncoder().encode(leads) else { return }
         UserDefaults.standard.set(data, forKey: storageKey)
+    }
+
+    private static func hasCompleteSecurityScope(_ lead: WatchLead) -> Bool {
+        [lead.actorUserId, lead.organizationId, lead.projectId].allSatisfy {
+            $0?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
     }
 }
 
@@ -167,7 +182,31 @@ extension PhoneSession: WCSessionDelegate {
         _ session: WCSession,
         didReceiveApplicationContext applicationContext: [String: Any]
     ) {
+        let shouldClear = applicationContext["cleared"] as? Bool == true
+        if shouldClear {
+            Task { @MainActor in
+                self.leads = []
+                self.lastSync = Date()
+                self.pendingAction = nil
+                self.saveToDisk()
+            }
+            return
+        }
+        let snapshotActorUserId = applicationContext["actor_user_id"] as? String
         let snapshotOrganizationId = applicationContext["organization_id"] as? String
+        let snapshotProjectId = applicationContext["project_id"] as? String
+        guard snapshotActorUserId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+              snapshotOrganizationId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+              snapshotProjectId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        else {
+            Task { @MainActor in
+                self.leads = []
+                self.lastSync = Date()
+                self.pendingAction = nil
+                self.saveToDisk()
+            }
+            return
+        }
         let raw = applicationContext["leads"] as? [[String: Any]] ?? []
         let decoded: [WatchLead] = raw.compactMap { dict in
             guard let id = dict["id"] as? String,
@@ -177,7 +216,9 @@ extension PhoneSession: WCSessionDelegate {
             else { return nil }
             return WatchLead(
                 id: id,
+                actorUserId: dict["actor_user_id"] as? String ?? snapshotActorUserId,
                 organizationId: dict["organization_id"] as? String ?? snapshotOrganizationId,
+                projectId: dict["project_id"] as? String ?? snapshotProjectId,
                 name: name,
                 address: dict["address"] as? String,
                 latitude: lat,
@@ -186,7 +227,7 @@ extension PhoneSession: WCSessionDelegate {
             )
         }
         Task { @MainActor in
-            self.leads = decoded
+            self.leads = decoded.filter(Self.hasCompleteSecurityScope)
             self.lastSync = Date()
             self.saveToDisk()
         }

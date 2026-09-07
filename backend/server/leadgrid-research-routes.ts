@@ -34,6 +34,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import { analyzeWebsite, type BrandProfile } from "./role-room-website-analyzer.js";
 import { enrichLeadWithBrreg, getStoredEnrichment } from "./lead-brreg-service.js";
 import { withAIQuota } from "./leadgrid-ai-queue.js";
+import {
+  loadAccessibleLeadgridLead,
+  type LeadgridAccessibleLead,
+} from "./leadgrid-lead-access.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -143,32 +147,22 @@ interface LeadRow {
   owner_user_id: string | null;
 }
 
-/**
- * Hent lead m/ ownership-sjekk. owner_user_id må matche caller, ELLER
- * vi gir tilgang hvis caller er super_admin (sjekkes separat over).
- */
 async function fetchLead(
   pool: Pool,
-  leadId: string,
-  callerUserId: string,
-  callerRole: string | undefined,
+  scope: LeadgridAccessibleLead,
 ): Promise<LeadRow | null> {
-  const isSuperAdmin = callerRole === "super_admin";
-  const sql = isSuperAdmin
-    ? `SELECT id::text, name, company, city, country, phone, email,
-              website_url, linkedin_url, google_rating, notes,
-              lead_category, lead_status, enrichment_org_nr,
-              enrichment_data, ai_opportunity_score, owner_user_id::text
-         FROM crm_customers
-        WHERE id = $1`
-    : `SELECT id::text, name, company, city, country, phone, email,
-              website_url, linkedin_url, google_rating, notes,
-              lead_category, lead_status, enrichment_org_nr,
-              enrichment_data, ai_opportunity_score, owner_user_id::text
-         FROM crm_customers
-        WHERE id = $1 AND owner_user_id = $2`;
-  const params = isSuperAdmin ? [leadId] : [leadId, callerUserId];
-  const r = await pool.query<LeadRow>(sql, params);
+  const r = await pool.query<LeadRow>(
+    `SELECT id::text, name, company, city, country, phone, email,
+            website_url, linkedin_url, google_rating, notes,
+            lead_category, lead_status, enrichment_org_nr,
+            enrichment_data, ai_opportunity_score, owner_user_id::text
+       FROM crm_customers
+      WHERE id = $1::uuid
+        AND organization_id = $2::uuid
+        AND project_id = $3
+      LIMIT 1`,
+    [scope.id, scope.organizationId, scope.projectId],
+  );
   return r.rows[0] ?? null;
 }
 
@@ -398,6 +392,8 @@ async function persistResearch(
   pool: Pool,
   args: {
     leadId: string;
+    organizationId: string;
+    projectId: string;
     research: LeadgridResearch;
     existingEnrichment: Record<string, unknown> | null;
   },
@@ -420,16 +416,20 @@ async function persistResearch(
           SET enrichment_data = $2::jsonb,
               ai_opportunity_score = $3,
               updated_at = NOW()
-        WHERE id = $1`,
-      [args.leadId, JSON.stringify(merged), dbScore],
+        WHERE id = $1::uuid
+          AND organization_id = $4::uuid
+          AND project_id = $5`,
+      [args.leadId, JSON.stringify(merged), dbScore, args.organizationId, args.projectId],
     );
   } else {
     await pool.query(
       `UPDATE crm_customers
           SET enrichment_data = $2::jsonb,
               updated_at = NOW()
-        WHERE id = $1`,
-      [args.leadId, JSON.stringify(merged)],
+        WHERE id = $1::uuid
+          AND organization_id = $3::uuid
+          AND project_id = $4`,
+      [args.leadId, JSON.stringify(merged), args.organizationId, args.projectId],
     );
   }
 }
@@ -443,8 +443,8 @@ export function registerLeadgridResearchRoutes(deps: Deps): void {
 
   // ─── POST /api/leadgrid/leads/:id/research ─────────────────────
   // Kjør research-pipeline (BRREG + website + Claude). Persisterer
-  // resultatet og returnerer full JSON. Honors caller ownership +
-  // super_admin-bypass.
+  // resultatet og returnerer full JSON. Tilgang følger alltid leadets
+  // persistente organization/project-tuppel.
   app.post(
     "/api/leadgrid/leads/:id/research",
     async (req: Request, res: Response) => {
@@ -452,28 +452,20 @@ export function registerLeadgridResearchRoutes(deps: Deps): void {
       if (!session?.userId) {
         return res.status(401).json({ error: "Innlogging kreves" });
       }
+      const leadScope = await loadAccessibleLeadgridLead(pool, {
+        leadId: req.params.id,
+        userId: session.userId,
+      });
+      if (!leadScope) {
+        return res.status(404).json({ error: "lead_not_found" });
+      }
+      const lead = await fetchLead(pool, leadScope);
+      if (!lead) {
+        return res.status(404).json({ error: "lead_not_found" });
+      }
       const apiKey = process.env.ANTHROPIC_API_KEY;
       if (!apiKey) {
         return res.status(500).json({ error: "anthropic_key_missing" });
-      }
-
-      // Slå opp rolle for super_admin-bypass
-      let role: string | undefined = session.role;
-      if (!role) {
-        try {
-          const ur = await pool.query<{ role: string }>(
-            `SELECT role FROM users WHERE id = $1`,
-            [session.userId],
-          );
-          role = ur.rows[0]?.role;
-        } catch {
-          /* tystefall */
-        }
-      }
-
-      const lead = await fetchLead(pool, req.params.id, session.userId, role);
-      if (!lead) {
-        return res.status(404).json({ error: "lead_not_found" });
       }
 
       // Workspace-owner-context for BRREG/brand-kit-lookup: bruk
@@ -491,6 +483,8 @@ export function registerLeadgridResearchRoutes(deps: Deps): void {
         const stored = await getStoredEnrichment(pool, {
           leadId: lead.id,
           workspaceOwnerUserId,
+          organizationId: leadScope.organizationId,
+          projectId: leadScope.projectId,
         });
         if (stored && stored.source === "brreg") {
           brregData = stored;
@@ -498,6 +492,8 @@ export function registerLeadgridResearchRoutes(deps: Deps): void {
           brregData = await enrichLeadWithBrreg(pool, {
             leadId: lead.id,
             workspaceOwnerUserId,
+            organizationId: leadScope.organizationId,
+            projectId: leadScope.projectId,
           });
         }
       } catch (err) {
@@ -571,11 +567,17 @@ export function registerLeadgridResearchRoutes(deps: Deps): void {
       try {
         // Re-hent enrichment_data så vi ikke overskriver BRREG vi nettopp lagret
         const refresh = await pool.query<{ enrichment_data: Record<string, unknown> | null }>(
-          `SELECT enrichment_data FROM crm_customers WHERE id = $1`,
-          [lead.id],
+          `SELECT enrichment_data
+             FROM crm_customers
+            WHERE id = $1::uuid
+              AND organization_id = $2::uuid
+              AND project_id = $3`,
+          [lead.id, leadScope.organizationId, leadScope.projectId],
         );
         await persistResearch(pool, {
           leadId: lead.id,
+          organizationId: leadScope.organizationId,
+          projectId: leadScope.projectId,
           research,
           existingEnrichment: refresh.rows[0]?.enrichment_data ?? lead.enrichment_data,
         });
@@ -616,20 +618,14 @@ export function registerLeadgridResearchRoutes(deps: Deps): void {
         return res.status(401).json({ error: "Innlogging kreves" });
       }
 
-      let role: string | undefined = session.role;
-      if (!role) {
-        try {
-          const ur = await pool.query<{ role: string }>(
-            `SELECT role FROM users WHERE id = $1`,
-            [session.userId],
-          );
-          role = ur.rows[0]?.role;
-        } catch {
-          /* tystefall */
-        }
+      const leadScope = await loadAccessibleLeadgridLead(pool, {
+        leadId: req.params.id,
+        userId: session.userId,
+      });
+      if (!leadScope) {
+        return res.status(404).json({ error: "lead_not_found" });
       }
-
-      const lead = await fetchLead(pool, req.params.id, session.userId, role);
+      const lead = await fetchLead(pool, leadScope);
       if (!lead) {
         return res.status(404).json({ error: "lead_not_found" });
       }

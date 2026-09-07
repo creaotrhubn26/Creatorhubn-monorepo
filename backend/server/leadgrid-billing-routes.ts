@@ -49,6 +49,56 @@ function getSession(req: Request, sessions: Map<string, SessionData>): SessionDa
   return token ? sessions.get(token) ?? null : null;
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const LEADGRID_PUBLIC_BASE = (process.env.LEADGRID_PUBLIC_URL ?? "https://leadgrid.no")
+  .replace(/\/+$/, "");
+
+type BillingOrganizationResolution = {
+  organizationId: string | null;
+  error?: "orgId_påkrevd" | "ugyldig_orgId";
+};
+
+/** Eksplisitt tenant-scope for både native klient og web. */
+export function resolveBillingOrganizationId(req: Request): BillingOrganizationResolution {
+  const body = req.body as { orgId?: unknown; organization_id?: unknown } | undefined;
+  const candidates: unknown[] = [
+    body?.orgId,
+    body?.organization_id,
+    req.query.orgId,
+    req.query.organization_id,
+    req.get("X-Leadgrid-Organization-Id"),
+  ];
+  const raw = candidates.find((value) => typeof value === "string" && value.trim().length > 0);
+  if (typeof raw !== "string") return { organizationId: null, error: "orgId_påkrevd" };
+  const organizationId = raw.trim();
+  if (!UUID_PATTERN.test(organizationId)) {
+    return { organizationId: null, error: "ugyldig_orgId" };
+  }
+  return { organizationId };
+}
+
+/** Betalingsdata og Stripe-portal er kun for org-admin eller plattform-admin. */
+export async function canManageLeadgridBilling(
+  pool: Pool,
+  userId: string,
+  organizationId: string,
+): Promise<boolean> {
+  const result = await pool.query<{ allowed: boolean }>(
+    `SELECT (
+       EXISTS (
+         SELECT 1 FROM organization_members
+          WHERE organization_id = $1::uuid
+            AND user_id = $2
+            AND role = 'admin'
+       ) OR EXISTS (
+         SELECT 1 FROM users WHERE id = $2 AND role = 'super_admin'
+       )
+     ) AS allowed`,
+    [organizationId, userId],
+  );
+  return result.rows[0]?.allowed === true;
+}
+
 async function requireSuperAdmin(
   req: Request, res: Response, pool: Pool,
   activeSessions: Map<string, SessionData>,
@@ -372,23 +422,19 @@ export function registerLeadgridBillingRoutes({
     }
   });
 
-  // ---------- Customer Portal session (én engangs-link) ----------
+  // ---------- Customer Portal session (én engangs-link, kun org-admin) ----------
   app.post("/api/leadgrid/billing/portal-session", async (req, res) => {
     const session = getSession(req, activeSessions);
     if (!session) return res.status(401).json({ error: "Ikke innlogget" });
-    if (!stripe) return res.status(500).json({ error: "Stripe ikke konfigurert" });
-    const { orgId, returnUrl } = req.body ?? {};
-    if (!orgId) return res.status(400).json({ error: "orgId påkrevd" });
-
-    // Bekreft medlemskap
-    const memberR = await pool.query(
-      `SELECT 1 FROM organization_members WHERE organization_id = $1 AND user_id = $2
-       UNION SELECT 1 FROM users WHERE id = $2 AND role = 'super_admin'`,
-      [orgId, session.userId],
-    );
-    if (memberR.rows.length === 0) {
-      return res.status(403).json({ error: "Ikke medlem av org'en" });
+    const target = resolveBillingOrganizationId(req);
+    if (!target.organizationId) {
+      return res.status(400).json({ error: target.error });
     }
+    const orgId = target.organizationId;
+    if (!(await canManageLeadgridBilling(pool, session.userId, orgId))) {
+      return res.status(403).json({ error: "Krever organisasjonsadministrator" });
+    }
+    if (!stripe) return res.status(500).json({ error: "Stripe ikke konfigurert" });
 
     const orgR = await pool.query<{ stripe_customer_id: string | null; name: string }>(
       `SELECT stripe_customer_id, name FROM organizations WHERE id = $1`, [orgId],
@@ -400,7 +446,7 @@ export function registerLeadgridBillingRoutes({
     try {
       const portalSession = await stripe.billingPortal.sessions.create({
         customer: orgR.rows[0].stripe_customer_id!,
-        return_url: returnUrl || `https://theroleroom.com/leadgrid?orgId=${orgId}`,
+        return_url: `${LEADGRID_PUBLIC_BASE}/?billing=return`,
       });
       res.json({ url: portalSession.url });
     } catch (e: any) {
@@ -409,19 +455,17 @@ export function registerLeadgridBillingRoutes({
     }
   });
 
-  // ---------- Org's egne fakturaer ----------
+  // ---------- Org-admins fakturaer ----------
   app.get("/api/leadgrid/billing/invoices", async (req, res) => {
     const session = getSession(req, activeSessions);
     if (!session) return res.status(401).json({ error: "Ikke innlogget" });
-    const orgId = (req.query.orgId as string) ?? null;
-    if (!orgId) return res.status(400).json({ error: "orgId påkrevd" });
-    const memberR = await pool.query(
-      `SELECT 1 FROM organization_members WHERE organization_id = $1 AND user_id = $2
-       UNION SELECT 1 FROM users WHERE id = $2 AND role = 'super_admin'`,
-      [orgId, session.userId],
-    );
-    if (memberR.rows.length === 0) {
-      return res.status(403).json({ error: "Ikke medlem av org'en" });
+    const target = resolveBillingOrganizationId(req);
+    if (!target.organizationId) {
+      return res.status(400).json({ error: target.error });
+    }
+    const orgId = target.organizationId;
+    if (!(await canManageLeadgridBilling(pool, session.userId, orgId))) {
+      return res.status(403).json({ error: "Krever organisasjonsadministrator" });
     }
     const r = await pool.query(
       `SELECT id, stripe_invoice_id, amount_paid_oere, currency, status,

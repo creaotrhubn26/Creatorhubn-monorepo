@@ -5,12 +5,15 @@
  *   GET /api/leadgrid/ai-usage/summary   — aggregat per provider
  *   GET /api/leadgrid/ai-usage/history   — daglig tidsserie
  *
- * Gated på billing.view_ai_usage (mig 321) — admin + salgssjef default.
+ * Krever eksplisitt workspace-id og workspace-admin/superadmin.
  */
 
-import type { Express, Request, Response } from "express";
+import type { Express, NextFunction, Request, Response } from "express";
 import type { Pool } from "pg";
-import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
+import {
+  canManageLeadgridBilling,
+  resolveBillingOrganizationId,
+} from "./leadgrid-billing-routes.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -29,33 +32,44 @@ function getSession(req: Request, activeSessions: Map<string, SessionData>) {
   return null;
 }
 
-async function resolveOrgIdSmart(
-  req: Request,
-  pool: Pool,
-  userId: string,
-): Promise<string | null> {
-  const explicit = req.query?.organization_id;
-  if (typeof explicit === "string" && explicit.length > 0) return explicit;
-  const r = await pool.query<{ organization_id: string }>(
-    `SELECT organization_id::text FROM organization_members
-      WHERE user_id = $1 ORDER BY joined_at ASC LIMIT 1`,
-    [userId],
-  );
-  return r.rows[0]?.organization_id ?? null;
-}
 
 export function registerLeadgridAIUsageRoutes(deps: Deps): void {
   const { app, pool, activeSessions } = deps;
-  const perm = requireLeadMapPermission("billing.view_ai_usage", {
-    pool, activeSessions, resolveOrgId: resolveOrgIdSmart,
-  });
+  const adminOnly = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    const session = getSession(req, activeSessions);
+    if (!session) {
+      res.status(401).json({ error: "Innlogging kreves" });
+      return;
+    }
+    const resolution = resolveBillingOrganizationId(req);
+    if (!resolution.organizationId) {
+      res.status(400).json({ error: resolution.error ?? "orgId_påkrevd" });
+      return;
+    }
+    try {
+      const allowed = await canManageLeadgridBilling(
+        pool,
+        session.userId,
+        resolution.organizationId,
+      );
+      if (!allowed) {
+        res.status(403).json({ error: "Krever workspace-administrator" });
+        return;
+      }
+      res.locals.leadgridOrganizationId = resolution.organizationId;
+      next();
+    } catch {
+      res.status(500).json({ error: "Kunne ikke kontrollere workspace-tilgang" });
+    }
+  };
 
   // GET /api/leadgrid/ai-usage/summary?sinceDays=30
-  app.get("/api/leadgrid/ai-usage/summary", perm, async (req: Request, res: Response) => {
-    const session = getSession(req, activeSessions);
-    if (!session) { res.status(401).json({ error: "Innlogging kreves" }); return; }
-    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-    if (!orgId) { res.status(400).json({ error: "mangler_organization_id" }); return; }
+  app.get("/api/leadgrid/ai-usage/summary", adminOnly, async (req: Request, res: Response) => {
+    const orgId = String(res.locals.leadgridOrganizationId);
     const sinceDays = Math.min(365, Math.max(1, parseInt(String(req.query.sinceDays ?? "30"), 10)));
     try {
       const summary = await pool.query(
@@ -92,11 +106,8 @@ export function registerLeadgridAIUsageRoutes(deps: Deps): void {
   });
 
   // GET /api/leadgrid/ai-usage/history?days=30 — daglig tidsserie
-  app.get("/api/leadgrid/ai-usage/history", perm, async (req: Request, res: Response) => {
-    const session = getSession(req, activeSessions);
-    if (!session) { res.status(401).json({ error: "Innlogging kreves" }); return; }
-    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-    if (!orgId) { res.status(400).json({ error: "mangler_organization_id" }); return; }
+  app.get("/api/leadgrid/ai-usage/history", adminOnly, async (req: Request, res: Response) => {
+    const orgId = String(res.locals.leadgridOrganizationId);
     const days = Math.min(180, Math.max(1, parseInt(String(req.query.days ?? "30"), 10)));
     try {
       const r = await pool.query(
