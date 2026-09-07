@@ -100,7 +100,7 @@ Outbox lagrer payload, `eventType`, `eventId`, forsøk, neste retry, siste feil 
 
 ## 7. Databaseendringer
 
-Migrasjon `337_protools_companion_integration_integrity.sql` etablerer:
+Migrasjon `0558_protools_companion_integration_integrity.sql` etablerer:
 
 - persistent pairing codes og claim/rate-limit-data
 - device- og prosjektkontekst på sessions
