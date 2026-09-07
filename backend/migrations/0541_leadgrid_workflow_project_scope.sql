@@ -68,6 +68,9 @@ UPDATE leadgrid_workflows
 UPDATE leadgrid_workflow_executions execution
    SET project_id = customer.project_id
   FROM crm_customers customer
+  JOIN leadgrid_projects project
+    ON project.organization_id = customer.organization_id
+   AND project.id = customer.project_id
  WHERE execution.project_id IS NULL
    AND execution.lead_id = customer.id
    AND execution.organization_id = customer.organization_id
@@ -84,6 +87,9 @@ UPDATE leadgrid_workflow_executions execution
 UPDATE leadgrid_workflow_resume_jobs job
    SET project_id = customer.project_id
   FROM crm_customers customer
+  JOIN leadgrid_projects project
+    ON project.organization_id = customer.organization_id
+   AND project.id = customer.project_id
  WHERE job.project_id IS NULL
    AND customer.id::text = job.lead_id
    AND customer.organization_id::text = job.organization_id
@@ -101,6 +107,9 @@ UPDATE leadgrid_email_tracking_events event
    SET project_id = customer.project_id,
        organization_id = customer.organization_id
   FROM crm_customers customer
+  JOIN leadgrid_projects project
+    ON project.organization_id = customer.organization_id
+   AND project.id = customer.project_id
  WHERE event.customer_id = customer.id
    AND customer.organization_id IS NOT NULL
    AND customer.project_id IS NOT NULL
@@ -113,6 +122,9 @@ UPDATE leadgrid_proposal_views event
    SET project_id = customer.project_id,
        organization_id = customer.organization_id
   FROM crm_customers customer
+  JOIN leadgrid_projects project
+    ON project.organization_id = customer.organization_id
+   AND project.id = customer.project_id
  WHERE event.customer_id = customer.id
    AND customer.organization_id IS NOT NULL
    AND customer.project_id IS NOT NULL
@@ -125,6 +137,9 @@ UPDATE leadgrid_contract_events event
    SET project_id = customer.project_id,
        organization_id = customer.organization_id
   FROM crm_customers customer
+  JOIN leadgrid_projects project
+    ON project.organization_id = customer.organization_id
+   AND project.id = customer.project_id
  WHERE event.customer_id = customer.id
    AND customer.organization_id IS NOT NULL
    AND customer.project_id IS NOT NULL
@@ -137,6 +152,9 @@ UPDATE leadgrid_internal_notifications event
    SET project_id = customer.project_id,
        organization_id = customer.organization_id
   FROM crm_customers customer
+  JOIN leadgrid_projects project
+    ON project.organization_id = customer.organization_id
+   AND project.id = customer.project_id
  WHERE event.related_lead_id = customer.id
    AND customer.organization_id IS NOT NULL
    AND customer.project_id IS NOT NULL
@@ -149,6 +167,9 @@ UPDATE leadgrid_meetings event
    SET project_id = customer.project_id,
        organization_id = customer.organization_id
   FROM crm_customers customer
+  JOIN leadgrid_projects project
+    ON project.organization_id = customer.organization_id
+   AND project.id = customer.project_id
  WHERE event.customer_id = customer.id
    AND customer.organization_id IS NOT NULL
    AND customer.project_id IS NOT NULL
@@ -161,6 +182,9 @@ UPDATE leadgrid_phone_calls event
    SET project_id = customer.project_id,
        organization_id = customer.organization_id
   FROM crm_customers customer
+  JOIN leadgrid_projects project
+    ON project.organization_id = customer.organization_id
+   AND project.id = customer.project_id
  WHERE event.customer_id = customer.id
    AND customer.organization_id IS NOT NULL
    AND customer.project_id IS NOT NULL

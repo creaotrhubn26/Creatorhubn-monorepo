@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { Express, Request, RequestHandler, Response } from "express";
 import type { Pool } from "pg";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -255,5 +256,23 @@ describe("Leadgrid workflow project scope", () => {
     expect(sql).toContain("organization_id = $2::uuid");
     expect(sql).toContain("project_id = $3");
     expect(params).toEqual([workflowId, organizationId, projectId, 50]);
+  });
+});
+
+const workflowProjectScopeMigration = readFileSync(
+  new URL(
+    "../migrations/0541_leadgrid_workflow_project_scope.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
+
+describe("Leadgrid workflow project-scope migration", () => {
+  it("inherits only customer tuples backed by a Leadgrid project", () => {
+    const guardedCustomerBackfills = workflowProjectScopeMigration.match(
+      /FROM crm_customers customer\s+JOIN leadgrid_projects project\s+ON project\.organization_id = customer\.organization_id\s+AND project\.id = customer\.project_id/g,
+    );
+
+    expect(guardedCustomerBackfills).toHaveLength(8);
   });
 });
