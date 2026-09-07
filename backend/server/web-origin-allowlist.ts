@@ -30,6 +30,7 @@ const KNOWN_WEB_ORIGINS = new Set<string>([
 // contain unreviewed code and must never become trusted credentialed origins.
 const NETLIFY_PRODUCTION_ORIGINS = new Set([
   "https://creatorhub-frontend-mig.netlify.app",
+  "https://easeverse.netlify.app",
   "https://leadgrid-no.netlify.app",
   "https://theroleroom.netlify.app",
 ]);

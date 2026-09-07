@@ -91,6 +91,93 @@ function makeResponse() {
 }
 
 describe("shared CreatorHub Google OAuth handoff", () => {
+  it("keeps the Google callback on CreatorHub while returning a trusted EaseVerse login to EaseVerse", async () => {
+    const previousClientId = process.env.CREATORHUB_GOOGLE_CLIENT_ID;
+    const previousClientSecret = process.env.CREATORHUB_GOOGLE_CLIENT_SECRET;
+    const previousRedirectUri = process.env.CREATORHUB_GOOGLE_REDIRECT_URI;
+    process.env.CREATORHUB_GOOGLE_CLIENT_ID = "google-client";
+    process.env.CREATORHUB_GOOGLE_CLIENT_SECRET = "google-secret";
+    process.env.CREATORHUB_GOOGLE_REDIRECT_URI =
+      "https://creatorhubn.com/api/creatorhub/google/oauth/callback";
+
+    try {
+      const { pool, states } = createOauthPool();
+      const router = createCreatorHubGoogleRouter(pool);
+      const handler = routeHandler(router, "POST", "/oauth/start");
+      const response = makeResponse();
+      await handler(
+        {
+          body: {
+            mode: "login",
+            browserOrigin: "https://easeverse.netlify.app",
+            returnPath: "/auth/callback?native=1",
+          },
+          headers: {},
+          get: () => "creatorhub-backend-rtbl.onrender.com",
+          protocol: "https",
+        },
+        response,
+      );
+
+      expect(response.statusCode).toBe(200);
+      const state = Array.from(states.values())[0] as Record<string, unknown>;
+      expect(state).toMatchObject({
+        browserOrigin: "https://easeverse.netlify.app",
+        redirectUri:
+          "https://creatorhubn.com/api/creatorhub/google/oauth/callback",
+        returnPath: "/auth/callback?native=1",
+      });
+    } finally {
+      if (previousClientId === undefined) delete process.env.CREATORHUB_GOOGLE_CLIENT_ID;
+      else process.env.CREATORHUB_GOOGLE_CLIENT_ID = previousClientId;
+      if (previousClientSecret === undefined) delete process.env.CREATORHUB_GOOGLE_CLIENT_SECRET;
+      else process.env.CREATORHUB_GOOGLE_CLIENT_SECRET = previousClientSecret;
+      if (previousRedirectUri === undefined) delete process.env.CREATORHUB_GOOGLE_REDIRECT_URI;
+      else process.env.CREATORHUB_GOOGLE_REDIRECT_URI = previousRedirectUri;
+    }
+  });
+
+  it("rejects an untrusted final OAuth origin", async () => {
+    const previousClientId = process.env.CREATORHUB_GOOGLE_CLIENT_ID;
+    const previousClientSecret = process.env.CREATORHUB_GOOGLE_CLIENT_SECRET;
+    const previousRedirectUri = process.env.CREATORHUB_GOOGLE_REDIRECT_URI;
+    process.env.CREATORHUB_GOOGLE_CLIENT_ID = "google-client";
+    process.env.CREATORHUB_GOOGLE_CLIENT_SECRET = "google-secret";
+    process.env.CREATORHUB_GOOGLE_REDIRECT_URI =
+      "https://creatorhubn.com/api/creatorhub/google/oauth/callback";
+
+    try {
+      const { pool, states } = createOauthPool();
+      const router = createCreatorHubGoogleRouter(pool);
+      const handler = routeHandler(router, "POST", "/oauth/start");
+      const response = makeResponse();
+      await handler(
+        {
+          body: {
+            mode: "login",
+            browserOrigin: "https://attacker.example",
+            returnPath: "/steal",
+          },
+          headers: {},
+          get: () => "creatorhub-backend-rtbl.onrender.com",
+          protocol: "https",
+        },
+        response,
+      );
+
+      expect(response.statusCode).toBe(200);
+      const state = Array.from(states.values())[0] as Record<string, unknown>;
+      expect(state.browserOrigin).toBe("https://creatorhubn.com");
+    } finally {
+      if (previousClientId === undefined) delete process.env.CREATORHUB_GOOGLE_CLIENT_ID;
+      else process.env.CREATORHUB_GOOGLE_CLIENT_ID = previousClientId;
+      if (previousClientSecret === undefined) delete process.env.CREATORHUB_GOOGLE_CLIENT_SECRET;
+      else process.env.CREATORHUB_GOOGLE_CLIENT_SECRET = previousClientSecret;
+      if (previousRedirectUri === undefined) delete process.env.CREATORHUB_GOOGLE_REDIRECT_URI;
+      else process.env.CREATORHUB_GOOGLE_REDIRECT_URI = previousRedirectUri;
+    }
+  });
+
   it("persists and atomically consumes state and login transfers", async () => {
     const { pool } = createOauthPool();
     const expiresAt = new Date(Date.now() + 60_000);

@@ -22,6 +22,7 @@ import {
 import { ensureGoogleWorkspaceConnectionsSchema } from './google-workspace-connections-schema.js';
 import { getAuthorizedWorkspaceClient, listMeetArtifactsForMeeting } from './google-meet.js';
 import { attachDeliverableAutomationScript } from './apps-script-service.js';
+import { isTrustedWebOrigin, safeReturnPath } from './web-origin-allowlist.js';
 
 type ActiveSessionData = {
   userId: string;
@@ -70,6 +71,7 @@ type CreatorHubGoogleOauthState = {
   mode: CreatorHubGoogleOauthMode;
   returnPath: string;
   browserOrigin?: string | null;
+  redirectUri?: string | null;
   createdByUserId?: string | null;
   createdByEmail?: string | null;
   targetConnectionUserId?: string | null;
@@ -262,13 +264,16 @@ function sanitizeReturnPath(value: unknown): string {
     return '/dashboard';
   }
 
-  if (candidate.startsWith('/') && !candidate.startsWith('//')) {
-    return candidate;
+  if (candidate.startsWith('/')) {
+    return safeReturnPath(candidate, '/dashboard');
   }
 
   try {
     const parsed = new URL(candidate);
-    return `${parsed.pathname}${parsed.search}${parsed.hash}` || '/dashboard';
+    return safeReturnPath(
+      `${parsed.pathname}${parsed.search}${parsed.hash}`,
+      '/dashboard',
+    );
   } catch {
     return '/dashboard';
   }
@@ -282,7 +287,10 @@ function sanitizeBrowserOrigin(value: unknown): string | null {
 
   try {
     const parsed = new URL(candidate);
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+    if (
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:')
+      && isTrustedWebOrigin(parsed.origin)
+    ) {
       return parsed.origin;
     }
   } catch {
@@ -293,7 +301,12 @@ function sanitizeBrowserOrigin(value: unknown): string | null {
 }
 
 function resolveRequestOrigin(req: Request, explicitOrigin?: string | null): string | null {
-  return resolveGoogleWorkspaceRequestOrigin('creatorhub', req, sanitizeBrowserOrigin(explicitOrigin));
+  const resolved = resolveGoogleWorkspaceRequestOrigin(
+    'creatorhub',
+    req,
+    sanitizeBrowserOrigin(explicitOrigin),
+  );
+  return resolved && isTrustedWebOrigin(resolved) ? resolved : null;
 }
 
 function buildCreatorHubGoogleReturnUrl(
@@ -793,7 +806,14 @@ export function createCreatorHubGoogleRouter(
       const oauthState: CreatorHubGoogleOauthState = {
         mode,
         returnPath: sanitizeReturnPath(req.body?.returnPath),
-        browserOrigin: sanitizeBrowserOrigin(req.body?.browserOrigin) ?? resolveRequestOrigin(req),
+        browserOrigin:
+          sanitizeBrowserOrigin(req.body?.browserOrigin)
+          ?? resolveRequestOrigin(req)
+          ?? 'https://creatorhubn.com',
+        // Keep Google's registered callback separate from the final browser
+        // destination. Satellite apps such as EaseVerse finish on their own
+        // trusted origin, while Google still returns to CreatorHub.
+        redirectUri: config.redirectUri,
         createdByUserId: requestUser?.userId ?? null,
         createdByEmail: requestUser?.email ?? null,
         targetConnectionUserId,
@@ -885,19 +905,11 @@ export function createCreatorHubGoogleRouter(
     }
 
     try {
-      // Slice 9X.61 — Bygg redirect_uri fra oauthState.browserOrigin (lagret
-      // ved /oauth/start) i stedet for config.redirectUri (som er request-
-      // derived). Token exchange MÅ bruke SAMME redirect_uri som ble sendt
-      // til Google ved auth-start, ellers svarer Google redirect_uri_mismatch.
-      //
-      // Bug-en oppsto fordi callback-en kommer fra Google (Referer =
-      // accounts.google.com), så resolveGoogleWorkspaceRequestOrigin
-      // returnerte 'https://accounts.google.com' — som ble brukt som
-      // redirect_uri i token-exchange. Mismatch med originalen
-      // (https://creatorhubn.com/...) → Google avviste.
-      const tokenExchangeRedirectUri = oauthState.browserOrigin
-        ? `${oauthState.browserOrigin}/api/creatorhub/google/oauth/callback`
-        : config.redirectUri!;
+      // Always use the callback URI that was registered when this OAuth state
+      // was created. The final browser destination may be another trusted
+      // CreatorHub product (for example EaseVerse), but it is not Google's
+      // redirect_uri and must never influence the token exchange.
+      const tokenExchangeRedirectUri = oauthState.redirectUri ?? config.redirectUri!;
       const oauthClient = new google.auth.OAuth2(
         config.clientId!,
         config.clientSecret!,
