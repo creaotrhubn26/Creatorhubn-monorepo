@@ -31,6 +31,10 @@ describe("Leadgrid project team scope migration", () => {
     expect(migration).not.toMatch(/ALTER TABLE project_invitations/i);
     expect(migration).not.toMatch(/DROP TABLE/i);
     expect(migration).toContain("FROM project_members legacy");
+    expect(migration).toContain("information_schema.columns");
+    expect(migration).toContain("column_name = 'last_active_at'");
+    expect(migration).toContain("column_name = 'meta'");
+    expect(migration).toContain("NULL::TIMESTAMPTZ");
     expect(migration).toContain("FROM project_invitations legacy");
   });
 
