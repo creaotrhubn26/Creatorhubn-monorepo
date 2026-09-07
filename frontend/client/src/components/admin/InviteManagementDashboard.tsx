@@ -106,6 +106,9 @@ interface InviteRequest {
   contactName: string;
   contactEmail: string;
   profession: string;
+  testerProfession?: string;
+  source?: string;
+  message?: string;
   status: 'pending' | 'under_review' | 'approved' | 'rejected';
   hasGoogleWorkspace: boolean;
   redFlagAnalysis?: {
@@ -228,6 +231,10 @@ export default function InviteManagementDashboard() {
       conversionRate: total > 0 ? (approved / total) * 100 : 0,
     };
   }, [invitations]);
+  const [reviewFeedback, setReviewFeedback] = useState<{
+    severity: 'success' | 'warning' | 'error';
+    message: string;
+  } | null>(null);
 
   // Update invite status mutation
   const updateStatusMutation = useMutation({
@@ -241,12 +248,34 @@ export default function InviteManagementDashboard() {
         body: JSON.stringify({ status, adminNotes: notes })
       });
   },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/invites/admin/requests'] });
+    onSuccess: (data: any, variables) => {
+      const delivery = data?.testerInvite?.emailDelivery;
+      if (variables.status === 'approved' && data?.testerInvite) {
+        if (delivery?.sent) {
+          setReviewFeedback({
+            severity: 'success',
+            message: `Søknaden er godkjent og invitasjons-e-posten er sendt via ${delivery.provider || 'e-postleverandøren'}.`,
+          });
+        } else {
+          setReviewFeedback({
+            severity: 'warning',
+            message: `Søknaden er godkjent, men invitasjons-e-posten ble ikke sendt (${delivery?.reason || 'ukjent feil'}).`,
+          });
+        }
+      } else {
+        setReviewFeedback({ severity: 'success', message: 'Statusen er oppdatert.' });
+      }
+      void queryClient.invalidateQueries({ queryKey: ['/api/invites/admin/requests'] });
       setShowReviewDialog(false);
       setSelectedInvite(null);
       setAdminNotes('');
-  }
+    },
+    onError: (error: any) => {
+      setReviewFeedback({
+        severity: 'error',
+        message: error?.message || 'Kunne ikke oppdatere søknaden.',
+      });
+    },
 });
 
   const [mainView, setMainView] = useState<'invites' | 'fiken'>('invites');
@@ -410,6 +439,12 @@ export default function InviteManagementDashboard() {
           Inviter ny bruker
         </AdminButton>
       </Box>
+
+      {reviewFeedback && (
+        <Alert severity={reviewFeedback.severity} onClose={() => setReviewFeedback(null)} data-testid="invite-review-feedback" sx={{ mb: 3 }}>
+          {reviewFeedback.message}
+        </Alert>
+      )}
 
       {/* Main View Tabs - Invites vs Fiken */}
       <Paper sx={{ mb: 3 }}>
@@ -585,7 +620,7 @@ export default function InviteManagementDashboard() {
           )}
           itemContent={(_index, invite: any) => (
             <>
-                <TableCell>
+                <TableCell data-testid={`invite-request-${invite.id}`}>
                   <Box>
                     <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
                       {invite.businessName || '—'}
@@ -615,6 +650,14 @@ export default function InviteManagementDashboard() {
                     variant="outlined"
                     size="small"
                   />
+                  {invite.testerProfession && (
+                    <Chip
+                      label={`Tester som ${getProfessionLabel(invite.testerProfession)}`}
+                      color="info"
+                      size="small"
+                      sx={{ ml: 0.5 }}
+                    />
+                  )}
                   {(() => {
                     // Team-forespørsel? Parses fra «[Team: N medlemmer]» i meldingen.
                     // Ved godkjenning settes prototype-master + max_team_size = N.
@@ -849,6 +892,14 @@ export default function InviteManagementDashboard() {
                       <Typography variant="body2" color="textSecondary">E-post: </Typography>
                       <Typography variant="body1">{selectedInvite.contactEmail}</Typography>
                     </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="body2" color="textSecondary">Kilde: </Typography>
+                      <Typography variant="body1">{selectedInvite.source || '—'}</Typography>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="body2" color="textSecondary">Tester som: </Typography>
+                      <Typography variant="body1">{selectedInvite.testerProfession ? getProfessionLabel(selectedInvite.testerProfession) : '—'}</Typography>
+                    </Grid>
                   </Grid>
                 </CardContent>
               </MuiCard>
@@ -861,10 +912,10 @@ export default function InviteManagementDashboard() {
                       📦 Funksjoner for denne brukeren
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      Basert på yrke ({selectedInvite.profession}) og valgt plan ({selectedInvite.selectedPlan || 'basic'})
+                      Basert på yrke ({selectedInvite.testerProfession || selectedInvite.profession}) og valgt plan ({selectedInvite.selectedPlan || 'basic'})
                     </Typography>
                     <PlanFeaturePreview
-                      profession={selectedInvite.profession}
+                      profession={selectedInvite.testerProfession || selectedInvite.profession}
                       selectedPlan={normalizePlan(selectedInvite.selectedPlan)}
                       showLocked={true}
                       showDetails={true}
@@ -914,8 +965,10 @@ export default function InviteManagementDashboard() {
 
               {/* Review Controls */}
               <FormControl fullWidth sx={{ mb: 3 }}>
-                <InputLabel>Status</InputLabel>
+                <InputLabel id="invite-review-status-label">Status</InputLabel>
                 <Select
+                  id="invite-review-status"
+                  labelId="invite-review-status-label"
                   value={reviewStatus}
                   onChange={(e) => setReviewStatus(e.target.value)}
                   label="Status"

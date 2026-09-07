@@ -313,6 +313,10 @@ export const inviteRequests = pgTable("invite_requests", {
 	phoneNumber: varchar("phone_number"),
 	website: varchar(),
 	message: text(),
+	source: varchar({ length: 100 }).default('landing'),
+	testerProfession: varchar("tester_profession", { length: 40 }),
+	enterpriseTeamSize: integer("enterprise_team_size"),
+	enterprisePricing: jsonb("enterprise_pricing"),
 	status: varchar().default('pending'),
 	adminNotes: text("admin_notes"),
 	processedBy: varchar("processed_by"),
@@ -6142,6 +6146,7 @@ export const weddingTimelines = pgTable("wedding_timelines", {
 
 export const users = pgTable("users", {
 	id: varchar().default(sql`gen_random_uuid()`).primaryKey().notNull(),
+	authSessionVersion: bigint("auth_session_version", { mode: "number" }).default(0).notNull(),
 	adminLevel: text("admin_level"),
 	profession: varchar(),
 	companyName: varchar("company_name"),
