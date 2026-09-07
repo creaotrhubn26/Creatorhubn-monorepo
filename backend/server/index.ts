@@ -16557,7 +16557,11 @@ type CreatorHubPlatformEmailTemplateId =
   | "creatorhub_account_activated"
   | "creatorhub_payment_failed"
   | "creatorhub_payment_recovered"
-  | "creatorhub_subscription_cancelled";
+  | "creatorhub_subscription_cancelled"
+  | "creatorhub_access_request_received"
+  | "creatorhub_access_request_approved"
+  | "creatorhub_access_request_rejected"
+  | "creatorhub_tester_access_activated";
 
 type CreatorHubPlatformEmailSenderKind =
   | "billing"
@@ -16707,6 +16711,56 @@ const CREATORHUB_PLATFORM_DEFAULT_EMAIL_TEMPLATES: CreatorHubPlatformEmailTempla
       ctaLabel: "Åpne CreatorHub",
       footerNote:
         "Dette er en systemmelding. Hvis du trenger hjelp, kan du kontakte oss via supportsiden i CreatorHub.",
+    },
+    {
+      id: "creatorhub_access_request_received",
+      name: "Tilgangsforespørsel mottatt",
+      description:
+        "Sendes til søkeren når en CreatorHub- eller prototype-tester-søknad er registrert.",
+      subject: "Vi har mottatt CreatorHub-søknaden din",
+      title: "Søknaden din er mottatt",
+      body:
+        "<p>Hei {{recipientName}},</p><p>Takk for at du søkte om tilgang til CreatorHub som <strong>{{professionName}}</strong>.</p><p>CreatorHub-teamet gjennomgår søknaden personlig. Du får svar på e-post innen <strong>1–3 virkedager</strong>.</p>",
+      footerNote:
+        "Du trenger ikke sende inn søknaden på nytt. Svar på denne e-posten hvis du vil legge til noe.",
+    },
+    {
+      id: "creatorhub_access_request_approved",
+      name: "Tilgangsforespørsel godkjent",
+      description:
+        "Sendes når en prototype-tester er godkjent og skal lese vilkårene og signere NDA.",
+      subject: "Du er godkjent som prototype-tester i CreatorHub",
+      title: "Søknaden din er godkjent",
+      body:
+        "<p>Hei {{recipientName}},</p><p>Vi har godkjent søknaden din til CreatorHub sitt prototype-testerprogram.</p><p>Programmet varer i <strong>{{programDurationWeeks}} uker</strong>. Før tilgangen aktiveres må du lese programvilkårene og signere NDA-en via knappen under.</p>",
+      ctaLabel: "Les vilkår og signer",
+      footerNote:
+        "Den personlige lenken utløper om {{inviteExpiresDays}} dager. Svar på denne e-posten hvis du trenger hjelp.",
+    },
+    {
+      id: "creatorhub_access_request_rejected",
+      name: "Tilgangsforespørsel avslått",
+      description:
+        "Sendes når teamet avslår en CreatorHub- eller prototype-tester-søknad.",
+      subject: "En oppdatering om CreatorHub-søknaden din",
+      title: "Takk for interessen",
+      body:
+        "<p>Hei {{recipientName}},</p><p>Takk for at du søkte om tilgang til CreatorHub.</p><p>Vi har dessverre ikke anledning til å tilby deg plass i prototype-testerprogrammet denne gangen. Du er velkommen til å søke igjen ved en senere opptaksrunde.</p>",
+      footerNote:
+        "Har du spørsmål til avgjørelsen, kan du svare direkte på denne e-posten.",
+    },
+    {
+      id: "creatorhub_tester_access_activated",
+      name: "Prototype-tilgang aktivert",
+      description:
+        "Sendes etter at testeren har signert NDA og kontoen er aktivert.",
+      subject: "Tilgangen din til CreatorHub er aktivert",
+      title: "Velkommen som prototype-tester",
+      body:
+        "<p>Hei {{recipientName}},</p><p>NDA-en og programvilkårene er registrert, og CreatorHub-kontoen din er nå aktiv.</p><p>Logg inn med <strong>{{recipientEmail}}</strong>. Testperioden varer til <strong>{{programEndsAt}}</strong>.</p>",
+      ctaLabel: "Logg inn i CreatorHub",
+      footerNote:
+        "Svar på denne e-posten hvis du trenger hjelp med innlogging eller tilgang.",
     },
   ];
 
@@ -29528,6 +29582,11 @@ async function renderCreatorHubPlatformEmail(input: {
         settings.identity.appName,
       )}" width="42" height="42" style="display:block;width:42px;height:42px;border:0" />`
     : "";
+  const categoryLabel =
+    input.templateId.startsWith("creatorhub_access_request_") ||
+    input.templateId === "creatorhub_tester_access_activated"
+      ? "CreatorHub Tilgang"
+      : "CreatorHub Commerce";
 
   const html = `
     <div style="font-family:Inter,Arial,sans-serif;background:${theme.canvasBackground};padding:32px 16px;color:${theme.bodyText}">
@@ -29545,7 +29604,7 @@ async function renderCreatorHubPlatformEmail(input: {
                 )}</div>
               </div>
             </div>
-            <div style="margin-top:24px;display:inline-block;padding:7px 12px;border-radius:999px;background:#171d26;color:${theme.brandLabelColor};font-size:11px;letter-spacing:0.12em;text-transform:uppercase;font-weight:800">CreatorHub Commerce</div>
+            <div style="margin-top:24px;display:inline-block;padding:7px 12px;border-radius:999px;background:#171d26;color:${theme.brandLabelColor};font-size:11px;letter-spacing:0.12em;text-transform:uppercase;font-weight:800">${escapeRoleRoomEmailHtml(categoryLabel)}</div>
             <h1 style="margin:18px 0 0;font-size:29px;line-height:1.1;color:${theme.headerText};font-family:'Space Grotesk',Inter,Arial,sans-serif;font-weight:700">${escapeRoleRoomEmailHtml(
               title,
             )}</h1>
@@ -29846,6 +29905,10 @@ function resolveCreatorHubTemplateSenderKind(
 ): CreatorHubPlatformEmailSenderKind {
   switch (templateId) {
     case "creatorhub_account_activated":
+    case "creatorhub_access_request_received":
+    case "creatorhub_access_request_approved":
+    case "creatorhub_access_request_rejected":
+    case "creatorhub_tester_access_activated":
       return "welcome";
     case "creatorhub_subscription_cancelled":
       return "system";
@@ -29884,6 +29947,222 @@ function resolveCreatorHubTemplateFromEmail(
         CREATORHUB_PLATFORM_DEFAULT_FROM_EMAIL
       );
   }
+}
+
+type CreatorHubAccessEmailTemplateId =
+  | "creatorhub_access_request_received"
+  | "creatorhub_access_request_approved"
+  | "creatorhub_access_request_rejected"
+  | "creatorhub_tester_access_activated";
+
+type CreatorHubAccessEmailDelivery = {
+  sent: boolean;
+  provider: string | null;
+  reason: string | null;
+  messageId: string | null;
+};
+
+async function sendCreatorHubAccessLifecycleEmail(options: {
+  templateId: CreatorHubAccessEmailTemplateId;
+  recipientEmail: string;
+  variables: Record<string, string | number | null | undefined>;
+  ctaUrl?: string | null;
+  trackingPixelUrl?: string | null;
+  detailRows?: Array<{ label: string; value: string }>;
+  projectId?: string | null;
+  sentByUserId?: string | null;
+}): Promise<CreatorHubAccessEmailDelivery> {
+  const brandingSettings = await resolveCreatorHubPlatformBrandingSettings().catch(
+    () => null,
+  );
+  const rendered = await renderCreatorHubPlatformEmail({
+    templateId: options.templateId,
+    variables: options.variables,
+    ctaUrl: options.ctaUrl,
+    detailRows: options.detailRows,
+  });
+  const trackingPixel = normalizeMailConfigValue(options.trackingPixelUrl)
+    ? `<img src="${escapeRoleRoomEmailHtml(
+        normalizeMailConfigValue(options.trackingPixelUrl),
+      )}" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0" />`
+    : "";
+  const result = await sendTransactionalEmail({
+    to: options.recipientEmail,
+    subject: rendered.subject,
+    html: `${rendered.html}${trackingPixel}`,
+    text: rendered.text,
+    replyTo: rendered.replyToEmail,
+    fromLabel:
+      normalizeMailConfigValue(brandingSettings?.identity.appName) ||
+      "CreatorHub Norge",
+    fromAddress: resolveCreatorHubTemplateFromEmail(
+      options.templateId,
+      brandingSettings,
+    ),
+    credentialScope: "creatorhub",
+    kind: options.templateId,
+    projectId: options.projectId || null,
+    sentByUserId: options.sentByUserId || null,
+    pool,
+  });
+
+  return {
+    sent: result.sent,
+    provider: result.provider,
+    reason: result.reason,
+    messageId: result.messageId,
+  };
+}
+
+function formatCreatorHubAccessProfession(value: string | null | undefined) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return (
+    {
+      photographer: "Fotograf",
+      videographer: "Videograf",
+      music_producer: "Musikkprodusent",
+      vendor: "Leverandør",
+    }[normalized] || String(value || "CreatorHub-bruker")
+  );
+}
+
+async function sendCreatorHubAccessRequestReceivedEmail(options: {
+  recipientEmail: string;
+  recipientName: string;
+  requestId: string;
+  companyName: string;
+  professionName: string;
+  source: string;
+}) {
+  return sendCreatorHubAccessLifecycleEmail({
+    templateId: "creatorhub_access_request_received",
+    recipientEmail: options.recipientEmail,
+    variables: {
+      recipientName: options.recipientName,
+      recipientEmail: options.recipientEmail,
+      companyName: options.companyName,
+      professionName: options.professionName,
+      responseTime: "1–3 virkedager",
+      source: options.source,
+    },
+    detailRows: [
+      { label: "Firma", value: options.companyName },
+      { label: "Rolle", value: options.professionName },
+      { label: "Status", value: "Til personlig vurdering" },
+      { label: "Forventet svar", value: "1–3 virkedager" },
+    ],
+    projectId: options.requestId,
+  });
+}
+
+async function sendCreatorHubAccessRequestRejectedEmail(options: {
+  recipientEmail: string;
+  recipientName: string;
+  requestId: string;
+  companyName: string;
+  professionName: string;
+  sentByUserId: string;
+}) {
+  return sendCreatorHubAccessLifecycleEmail({
+    templateId: "creatorhub_access_request_rejected",
+    recipientEmail: options.recipientEmail,
+    variables: {
+      recipientName: options.recipientName,
+      recipientEmail: options.recipientEmail,
+      companyName: options.companyName,
+      professionName: options.professionName,
+    },
+    detailRows: [
+      { label: "Firma", value: options.companyName },
+      { label: "Rolle", value: options.professionName },
+      { label: "Status", value: "Ikke godkjent i denne opptaksrunden" },
+    ],
+    projectId: options.requestId,
+    sentByUserId: options.sentByUserId,
+  });
+}
+
+async function sendCreatorHubPrototypeTesterApprovalEmail(options: {
+  recipientEmail: string;
+  recipientName: string;
+  inviteUrl: string;
+  ctaUrl: string;
+  trackingPixelUrl: string;
+  inviteRequestId: string;
+  sentByUserId: string | null;
+  profession: string | null;
+  company: string | null;
+  programDurationWeeks: number;
+  inviteExpiresDays: number;
+}) {
+  const professionName = formatCreatorHubAccessProfession(options.profession);
+  return sendCreatorHubAccessLifecycleEmail({
+    templateId: "creatorhub_access_request_approved",
+    recipientEmail: options.recipientEmail,
+    variables: {
+      recipientName: options.recipientName,
+      recipientEmail: options.recipientEmail,
+      companyName: options.company,
+      professionName,
+      inviteUrl: options.inviteUrl,
+      programDurationWeeks: options.programDurationWeeks,
+      inviteExpiresDays: options.inviteExpiresDays,
+    },
+    ctaUrl: options.ctaUrl,
+    trackingPixelUrl: options.trackingPixelUrl,
+    detailRows: [
+      { label: "Rolle", value: professionName },
+      { label: "Programlengde", value: `${options.programDurationWeeks} uker` },
+      { label: "Neste steg", value: "Les vilkår og signer NDA" },
+      { label: "Lenken utløper", value: `${options.inviteExpiresDays} dager` },
+    ],
+    projectId: options.inviteRequestId,
+    sentByUserId: options.sentByUserId,
+  });
+}
+
+function formatCreatorHubProgramEndDate(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "datoen oppgitt i CreatorHub";
+  return new Intl.DateTimeFormat("nb-NO", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "Europe/Oslo",
+  }).format(date);
+}
+
+async function sendCreatorHubTesterAccessActivatedEmail(options: {
+  recipientEmail: string;
+  recipientName: string;
+  loginUrl: string;
+  inviteRequestId: string | null;
+  inviteId: string;
+  profession: string | null;
+  company: string | null;
+  programEndsAt: Date | string;
+}) {
+  const professionName = formatCreatorHubAccessProfession(options.profession);
+  const programEndsAt = formatCreatorHubProgramEndDate(options.programEndsAt);
+  return sendCreatorHubAccessLifecycleEmail({
+    templateId: "creatorhub_tester_access_activated",
+    recipientEmail: options.recipientEmail,
+    variables: {
+      recipientName: options.recipientName,
+      recipientEmail: options.recipientEmail,
+      professionName,
+      companyName: options.company,
+      programEndsAt,
+    },
+    ctaUrl: options.loginUrl,
+    detailRows: [
+      { label: "Status", value: "Tilgang aktiv" },
+      { label: "Rolle", value: professionName },
+      { label: "Innlogging", value: options.recipientEmail },
+      { label: "Testperiode til", value: programEndsAt },
+    ],
+    projectId: options.inviteRequestId || options.inviteId,
+  });
 }
 
 function escapeHtml(value: string): string {
@@ -66957,6 +67236,7 @@ setupPrototypeTesterInvitesRoutes({
     }
     return acct;
   },
+  sendAccessActivatedEmail: sendCreatorHubTesterAccessActivatedEmail,
 });
 
 // /api/invite-requests + /api/invites/admin/requests + /api/proff lookups —
@@ -66976,7 +67256,39 @@ setupInviteRequestsRoutes({
   upsertInviteRequestProffScreening,
   ensureInviteRequestAccessProvisioning,
   ensureCommunityAccessForApprovedInvite,
-  createInviteFromApprovedRequest,
+  createInviteFromApprovedRequest: (
+    routePool,
+    requestId,
+    email,
+    fullName,
+    invitedBy,
+    testingAreas,
+    baseUrl,
+    grantedPlan,
+    grantedFeatures,
+    teamSize,
+    memberProfession,
+    memberCompany,
+  ) =>
+    createInviteFromApprovedRequest(
+      routePool,
+      requestId,
+      email,
+      fullName,
+      invitedBy,
+      testingAreas,
+      baseUrl,
+      grantedPlan,
+      grantedFeatures,
+      teamSize,
+      memberProfession,
+      memberCompany,
+      sendCreatorHubPrototypeTesterApprovalEmail,
+    ),
+  sendAccessRequestReceivedEmail:
+    sendCreatorHubAccessRequestReceivedEmail,
+  sendAccessRequestRejectedEmail:
+    sendCreatorHubAccessRequestRejectedEmail,
 });
 
 // /api/submissions — 6 endpoints (couple → vendor messaging gjennom Evendi).
