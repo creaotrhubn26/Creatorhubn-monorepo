@@ -16,5 +16,8 @@ describe("Leadgrid project reporting migration", () => {
     expect(migration).toContain("REFERENCES leadgrid_projects(organization_id, id)");
     expect(migration).toContain("idx_leadgrid_scheduled_reports_due_project");
     expect(migration).toContain("leadgrid_scheduled_report_log");
+    expect(migration).toContain("ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ");
+    expect(migration).toContain("COALESCE(created_at, sent_at, NOW())");
+    expect(migration).toContain("ALTER COLUMN created_at SET NOT NULL");
   });
 });

@@ -96,6 +96,38 @@ CREATE TABLE IF NOT EXISTS leadgrid_scheduled_report_log (
 ALTER TABLE leadgrid_scheduled_report_log
   ADD COLUMN IF NOT EXISTS project_id TEXT;
 
+-- Legacy installations timestamp deliveries with `sent_at`. Keep that column
+-- intact, but reconcile the canonical `created_at` column used by the project
+-- scoped index and by fresh installations.
+ALTER TABLE leadgrid_scheduled_report_log
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ;
+
+DO $migration$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+      FROM information_schema.columns
+     WHERE table_schema = current_schema()
+       AND table_name = 'leadgrid_scheduled_report_log'
+       AND column_name = 'sent_at'
+  ) THEN
+    EXECUTE $sql$
+      UPDATE leadgrid_scheduled_report_log
+         SET created_at = COALESCE(created_at, sent_at, NOW())
+       WHERE created_at IS NULL
+    $sql$;
+  ELSE
+    UPDATE leadgrid_scheduled_report_log
+       SET created_at = NOW()
+     WHERE created_at IS NULL;
+  END IF;
+END
+$migration$;
+
+ALTER TABLE leadgrid_scheduled_report_log
+  ALTER COLUMN created_at SET DEFAULT NOW(),
+  ALTER COLUMN created_at SET NOT NULL;
+
 DO $migration$
 BEGIN
   IF NOT EXISTS (
