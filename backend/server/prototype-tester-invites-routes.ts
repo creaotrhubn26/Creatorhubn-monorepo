@@ -63,7 +63,7 @@ export interface PrototypeTesterInvitesDeps {
   pool: any;
   getPricingUserId: (req: any) => string;
   requireUserSession: (req: any, res: any) => any;
-  requireAdminSession: (req: any, res: any) => any;
+  requireAdminSession: (req: any, res: any) => any | Promise<any>;
   // Oppretter/gjenbruker en brukerkonto for en tester (master/medlem) ved aksept.
   // profession (valgfri) settes på users.profession → riktig dashboard.
   provisionTesterAccount?: (
@@ -511,7 +511,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
   // Admin oppretter invitasjon manuelt (push-modell, i tillegg til
   // auto-bro fra approval).
   app.post("/api/prototype-tester-invites", async (req, res) => {
-    if (!requireAdminSession(req, res)) return;
+    if (!(await requireAdminSession(req, res))) return;
     try {
       await ensureSchema(pool);
       const body = req.body ?? {};

@@ -2477,6 +2477,26 @@ function requireAdminSession(
   return session;
 }
 
+async function requireResolvedAdminSession(
+  req: express.Request,
+  res: express.Response,
+): Promise<{ userId: string; email: string; name: string; role: string; loginAt: string } | null> {
+  const session = await resolveActiveSessionFromRequest(req);
+  if (!session) {
+    res.status(401).json({ error: "Admin-innlogging kreves" });
+    return null;
+  }
+
+  const normalizedRole = String(session.role || "").trim().toLowerCase();
+  if (!ADMIN_SESSION_ROLES.has(normalizedRole)) {
+    res.status(403).json({ error: "Admin-tilgang kreves" });
+    return null;
+  }
+
+  (req as any).adminSession = session;
+  return session;
+}
+
 // ─── GET /api/admin/presence/online ──────────────────────────────────────
 // Admin-guardet oversikt over hvilke brukere som er pålogget akkurat nå.
 // Håndhev impersonation-TTL før alle applikasjonsruter. Standalone target-
@@ -2542,7 +2562,7 @@ app.get("/api/admin/presence/online", async (req, res) => {
 
 registerTidumAdminRoutes(app, pool, requireAdminSession);
 registerStripePriceDriftRoutes(app, pool, requireAdminSession);
-registerMarketplaceAppConfigRoutes(app, pool, requireAdminSession, (req) =>
+registerMarketplaceAppConfigRoutes(app, pool, requireResolvedAdminSession, (req) =>
   getActiveSessionFromRequest(req)?.userId ?? null,
 );
 configureAIUsageTracker(pool);
@@ -67186,7 +67206,7 @@ setupWeddingAssistantCollabRoutes({ app, pool, requireUserSession, getPricingUse
 
 // Slice 9X.53 — Prototype-tester NDA + program-vilkår-flyt (adskilt fra Role Room).
 setupPrototypeTesterInvitesRoutes({
-  app, pool, getPricingUserId, requireUserSession, requireAdminSession,
+  app, pool, getPricingUserId, requireUserSession, requireAdminSession: requireResolvedAdminSession,
   // Oppretter (gjenbruker) en brukerkonto for en tester ved aksept, så hvert
   // teammedlem faktisk har en konto (matchende e-post) å logge inn med (Google
   // OAuth / e-post-match). Gjenbruker den velprøvde upsertAdminAccountUser.
@@ -67246,7 +67266,7 @@ setupPrototypeTesterInvitesRoutes({
 setupInviteRequestsRoutes({
   app,
   pool,
-  getActiveSessionFromRequest,
+  getActiveSessionFromRequest: resolveActiveSessionFromRequest,
   isValidNorwegianOrgNumber,
   getTableColumns,
   hasTable,
@@ -68683,7 +68703,7 @@ setInterval(() => {
 }, 60 * 60 * 1000); // hver time
 
 // Slice 9X.58 — Admin config-check (Stripe + Gmail + schema-tilstand)
-setupAdminConfigCheckRoutes({ app, pool, requireAdminSession });
+setupAdminConfigCheckRoutes({ app, pool, requireAdminSession: requireResolvedAdminSession });
 
 // Slice 9X.126 — Admin development-tools (placeholder-scan via grep-pipeline)
 setupAdminDevelopmentToolsRoutes({ app, requireAdminSession });

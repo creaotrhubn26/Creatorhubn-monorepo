@@ -150,6 +150,26 @@ describe("prototype-tester application flow", () => {
     notifyAdminsMock.mockClear();
   });
 
+  it("accepts an approver session resolved asynchronously from persistent storage", async () => {
+    const resolveSession = vi.fn().mockResolvedValue({
+      userId: "daniel-admin",
+      email: "daniel@creatorhubn.com",
+      name: "Daniel",
+      role: "super_admin",
+      loginAt: new Date().toISOString(),
+    });
+    const { app } = buildApp({ getActiveSessionFromRequest: resolveSession });
+
+    const response = await request(app).get("/api/invites/admin/requests");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      invitations: [],
+      stats: { total: 0, pending: 0, approved: 0, rejected: 0 },
+    });
+    expect(resolveSession).toHaveBeenCalledOnce();
+  });
+
   it("rejects malformed email addresses before database work", async () => {
     const { app, query } = buildApp();
     const response = await request(app)

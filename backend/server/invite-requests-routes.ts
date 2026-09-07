@@ -97,7 +97,7 @@ export interface InviteRequestsRoutesDeps {
   pool: Pool;
   getActiveSessionFromRequest: (
     req: express.Request,
-  ) => InviteRequestApproverSession | null;
+  ) => InviteRequestApproverSession | null | Promise<InviteRequestApproverSession | null>;
   isValidNorwegianOrgNumber: (value: string) => boolean;
   getTableColumns: (tableName: string) => Promise<Set<string>>;
   hasTable: (tableName: string) => Promise<boolean>;
@@ -182,11 +182,11 @@ export function setupInviteRequestsRoutes(
     createInviteFromApprovedRequest,
   } = deps;
 
-  function requireInviteRequestApproverSession(
+  async function requireInviteRequestApproverSession(
     req: express.Request,
     res: express.Response,
-  ): InviteRequestApproverSession | null {
-    const session = getActiveSessionFromRequest(req);
+  ): Promise<InviteRequestApproverSession | null> {
+    const session = await getActiveSessionFromRequest(req);
     if (!session) {
       res
         .status(401)
@@ -536,7 +536,7 @@ export function setupInviteRequestsRoutes(
 
   app.get("/api/invite-requests", async (req, res) => {
     try {
-      if (!requireInviteRequestApproverSession(req, res)) return;
+      if (!(await requireInviteRequestApproverSession(req, res))) return;
       if (!(await hasTable("invite_requests"))) {
         return res.json([]);
       }
@@ -583,7 +583,7 @@ export function setupInviteRequestsRoutes(
 
   app.get("/api/invite-requests/:id", async (req, res) => {
     try {
-      if (!requireInviteRequestApproverSession(req, res)) return;
+      if (!(await requireInviteRequestApproverSession(req, res))) return;
       const result = await pool.query(
         "SELECT * FROM invite_requests WHERE id = $1",
         [req.params.id],
@@ -603,7 +603,7 @@ export function setupInviteRequestsRoutes(
 
   app.get("/api/invite-requests/:id/proff-analysis", async (req, res) => {
     try {
-      if (!requireInviteRequestApproverSession(req, res)) return;
+      if (!(await requireInviteRequestApproverSession(req, res))) return;
       const result = await pool.query(
         "SELECT * FROM invite_requests WHERE id = $1",
         [req.params.id],
@@ -727,7 +727,7 @@ export function setupInviteRequestsRoutes(
 
   app.post("/api/invite-requests/:id/process", async (req, res) => {
     try {
-      const approverSession = requireInviteRequestApproverSession(req, res);
+      const approverSession = await requireInviteRequestApproverSession(req, res);
       if (!approverSession) {
         return;
       }
@@ -922,7 +922,7 @@ export function setupInviteRequestsRoutes(
 
   app.get("/api/invites/admin/requests", async (req, res) => {
     try {
-      if (!requireInviteRequestApproverSession(req, res)) return;
+      if (!(await requireInviteRequestApproverSession(req, res))) return;
       const result = await pool.query(
         "SELECT * FROM invite_requests ORDER BY created_at DESC",
       );
@@ -955,7 +955,7 @@ export function setupInviteRequestsRoutes(
     "/api/invites/admin/requests/:inviteId/status",
     async (req, res) => {
       try {
-        const approverSession = requireInviteRequestApproverSession(req, res);
+        const approverSession = await requireInviteRequestApproverSession(req, res);
         if (!approverSession) return;
         const { inviteId } = req.params;
         const { status, adminNotes } = req.body;
@@ -1093,7 +1093,7 @@ export function setupInviteRequestsRoutes(
     "/api/invites/admin/requests/:inviteId/send-invite",
     async (req, res) => {
       try {
-        const session = requireInviteRequestApproverSession(req, res);
+        const session = await requireInviteRequestApproverSession(req, res);
         if (!session) return;
         const { inviteId } = req.params;
         const rowR = await pool.query(

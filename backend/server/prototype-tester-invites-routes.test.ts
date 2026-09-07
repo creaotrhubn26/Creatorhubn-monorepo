@@ -29,6 +29,29 @@ describe("prototype tester invitation delivery", () => {
     });
   });
 
+  it("awaits the persisted admin-session guard before creating a manual invite", async () => {
+    const query = vi.fn();
+    const app = express();
+    app.use(express.json());
+    setupPrototypeTesterInvitesRoutes({
+      app,
+      pool: { query },
+      getPricingUserId: () => "",
+      requireUserSession: () => true,
+      requireAdminSession: async (_req, res) => {
+        res.status(401).json({ error: "Admin-innlogging kreves" });
+        return null;
+      },
+    });
+
+    const response = await request(app)
+      .post("/api/prototype-tester-invites")
+      .send({ email: "tester@example.com", name: "Test Tester" });
+
+    expect(response.status).toBe(401);
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it("sends approval invitations through the centralized provider and records the journey", async () => {
     const query = vi.fn().mockImplementation(async (statement: unknown) => {
       const sql = String(statement);
