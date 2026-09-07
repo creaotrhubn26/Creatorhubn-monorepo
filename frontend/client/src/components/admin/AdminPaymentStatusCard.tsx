@@ -36,6 +36,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { paymentEvents } from '@/utils/creatorhub-events';
 import { AdminCard, StatusChip, AdminLoading, AdminError, AdminTableContainer, adminTokens } from './design-system';
 
@@ -63,11 +64,13 @@ const EVENT_LABEL: Record<string, string> = {
 };
 
 const AdminPaymentStatusCard: React.FC = () => {
-  const { data, isLoading, refetch, isFetching } = useQuery({
+  const { auth } = useEnhancedMasterIntegration();
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['admin-stripe-status'],
     queryFn: async () => {
       paymentEvents.statusViewed();
-      return apiRequest('/api/admin/stripe/payment-status');
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/admin/stripe/payment-status', { headers });
     },
     refetchInterval: 60_000,
   });
@@ -85,7 +88,10 @@ const AdminPaymentStatusCard: React.FC = () => {
   if (!data) {
     return (
       <ThemeProvider theme={adminDarkTheme}>
-        <AdminError message="Kunne ikke laste Stripe-status." />
+        <AdminError
+          message={error instanceof Error ? error.message : 'Kunne ikke laste Stripe-status.'}
+          onRetry={() => void refetch()}
+        />
       </ThemeProvider>
     );
   }
