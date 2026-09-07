@@ -22,7 +22,7 @@ struct MinProfilSheet: View {
     @State private var showExportShare = false
     @State private var myEquipment: [APIClient.EquipmentDTO] = []
     @State private var equipmentLoaded = false
-    private var dorsalgMeg: KartverketService.DorsalgStats.Meg?
+    @State private var dorsalgMeg: KartverketService.DorsalgStats.Meg?
 
     private var store: ProfileStore { appState.profileStore }
     private var profile: MyProfile? { store.profile }

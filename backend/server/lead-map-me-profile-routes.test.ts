@@ -246,10 +246,10 @@ describe("Leadgrid profile routes", () => {
   });
 });
 
-describe("migration 0507", () => {
+describe("migration 0558", () => {
   it("backfills legacy phone safely without requiring the legacy column", () => {
     const sql = readFileSync(
-      new URL("../migrations/0507_leadgrid_profile_phone_canonical.sql", import.meta.url),
+      new URL("../migrations/0558_leadgrid_profile_phone_canonical.sql", import.meta.url),
       "utf8",
     );
     expect(sql).toContain("ADD COLUMN IF NOT EXISTS phone_number");
