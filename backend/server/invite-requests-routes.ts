@@ -105,7 +105,7 @@ export interface InviteRequestsRoutesDeps {
   lookupInviteRequestBrregCompany: (
     organizationNumber: string,
   ) => Promise<any>;
-  buildInviteRequestProffAnalysis: (input: any) => any;
+  buildInviteRequestProffAnalysis: (input: any) => Promise<any>;
   upsertInviteRequestProffScreening: (
     inviteRequestId: string,
     organizationNumber: string,
@@ -372,7 +372,7 @@ export function setupInviteRequestsRoutes(
         ) ||
         String(businessAddress || "").trim() ||
         null;
-      const proffAnalysis = buildInviteRequestProffAnalysis({
+      const proffAnalysis = await buildInviteRequestProffAnalysis({
         organizationNumber: normalizedOrganizationNumber,
         companyName: persistedCompanyName,
         brregLookup,
@@ -569,7 +569,7 @@ export function setupInviteRequestsRoutes(
         const brregLookup = await lookupInviteRequestBrregCompany(
           String(inviteRequest.organization_number),
         );
-        screening = buildInviteRequestProffAnalysis({
+        screening = await buildInviteRequestProffAnalysis({
           organizationNumber: String(inviteRequest.organization_number),
           companyName: toAdminString(inviteRequest.company_name) || "",
           brregLookup,
@@ -614,7 +614,7 @@ export function setupInviteRequestsRoutes(
             .json({ success: false, error: "Fant ikke foretaket i BRREG" });
         }
 
-        const analysis = buildInviteRequestProffAnalysis({
+        const analysis = await buildInviteRequestProffAnalysis({
           organizationNumber,
           companyName:
             brregLookup.company?.name || `Foretak ${organizationNumber}`,
@@ -655,7 +655,7 @@ export function setupInviteRequestsRoutes(
             .json({ success: false, error: "Fant ikke foretaket i BRREG" });
         }
 
-        const analysis = buildInviteRequestProffAnalysis({
+        const analysis = await buildInviteRequestProffAnalysis({
           organizationNumber,
           companyName:
             brregLookup.company?.name || `Foretak ${organizationNumber}`,
@@ -726,7 +726,7 @@ export function setupInviteRequestsRoutes(
         const brregLookup = await lookupInviteRequestBrregCompany(
           String(request.organization_number),
         );
-        const analysis = buildInviteRequestProffAnalysis({
+        const analysis = await buildInviteRequestProffAnalysis({
           organizationNumber: String(request.organization_number),
           companyName: toAdminString(request.company_name) || "",
           brregLookup,
