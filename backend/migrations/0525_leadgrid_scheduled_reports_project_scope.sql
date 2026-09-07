@@ -94,7 +94,37 @@ CREATE TABLE IF NOT EXISTS leadgrid_scheduled_report_log (
 );
 
 ALTER TABLE leadgrid_scheduled_report_log
-  ADD COLUMN IF NOT EXISTS project_id TEXT;
+  ADD COLUMN IF NOT EXISTS project_id TEXT,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ;
+
+-- The original production table was provisioned outside the migration ledger
+-- and can use sent_at instead of created_at. Preserve that history when it is
+-- available; otherwise assign one deterministic reconciliation timestamp.
+DO $migration$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+      FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = 'leadgrid_scheduled_report_log'
+       AND column_name = 'sent_at'
+  ) THEN
+    EXECUTE $sql$
+      UPDATE leadgrid_scheduled_report_log
+         SET created_at = COALESCE(created_at, sent_at, statement_timestamp())
+       WHERE created_at IS NULL
+    $sql$;
+  ELSE
+    UPDATE leadgrid_scheduled_report_log
+       SET created_at = statement_timestamp()
+     WHERE created_at IS NULL;
+  END IF;
+END
+$migration$;
+
+ALTER TABLE leadgrid_scheduled_report_log
+  ALTER COLUMN created_at SET DEFAULT NOW(),
+  ALTER COLUMN created_at SET NOT NULL;
 
 DO $migration$
 BEGIN
