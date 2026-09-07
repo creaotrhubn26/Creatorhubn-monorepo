@@ -62,7 +62,18 @@ interface Invite {
   status: 'pending' | 'accepted' | 'revoked' | 'expired';
   expiresAt: string;
   programDurationWeeks: number;
+  memberProfession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | null;
 }
+
+const dashboardForProfession = (profession: Invite['memberProfession']): string => {
+  const routes: Record<Exclude<Invite['memberProfession'], null>, string> = {
+    photographer: '/photographer-dashboard-material',
+    videographer: '/videographer-dashboard-material',
+    music_producer: '/music_producer-dashboard-material',
+    vendor: '/vendor-dashboard-material',
+  };
+  return profession ? routes[profession] : '/workspace';
+};
 
 const readToken = (): string => {
   try { return new URLSearchParams(window.location.search).get('token') ?? ''; } catch { return ''; }
@@ -115,7 +126,7 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
       setSuccess(true);
       // Sett flag som velkomst-modalen leser
       try { sessionStorage.setItem('prototype-tester-just-signed', '1'); } catch { /* ignore */ }
-      setTimeout(() => navigate('/photographer-dashboard-material'), 2500);
+      setTimeout(() => navigate(dashboardForProfession(invite?.memberProfession ?? null)), 2500);
     } catch (e: any) {
       setError(e?.message || 'Signering feilet — prøv igjen');
     } finally {
