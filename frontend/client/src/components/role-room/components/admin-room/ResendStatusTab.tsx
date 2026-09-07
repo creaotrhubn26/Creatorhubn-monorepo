@@ -28,7 +28,7 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import authSessionService from '../../services/authSessionService';
 
 interface StatusResponse {
-  primaryProvider: 'resend' | 'smtp' | null;
+  primaryProvider: 'resend' | 'smtp' | 'gmail_api' | null;
   providers: {
     resend: {
       configured: boolean;
@@ -42,6 +42,10 @@ interface StatusResponse {
       configured: boolean;
       user: string | null;
     };
+    gmailApi: {
+      configured: boolean;
+      user: string | null;
+    };
   };
   freeTier: { monthly: number; daily: number };
 }
@@ -49,7 +53,7 @@ interface StatusResponse {
 interface UsageResponse {
   monthly: { sent: number; failed: number; limit: number; usagePct: number; remaining: number };
   daily: { sent: number; failed: number; limit: number; usagePct: number; remaining: number };
-  breakdownByProvider: { resend: number; smtp: number };
+  breakdownByProvider: { resend: number; smtp: number; gmailApi: number };
 }
 
 interface RecentItem {
@@ -160,6 +164,7 @@ export function ResendStatusTab() {
 
   const resend = status.providers.resend;
   const gmail = status.providers.gmail;
+  const gmailApi = status.providers.gmailApi;
   const monthlyColor = usage.monthly.usagePct >= 90 ? 'error' : usage.monthly.usagePct >= 70 ? 'warning' : 'primary';
   const dailyColor = usage.daily.usagePct >= 90 ? 'error' : usage.daily.usagePct >= 70 ? 'warning' : 'primary';
 
@@ -167,7 +172,7 @@ export function ResendStatusTab() {
     <Stack spacing={3}>
       <Stack direction="row" justifyContent="space-between" alignItems="center">
         <Typography variant="h5" sx={{ fontWeight: 700 }}>
-          Resend transactional email
+          Transaksjons-e-post
         </Typography>
         <Button startIcon={<RefreshIcon />} onClick={() => void load()} disabled={loading} size="small">
           Oppdater
@@ -180,7 +185,7 @@ export function ResendStatusTab() {
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }}>
             <Chip
               label={status.primaryProvider ?? 'ikke konfigurert'}
-              color={status.primaryProvider === 'resend' ? 'success' : status.primaryProvider === 'smtp' ? 'warning' : 'error'}
+              color={status.primaryProvider === 'resend' || status.primaryProvider === 'gmail_api' ? 'success' : status.primaryProvider === 'smtp' ? 'warning' : 'error'}
               size="small"
             />
             {resend.configured && <Chip label={`API-key ${resend.apiKeyMasked}`} size="small" variant="outlined" />}
@@ -188,9 +193,14 @@ export function ResendStatusTab() {
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
             Fra-adresse: <code>{resend.fromEmail}</code>
           </Typography>
+          {gmailApi.configured && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              Gmail API-fallback: <code>{gmailApi.user}</code>
+            </Typography>
+          )}
           {gmail.configured && (
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-              Gmail-fallback: <code>{gmail.user}</code>
+              Gmail SMTP-fallback: <code>{gmail.user}</code>
             </Typography>
           )}
         </Paper>
@@ -287,7 +297,7 @@ export function ResendStatusTab() {
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Siste sendinger</Typography>
           <Typography variant="caption" color="text.secondary">
-            Resend: {usage.breakdownByProvider.resend} · SMTP: {usage.breakdownByProvider.smtp}
+            Resend: {usage.breakdownByProvider.resend} · Gmail API: {usage.breakdownByProvider.gmailApi} · SMTP: {usage.breakdownByProvider.smtp}
           </Typography>
         </Stack>
         {recent.length === 0 ? (

@@ -93,6 +93,33 @@ export function setupResendAdminRoutes(deps: ResendAdminRoutesDeps): void {
       resendDomains = await fetchResendDomains(apiKey);
     }
 
+    const adminEmail = readEnvString(process.env.GOOGLE_ADMIN_EMAIL) ?? 'daniel@creatorhubn.com';
+    let gmailApiConfigured = false;
+    try {
+      const gmailConnections = await pool.query<{ scopes: unknown }>(
+        `SELECT scopes
+           FROM role_room_google_connections
+          WHERE connection_state = 'connected'
+            AND (refresh_token_encrypted IS NOT NULL OR access_token_encrypted IS NOT NULL)
+            AND (
+              LOWER(COALESCE(google_email, '')) = LOWER($1)
+              OR LOWER(COALESCE(role_room_email, '')) = LOWER($1)
+            )`,
+        [adminEmail],
+      );
+      gmailApiConfigured = gmailConnections.rows.some(({ scopes }) => {
+        const parsed = Array.isArray(scopes)
+          ? scopes
+          : typeof scopes === 'string'
+            ? (() => { try { return JSON.parse(scopes); } catch { return []; } })()
+            : [];
+        return parsed.includes('https://www.googleapis.com/auth/gmail.send')
+          || parsed.includes('https://www.googleapis.com/auth/gmail.compose');
+      });
+    } catch (error) {
+      console.warn('[resend-admin] Gmail API status lookup failed:', error);
+    }
+
     const providers = {
       resend: {
         configured: Boolean(apiKey),
@@ -106,9 +133,20 @@ export function setupResendAdminRoutes(deps: ResendAdminRoutesDeps): void {
         configured: Boolean(gmailUser && gmailPassword),
         user: gmailUser,
       },
+      gmailApi: {
+        configured: gmailApiConfigured,
+        user: gmailApiConfigured ? adminEmail : null,
+      },
     } as const;
 
-    const primaryProvider = providers.resend.configured ? 'resend' : (providers.gmail.configured ? 'smtp' : null);
+    const resendVerified = providers.resend.domains.some((domain) => domain.status === 'verified');
+    const primaryProvider = resendVerified
+      ? 'resend'
+      : providers.gmailApi.configured
+        ? 'gmail_api'
+        : providers.gmail.configured
+          ? 'smtp'
+          : null;
 
     res.json({
       success: true,
@@ -128,6 +166,7 @@ export function setupResendAdminRoutes(deps: ResendAdminRoutesDeps): void {
         daily_failed: string;
         resend_count: string;
         smtp_count: string;
+        gmail_api_count: string;
       }>(
         `SELECT
           COUNT(*) FILTER (WHERE status = 'sent' AND sent_at >= date_trunc('month', NOW())) AS monthly_sent,
@@ -135,13 +174,14 @@ export function setupResendAdminRoutes(deps: ResendAdminRoutesDeps): void {
           COUNT(*) FILTER (WHERE status = 'sent' AND sent_at >= date_trunc('day', NOW())) AS daily_sent,
           COUNT(*) FILTER (WHERE status = 'failed' AND sent_at >= date_trunc('day', NOW())) AS daily_failed,
           COUNT(*) FILTER (WHERE provider = 'resend' AND sent_at >= date_trunc('month', NOW())) AS resend_count,
-          COUNT(*) FILTER (WHERE provider = 'smtp' AND sent_at >= date_trunc('month', NOW())) AS smtp_count
+          COUNT(*) FILTER (WHERE provider = 'smtp' AND sent_at >= date_trunc('month', NOW())) AS smtp_count,
+          COUNT(*) FILTER (WHERE provider = 'gmail_api' AND sent_at >= date_trunc('month', NOW())) AS gmail_api_count
         FROM transactional_email_log`,
       );
 
       const row = result.rows[0] ?? {
         monthly_sent: '0', monthly_failed: '0', daily_sent: '0', daily_failed: '0',
-        resend_count: '0', smtp_count: '0',
+        resend_count: '0', smtp_count: '0', gmail_api_count: '0',
       };
       const monthlySent = Number(row.monthly_sent);
       const dailySent = Number(row.daily_sent);
@@ -165,6 +205,7 @@ export function setupResendAdminRoutes(deps: ResendAdminRoutesDeps): void {
         breakdownByProvider: {
           resend: Number(row.resend_count),
           smtp: Number(row.smtp_count),
+          gmailApi: Number(row.gmail_api_count),
         },
       });
     } catch (error) {
