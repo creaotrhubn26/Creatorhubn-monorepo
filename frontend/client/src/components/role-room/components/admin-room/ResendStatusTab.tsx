@@ -29,6 +29,13 @@ import authSessionService from '../../services/authSessionService';
 
 interface StatusResponse {
   primaryProvider: 'resend' | 'smtp' | 'gmail_api' | null;
+  adminAlertDelivery: {
+    recipient: string;
+    verified: boolean;
+    provider: string | null;
+    messageId: string | null;
+    lastVerifiedAt: string | null;
+  };
   providers: {
     resend: {
       configured: boolean;
@@ -256,6 +263,22 @@ export function ResendStatusTab() {
 
       <Paper sx={{ p: 2 }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>Domener</Typography>
+        {status.adminAlertDelivery.verified ? (
+          <Alert severity="success" sx={{ mb: 1.5 }}>
+            Adminvarsling til <code>{status.adminAlertDelivery.recipient}</code> er verifisert via{' '}
+            <strong>{status.adminAlertDelivery.provider}</strong>
+            {status.adminAlertDelivery.lastVerifiedAt && (
+              <> · {formatDate(status.adminAlertDelivery.lastVerifiedAt)}</>
+            )}
+            {status.adminAlertDelivery.messageId && (
+              <> · meldings-ID <code>{status.adminAlertDelivery.messageId}</code></>
+            )}
+          </Alert>
+        ) : (
+          <Alert severity="warning" sx={{ mb: 1.5 }}>
+            Ingen vellykket adminvarsling til <code>{status.adminAlertDelivery.recipient}</code> er logget ennå.
+          </Alert>
+        )}
         {resend.configured && resend.domains.length === 0 && (
           <Alert severity="warning">
             Ingen domener verifisert i Resend ennå. Legg til <code>theroleroom.com</code> i Resend-dashboard og verifiser DKIM/SPF.
@@ -332,7 +355,16 @@ export function ResendStatusTab() {
                     <TableCell>
                       <Chip size="small" label={item.provider} variant="outlined" />
                     </TableCell>
-                    <TableCell>{statusChip(item.status, item.errorReason)}</TableCell>
+                    <TableCell>
+                      <Stack spacing={0.5} alignItems="flex-start">
+                        {statusChip(item.status, item.errorReason)}
+                        {item.messageId && (
+                          <Typography variant="caption" color="text.secondary">
+                            ID: <code>{item.messageId}</code>
+                          </Typography>
+                        )}
+                      </Stack>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
