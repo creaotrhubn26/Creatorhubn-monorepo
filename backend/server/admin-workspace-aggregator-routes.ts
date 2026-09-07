@@ -58,6 +58,28 @@ interface DeadlineItem {
   link_path: string | null;    // hvor frontend kan navigere til
 }
 
+// Produkt-filter. AdminWorkspace sender ?product=roleroom|leadgrid fra
+// topp-toggelen. Semantikken er bevisst:
+//   - Elementer MED product_key filtreres til aktivt produkt.
+//   - Elementer UTEN product_key (funding-søknader = selskaps-nivå) vises
+//     alltid, fordi en frist for Innovasjon Norge ikke slutter å gjelde
+//     fordi du ser på Leadgrid-fanen.
+// Møter tagges som role_room siden de kommer fra casting_projects.
+type ProductFilter = "role_room" | "leadgrid" | null;
+
+function normalizeProductFilter(raw: unknown): ProductFilter {
+  const v = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (v === "roleroom" || v === "role_room") return "role_room";
+  if (v === "leadgrid") return "leadgrid";
+  return null;
+}
+
+function matchesProduct(itemProductKey: string | null, filter: ProductFilter): boolean {
+  if (!filter) return true;             // ingen filter → alt
+  if (itemProductKey === null) return true; // selskaps-nivå → alltid med
+  return itemProductKey === filter;
+}
+
 export function setupAdminWorkspaceAggregatorRoutes(
   deps: Pick<AdminRoomRoutesDeps, "app" | "pool" | "requireAdminRoomAccess">,
 ): void {
@@ -69,6 +91,14 @@ export function setupAdminWorkspaceAggregatorRoutes(
   app.get("/api/admin-room/workspace/today-agenda", async (req, res) => {
     const session = requireAdminRoomAccess(req, res);
     if (!session) return;
+
+    // Møter kommer fra casting_projects → alltid Role Room. Står vi i
+    // Leadgrid-fanen har dagens agenda ingen møter å vise.
+    const productFilter = normalizeProductFilter(req.query.product);
+    if (productFilter === "leadgrid") {
+      res.json({ items: [] });
+      return;
+    }
 
     try {
       // role_room_meetings.project_id → casting_projects.id (VARCHAR).
@@ -145,6 +175,7 @@ export function setupAdminWorkspaceAggregatorRoutes(
     const session = requireAdminRoomAccess(req, res);
     if (!session) return;
 
+    const productFilter = normalizeProductFilter(req.query.product);
     const daysParam = Number(req.query.days ?? 14);
     const days = Number.isFinite(daysParam) && daysParam > 0 && daysParam <= 90
       ? Math.round(daysParam)
@@ -177,7 +208,7 @@ export function setupAdminWorkspaceAggregatorRoutes(
           product_key: null,
           priority: null,
           status: r.status,
-          link_path: `/admin-room?tab=funding&id=${r.id}`,
+          link_path: `/admin-workspace?view=funding&fundingId=${r.id}`,
         });
       }
 
@@ -204,7 +235,7 @@ export function setupAdminWorkspaceAggregatorRoutes(
             product_key: r.product_key ?? null,
             priority: r.priority,
             status: r.status,
-            link_path: `/admin-workspace?sidebar=cases&caseId=${r.id}`,
+            link_path: `/admin-workspace?view=cases&caseId=${r.id}`,
           });
         }
       } catch (caseErr) {
@@ -234,7 +265,7 @@ export function setupAdminWorkspaceAggregatorRoutes(
           source: "meeting",
           title: r.title,
           due_date: r.starts_at instanceof Date ? r.starts_at.toISOString() : String(r.starts_at),
-          product_key: null,
+          product_key: "role_room",
           priority: null,
           status: r.status,
           link_path: null,
@@ -243,9 +274,10 @@ export function setupAdminWorkspaceAggregatorRoutes(
 
       // Slå sammen + sorter på due_date (string-sort fungerer fordi alle
       // er ISO 8601 — date eller datetime).
-      items.sort((a, b) => a.due_date.localeCompare(b.due_date));
+      const visible = items.filter((i) => matchesProduct(i.product_key, productFilter));
+      visible.sort((a, b) => a.due_date.localeCompare(b.due_date));
 
-      res.json({ items, windowDays: days });
+      res.json({ items: visible, windowDays: days, product: productFilter });
     } catch (err) {
       console.error("[workspace/upcoming-deadlines] error", err);
       res.status(500).json({ error: "Kunne ikke hente kommende frister" });

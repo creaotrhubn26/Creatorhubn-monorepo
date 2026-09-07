@@ -2083,13 +2083,129 @@ export const DEADLINE_SOURCE_LABEL: Record<DeadlineSource, string> = {
   meeting: 'Møte',
 };
 
+/**
+ * Produkt-scope for aggregatorene. Speiler topp-toggelen i AdminWorkspace.
+ * `null` = ingen filtrering (alle produkter).
+ */
+export type WorkspaceProductScope = 'roleroom' | 'leadgrid' | null;
+
+function productQuery(product: WorkspaceProductScope): string {
+  return product ? `product=${encodeURIComponent(product)}` : '';
+}
+
 export const workspaceAggregatorApi = {
-  todayAgenda: async (): Promise<AgendaItem[]> => {
-    const data = await jsonFetch<{ items: AgendaItem[] }>('/workspace/today-agenda');
+  todayAgenda: async (product: WorkspaceProductScope = null): Promise<AgendaItem[]> => {
+    const q = productQuery(product);
+    const data = await jsonFetch<{ items: AgendaItem[] }>(
+      `/workspace/today-agenda${q ? `?${q}` : ''}`,
+    );
     return data.items;
   },
-  upcomingDeadlines: async (days: number = 14): Promise<{ items: DeadlineItem[]; windowDays: number }> => {
-    return jsonFetch<{ items: DeadlineItem[]; windowDays: number }>(`/workspace/upcoming-deadlines?days=${days}`);
+  upcomingDeadlines: async (
+    days: number = 14,
+    product: WorkspaceProductScope = null,
+  ): Promise<{ items: DeadlineItem[]; windowDays: number }> => {
+    const q = productQuery(product);
+    return jsonFetch<{ items: DeadlineItem[]; windowDays: number }>(
+      `/workspace/upcoming-deadlines?days=${days}${q ? `&${q}` : ''}`,
+    );
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────
+// Varsler (/api/notifications/*)
+//
+// NB: dette endepunktet ligger utenfor /api/admin-room, og svarer med
+// konvolutten { notifications: [...] } i camelCase — ikke { items } i
+// snake_case som resten av admin-room-API-et. AdminWorkspace leste
+// tidligere `items`/`created_at` og fikk derfor ALLTID tom innboks,
+// også når backend svarte med data. Vi normaliserer her, ett sted.
+// ─────────────────────────────────────────────────────────────────
+
+export interface WorkspaceNotification {
+  id: string;
+  title: string | null;
+  message: string | null;
+  type: string | null;
+  priority: string | null;
+  actionLabel: string | null;
+  actionUrl: string | null;
+  createdAt: string | null;
+}
+
+interface RawNotification {
+  id?: unknown;
+  title?: unknown;
+  message?: unknown;
+  type?: unknown;
+  priority?: unknown;
+  actionLabel?: unknown;
+  actionUrl?: unknown;
+  createdAt?: unknown;
+}
+
+function str(v: unknown): string | null {
+  return typeof v === 'string' && v.length > 0 ? v : null;
+}
+
+function normalizeNotification(raw: RawNotification): WorkspaceNotification | null {
+  const id = typeof raw?.id === 'string' ? raw.id : raw?.id != null ? String(raw.id) : null;
+  if (!id) return null;
+  return {
+    id,
+    title: str(raw.title),
+    message: str(raw.message),
+    type: str(raw.type),
+    priority: str(raw.priority),
+    actionLabel: str(raw.actionLabel),
+    actionUrl: str(raw.actionUrl),
+    createdAt: str(raw.createdAt),
+  };
+}
+
+export const workspaceNotificationsApi = {
+  /**
+   * Henter uleste varsler. Kaster ved feil — kalleren MÅ skille mellom
+   * «ingen varsler» og «kunne ikke hente varsler».
+   */
+  inbox: async (): Promise<WorkspaceNotification[]> => {
+    const token = getStoredAuthToken();
+    const response = await fetch('/api/notifications/inbox', {
+      credentials: 'include',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!response.ok) {
+      let detail = '';
+      try {
+        const body = await response.json();
+        detail = body?.error || '';
+      } catch {
+        /* ignore */
+      }
+      throw new Error(`HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
+    }
+    const body = (await response.json()) as { notifications?: unknown } | unknown[];
+    const rows = Array.isArray(body)
+      ? body
+      : Array.isArray((body as { notifications?: unknown })?.notifications)
+        ? ((body as { notifications: RawNotification[] }).notifications)
+        : [];
+    return (rows as RawNotification[])
+      .map(normalizeNotification)
+      .filter((n): n is WorkspaceNotification => n !== null);
+  },
+
+  /** Markerer ett varsel som sett. Backend fjerner det fra inbox-spørringen. */
+  markSeen: async (id: string): Promise<void> => {
+    const token = getStoredAuthToken();
+    const response = await fetch(`/api/notifications/${encodeURIComponent(id)}/seen`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
   },
 };
 
@@ -2229,4 +2345,367 @@ export const marketingCatalogApi = {
     jsonFetch(`/marketing-catalog/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   remove: (id: string): Promise<{ deleted: boolean }> =>
     jsonFetch(`/marketing-catalog/${id}`, { method: 'DELETE' }),
+};
+
+// ─────────────────────────────────────────────────────────────────
+// AdminWorkspace-moduler: Prosjekter, Dokumenter, Filer, Innstillinger
+// Backend: admin-workspace-modules-routes.ts
+//
+// `unavailable` lister kilder som ikke kunne spørres (tabell mangler i
+// dette miljøet). Flatene MÅ vise det — en manglende kilde som ser ut
+// som en tom liste er nøyaktig feilen vi ryddet opp i innboksen.
+// ─────────────────────────────────────────────────────────────────
+
+export interface WorkspaceProjectSummary {
+  id: string;
+  source: string;
+  product_key: string | null;
+  name: string;
+  description: string | null;
+  status: string;
+  project_type: string | null;
+  genre: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  budget: number | null;
+  currency: string;
+  updated_at: string | null;
+  role_count: number;
+  upcoming_meetings: number;
+  open_deliverables: number;
+  next_due_at: string | null;
+  link_path: string | null;
+}
+
+export interface WorkspaceDocument {
+  id: string;
+  source: 'participant_document' | 'client_material' | 'legal_document';
+  product_key: string | null;
+  title: string;
+  category: string | null;
+  status: string;
+  version: string | number | null;
+  context: string | null;
+  signed_at: string | null;
+  expires_at: string | null;
+  updated_at: string | null;
+  external_url: string | null;
+}
+
+export interface WorkspaceFile {
+  id: string;
+  display_name: string;
+  size_bytes: number;
+  content_type: string | null;
+  source_module: string | null;
+  uploaded_at: string | null;
+}
+
+export interface WorkspaceIntegrationStatus {
+  key: string;
+  label: string;
+  status: 'connected' | 'disconnected' | 'unknown';
+  detail: string | null;
+}
+
+export const workspaceModulesApi = {
+  projects: async (
+    product: WorkspaceProductScope = null,
+  ): Promise<{ items: WorkspaceProjectSummary[]; unavailable: string[] }> => {
+    const q = productQuery(product);
+    return jsonFetch(`/workspace/projects${q ? `?${q}` : ''}`);
+  },
+  documents: async (
+    product: WorkspaceProductScope = null,
+  ): Promise<{ items: WorkspaceDocument[]; unavailable: string[] }> => {
+    const q = productQuery(product);
+    return jsonFetch(`/workspace/documents${q ? `?${q}` : ''}`);
+  },
+  files: async (
+    product: WorkspaceProductScope = null,
+  ): Promise<{ items: WorkspaceFile[]; unavailable: string[]; totalBytes: number }> => {
+    const q = productQuery(product);
+    return jsonFetch(`/workspace/files${q ? `?${q}` : ''}`);
+  },
+  settings: async (): Promise<{
+    settings: Record<string, unknown>;
+    integrations: WorkspaceIntegrationStatus[];
+  }> => {
+    return jsonFetch('/workspace/settings');
+  },
+  saveSetting: async (key: string, value: Record<string, unknown>): Promise<void> => {
+    await jsonFetch('/workspace/settings', {
+      method: 'PATCH',
+      body: JSON.stringify({ key, value }),
+    });
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────
+// AdminWorkspace samarbeid: Teamchat, HR/team, Kundeprosjekt
+// Backend: admin-workspace-collab-routes.ts (migrasjon 0350)
+// ─────────────────────────────────────────────────────────────────
+
+export interface WorkspaceChannel {
+  id: string;
+  channelKey: string | null;
+  name: string;
+  description: string | null;
+  productKey: string | null;
+  createdAt: string;
+  messageCount: number;
+  lastMessageAt: string | null;
+}
+
+export interface WorkspaceMessage {
+  id: string;
+  userId: string;
+  authorName: string | null;
+  body: string;
+  createdAt: string;
+  editedAt: string | null;
+  isMine: boolean;
+}
+
+export type WorkspaceEngagementType =
+  | 'employee'
+  | 'freelancer'
+  | 'contractor'
+  | 'advisor'
+  | 'intern';
+export type WorkspaceMemberStatus = 'active' | 'onboarding' | 'paused' | 'ended';
+export type WorkspaceAbsenceType =
+  | 'vacation'
+  | 'sick'
+  | 'parental'
+  | 'unavailable'
+  | 'other';
+
+export const WORKSPACE_ENGAGEMENT_LABELS: Record<WorkspaceEngagementType, string> = {
+  employee: 'Ansatt',
+  freelancer: 'Frilanser',
+  contractor: 'Underleverandør',
+  advisor: 'Rådgiver',
+  intern: 'Praktikant',
+};
+
+export const WORKSPACE_MEMBER_STATUS_LABELS: Record<WorkspaceMemberStatus, string> = {
+  active: 'Aktiv',
+  onboarding: 'Onboarding',
+  paused: 'På pause',
+  ended: 'Avsluttet',
+};
+
+export const WORKSPACE_ABSENCE_LABELS: Record<WorkspaceAbsenceType, string> = {
+  vacation: 'Ferie',
+  sick: 'Sykdom',
+  parental: 'Permisjon',
+  unavailable: 'Utilgjengelig',
+  other: 'Annet',
+};
+
+export interface WorkspaceAbsence {
+  id: string;
+  absenceType: WorkspaceAbsenceType;
+  startDate: string;
+  endDate: string;
+  note: string | null;
+}
+
+export interface WorkspaceTeamMember {
+  id: string;
+  memberUserId: string | null;
+  fullName: string;
+  email: string | null;
+  roleTitle: string | null;
+  engagementType: WorkspaceEngagementType;
+  productKey: string | null;
+  status: WorkspaceMemberStatus;
+  startedOn: string | null;
+  endedOn: string | null;
+  hourlyRate: number | null;
+  currency: string;
+  notes: string | null;
+  absences: WorkspaceAbsence[];
+}
+
+export interface WorkspaceTeamMemberInput {
+  fullName?: string;
+  email?: string | null;
+  roleTitle?: string | null;
+  engagementType?: WorkspaceEngagementType;
+  productKey?: string | null;
+  status?: WorkspaceMemberStatus;
+  startedOn?: string | null;
+  endedOn?: string | null;
+  hourlyRate?: number | null;
+  notes?: string | null;
+}
+
+export interface WorkspaceClientProject {
+  id: string;
+  name: string;
+  status: string;
+  startDate: string | null;
+  endDate: string | null;
+  updatedAt: string | null;
+  openClientRequests: number;
+  awaitingClientReview: number;
+  linkPath: string | null;
+}
+
+export const workspaceCollabApi = {
+  // ── Teamchat ──
+  channels: async (): Promise<WorkspaceChannel[]> => {
+    const data = await jsonFetch<{ items: WorkspaceChannel[] }>('/workspace/channels');
+    return data.items;
+  },
+  createChannel: async (input: {
+    name: string;
+    description?: string | null;
+    productKey?: string | null;
+  }): Promise<WorkspaceChannel> => {
+    const data = await jsonFetch<{ item: WorkspaceChannel }>('/workspace/channels', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  messages: async (channelId: string, limit = 100): Promise<WorkspaceMessage[]> => {
+    const data = await jsonFetch<{ items: WorkspaceMessage[] }>(
+      `/workspace/channels/${encodeURIComponent(channelId)}/messages?limit=${limit}`,
+    );
+    return data.items;
+  },
+  sendMessage: async (channelId: string, body: string): Promise<WorkspaceMessage> => {
+    const data = await jsonFetch<{ item: WorkspaceMessage }>(
+      `/workspace/channels/${encodeURIComponent(channelId)}/messages`,
+      { method: 'POST', body: JSON.stringify({ body }) },
+    );
+    return data.item;
+  },
+  deleteMessage: async (id: string): Promise<void> => {
+    await jsonFetch(`/workspace/messages/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  // ── HR / team ──
+  team: async (product: WorkspaceProductScope = null): Promise<WorkspaceTeamMember[]> => {
+    const q = productQuery(product);
+    const data = await jsonFetch<{ items: WorkspaceTeamMember[] }>(
+      `/workspace/team${q ? `?${q}` : ''}`,
+    );
+    return data.items;
+  },
+  createMember: async (input: WorkspaceTeamMemberInput): Promise<string> => {
+    const data = await jsonFetch<{ id: string }>('/workspace/team', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.id;
+  },
+  updateMember: async (id: string, input: WorkspaceTeamMemberInput): Promise<void> => {
+    await jsonFetch(`/workspace/team/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+  },
+  deleteMember: async (id: string): Promise<void> => {
+    await jsonFetch(`/workspace/team/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  addAbsence: async (
+    memberId: string,
+    input: { absenceType: WorkspaceAbsenceType; startDate: string; endDate: string; note?: string | null },
+  ): Promise<WorkspaceAbsence> => {
+    const data = await jsonFetch<{ item: WorkspaceAbsence }>(
+      `/workspace/team/${encodeURIComponent(memberId)}/absences`,
+      { method: 'POST', body: JSON.stringify(input) },
+    );
+    return data.item;
+  },
+  deleteAbsence: async (id: string): Promise<void> => {
+    await jsonFetch(`/workspace/absences/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  // ── Kundeprosjekt ──
+  clientProjects: async (): Promise<WorkspaceClientProject[]> => {
+    const data = await jsonFetch<{ items: WorkspaceClientProject[] }>(
+      '/workspace/client-projects',
+    );
+    return data.items;
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────
+// Automatiseringer — ligger på /api/admin (ikke /api/admin-room), så
+// den bruker en egen fetch i stedet for jsonFetch sin BASE.
+// Backend: admin-automations-routes.ts + migrasjon 245_automations.sql
+// ─────────────────────────────────────────────────────────────────
+
+export interface WorkspaceAutomation {
+  id: string;
+  name: string;
+  description: string | null;
+  triggerType: string;
+  triggerConfig: Record<string, unknown>;
+  actionType: string;
+  actionConfig: Record<string, unknown>;
+  isEnabled: boolean;
+  lastRunAt: string | null;
+  lastRunStatus: string | null;
+  totalRuns: number;
+  successfulRuns: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkspaceAutomationRun {
+  id: string;
+  startedAt: string;
+  finishedAt: string | null;
+  status: string;
+  errorMessage: string | null;
+  durationMs: number | null;
+}
+
+async function adminFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = getStoredAuthToken();
+  const response = await fetch(`/api/admin${path}`, {
+    ...init,
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...((init.headers as Record<string, string>) ?? {}),
+    },
+  });
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const body = await response.json();
+      detail = body?.error || '';
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
+  }
+  return (await response.json()) as T;
+}
+
+export const workspaceAutomationsApi = {
+  list: async (): Promise<WorkspaceAutomation[]> => {
+    const data = await adminFetch<{ automations: WorkspaceAutomation[] }>('/automations');
+    return data.automations ?? [];
+  },
+  toggle: async (id: string): Promise<void> => {
+    await adminFetch(`/automations/${encodeURIComponent(id)}/toggle`, { method: 'PATCH' });
+  },
+  run: async (id: string): Promise<void> => {
+    await adminFetch(`/automations/${encodeURIComponent(id)}/run`, { method: 'POST' });
+  },
+  runs: async (id: string): Promise<WorkspaceAutomationRun[]> => {
+    const data = await adminFetch<{ runs?: WorkspaceAutomationRun[] }>(
+      `/automations/${encodeURIComponent(id)}/runs`,
+    );
+    return data.runs ?? [];
+  },
 };

@@ -508,6 +508,8 @@ import { setupAdminMarketingCatalogRoutes } from "./admin-room-marketing-catalog
 import { setupAdminOutreachRoutes } from "./admin-room-outreach-routes";
 import { setupAdminWorkspaceAggregatorRoutes } from "./admin-workspace-aggregator-routes";
 import { setupAdminWorkspaceCasesRoutes } from "./admin-workspace-cases-routes";
+import { setupAdminWorkspaceModulesRoutes } from "./admin-workspace-modules-routes";
+import { setupAdminWorkspaceCollabRoutes } from "./admin-workspace-collab-routes";
 import { setupAdminAiCitationRoutes } from "./admin-room-ai-citation-routes";
 import { setupRoleRoomNewsletterRoutes } from "./role-room-newsletter-routes";
 import { setupNewsletterFromReportRoutes } from "./role-room-newsletter-from-report-routes";
@@ -17388,6 +17390,23 @@ setupAdminWorkspaceAggregatorRoutes({
   app,
   pool,
   requireAdminRoomAccess,
+});
+
+// ── AdminWorkspace-moduler (Prosjekter, Dokumenter, Filer, Innstillinger)
+// Bygger på eksisterende tabeller — erstattet EmptyStates i sidebaren.
+setupAdminWorkspaceModulesRoutes({
+  app,
+  pool,
+  requireAdminRoomAccess,
+});
+
+// ── AdminWorkspace samarbeid (Teamchat, HR/team, Kundeprosjekt)
+// Teamchat og HR fikk egen datamodell i migrasjon 0350.
+setupAdminWorkspaceCollabRoutes({
+  app,
+  pool,
+  requireAdminRoomAccess,
+  logAdminActivity,
 });
 
 // ── AI-citation-tracker (måler om GEO-strategien faktisk fører til at AI-modeller siterer oss)

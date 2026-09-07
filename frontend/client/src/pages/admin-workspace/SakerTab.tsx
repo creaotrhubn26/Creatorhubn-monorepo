@@ -61,24 +61,14 @@ import {
   type WorkspaceCaseListFilter,
   type WorkspaceCaseProductKey,
 } from '../../services/adminRoomApi';
+import { BRAND } from './brand';
 
 // ─────────────────────────────────────────────────────────
 // Brand (mirror av AdminWorkspace.tsx — holdt lokalt så denne
 // komponenten ikke importerer fra parent og lager sirkel)
 // ─────────────────────────────────────────────────────────
 
-const BRAND = {
-  panelBg: 'rgba(26, 10, 46, 0.72)',
-  accent: '#a78bfa',
-  accentStrong: '#7c3aed',
-  border: 'rgba(167, 139, 250, 0.2)',
-  borderHover: 'rgba(167, 139, 250, 0.4)',
-  text: '#f1f5f9',
-  textMuted: 'rgba(241, 245, 249, 0.78)',
-  textDim: 'rgba(241, 245, 249, 0.55)',
-  hoverBg: 'rgba(167, 139, 250, 0.08)',
-  selectedBg: 'rgba(167, 139, 250, 0.16)',
-};
+// Palett: delt i ./brand.ts (var tidligere en lokal kopi her).
 
 const STATUS_FILTERS: Array<{ id: 'all' | WorkspaceCaseStatus; label: string }> = [
   { id: 'all', label: 'Alle' },
@@ -163,13 +153,22 @@ interface SakerTabProps {
   // Brukes som default-produkt på nye saker. SakerTab har sin egen lokale
   // produkt-filter som ikke nødvendigvis matcher parent.
   parentProduct: 'roleroom' | 'leadgrid';
+  /**
+   * Sak som skal åpnes ved mount — deep-link fra frist-lenker
+   * (?view=cases&caseId=…) eller fra Oppgaver-fanen. Vi tvinger
+   * status-filteret til «Alle» samtidig, slik at en ferdig/blokkert sak
+   * ikke blir usynlig i listen bak drawer-en.
+   */
+  initialCaseId?: string | null;
+  /** Kalles når initialCaseId er tatt i bruk, så parent kan rydde URL-en. */
+  onInitialCaseConsumed?: () => void;
 }
 
 // ─────────────────────────────────────────────────────────
 // Komponent
 // ─────────────────────────────────────────────────────────
 
-export function SakerTab({ parentProduct }: SakerTabProps) {
+export function SakerTab({ parentProduct, initialCaseId, onInitialCaseConsumed }: SakerTabProps) {
   const [cases, setCases] = useState<WorkspaceCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -181,7 +180,7 @@ export function SakerTab({ parentProduct }: SakerTabProps) {
     () => readUrlParam('cases_product', 'all') as (typeof PRODUCT_FILTERS)[number]['id'],
   );
 
-  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(initialCaseId ?? null);
   const [selectedCase, setSelectedCase] = useState<WorkspaceCase | null>(null);
   const [comments, setComments] = useState<WorkspaceCaseComment[]>([]);
   const [selectedLoading, setSelectedLoading] = useState(false);
@@ -192,6 +191,17 @@ export function SakerTab({ parentProduct }: SakerTabProps) {
   const [newBody, setNewBody] = useState('');
   const [newPriority, setNewPriority] = useState<WorkspaceCasePriority>('normal');
   const [creating, setCreating] = useState(false);
+
+  // Deep-link: åpne den forespurte saken, også hvis komponenten allerede
+  // er mountet (f.eks. hopp fra Oppgaver til Saker). Status-filteret
+  // settes til «Alle» så saken finnes i listen bak drawer-en uansett
+  // status, og vi melder fra så parent kan rydde caseId ut av URL-en.
+  useEffect(() => {
+    if (!initialCaseId) return;
+    setSelectedCaseId(initialCaseId);
+    setStatusFilter('all');
+    onInitialCaseConsumed?.();
+  }, [initialCaseId, onInitialCaseConsumed]);
 
   // Sync URL state for filter
   useEffect(() => {

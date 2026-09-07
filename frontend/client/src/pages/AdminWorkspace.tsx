@@ -43,6 +43,30 @@ import {
   createTheme,
 } from '@mui/material';
 import ErrorBoundary from '@/components/common/ErrorBoundary';
+import { BRAND } from './admin-workspace/brand';
+import {
+  WORKSPACE_ITEMS,
+  getWorkspaceItem,
+  readViewFromUrl,
+  parseWorkspaceLink,
+  type WorkspaceItemId,
+  type WorkspaceLinkTarget,
+} from './admin-workspace/workspaceItems';
+import { PanelEmpty } from './admin-workspace/panelKit';
+import CommandPalette from './admin-workspace/CommandPalette';
+import KalenderTab from './admin-workspace/KalenderTab';
+import OppgaverTab from './admin-workspace/OppgaverTab';
+import ProsjekterTab from './admin-workspace/ProsjekterTab';
+import DokumenterTab from './admin-workspace/DokumenterTab';
+import FilerTab from './admin-workspace/FilerTab';
+import TeamchatTab from './admin-workspace/TeamchatTab';
+import AutomatiseringerTab from './admin-workspace/AutomatiseringerTab';
+import KundeprosjektTab from './admin-workspace/KundeprosjektTab';
+import HrTab from './admin-workspace/HrTab';
+import InnstillingerTab, {
+  readStoredWorkspacePrefs,
+  type WorkspacePrefs,
+} from './admin-workspace/InnstillingerTab';
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined';
 import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined';
 import GavelOutlinedIcon from '@mui/icons-material/GavelOutlined';
@@ -60,6 +84,8 @@ import ScienceOutlinedIcon from '@mui/icons-material/ScienceOutlined';
 import PersonOutlineOutlinedIcon from '@mui/icons-material/PersonOutlineOutlined';
 import BusinessCenterOutlinedIcon from '@mui/icons-material/BusinessCenterOutlined';
 import MenuOpenIcon from '@mui/icons-material/MenuOpen';
+import CloseIcon from '@mui/icons-material/Close';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import MenuIcon from '@mui/icons-material/Menu';
 import NotificationsNoneOutlinedIcon from '@mui/icons-material/NotificationsNoneOutlined';
 import SendOutlinedIcon from '@mui/icons-material/SendOutlined';
@@ -109,6 +135,9 @@ import {
   activityLogApi,
   type ActivityLogEntry,
   workspaceAggregatorApi,
+  workspaceNotificationsApi,
+  type WorkspaceNotification,
+  type WorkspaceProductScope,
   type AgendaItem,
   type DeadlineItem,
   DEADLINE_SOURCE_LABEL,
@@ -131,21 +160,7 @@ const ADMIN_PRODUCTS = [
 ] as const;
 type AdminProductId = (typeof ADMIN_PRODUCTS)[number]['id'];
 
-// Branding — deep purple gradient + violet accent for Leadgrid-look.
-const BRAND = {
-  bgGradient: 'linear-gradient(180deg, #0b0518 0%, #1a0a2e 100%)',
-  sidebarBg: 'rgba(11, 5, 24, 0.92)',
-  panelBg: 'rgba(26, 10, 46, 0.72)',
-  accent: '#a78bfa',
-  accentStrong: '#7c3aed',
-  border: 'rgba(167, 139, 250, 0.2)',
-  borderHover: 'rgba(167, 139, 250, 0.4)',
-  text: '#f1f5f9',
-  textMuted: 'rgba(241, 245, 249, 0.78)',
-  textDim: 'rgba(241, 245, 249, 0.55)',
-  hoverBg: 'rgba(167, 139, 250, 0.08)',
-  selectedBg: 'rgba(167, 139, 250, 0.16)',
-};
+// Branding: delt palett i ./admin-workspace/brand.ts
 
 // Lokal mørk MUI-theme i BRAND-paletten: paneler som bruker MUI-defaults
 // (Card/Paper/action.hover/text.secondary/ikoner) følger workspace-designet
@@ -169,48 +184,6 @@ const workspaceTheme = createTheme({
 // Sidebar-struktur
 // ─────────────────────────────────────────────────────────
 
-type WorkspaceItemId =
-  // Hoved-nav
-  | 'overview'
-  | 'inbox'
-  | 'cases'
-  | 'projects'
-  | 'documents'
-  | 'tasks'
-  | 'calendar'
-  | 'files'
-  | 'teamchat'
-  | 'automations'
-  // Teamspaces
-  | 'ledelse'
-  | 'kundeprosjekt'
-  | 'markedsforing'
-  | 'produkt'
-  | 'hr'
-  // Innstillinger
-  | 'settings'
-  // Sub-items mountet i Teamspaces / Overview
-  | 'business-plan'
-  | 'funding'
-  | 'investors'
-  | 'partners'
-  | 'industry-crm'
-  | 'business-dna'
-  | 'marketing-catalog'
-  | 'marketing-segments'
-  | 'content-marketing'
-  | 'marketing-cockpit'
-  | 'operating-system'
-  | 'role-room-agent'
-  | 'content-calendar'
-  | 'leadgrid-app-waitlist'
-  | 'role-room-economy'
-  | 'newsletter-studio'
-  | 'ai-citation'
-  | 'whats-new'
-  | 'activity'
-  | 'migrations';
-
 interface NavItem {
   id: WorkspaceItemId;
   label: string;
@@ -225,38 +198,18 @@ interface NavSection {
 }
 
 // ─────────────────────────────────────────────────────────
-// Notifications inbox API (samme endepunkt som BellInbox/CRM)
+// Varsler
+//
+// Lå tidligere som en håndrullet fetch her, med to feil som gjorde
+// innboksen permanent tom OG stille:
+//   1. Den leste `data.items`, mens /api/notifications/inbox svarer med
+//      { notifications: [...] } — så listen ble alltid tom, også når
+//      backend hadde data.
+//   2. Den returnerte [] ved både !r.ok og throw, så «backend nede» så
+//      nøyaktig ut som «ingen varsler».
+// Nå går alt gjennom workspaceNotificationsApi, som normaliserer
+// konvolutten ett sted og KASTER ved feil.
 // ─────────────────────────────────────────────────────────
-
-interface InboxNotification {
-  id: string;
-  title?: string;
-  message?: string;
-  body?: string;
-  created_at?: string;
-  type?: string;
-  seen?: boolean;
-}
-
-async function fetchNotifications(): Promise<InboxNotification[]> {
-  try {
-    const token =
-      localStorage.getItem('creatorhub_auth_token') ||
-      localStorage.getItem('authToken') ||
-      '';
-    const r = await fetch('/api/notifications/inbox', {
-      credentials: 'include',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!r.ok) return [];
-    const data = await r.json();
-    if (Array.isArray(data)) return data as InboxNotification[];
-    if (Array.isArray(data?.items)) return data.items as InboxNotification[];
-    return [];
-  } catch {
-    return [];
-  }
-}
 
 // ─────────────────────────────────────────────────────────
 // Auth helper (samme mønster som AdminRoom)
@@ -282,73 +235,6 @@ function getCurrentUserEmail(): string {
     /* ignore */
   }
   return '';
-}
-
-// ─────────────────────────────────────────────────────────
-// Empty-state komponent
-// ─────────────────────────────────────────────────────────
-
-interface EmptyStateProps {
-  title: string;
-  description: string;
-  icon?: ReactNode;
-  todo?: string;
-}
-
-function EmptyState({ title, description, icon, todo }: EmptyStateProps) {
-  return (
-    <Stack
-      alignItems="center"
-      justifyContent="center"
-      spacing={2}
-      sx={{
-        py: 8,
-        px: 4,
-        textAlign: 'center',
-        borderRadius: 3,
-        bgcolor: BRAND.panelBg,
-        border: `1px solid ${BRAND.border}`,
-        minHeight: 360,
-      }}
-    >
-      <Box
-        sx={{
-          width: 64,
-          height: 64,
-          borderRadius: '50%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          bgcolor: 'rgba(167, 139, 250, 0.12)',
-          color: BRAND.accent,
-          '& svg': { fontSize: 32 },
-        }}
-      >
-        {icon ?? <ConstructionOutlinedIcon />}
-      </Box>
-      <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '1.1rem' }}>
-        {title}
-      </Typography>
-      <Typography sx={{ color: BRAND.textMuted, maxWidth: 480, lineHeight: 1.6 }}>
-        {description}
-      </Typography>
-      <Chip
-        label="Kommer snart — under utvikling"
-        sx={{
-          mt: 1,
-          bgcolor: 'rgba(167, 139, 250, 0.16)',
-          color: '#ddd6fe',
-          fontWeight: 700,
-          border: `1px solid ${BRAND.border}`,
-        }}
-      />
-      {todo ? (
-        <Typography sx={{ color: BRAND.textDim, fontSize: '0.75rem', mt: 1 }}>
-          TODO: {todo}
-        </Typography>
-      ) : null}
-    </Stack>
-  );
 }
 
 // ─────────────────────────────────────────────────────────
@@ -416,6 +302,12 @@ function Sidebar({
   product,
   onProductChange,
 }: SidebarProps) {
+  // Sidebaren er organisert rundt arbeidet, ikke rundt planen. Tidligere
+  // lå 7 av 10 hoved-oppføringer som tomme TODO-skjermer side om side med
+  // de ekte modulene, mens de faktisk fungerende verktøyene bare var
+  // nåbare via kort-rutenettet på Oversikt. Nå er alle flatene bygget, og
+  // grupperingen følger hva du holder på med: daglig arbeid øverst, drift
+  // under, så de fagvise teamspacene.
   const sections: NavSection[] = useMemo(
     () => [
       {
@@ -429,13 +321,52 @@ function Sidebar({
             badge: inboxBadge,
           },
           { id: 'cases', label: 'Saker', icon: <GavelOutlinedIcon /> },
-          { id: 'projects', label: 'Prosjekter', icon: <FolderOpenOutlinedIcon /> },
-          { id: 'documents', label: 'Dokumenter', icon: <DescriptionOutlinedIcon /> },
           { id: 'tasks', label: 'Oppgaver', icon: <TaskAltOutlinedIcon /> },
           { id: 'calendar', label: 'Kalender', icon: <EventOutlinedIcon /> },
+        ],
+      },
+      {
+        id: 'operations',
+        label: 'Drift',
+        items: [
+          { id: 'projects', label: 'Prosjekter', icon: <FolderOpenOutlinedIcon /> },
+          { id: 'kundeprosjekt', label: 'Kundeprosjekt', icon: <GroupsOutlinedIcon /> },
+          { id: 'documents', label: 'Dokumenter', icon: <DescriptionOutlinedIcon /> },
           { id: 'files', label: 'Filer', icon: <InsertDriveFileOutlinedIcon /> },
           { id: 'teamchat', label: 'Teamchat', icon: <ChatBubbleOutlineOutlinedIcon /> },
           { id: 'automations', label: 'Automatiseringer', icon: <AutoFixHighOutlinedIcon /> },
+        ],
+      },
+      {
+        id: 'ledelse-group',
+        label: 'Ledelse',
+        items: [
+          { id: 'business-plan', label: 'Forretningsplan', icon: <ArticleOutlinedIcon /> },
+          { id: 'funding', label: 'Søknader (IN/EU)', icon: <DescriptionOutlinedIcon /> },
+          { id: 'investors', label: 'Investor-pipeline', icon: <LeaderboardOutlinedIcon /> },
+          { id: 'partners', label: 'Samarbeidspartnere', icon: <HubOutlinedIcon /> },
+          { id: 'role-room-economy', label: 'RR Økonomi', icon: <SsidChartOutlinedIcon /> },
+        ],
+      },
+      {
+        id: 'marketing-group',
+        label: 'Markedsføring',
+        items: [
+          { id: 'marketing-cockpit', label: 'Marketing Cockpit', icon: <SsidChartOutlinedIcon /> },
+          { id: 'industry-crm', label: 'Tier-1 outreach', icon: <LeaderboardOutlinedIcon /> },
+          { id: 'marketing-segments', label: 'Målgrupper', icon: <GroupsOutlinedIcon /> },
+          { id: 'newsletter-studio', label: 'Newsletter Studio', icon: <EmailOutlinedIcon /> },
+          { id: 'content-calendar', label: 'Content-kalender', icon: <CampaignOutlinedIcon /> },
+        ],
+      },
+      {
+        id: 'product-group',
+        label: 'Produkt',
+        items: [
+          { id: 'role-room-agent', label: 'Role Room Agent', icon: <SmartToyOutlinedIcon /> },
+          { id: 'operating-system', label: 'Operativsystem', icon: <HubOutlinedIcon /> },
+          { id: 'migrations', label: 'Migrasjoner', icon: <StorageOutlinedIcon /> },
+          { id: 'activity', label: 'Aktivitetslogg', icon: <HistoryOutlinedIcon /> },
         ],
       },
       {
@@ -443,7 +374,6 @@ function Sidebar({
         label: 'Teamspaces',
         items: [
           { id: 'ledelse', label: 'Ledelse', icon: <BusinessCenterOutlinedIcon /> },
-          { id: 'kundeprosjekt', label: 'Kundeprosjekt', icon: <GroupsOutlinedIcon /> },
           { id: 'markedsforing', label: 'Markedsføring', icon: <CampaignOutlinedIcon /> },
           { id: 'produkt', label: 'Produkt', icon: <ScienceOutlinedIcon /> },
           { id: 'hr', label: 'HR', icon: <PersonOutlineOutlinedIcon /> },
@@ -663,6 +593,7 @@ function Sidebar({
             })}
           </Box>
         ))}
+
       </Box>
 
       {/* Innstillinger nederst */}
@@ -779,14 +710,14 @@ function MobileBottomNav({
 
 // ─────────────────────────────────────────────────────────
 // Teamchat-panel (høyre kolonne 1)
+//
+// Var en låst composer med en forklaring på at endepunktet manglet.
+// Migrasjon 0350 ga workspacet ekte kanaler, så kolonnen kjører nå
+// samme TeamchatTab i kompakt modus — én implementasjon, ikke to som
+// kan drive fra hverandre.
 // ─────────────────────────────────────────────────────────
 
-function TeamchatPanel() {
-  // Backend: /api/role-room/projects/:projectId/messages krever projectId,
-  // og det finnes ikke et "team-wide" admin-chat-endepunkt. Vi viser empty-
-  // state med write-feltet låst, og lister TODO.
-  const [message, setMessage] = useState('');
-
+function TeamchatPanel({ onClose }: { onClose: () => void }) {
   return (
     <Stack
       sx={{
@@ -797,17 +728,14 @@ function TeamchatPanel() {
         height: '100vh',
         position: 'sticky',
         top: 0,
+        minHeight: 0,
       }}
     >
       <Stack
         direction="row"
         alignItems="center"
         justifyContent="space-between"
-        sx={{
-          px: 2,
-          py: 1.5,
-          borderBottom: `1px solid ${BRAND.border}`,
-        }}
+        sx={{ px: 2, py: 1.5, borderBottom: `1px solid ${BRAND.border}` }}
       >
         <Stack direction="row" alignItems="center" spacing={1}>
           <ChatBubbleOutlineOutlinedIcon sx={{ color: BRAND.accent, fontSize: 18 }} />
@@ -815,75 +743,19 @@ function TeamchatPanel() {
             Teamchat
           </Typography>
         </Stack>
-        <Chip
-          label="Solo"
+        <IconButton
           size="small"
-          sx={{
-            height: 18,
-            fontSize: '0.66rem',
-            bgcolor: 'rgba(167, 139, 250, 0.16)',
-            color: '#ddd6fe',
-          }}
-        />
-      </Stack>
-
-      <Box sx={{ flex: 1, px: 2, py: 2, overflowY: 'auto' }}>
-        <Stack
-          alignItems="center"
-          justifyContent="center"
-          spacing={1.5}
-          sx={{
-            py: 6,
-            px: 2,
-            textAlign: 'center',
-            color: BRAND.textMuted,
-          }}
+          onClick={onClose}
+          aria-label="Skjul teamchat"
+          sx={{ color: BRAND.textDim }}
         >
-          <ChatBubbleOutlineOutlinedIcon sx={{ fontSize: 36, color: BRAND.accent, opacity: 0.6 }} />
-          <Typography sx={{ color: BRAND.text, fontWeight: 600, fontSize: '0.92rem' }}>
-            Ingen team ennå
-          </Typography>
-          <Typography sx={{ fontSize: '0.78rem', lineHeight: 1.5 }}>
-            Workspace-bred teamchat krever et felles rom-endepunkt — i dag er
-            <code style={{ color: BRAND.accent, margin: '0 4px' }}>/api/role-room/projects/:projectId/messages</code>
-            scoped per prosjekt.
-          </Typography>
-        </Stack>
-        {/* TODO: koble på workspace-bred chat (eget endepunkt eller pinned
-            project messages) før dette panelet viser ekte tråder. */}
-      </Box>
-
-      <Stack
-        direction="row"
-        spacing={1}
-        alignItems="center"
-        sx={{
-          px: 1.5,
-          py: 1.25,
-          borderTop: `1px solid ${BRAND.border}`,
-          bgcolor: 'rgba(11,5,24,0.5)',
-        }}
-      >
-        <InputBase
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="Skriv en melding…"
-          disabled
-          sx={{
-            flex: 1,
-            color: BRAND.text,
-            fontSize: '0.84rem',
-            bgcolor: 'rgba(167, 139, 250, 0.06)',
-            border: `1px solid ${BRAND.border}`,
-            borderRadius: 1.5,
-            px: 1,
-            py: 0.5,
-          }}
-        />
-        <IconButton size="small" disabled sx={{ color: BRAND.accent }}>
-          <SendOutlinedIcon fontSize="small" />
+          <CloseIcon sx={{ fontSize: 16 }} />
         </IconButton>
       </Stack>
+
+      <Box sx={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        <TeamchatTab compact />
+      </Box>
     </Stack>
   );
 }
@@ -893,7 +765,7 @@ function TeamchatPanel() {
 // 60s polling så åpne tabs holder seg friske uten manuell refresh.
 // ─────────────────────────────────────────────────────────
 
-function TodayAgendaSection() {
+function TodayAgendaSection({ product }: { product: WorkspaceProductScope }) {
   const [items, setItems] = useState<AgendaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -902,7 +774,7 @@ function TodayAgendaSection() {
     let cancelled = false;
     let timer: ReturnType<typeof setInterval> | null = null;
     const refresh = () => {
-      workspaceAggregatorApi.todayAgenda()
+      workspaceAggregatorApi.todayAgenda(product)
         .then((rows) => { if (!cancelled) { setItems(rows); setError(null); } })
         .catch((err) => { if (!cancelled) setError((err as Error).message); })
         .finally(() => { if (!cancelled) setLoading(false); });
@@ -910,7 +782,7 @@ function TodayAgendaSection() {
     refresh();
     timer = setInterval(refresh, 60_000);
     return () => { cancelled = true; if (timer) clearInterval(timer); };
-  }, []);
+  }, [product]);
 
   return (
     <Box>
@@ -1046,7 +918,13 @@ function formatDeadlineLabel(due: string): string {
   }
 }
 
-function UpcomingDeadlinesSection() {
+function UpcomingDeadlinesSection({
+  product,
+  onNavigate,
+}: {
+  product: WorkspaceProductScope;
+  onNavigate: (target: WorkspaceLinkTarget) => void;
+}) {
   const [items, setItems] = useState<DeadlineItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1055,7 +933,7 @@ function UpcomingDeadlinesSection() {
     let cancelled = false;
     let timer: ReturnType<typeof setInterval> | null = null;
     const refresh = () => {
-      workspaceAggregatorApi.upcomingDeadlines(14)
+      workspaceAggregatorApi.upcomingDeadlines(14, product)
         .then((data) => { if (!cancelled) { setItems(data.items); setError(null); } })
         .catch((err) => { if (!cancelled) setError((err as Error).message); })
         .finally(() => { if (!cancelled) setLoading(false); });
@@ -1063,7 +941,7 @@ function UpcomingDeadlinesSection() {
     refresh();
     timer = setInterval(refresh, 120_000); // 2 min — frister endrer seg sjeldnere enn agenda
     return () => { cancelled = true; if (timer) clearInterval(timer); };
-  }, []);
+  }, [product]);
 
   return (
     <Box>
@@ -1118,7 +996,14 @@ function UpcomingDeadlinesSection() {
                   cursor: item.link_path ? 'pointer' : 'default',
                 }}
                 onClick={item.link_path ? () => {
-                  // Best-effort navigasjon — link_path er full URL inkl. query
+                  // Peker lenken inn i workspacet bytter vi panel i React.
+                  // window.location.assign her betød full sidelast av en
+                  // tung SPA for å hoppe til en sak i samme flate.
+                  const target = parseWorkspaceLink(item.link_path);
+                  if (target) {
+                    onNavigate(target);
+                    return;
+                  }
                   if (typeof window !== 'undefined' && item.link_path) {
                     window.location.assign(item.link_path);
                   }
@@ -1178,9 +1063,15 @@ function UpcomingDeadlinesSection() {
 function NotificationsAgendaPanel({
   notifications,
   notificationsLoading,
+  notificationsError,
+  product,
+  onNavigate,
 }: {
-  notifications: InboxNotification[];
+  notifications: WorkspaceNotification[];
   notificationsLoading: boolean;
+  notificationsError: string | null;
+  product: WorkspaceProductScope;
+  onNavigate: (target: WorkspaceLinkTarget) => void;
 }) {
   const [activityItems, setActivityItems] = useState<ActivityLogEntry[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
@@ -1251,6 +1142,10 @@ function NotificationsAgendaPanel({
           <Stack alignItems="center" sx={{ py: 2 }}>
             <CircularProgress size={16} sx={{ color: BRAND.accent }} />
           </Stack>
+        ) : notificationsError ? (
+          <Typography sx={{ color: BRAND.danger, fontSize: '0.78rem' }}>
+            Kunne ikke laste varsler
+          </Typography>
         ) : notifications.length === 0 ? (
           <Typography sx={{ color: BRAND.textDim, fontSize: '0.78rem' }}>
             Ingen uleste varsler.
@@ -1272,7 +1167,7 @@ function NotificationsAgendaPanel({
                 <Typography sx={{ color: BRAND.text, fontWeight: 600, fontSize: '0.78rem' }}>
                   {n.title ?? n.type ?? 'Varsel'}
                 </Typography>
-                {n.message || n.body ? (
+                {n.message ? (
                   <Typography
                     sx={{
                       color: BRAND.textMuted,
@@ -1284,7 +1179,7 @@ function NotificationsAgendaPanel({
                       overflow: 'hidden',
                     }}
                   >
-                    {n.message ?? n.body}
+                    {n.message}
                   </Typography>
                 ) : null}
               </Stack>
@@ -1296,13 +1191,13 @@ function NotificationsAgendaPanel({
       <Divider sx={{ borderColor: BRAND.border }} />
 
       {/* Dagens agenda — live fra /api/admin-room/workspace/today-agenda */}
-      <TodayAgendaSection />
+      <TodayAgendaSection product={product} />
 
       <Divider sx={{ borderColor: BRAND.border }} />
 
       {/* Kommende frister — live aggregat (funding + cases + meetings)
           fra /api/admin-room/workspace/upcoming-deadlines */}
-      <UpcomingDeadlinesSection />
+      <UpcomingDeadlinesSection product={product} onNavigate={onNavigate} />
 
       <Divider sx={{ borderColor: BRAND.border }} />
 
@@ -1375,9 +1270,13 @@ function NotificationsAgendaPanel({
 function InboxView({
   notifications,
   loading,
+  error,
+  onMarkSeen,
 }: {
-  notifications: InboxNotification[];
+  notifications: WorkspaceNotification[];
   loading: boolean;
+  error: string | null;
+  onMarkSeen: (id: string) => void;
 }) {
   if (loading) {
     return (
@@ -1387,12 +1286,29 @@ function InboxView({
     );
   }
 
+  // Feil FØR tomhet. «Tom innboks» når backend er nede er den dyreste
+  // løgnen en driftsflate kan fortelle.
+  if (error) {
+    return (
+      <Alert
+        severity="error"
+        sx={{
+          bgcolor: 'rgba(220, 38, 38, 0.16)',
+          color: '#fecaca',
+          border: '1px solid rgba(220, 38, 38, 0.4)',
+        }}
+      >
+        Kunne ikke hente varsler — {error}. Listen under kan være utdatert eller ufullstendig.
+      </Alert>
+    );
+  }
+
   if (notifications.length === 0) {
     return (
-      <EmptyState
+      <PanelEmpty
+        icon={<InboxOutlinedIcon />}
         title="Tom innboks"
         description="Du har ingen uleste varsler. Når noe trenger oppmerksomhet — fra leads, søknader, prosjekter eller systemvarsler — havner det her."
-        icon={<InboxOutlinedIcon />}
       />
     );
   }
@@ -1415,29 +1331,63 @@ function InboxView({
               <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.92rem' }}>
                 {n.title ?? n.type ?? 'Varsel'}
               </Typography>
-              {n.message || n.body ? (
+              {n.message ? (
                 <Typography sx={{ color: BRAND.textMuted, fontSize: '0.84rem', mt: 0.5, lineHeight: 1.5 }}>
-                  {n.message ?? n.body}
+                  {n.message}
                 </Typography>
               ) : null}
-              {n.created_at ? (
-                <Typography sx={{ color: BRAND.textDim, fontSize: '0.72rem', mt: 0.75 }}>
-                  {new Date(n.created_at).toLocaleString('nb-NO')}
-                </Typography>
-              ) : null}
+              <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mt: 1 }}>
+                {n.createdAt ? (
+                  <Typography sx={{ color: BRAND.textDim, fontSize: '0.72rem' }}>
+                    {new Date(n.createdAt).toLocaleString('nb-NO')}
+                  </Typography>
+                ) : null}
+                {/* Click-through til kilden. Uten denne var innboksen en
+                    liste du ikke kunne gjøre noe fra. */}
+                {n.actionUrl ? (
+                  <Button
+                    size="small"
+                    href={n.actionUrl}
+                    endIcon={<OpenInNewOutlinedIcon sx={{ fontSize: 14 }} />}
+                    sx={{
+                      textTransform: 'none',
+                      color: BRAND.accent,
+                      fontSize: '0.76rem',
+                      p: 0,
+                      minWidth: 0,
+                      '&:hover': { bgcolor: 'transparent', textDecoration: 'underline' },
+                    }}
+                  >
+                    {n.actionLabel ?? 'Åpne'}
+                  </Button>
+                ) : null}
+              </Stack>
             </Box>
-            {n.seen === false ? (
-              <Chip
-                label="Ny"
-                size="small"
-                sx={{
-                  bgcolor: BRAND.accentStrong,
-                  color: '#fff',
-                  fontWeight: 700,
-                  height: 22,
-                }}
-              />
-            ) : null}
+            <Stack direction="row" alignItems="center" spacing={0.5}>
+              {n.priority === 'urgent' || n.priority === 'high' ? (
+                <Chip
+                  label={n.priority === 'urgent' ? 'Haster' : 'Høy'}
+                  size="small"
+                  sx={{
+                    bgcolor: n.priority === 'urgent' ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.2)',
+                    color: n.priority === 'urgent' ? '#fca5a5' : '#fcd34d',
+                    fontWeight: 700,
+                    height: 22,
+                  }}
+                />
+              ) : null}
+              {/* En innboks du ikke kan tømme slutter folk å åpne. */}
+              <Tooltip title="Markér som lest">
+                <IconButton
+                  size="small"
+                  onClick={() => onMarkSeen(n.id)}
+                  aria-label={`Markér «${n.title ?? 'varsel'}» som lest`}
+                  sx={{ color: BRAND.textDim, '&:hover': { color: BRAND.success } }}
+                >
+                  <CheckCircleOutlineIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+              </Tooltip>
+            </Stack>
           </Stack>
         </Box>
       ))}
@@ -1631,13 +1581,35 @@ interface ResolvedContent {
   render: (activeContentTab: number) => ReactNode;
 }
 
-function resolveContent(
-  selected: WorkspaceItemId,
-  product: AdminProductId,
-  notifications: InboxNotification[],
-  notificationsLoading: boolean,
-  onJumpTo: (id: WorkspaceItemId) => void,
-): ResolvedContent {
+interface ResolveContentDeps {
+  selected: WorkspaceItemId;
+  product: AdminProductId;
+  notifications: WorkspaceNotification[];
+  notificationsLoading: boolean;
+  notificationsError: string | null;
+  onMarkNotificationSeen: (id: string) => void;
+  onJumpTo: (id: WorkspaceItemId) => void;
+  onNavigate: (target: WorkspaceLinkTarget) => void;
+  onOpenCase: (caseId: string) => void;
+  pendingCaseId: string | null;
+  onCaseConsumed: () => void;
+  onPrefsChange: (prefs: WorkspacePrefs) => void;
+}
+
+function resolveContent({
+  selected,
+  product,
+  notifications,
+  notificationsLoading,
+  notificationsError,
+  onMarkNotificationSeen,
+  onJumpTo,
+  onNavigate,
+  onOpenCase,
+  pendingCaseId,
+  onCaseConsumed,
+  onPrefsChange,
+}: ResolveContentDeps): ResolvedContent {
   switch (selected) {
     case 'overview':
       return {
@@ -1650,110 +1622,80 @@ function resolveContent(
       return {
         title: 'Innboks',
         breadcrumbs: ['Creatorhub AS', 'Workspace', 'Innboks'],
-        statusChip:
-          notifications.length > 0
+        statusChip: notificationsError
+          ? { label: 'Ukjent', color: BRAND.danger }
+          : notifications.length > 0
             ? { label: `${notifications.length} uleste`, color: BRAND.accentStrong }
             : { label: 'Alt klart', color: '#22c55e' },
         render: () => (
-          <InboxView notifications={notifications} loading={notificationsLoading} />
+          <InboxView
+            notifications={notifications}
+            loading={notificationsLoading}
+            error={notificationsError}
+            onMarkSeen={onMarkNotificationSeen}
+          />
         ),
       };
     case 'cases':
       return {
         title: 'Saker',
         breadcrumbs: ['Creatorhub AS', 'Workspace', 'Saker'],
-        render: () => <SakerTab parentProduct={product} />,
+        render: () => (
+          <SakerTab
+            parentProduct={product}
+            initialCaseId={pendingCaseId}
+            onInitialCaseConsumed={onCaseConsumed}
+          />
+        ),
       };
     case 'projects':
       return {
         title: 'Prosjekter',
         breadcrumbs: ['Creatorhub AS', 'Workspace', 'Prosjekter'],
-        render: () => (
-          <EmptyState
-            title="Prosjekter"
-            description="Workspace-bred prosjekt-oversikt på tvers av kundeprosjekter er ikke koblet på ennå. Bruk Creative Sync Workspace (i Role Room) for prosjekt-detaljer i mellomtiden."
-            icon={<FolderOpenOutlinedIcon />}
-            todo="Aggregér casting_projects + showcase_galleries + role_room_projects til én feed."
-          />
-        ),
+        statusChip: { label: 'Live', color: '#22c55e' },
+        render: () => <ProsjekterTab product={product} />,
       };
     case 'documents':
       return {
         title: 'Dokumenter',
         breadcrumbs: ['Creatorhub AS', 'Workspace', 'Dokumenter'],
-        render: () => (
-          <EmptyState
-            title="Dokumenter"
-            description="Sentralt dokument-bibliotek (kontrakter, briefer, notater) er ikke koblet på ennå."
-            icon={<DescriptionOutlinedIcon />}
-            todo="Koble på vendor_documents + contracts + role_room_briefs til én bibliotek-visning."
-          />
-        ),
+        statusChip: { label: 'Live', color: '#22c55e' },
+        render: () => <DokumenterTab product={product} />,
       };
     case 'tasks':
       return {
         title: 'Oppgaver',
         breadcrumbs: ['Creatorhub AS', 'Workspace', 'Oppgaver'],
-        render: () => (
-          <EmptyState
-            title="Oppgaver"
-            description="Workspace-bred oppgave-feed er ikke implementert ennå. CRM-task-inbox finnes per kunde."
-            icon={<TaskAltOutlinedIcon />}
-            todo="Aggregér crm_tasks + role_room_tasks + leadgrid_tasks i én feed."
-          />
-        ),
+        statusChip: { label: 'Live', color: '#22c55e' },
+        render: () => <OppgaverTab parentProduct={product} onOpenCase={onOpenCase} />,
       };
     case 'calendar':
       return {
         title: 'Kalender',
         breadcrumbs: ['Creatorhub AS', 'Workspace', 'Kalender'],
-        render: () => (
-          <EmptyState
-            title="Kalender"
-            description="Workspace-bred kalender (møter + frister + opptaksdager) er ikke implementert ennå. Bruk Google Calendar via integrasjons-fane i mellomtiden."
-            icon={<EventOutlinedIcon />}
-            todo="Aggregér role_room_meetings + funding_apps.deadline + showcase deadline-feed."
-          />
-        ),
+        statusChip: { label: 'Live', color: '#22c55e' },
+        render: () => <KalenderTab product={product} onNavigate={onNavigate} />,
       };
     case 'files':
       return {
         title: 'Filer',
         breadcrumbs: ['Creatorhub AS', 'Workspace', 'Filer'],
-        render: () => (
-          <EmptyState
-            title="Filer"
-            description="Workspace-bredt fil-bibliotek (B2-arkiv på tvers av prosjekter) er ikke implementert ennå."
-            icon={<InsertDriveFileOutlinedIcon />}
-            todo="Koble på B2-bucket-lister + showcase-galleri-filer."
-          />
-        ),
+        statusChip: { label: 'Live', color: '#22c55e' },
+        render: () => <FilerTab product={product} />,
       };
     case 'teamchat':
       return {
         title: 'Teamchat',
         breadcrumbs: ['Creatorhub AS', 'Workspace', 'Teamchat'],
-        render: () => (
-          <EmptyState
-            title="Teamchat"
-            description="Workspace-bred chat-kanal er ikke implementert ennå. Per-prosjekt-chat finnes i Creative Sync Workspace."
-            icon={<ChatBubbleOutlineOutlinedIcon />}
-            todo="Bygg et workspace-level chat-room (eget endepunkt utenfor projects)."
-          />
-        ),
+        statusChip: { label: 'Live', color: '#22c55e' },
+        render: () => <TeamchatTab />,
       };
     case 'automations':
       return {
         title: 'Automatiseringer',
         breadcrumbs: ['Creatorhub AS', 'Workspace', 'Automatiseringer'],
-        render: () => (
-          <EmptyState
-            title="Automatiseringer"
-            description="Sentralisert automatisering-builder (trigger → handling) er ikke implementert ennå. I dag administreres cron-jobs via GitHub Actions og Render."
-            icon={<AutoFixHighOutlinedIcon />}
-            todo="Vurder n8n-style builder eller bare lese-skjerm fra eksisterende cron-config."
-          />
-        ),
+        statusChip: { label: 'Live', color: '#22c55e' },
+        render: () => <AutomatiseringerTab />,
       };
     case 'business-plan':
       return {
@@ -1900,14 +1842,8 @@ function resolveContent(
       return {
         title: 'Kundeprosjekt',
         breadcrumbs: ['Creatorhub AS', 'Teamspaces', 'Kundeprosjekt'],
-        render: () => (
-          <EmptyState
-            title="Kundeprosjekt"
-            description="Teamspace for kundeprosjekt er ikke koblet på workspace-laget ennå. Bruk Creative Sync Workspace (i Role Room) i mellomtiden."
-            icon={<GroupsOutlinedIcon />}
-            todo="Aggregér aktive role_room_projects til denne flaten."
-          />
-        ),
+        statusChip: { label: 'Live', color: '#22c55e' },
+        render: () => <KundeprosjektTab />,
       };
     case 'markedsforing':
       return {
@@ -1953,27 +1889,15 @@ function resolveContent(
       return {
         title: 'HR',
         breadcrumbs: ['Creatorhub AS', 'Teamspaces', 'HR'],
-        render: () => (
-          <EmptyState
-            title="HR"
-            description="HR-flaten er ikke implementert ennå. Vil samle teammedlemmer, kontrakter, kompensasjon og fravær når den kommer."
-            icon={<PersonOutlineOutlinedIcon />}
-            todo="Velg datamodell (team_members + comp + leave) eller integrer med ekstern HR-løsning."
-          />
-        ),
+        statusChip: { label: 'Live', color: '#22c55e' },
+        render: () => <HrTab product={product} />,
       };
     case 'settings':
       return {
         title: 'Innstillinger',
         breadcrumbs: ['Creatorhub AS', 'Innstillinger'],
-        render: () => (
-          <EmptyState
-            title="Innstillinger"
-            description="Workspace-innstillinger (org-profil, brand, integrasjoner, varsler) er ikke implementert ennå. Innstillinger administreres per modul i mellomtiden."
-            icon={<SettingsOutlinedIcon />}
-            todo="Bygg gruppert settings-flate som peker til eksisterende modul-innstillinger."
-          />
-        ),
+        statusChip: { label: 'Live', color: '#22c55e' },
+        render: () => <InnstillingerTab onPrefsChange={onPrefsChange} />,
       };
     default:
       return {
@@ -2048,10 +1972,18 @@ function TopBar({
   resolved,
   contentTab,
   onContentTabChange,
+  onOpenPalette,
+  teamchatOpen,
+  onToggleTeamchat,
+  showTeamchatToggle,
 }: {
   resolved: ResolvedContent;
   contentTab: number;
   onContentTabChange: (next: number) => void;
+  onOpenPalette: () => void;
+  teamchatOpen: boolean;
+  onToggleTeamchat: () => void;
+  showTeamchatToggle: boolean;
 }) {
   return (
     <Stack
@@ -2109,31 +2041,38 @@ function TopBar({
         </Box>
 
         <Stack direction="row" alignItems="center" spacing={1}>
+          {/* Åpner ⌘K-paletten. Var tidligere et `disabled` felt med en
+              ⌘K-chip uten handler — altså en snarvei som ikke fantes. */}
           <Stack
             direction="row"
             alignItems="center"
             spacing={0.5}
+            role="button"
+            tabIndex={0}
+            aria-label="Hopp til flate (⌘K)"
+            onClick={onOpenPalette}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onOpenPalette();
+              }
+            }}
             sx={{
               px: 1.25,
               py: 0.5,
               borderRadius: 1.5,
+              cursor: 'pointer',
               bgcolor: 'rgba(167, 139, 250, 0.06)',
               border: `1px solid ${BRAND.border}`,
               minWidth: 180,
               display: { xs: 'none', md: 'flex' },
+              '&:hover': { borderColor: BRAND.borderHover },
             }}
           >
             <SearchOutlinedIcon sx={{ color: BRAND.textDim, fontSize: 16 }} />
-            <InputBase
-              placeholder="Søk i workspace…"
-              disabled
-              sx={{
-                flex: 1,
-                color: BRAND.text,
-                fontSize: '0.8rem',
-                '& input::placeholder': { color: BRAND.textDim, opacity: 1 },
-              }}
-            />
+            <Typography sx={{ flex: 1, color: BRAND.textDim, fontSize: '0.8rem' }}>
+              Hopp til flate…
+            </Typography>
             <Chip
               label="⌘K"
               size="small"
@@ -2145,6 +2084,25 @@ function TopBar({
               }}
             />
           </Stack>
+
+          {/* Teamchat-toggle — kolonnen er skjult som default. */}
+          {showTeamchatToggle ? (
+            <Tooltip title={teamchatOpen ? 'Skjul teamchat' : 'Vis teamchat'}>
+              <IconButton
+                size="small"
+                onClick={onToggleTeamchat}
+                aria-label={teamchatOpen ? 'Skjul teamchat' : 'Vis teamchat'}
+                sx={{
+                  color: teamchatOpen ? BRAND.accent : BRAND.textDim,
+                  bgcolor: teamchatOpen ? BRAND.selectedBg : 'transparent',
+                  border: `1px solid ${teamchatOpen ? BRAND.borderHover : BRAND.border}`,
+                  borderRadius: 1.5,
+                }}
+              >
+                <ChatBubbleOutlineOutlinedIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+          ) : null}
         </Stack>
       </Stack>
 
@@ -2165,29 +2123,53 @@ function TopBar({
 
 export default function AdminWorkspace() {
   const [collapsed, setCollapsed] = useState(false);
+  // Valider mot registeret: en ukjent `?view=` (gammelt bokmerke, omdøpt
+  // flate) ga tidligere en helt blank hovedflate uten forklaring.
   const [selected, setSelected] = useState<WorkspaceItemId>(() => {
     if (typeof window === 'undefined') return 'overview';
-    try {
-      const fromUrl = new URLSearchParams(window.location.search).get('view');
-      if (fromUrl) return fromUrl as WorkspaceItemId;
-    } catch {
-      /* ignore */
-    }
-    return 'overview';
+    return readViewFromUrl(window.location.search);
   });
+  // Preferanser fra Innstillinger-flaten. Speilet i localStorage, så
+  // første render bruker riktig produkt/layout uten å vente på API-et.
+  const [prefs, setPrefs] = useState<WorkspacePrefs>(() =>
+    typeof window === 'undefined'
+      ? { defaultProduct: 'roleroom', teamchatOpenByDefault: false, notificationPollSeconds: 60 }
+      : readStoredWorkspacePrefs(),
+  );
+
   const [product, setProduct] = useState<AdminProductId>(() => {
     if (typeof window === 'undefined') return 'roleroom';
     try {
       const fromUrl = new URLSearchParams(window.location.search).get('product');
       if (fromUrl === 'leadgrid') return 'leadgrid';
+      if (fromUrl === 'roleroom') return 'roleroom';
     } catch {
       /* ignore */
     }
-    return 'roleroom';
+    // URL-en vinner; ellers styrer preferansen.
+    return readStoredWorkspacePrefs().defaultProduct;
   });
   const [contentTab, setContentTab] = useState(0);
-  const [notifications, setNotifications] = useState<InboxNotification[]>([]);
+  const [notifications, setNotifications] = useState<WorkspaceNotification[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
+  // ⌘K-palett
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  // Teamchat-kolonnen er skjult som default: den er en låst composer inntil
+  // et workspace-bredt chat-endepunkt finnes, og 320px permanent til en
+  // tom lovnad er dyrere enn en toggle.
+  const [teamchatOpen, setTeamchatOpen] = useState(
+    () => (typeof window === 'undefined' ? false : readStoredWorkspacePrefs().teamchatOpenByDefault),
+  );
+  // Deep-link fra frist-lenker: /admin-workspace?view=cases&caseId=…
+  const [pendingCaseId, setPendingCaseId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      return new URLSearchParams(window.location.search).get('caseId');
+    } catch {
+      return null;
+    }
+  });
 
   const isMobile = useMediaQuery('(max-width: 767px)');
   const isTablet = useMediaQuery('(max-width: 1199px)');
@@ -2219,23 +2201,57 @@ export default function AdminWorkspace() {
     setContentTab(0);
   }, [selected]);
 
-  // Last varsler ved mount + poll hvert 60s
+  // Last varsler ved mount + poll hvert 60s.
+  // Ved feil BEHOLDER vi forrige liste og setter en feilmelding: en
+  // driftsflate skal ikke tømme skjermen fordi ett poll-kall feilet, og
+  // den skal aldri påstå «Alt klart» når den ikke vet.
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setInterval> | null = null;
     const load = async () => {
-      const items = await fetchNotifications();
-      if (!cancelled) {
+      try {
+        const items = await workspaceNotificationsApi.inbox();
+        if (cancelled) return;
         setNotifications(items);
-        setNotificationsLoading(false);
+        setNotificationsError(null);
+      } catch (err) {
+        if (cancelled) return;
+        setNotificationsError((err as Error).message || 'Kunne ikke hente varsler');
+      } finally {
+        if (!cancelled) setNotificationsLoading(false);
       }
     };
     void load();
-    timer = setInterval(load, 60_000);
+    timer = setInterval(load, Math.max(15, prefs.notificationPollSeconds) * 1000);
     return () => {
       cancelled = true;
       if (timer) clearInterval(timer);
     };
+  }, [prefs.notificationPollSeconds]);
+
+  // Markér ett varsel som lest. Backend fjerner det fra inbox-spørringen,
+  // så vi tar det ut av listen optimistisk og ruller tilbake ved feil.
+  const handleMarkNotificationSeen = useCallback(async (id: string) => {
+    const previous = notifications;
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    try {
+      await workspaceNotificationsApi.markSeen(id);
+    } catch (err) {
+      setNotifications(previous);
+      setNotificationsError((err as Error).message || 'Kunne ikke markere varselet som lest');
+    }
+  }, [notifications]);
+
+  // ⌘K / Ctrl+K åpner hopp-til-paletten.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   // Auth-gating
@@ -2280,6 +2296,48 @@ export default function AdminWorkspace() {
   // flaten til ErrorBoundary. Transition lar React holde forrige panel synlig.
   const handleSelect = useCallback((id: WorkspaceItemId) => {
     startTransition(() => setSelected(id));
+  }, []);
+
+  // Produkt-toggelen er ikke lenger bare en gradient: den sendes med til
+  // aggregatorene, som filtrerer bort det som hører til det andre
+  // produktet (og alltid beholder selskaps-nivå, f.eks. funding-frister).
+  const productScope: WorkspaceProductScope = product;
+
+  // Deep-link fra aggregatorens link_path. Peker den inn i workspacet
+  // bytter vi panel i React; ellers vanlig navigasjon. Tidligere gjorde
+  // alle disse en full sidelast av en tung SPA — og lenken til en sak var
+  // dessuten død, fordi backend sendte ?sidebar= mens vi leser ?view=.
+  const handleWorkspaceNavigate = useCallback((target: WorkspaceLinkTarget) => {
+    if (target.caseId) setPendingCaseId(target.caseId);
+    startTransition(() => setSelected(target.view));
+  }, []);
+
+  const handleOpenCase = useCallback((caseId: string) => {
+    setPendingCaseId(caseId);
+    startTransition(() => setSelected('cases'));
+  }, []);
+
+  // Saken er åpnet — ta caseId ut av URL-en så en refresh ikke tvinger
+  // den opp igjen etter at du har navigert videre.
+  // Innstillinger-flaten melder tilbake så endringer slår inn med én
+  // gang (f.eks. poll-intervallet), uten reload. Default-produkt og
+  // teamchat-kolonnen leses ved oppstart — vi overstyrer ikke et valg
+  // brukeren allerede har gjort i denne økten.
+  const handlePrefsChange = useCallback((next: WorkspacePrefs) => {
+    setPrefs(next);
+  }, []);
+
+  const handleCaseConsumed = useCallback(() => {
+    setPendingCaseId(null);
+    if (typeof window === 'undefined') return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (!params.has('caseId')) return;
+      params.delete('caseId');
+      window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   if (!authChecked) {
@@ -2340,13 +2398,20 @@ export default function AdminWorkspace() {
     );
   }
 
-  const resolved = resolveContent(
+  const resolved = resolveContent({
     selected,
     product,
     notifications,
     notificationsLoading,
-    handleSelect,
-  );
+    notificationsError,
+    onMarkNotificationSeen: handleMarkNotificationSeen,
+    onJumpTo: handleSelect,
+    onNavigate: handleWorkspaceNavigate,
+    onOpenCase: handleOpenCase,
+    pendingCaseId,
+    onCaseConsumed: handleCaseConsumed,
+    onPrefsChange: handlePrefsChange,
+  });
   const inboxBadge = notifications.length;
 
   return (
@@ -2381,6 +2446,10 @@ export default function AdminWorkspace() {
           resolved={resolved}
           contentTab={contentTab}
           onContentTabChange={(tab) => startTransition(() => setContentTab(tab))}
+          onOpenPalette={() => setPaletteOpen(true)}
+          teamchatOpen={teamchatOpen}
+          onToggleTeamchat={() => setTeamchatOpen((v) => !v)}
+          showTeamchatToggle={!isTablet}
         />
         <Box sx={{ flex: 1, px: { xs: 1.5, md: 3 }, py: { xs: 2, md: 3 } }}>
           {/* key: boundary nullstilles automatisk ved panel-/fane-bytte, ellers
@@ -2429,12 +2498,18 @@ export default function AdminWorkspace() {
         </Box>
       </Box>
 
-      {/* Høyre kolonner (skjules på tablet+mobil) */}
-      {!isTablet ? <TeamchatPanel /> : null}
+      {/* Høyre kolonner (skjules på tablet+mobil).
+          Teamchat er bak en toggle: så lenge composeren er låst i påvente
+          av et workspace-bredt chat-endepunkt, er 320px permanent for en
+          tom lovnad dyrere enn ett klikk. */}
+      {!isTablet && teamchatOpen ? <TeamchatPanel onClose={() => setTeamchatOpen(false)} /> : null}
       {!isTablet ? (
         <NotificationsAgendaPanel
           notifications={notifications}
           notificationsLoading={notificationsLoading}
+          notificationsError={notificationsError}
+          product={productScope}
+          onNavigate={handleWorkspaceNavigate}
         />
       ) : null}
 
@@ -2446,6 +2521,12 @@ export default function AdminWorkspace() {
           inboxBadge={inboxBadge}
         />
       ) : null}
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onSelect={handleSelect}
+      />
     </Box>
     </ThemeProvider>
   );

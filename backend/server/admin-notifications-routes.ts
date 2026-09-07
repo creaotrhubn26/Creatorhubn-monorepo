@@ -310,8 +310,12 @@ export function setupAdminNotificationsRoutes(deps: AdminNotificationsDeps): voi
       }
       res.json({ notifications: matching });
     } catch (err) {
+      // Ikke svelg feilen med en tom liste og 200: en driftsflate som
+      // AdminWorkspace kan ikke skille «ingen varsler» fra «backend nede»
+      // hvis vi later som alt er i orden. Konsumenter som ikke bryr seg
+      // (UserNotificationModal) fanger allerede og feiler stille selv.
       console.error("GET /notifications/inbox:", err);
-      res.json({ notifications: [] });
+      res.status(500).json({ error: "Kunne ikke hente varsler", notifications: [] });
     }
   });
 
