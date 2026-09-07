@@ -3,8 +3,9 @@
  *
  * Prøver Resend HTTP-API først (hvis RESEND_API_KEY er satt), faller
  * tilbake til Gmail SMTP og deretter en allerede autorisert Gmail API-
- * tilkobling for mottakeren når de to første transportene eksplisitt feiler.
- * Resend er foretrukket for produksjon: API-nøkler utløper ikke, ingen
+ * tilkobling for den konfigurerte avsenderen når de to første transportene
+ * eksplisitt feiler. Resend er foretrukket for produksjon: API-nøkler
+ * utløper ikke, ingen
  * 2FA-binding, du eier domenet via DKIM/SPF, og du får bounces +
  * open-rates i Resend-dashboardet.
  *
@@ -76,6 +77,17 @@ export interface TransactionalEmailOptions {
 function readEnvString(value: string | undefined | null): string | null {
   const s = typeof value === 'string' ? value.trim() : '';
   return s.length > 0 ? s : null;
+}
+
+const RESEND_ONBOARDING_FROM_EMAIL = 'onboarding@resend.dev';
+
+function isConfiguredAdminAlertRecipient(opts: TransactionalEmailOptions): boolean {
+  const configuredAdminEmail = readEnvString(process.env.GOOGLE_ADMIN_EMAIL);
+  return Boolean(
+    configuredAdminEmail
+    && opts.kind === 'admin_inbound_notify'
+    && opts.to.trim().toLowerCase() === configuredAdminEmail.toLowerCase()
+  );
 }
 
 function defaultResendFromAddress(): string {
@@ -463,6 +475,21 @@ export async function sendTransactionalEmail(
 
   if (resendAvailable) {
     result = await sendViaResend(opts);
+    if (
+      !result.sent
+      && result.reason === 'resend_domain_not_verified'
+      && isConfiguredAdminAlertRecipient(opts)
+    ) {
+      // Resend tillater konto-eieren som mottaker fra onboarding@resend.dev.
+      // Hold dette strengt avgrenset til det eksplisitt konfigurerte interne
+      // adminvarselet; kunde- og invitasjonsmail skal fortsatt kreve eget domene.
+      console.warn('Resend-domenet er ikke verifisert; prøver intern adminfallback.');
+      result = await sendViaResend({
+        ...opts,
+        fromAddress: RESEND_ONBOARDING_FROM_EMAIL,
+        fromLabel: readEnvString(opts.fromLabel) ?? 'CreatorHub',
+      });
+    }
     if (
       !result.sent
       && (

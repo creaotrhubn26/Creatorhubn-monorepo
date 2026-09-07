@@ -120,6 +120,50 @@ export function setupResendAdminRoutes(deps: ResendAdminRoutesDeps): void {
       console.warn('[resend-admin] Gmail API status lookup failed:', error);
     }
 
+    let adminAlertDelivery: {
+      recipient: string;
+      verified: boolean;
+      provider: string | null;
+      messageId: string | null;
+      lastVerifiedAt: string | null;
+    } = {
+      recipient: adminEmail,
+      verified: false,
+      provider: null,
+      messageId: null,
+      lastVerifiedAt: null,
+    };
+    try {
+      const latestAdminDelivery = await pool.query<{
+        provider: string;
+        message_id: string | null;
+        sent_at: Date | string;
+      }>(
+        `SELECT provider, message_id, sent_at
+           FROM transactional_email_log
+          WHERE status = 'sent'
+            AND kind = 'admin_inbound_notify'
+            AND LOWER(to_email) = LOWER($1)
+          ORDER BY sent_at DESC
+          LIMIT 1`,
+        [adminEmail],
+      );
+      const delivery = latestAdminDelivery.rows[0];
+      if (delivery) {
+        adminAlertDelivery = {
+          recipient: adminEmail,
+          verified: true,
+          provider: delivery.provider,
+          messageId: delivery.message_id,
+          lastVerifiedAt: delivery.sent_at instanceof Date
+            ? delivery.sent_at.toISOString()
+            : String(delivery.sent_at),
+        };
+      }
+    } catch (error) {
+      console.warn('[resend-admin] Admin alert delivery status lookup failed:', error);
+    }
+
     const providers = {
       resend: {
         configured: Boolean(apiKey),
@@ -152,6 +196,7 @@ export function setupResendAdminRoutes(deps: ResendAdminRoutesDeps): void {
       success: true,
       primaryProvider,
       providers,
+      adminAlertDelivery,
       freeTier: { monthly: RESEND_FREE_TIER_MONTHLY, daily: RESEND_FREE_TIER_DAILY },
     });
   });
