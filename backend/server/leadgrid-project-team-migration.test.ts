@@ -34,6 +34,18 @@ describe("Leadgrid project team scope migration", () => {
     expect(migration).toContain("FROM project_invitations legacy");
   });
 
+  it("copies optional activity and metadata across historical member shapes", () => {
+    expect(migration).toContain(
+      "to_jsonb(legacy) ->> 'last_active_at'",
+    );
+    expect(migration).toContain("to_jsonb(legacy) ->> 'last_active'");
+    expect(migration).toContain(
+      "jsonb_typeof(to_jsonb(legacy) -> 'meta') = 'object'",
+    );
+    expect(migration).not.toContain("legacy.last_active_at");
+    expect(migration).not.toContain("legacy.meta");
+  });
+
   it("backfills creators as owners and scopes all conflicts by tenant", () => {
     expect(migration).toContain("project.created_by");
     expect(migration).toContain("'owner'");

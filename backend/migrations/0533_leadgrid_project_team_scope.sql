@@ -88,8 +88,15 @@ SELECT
   legacy.role,
   legacy.invited_by,
   legacy.invited_at,
-  legacy.last_active_at,
-  COALESCE(legacy.meta, '{}'::jsonb)
+  COALESCE(
+    NULLIF(to_jsonb(legacy) ->> 'last_active_at', '')::TIMESTAMPTZ,
+    NULLIF(to_jsonb(legacy) ->> 'last_active', '')::TIMESTAMPTZ
+  ),
+  CASE
+    WHEN jsonb_typeof(to_jsonb(legacy) -> 'meta') = 'object'
+      THEN to_jsonb(legacy) -> 'meta'
+    ELSE '{}'::jsonb
+  END
 FROM project_members legacy
 JOIN leadgrid_projects project
   ON project.id = legacy.project_id
