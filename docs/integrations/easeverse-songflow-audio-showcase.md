@@ -1,9 +1,9 @@
 # Integrasjon: EaseVerse ⇄ SongFlow ⇄ Audio Showcase ⇄ Split Sheets
 
 > Plan + spec for å koble musikk-økosystemet sammen ende-til-ende.
-> Sist oppdatert: 2026-09-06.
+> Sist oppdatert: 2026-09-07.
 
-## Operativ status (2026-09-06)
+## Operativ status (2026-09-07)
 
 - EaseVerse web/API er flyttet til Netlify: `https://easeverse.netlify.app` (Netlify Database/Postgres).
 - iOS-simulatorflyten **Start recording → Session Review → Practice Loop** er verifisert på iPad-simulator mot Netlify-konfigurasjonen.
@@ -14,14 +14,15 @@
 - EaseVerse sitt eksterne collaboration-API er fail-closed og produksjonsnøkkelen er konfigurert på begge sider. Uten nøkkel svarer det `401`; autorisert POST/GET mot Netlify Postgres svarer `200`.
 - Produksjons-E2E for Companion-payload mot Netlify (`creatorhub-companion-e2e-20260906`) svarer POST `200` + GET `200`, `storage=postgres`, 2 markører og 126 BPM.
 - CreatorHub-produksjon bruker `EASEVERSE_API_URL=https://easeverse.netlify.app` fra Render-deploy `dep-daeruslg1s2s73dhkfb0` (`live`). Backend-health svarer `200`, og sync-ruten håndhever autentisering.
-- iOS build 23 (1.0.0) er lastet opp og har App Store Connect-status `VALID`. Builden bruker den verifiserte offlineflyten; Clerk-basert innlogging og prosjektfunksjoner er deaktivert som eksplisitt godkjent releasebegrensning.
-- Workspace-/Companion-endringene er lagt på en ren release-kandidat fra siste `main`; produksjonspublisering må fortsatt bekreftes etter merge/deploy.
+- iOS build 23 (1.0.0) er lastet opp og har App Store Connect-status `VALID`. Dette er den tidligere offlinebegrensede builden.
+- Clerk er fjernet fra EaseVerse. Web og native bruker nå samme CreatorHub Google OAuth, samme bruker-ID og samme servervaliderte Workspace-sesjon som WorkspaceShell. Prosjekter og Companion-paring er dermed knyttet til én identitet.
+- Workspace-/Companion-endringene er publisert via PR #2158 (`6a1212f22`). EaseVerse er synlig på Workspace-oversikten og leder videre til Sound Room og Pro Tools Companion-paring.
 
 ## 1. Systemkart (5 deler)
 
 | # | System | Hva | Hvor |
 |---|--------|-----|------|
-| A | **EaseVerse (ekstern app)** | Skriv tekst → ta opp vokal-takes → Pro Tools-session → comp keepers | `creaotrhubn26/EaseVerse` (Expo/Netlify, Clerk-auth) |
+| A | **EaseVerse (ekstern app)** | Skriv tekst → ta opp vokal-takes → Pro Tools-session → comp keepers | `creaotrhubn26/EaseVerse` (Expo/Netlify, CreatorHub Workspace OAuth) |
 | B | **SongFlow / EaseVerse-tracks** | Track-/prosjekt-hub: recording→mixing→mastering, bpm, key, **lyrics**, stems, collaborators, Drive-backup | CreatorHub `easeverse_projects`/`easeverse_tracks` (index.ts) + `songflow-platform.tsx` |
 | C | **Audio Showcase** | Mix/master-review-studio: versjoner, tidskodede kommentarer, seksjoner, godkjenning, leveranser, tasks | CreatorHub `audio_review_*` + `audio-showcase-routes.ts` + `pages/audio-showcase.tsx` |
 | D | **Split Sheets** | Royalty-splitter knyttet til tracks (sign/share/pdf/revenue) | CreatorHub `split-sheets-routes.ts` |
@@ -45,6 +46,8 @@ Livssyklus: **E (workspace-start) → A (skriv/ta opp) → B (track-hub) → Com
 - CreatorHub Pro Tools Companion har device-token-paring, track/Sound Room-valg, Session Info-parser, mappeovervåking, markør-/metadata-synk og bounce → ny review-versjon.
 - Music Workspace viser EaseVerse og Pro Tools Companion før første studiosesjon finnes; CTA-en åpner Sound Room direkte med `?setup=protools` og starter paringsflyten.
 - Nye booth-lenker bruker én konfigurerbar `VITE_EASEVERSE_APP_URL` med `https://easeverse.netlify.app` som produksjonsfallback; gamle `easeverse.vercel.app`-lenker er fjernet.
+- Felles auth-handoff bruker `/api/creatorhub/google/oauth/start` → Google → CreatorHub-callback → tidsbegrenset engangs-`transferId`. EaseVerse utveksler ID-en server-side og validerer bearer-sesjonen mot `/api/auth/user`; Google callback-URI og endelig app-destinasjon holdes separat.
+- Kun eksplisitt allowlistede førstegangsorigins kan være endelig OAuth-destinasjon. `https://easeverse.netlify.app` er tillatt; deploy previews og vilkårlige Netlify-domener avvises.
 
 ## 4. Status på de opprinnelige gapene
 1. ✅ **Track ↔ review er koblet:** `audio_review_projects` bærer `easeverse_track_id`/`external_track_id`, og Workspace kan koble låten til Sound Room.
@@ -100,7 +103,7 @@ Felles wavesurfer-komponent, ffmpeg-pipeline, Claude-prompt-bibliotek, web-push;
 - **S2.2** Backend `pullSectionsFromEaseVerse(externalTrackId)` → `GET …/api/v1/collab/protools/:externalTrackId`; map `markers[{label,positionMs,sectionType}]` → `audio_review_sections` (positionMs/1000, navn, farge per type).
 - **S2.3** `POST /api/audio-showcases/:id/pull-from-easeverse` → kjører S2.1+S2.2 for koblet `external_track_id`. Knapp «Hent fra EaseVerse» i studioet.
 - **S2.4** (krever companion) Hent keeper-takes via `GET /api/companion/snapshot` (pair-token) → opprett `audio_review_versions` fra `pendingCompExports[].wavUrl`.
-- **S2.5** Auth-bro: map CreatorHub-bruker → EaseVerse via e-post (Clerk `fetchUserEmail`) eller felles IdP; lagre kobling i `easeverse_account_links`.
+- **S2.5** ✅ Felles auth: EaseVerse bruker CreatorHub Workspace OAuth direkte. CreatorHub-`userId` er eier-ID i EaseVerse; e-post brukes kun til å ta imot ventende prosjektinvitasjoner ved første innlogging.
 - **Akseptanse:** «Hent fra EaseVerse» fyller Tekster + seksjonsbar fra ekte `/api/v1/collab/*`; idempotent; håndterer 404/503 (bro ikke konfigurert) uten å feile UI.
 
 ### Fase 3 — Split Sheets ⇄ godkjenning
@@ -124,7 +127,7 @@ Felles wavesurfer-komponent, ffmpeg-pipeline, Claude-prompt-bibliotek, web-push;
 ---
 
 ## 7. Hensyn / risiko
-- **Auth-mismatch:** Clerk (EaseVerse) vs session-tokens (CreatorHub). Fase 1 unngår dette helt (samme DB/bruker). Fase 2+ trenger e-post-map eller felles IdP (S2.5).
+- **Auth:** CreatorHub er eneste identitetsautoritet. EaseVerse må feile lukket dersom `/api/auth/user` er utilgjengelig, og OAuth-transferen er tidsbegrenset og kan bare konsumeres én gang.
 - **Lagring:** Vercel Blob (EaseVerse) vs B2 (CreatorHub) — kryss-hent via offentlige/signerte URL-er; ingen migrering nødvendig.
 - **To databaser:** synk via API, ikke delt skjema.
 - **Deprecated-alias:** behold `songflow-*`-aliaser til sunset 2026-12-31; nye endepunkter bruker `easeverse-*`/`audio-*`.
