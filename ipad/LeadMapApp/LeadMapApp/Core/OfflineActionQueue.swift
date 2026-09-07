@@ -87,7 +87,7 @@ private func classifyOfflineActionError(_ error: Error) -> OfflineActionExecutio
         return .permanent(kind: .permanent, message: apiError.localizedDescription)
     case .duplicateLead:
         return .permanent(kind: .duplicateConflict, message: apiError.localizedDescription)
-    case .idempotencyConflict:
+    case .idempotencyConflict, .validation:
         return .permanent(kind: .validation, message: apiError.localizedDescription)
     case .statusCode(let code):
         return httpFailure(code: code)

@@ -15,3 +15,5 @@ Leadgrid 2.1
 • Opptak krever sporbar samtykkekobling i samme organisasjon, og sletting følger GDPR-flyten.
 • Leadbook-handlinger tåler nettverksbrudd med idempotent kø, synlig feilstatus og prøv-igjen.
 • Academy og Leadbook viser nå bare ekte serverdata, med trygg tomtilstand og reell fremdrift.
+• Min profil bruker nå ekte kontodata overalt, med trygg redigering, feltspesifikke feil og korrekt «Mine leads»-statistikk.
+• Profilbilder lastes opp sikkert, vises konsekvent i header og kart, og ryddes fra lagring ved bytte eller sletting.

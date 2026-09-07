@@ -17,7 +17,7 @@ settings:
     LEAD_MAP_API_BASE: "https://creatorhub-backend-rtbl.onrender.com"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     VERSIONING_SYSTEM: apple-generic
-    CURRENT_PROJECT_VERSION: "202609070000"
+    CURRENT_PROJECT_VERSION: "202609072114"
     MARKETING_VERSION: "2.1"
 
 targets:

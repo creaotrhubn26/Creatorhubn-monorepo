@@ -164,9 +164,9 @@ struct LeadgridTabHeader<Extra: View>: View {
                     if !DeviceIdiom.isPhone {
                         extraControls()
                     }
-                    // iPhone: de sekundære knappene kollapses til én
-                    // ellipsis-meny så header-raden får plass.
-                    if DeviceIdiom.isPhone {
+                    // På iPhone og smal iPad kollapses sekundærknappene til én
+                    // meny, slik at profilknappen alltid forblir synlig og trykkbar.
+                    if DeviceIdiom.isPhone || isNarrow {
                         LeadgridSyncStatusButton()
                         phoneOverflowMenu
                     } else {
@@ -180,6 +180,8 @@ struct LeadgridTabHeader<Extra: View>: View {
                         if !isNarrow { userBadge } else { userAvatarOnly }
                     }
                     .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .accessibilityLabel("Åpne profil")
                     .accessibilityIdentifier("header-profile-button")
                     .macCatalystHover()
                     .popover(isPresented: $profileOpen, arrowEdge: .top) {
@@ -224,9 +226,8 @@ struct LeadgridTabHeader<Extra: View>: View {
             dorsalgIDag = loaded?.iDag ?? 0
         }
         .sheet(isPresented: $myProfileOpen) {
-            MyProfileSheet(name: state.displayName,
-                           email: state.userEmail,
-                           leads: leads)
+            MinProfilSheet()
+                .environment(state)
         }
         .sheet(item: $activeCalendarSheet) { kind in
             switch kind {
@@ -741,13 +742,12 @@ struct LeadgridTabHeader<Extra: View>: View {
 
     private var userBadge: some View {
         HStack(spacing: 10) {
-            ZStack {
-                Circle().fill(Brand.purple.opacity(0.25))
-                Text(state.initials)
-                    .font(.appScaled(size: 12, weight: .bold))
-                    .foregroundStyle(Brand.purpleLight)
-            }
-            .frame(width: 32, height: 32)
+            LeadgridProfileAvatar(
+                imageURL: state.profileImageURL,
+                initials: state.initials,
+                size: 32,
+                tint: Brand.purpleLight
+            )
             VStack(alignment: .leading, spacing: 1) {
                 Text(state.displayName)
                     .font(.appScaled(size: 13, weight: .semibold))
@@ -770,14 +770,12 @@ struct LeadgridTabHeader<Extra: View>: View {
 
     /// Trange headere (portrait iPad / iPhone) — kun initial-avatar.
     private var userAvatarOnly: some View {
-        ZStack {
-            Circle().fill(Brand.purple.opacity(0.25))
-            Text(state.initials)
-                .font(.appScaled(size: 13, weight: .bold))
-                .foregroundStyle(Brand.purpleLight)
-            Circle().stroke(Brand.stroke, lineWidth: 1)
-        }
-        .frame(width: 44, height: 44)
+        LeadgridProfileAvatar(
+            imageURL: state.profileImageURL,
+            initials: state.initials,
+            size: 44,
+            tint: Brand.purpleLight
+        )
     }
 }
 

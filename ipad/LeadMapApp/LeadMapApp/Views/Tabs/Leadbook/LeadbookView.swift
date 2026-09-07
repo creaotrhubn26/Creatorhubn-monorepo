@@ -632,7 +632,7 @@ struct LeadbookView: View {
                 Divider()
             }
             // Innganger som tidligere lå i fanens egen avatar-meny
-            // (SharedProfileAvatar) — bevart her etter at headeren ble
+            // (LeadgridProfileAvatar) — bevart her etter at headeren ble
             // unifisert med Oversikt (delt LeadgridTabHeader).
             Button { showMinProfil = true } label: { Label("Min Pondus-profil", systemImage: "person.circle") }
             Button { showEcosystem = true } label: { Label("Pondus overalt", systemImage: "applewatch") }
