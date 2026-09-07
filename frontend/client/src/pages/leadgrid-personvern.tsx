@@ -99,6 +99,15 @@ export default function LeadgridPersonvern() {
           </P>
           <Bullets items={[
             <><strong>Brukerkonto:</strong> navn, e-postadresse, telefon, profilbilde, rolle i organisasjonen, push-token (APNs).</>,
+            <><strong>Google-innlogging (valgfritt):</strong> når du velger
+              «Fortsett med Google», mottar vi et kortvarig Google ID-token
+              med en stabil kontoidentifikator, bekreftet e-postadresse og
+              grunnleggende profilinformasjon som navn. Vi bruker bare e-post
+              og navn for å finne eller opprette Leadgrid-kontoen din. Vi
+              mottar aldri Google-passordet ditt eller tilgang til Gmail,
+              Drive, Kalender eller andre Google-tjenester gjennom denne
+              innloggingen.
+            </>,
             <><strong>Lead-data:</strong> bedriftsnavn, organisasjonsnummer, adresse, kontaktperson, telefon, e-post, bransje og annen bedriftsinformasjon fra brukeren eller offentlige kilder som Brønnøysundregistrene. Google Places-resultater vises som et midlertidig detaljoppslag; bare en Place ID som brukeren uttrykkelig bekrefter kan knyttes til leadet.</>,
             <><strong>Posisjonsdata (GPS):</strong> selgerens nåværende posisjon når app-en er aktiv (for «leads i nærheten»), og automatisk koordinat-fanging ved logging av fysiske besøk. Background-sporing skjer kun for «nær-lead»-varsling og krever eksplisitt samtykke.</>,
             <><strong>Visit-logg:</strong> tidsstempel, kontaktperson, samtale-sammendrag, neste handling, oppfølgings­dato. Stemme-dikterte notater behandles på enheten av Apple Speech og lagres som transkribert tekst på vår server.</>,
@@ -145,12 +154,23 @@ export default function LeadgridPersonvern() {
           </P>
           <Bullets items={[
             <><strong>Apple Inc.</strong>: App Store, TestFlight, APNs, iCloud Keychain.</>,
-            <><strong>Google LLC:</strong> Google Places API brukes bare når en bruker åpner et detaljoppslag. Leadgrid sender kandidatens offentlige bedriftsnavn, adresse, postnummer og sted, og kan sende kandidatens koordinater som geografisk søkebias. Google-resultatet vises midlertidig og brukes ikke i Discovery-score. Vi lagrer ikke navn, adresse, rating, telefon, nettside eller andre Place-detaljer fra resultatet. For å validere et senere valg lagrer backend opptil tre returnerte Place ID-er som bruker-, kandidat-, prosjekt- og kjøringsavgrensede attesteringer. De er gyldige i 15 minutter og deretter ikke brukbare. Utløpte attesteringer slettes i avgrensede puljer av den daglige oppryddingen; kø eller driftsavbrudd kan gjøre at fysisk sletting skjer i en senere vellykket kjøring. Bare Place ID-en brukeren uttrykkelig bekrefter, kan knyttes til leadet. Bruken er også underlagt <Link href="https://maps.google.com/help/terms_maps/">Google Maps-vilkårene</Link> og <Link href="https://policies.google.com/privacy">Googles personvernerklæring</Link>.</>,
+            <><strong>Google LLC:</strong> Ved valgfri Google Sign-In ber Leadgrid kun om <code>openid</code>, <code>email</code> og <code>profile</code>. Vi mottar aldri Google-passordet eller tilgang til Gmail, Drive, Kalender eller andre Google-tjenester. Google Places API brukes bare når en bruker åpner et detaljoppslag. Leadgrid sender kandidatens offentlige bedriftsnavn, adresse, postnummer og sted, og kan sende kandidatens koordinater som geografisk søkebias. Google-resultatet vises midlertidig og brukes ikke i Discovery-score. Vi lagrer ikke navn, adresse, rating, telefon, nettside eller andre Place-detaljer fra resultatet. For å validere et senere valg lagrer backend opptil tre returnerte Place ID-er som bruker-, kandidat-, prosjekt- og kjøringsavgrensede attesteringer. De er gyldige i 15 minutter og deretter ikke brukbare. Utløpte attesteringer slettes i avgrensede puljer av den daglige oppryddingen; kø eller driftsavbrudd kan gjøre at fysisk sletting skjer i en senere vellykket kjøring. Bare Place ID-en brukeren uttrykkelig bekrefter, kan knyttes til leadet. Bruken er også underlagt <Link href="https://maps.google.com/help/terms_maps/">Google Maps-vilkårene</Link> og <Link href="https://policies.google.com/privacy">Googles personvernerklæring</Link>.</>,
             <><strong>Anthropic PBC</strong>: Claude AI for pitch-deck-generering, brief-generering og tale-analyse av visit-notater. Vi sender kun det som er strengt nødvendig for spørringen, og det er ingen treningsbruk i henhold til Anthropics API-avtale.</>,
             <><strong>Twilio Ireland</strong>: SMS-utsending (kun ved aktivt salgs-flyt-bruk).</>,
             <><strong>Resend, Inc.</strong>: Transaksjons-e-poster.</>,
             <><strong>Stripe Payments Europe Ltd.</strong>: Betalings­behandling for abonnement.</>,
           ]} />
+          <P>
+            <strong>Slik bruker og lagrer vi Google-brukerdata:</strong>{' '}
+            Google-ID- og tilgangstoken brukes bare kortvarig på serveren for å
+            verifisere innloggingen og lagres ikke som en Google-integrasjon.
+            Navn og bekreftet e-post lagres i Leadgrid-kontoen din på samme måte
+            som ved ordinær registrering. Opplysningene selges ikke, brukes ikke
+            til annonsering eller AI-trening, og deles ikke med andre enn våre
+            databehandlere når det er nødvendig for sikker drift av tjenesten.
+            Kontoopplysningene slettes etter reglene i punkt 6 og kan slettes på
+            forespørsel etter punkt 7.
+          </P>
         </Section>
 
         <Section title="6. Hvor lenge vi oppbevarer data">
