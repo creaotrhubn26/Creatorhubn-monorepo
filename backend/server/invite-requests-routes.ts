@@ -133,6 +133,32 @@ export interface InviteRequestsRoutesDeps {
     memberProfession?: string | null,
     memberCompany?: string | null,
   ) => Promise<any>;
+  sendAccessRequestReceivedEmail?: (input: {
+    recipientEmail: string;
+    recipientName: string;
+    requestId: string;
+    companyName: string;
+    professionName: string;
+    source: string;
+  }) => Promise<{
+    sent: boolean;
+    provider: string | null;
+    reason: string | null;
+    messageId: string | null;
+  }>;
+  sendAccessRequestRejectedEmail?: (input: {
+    recipientEmail: string;
+    recipientName: string;
+    requestId: string;
+    companyName: string;
+    professionName: string;
+    sentByUserId: string;
+  }) => Promise<{
+    sent: boolean;
+    provider: string | null;
+    reason: string | null;
+    messageId: string | null;
+  }>;
 }
 
 export function setupInviteRequestsRoutes(
@@ -151,6 +177,8 @@ export function setupInviteRequestsRoutes(
     upsertInviteRequestProffScreening,
     ensureInviteRequestAccessProvisioning,
     ensureCommunityAccessForApprovedInvite,
+    sendAccessRequestReceivedEmail,
+    sendAccessRequestRejectedEmail,
     createInviteFromApprovedRequest,
   } = deps;
 
@@ -450,10 +478,33 @@ export function setupInviteRequestsRoutes(
         contactName: `${firstName} ${lastName}`.trim() || null,
         contactEmail: normalizedEmail || null,
       });
+      let receiptEmailDelivery: {
+        sent: boolean;
+        provider: string | null;
+        reason: string | null;
+        messageId: string | null;
+      } | null = null;
+      if (sendAccessRequestReceivedEmail) {
+        try {
+          receiptEmailDelivery = await sendAccessRequestReceivedEmail({
+            recipientEmail: normalizedEmail,
+            recipientName: `${normalizedFirstName} ${normalizedLastName}`.trim(),
+            requestId: String(result.rows[0].id),
+            companyName: persistedCompanyName,
+            professionName: normalizedTesterProfession
+              ? TESTER_PROFESSION_LABELS[normalizedTesterProfession]
+              : String(profession),
+            source: String(source || "landing"),
+          });
+        } catch (emailError) {
+          console.error("[invite-requests] receipt email failed:", emailError);
+        }
+      }
       res.status(201).json({
         success: true,
         requestId: result.rows[0].id,
         status: "pending",
+        receiptEmailDelivery,
         message:
           "Forespørselen din er mottatt. Admin vil gjennomgå søknaden.",
         proffAnalysis: {
@@ -688,6 +739,11 @@ export function setupInviteRequestsRoutes(
           .status(400)
           .json({ error: 'Status må være "approved" eller "rejected"' });
       }
+      const previousStatusResult = await pool.query(
+        "SELECT status FROM invite_requests WHERE id = $1 LIMIT 1",
+        [id],
+      );
+      const previousStatus = String(previousStatusResult.rows[0]?.status || "");
 
       const inviteColumns = await getTableColumns("invite_requests");
       const hasProcessedByColumn = inviteColumns.has("processed_by");
@@ -808,6 +864,34 @@ export function setupInviteRequestsRoutes(
           }
         }
       }
+      let decisionEmailDelivery: {
+        sent: boolean;
+        provider: string | null;
+        reason: string | null;
+        messageId: string | null;
+      } | null = null;
+      if (
+        status === "rejected" &&
+        previousStatus !== "rejected" &&
+        sendAccessRequestRejectedEmail
+      ) {
+        try {
+          decisionEmailDelivery = await sendAccessRequestRejectedEmail({
+            recipientEmail: String(request.email || ""),
+            recipientName:
+              [request.first_name, request.last_name].filter(Boolean).join(" ") ||
+              String(request.email || ""),
+            requestId: String(request.id || id),
+            companyName: String(request.company_name || ""),
+            professionName:
+              TESTER_PROFESSION_LABELS[normalizeTesterProfession(request.tester_profession) || ""] ||
+              String(request.profession || "CreatorHub-bruker"),
+            sentByUserId: approverSession.userId,
+          });
+        } catch (emailError) {
+          console.error("[invite-requests/process] rejection email failed:", emailError);
+        }
+      }
 
       console.log(`✅ Invite request ${id} ${status} (${request.email})`);
 
@@ -817,6 +901,7 @@ export function setupInviteRequestsRoutes(
         request: mapInviteRow(request, screening),
         provisioning,
         communityProvisioning,
+        decisionEmailDelivery,
         testerInvite,
         processedBy: {
           id: approverSession.userId,
@@ -870,9 +955,21 @@ export function setupInviteRequestsRoutes(
     "/api/invites/admin/requests/:inviteId/status",
     async (req, res) => {
       try {
-        if (!requireInviteRequestApproverSession(req, res)) return;
+        const approverSession = requireInviteRequestApproverSession(req, res);
+        if (!approverSession) return;
         const { inviteId } = req.params;
         const { status, adminNotes } = req.body;
+        if (!status || !["approved", "rejected"].includes(status)) {
+          return res.status(400).json({
+            error: 'Status må være "approved" eller "rejected"',
+          });
+        }
+        const previousStatusResult = await pool.query(
+          "SELECT status FROM invite_requests WHERE id = $1 LIMIT 1",
+          [inviteId],
+        );
+        const previousStatus = String(previousStatusResult.rows[0]?.status || "");
+
 
         const result = await pool.query(
           `UPDATE invite_requests
@@ -946,12 +1043,42 @@ export function setupInviteRequestsRoutes(
             row.company_name || null,
           );
         }
+        let decisionEmailDelivery: {
+          sent: boolean;
+          provider: string | null;
+          reason: string | null;
+          messageId: string | null;
+        } | null = null;
+        if (
+          status === "rejected" &&
+          previousStatus !== "rejected" &&
+          sendAccessRequestRejectedEmail
+        ) {
+          try {
+            decisionEmailDelivery = await sendAccessRequestRejectedEmail({
+              recipientEmail: String(row.email || ""),
+              recipientName:
+                [row.first_name, row.last_name].filter(Boolean).join(" ") ||
+                String(row.email || ""),
+              requestId: String(row.id || inviteId),
+              companyName: String(row.company_name || ""),
+              professionName:
+                TESTER_PROFESSION_LABELS[normalizeTesterProfession(row.tester_profession) || ""] ||
+                String(row.profession || "CreatorHub-bruker"),
+              sentByUserId: approverSession.userId,
+            });
+          } catch (emailError) {
+            console.error("[invites/status] rejection email failed:", emailError);
+          }
+        }
+
 
         const screening = await getInviteRequestProffScreening(
           String(inviteId),
         );
         res.json({
           success: true,
+          decisionEmailDelivery,
           request: mapInviteRow(result.rows[0], screening),
           testerInvite: testerInvite || null,
         });

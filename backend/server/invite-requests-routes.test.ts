@@ -79,6 +79,23 @@ function buildApp(overrides: Record<string, any> = {}) {
     });
   const upsertInviteRequestProffScreening =
     overrides.upsertInviteRequestProffScreening ?? vi.fn().mockResolvedValue(undefined);
+  const sendAccessRequestReceivedEmail =
+    overrides.sendAccessRequestReceivedEmail ??
+    vi.fn().mockResolvedValue({
+      sent: true,
+      provider: "resend",
+      reason: null,
+      messageId: "receipt-email-id",
+    });
+  const sendAccessRequestRejectedEmail =
+    overrides.sendAccessRequestRejectedEmail ??
+    vi.fn().mockResolvedValue({
+      sent: true,
+      provider: "resend",
+      reason: null,
+      messageId: "rejection-email-id",
+    });
+
 
   setupInviteRequestsRoutes({
     app,
@@ -114,6 +131,8 @@ function buildApp(overrides: Record<string, any> = {}) {
       overrides.ensureCommunityAccessForApprovedInvite ??
       vi.fn().mockResolvedValue({ success: true }),
     createInviteFromApprovedRequest,
+    sendAccessRequestReceivedEmail,
+    sendAccessRequestRejectedEmail,
   });
 
   return {
@@ -121,6 +140,8 @@ function buildApp(overrides: Record<string, any> = {}) {
     query,
     createInviteFromApprovedRequest,
     upsertInviteRequestProffScreening,
+    sendAccessRequestReceivedEmail,
+    sendAccessRequestRejectedEmail,
   };
 }
 
@@ -153,12 +174,12 @@ describe("prototype-tester application flow", () => {
     expect(query).not.toHaveBeenCalled();
   });
 
-  it("persists the application and waits for the admin email attempt", async () => {
+  it("persists the application and sends both admin alert and applicant receipt", async () => {
     const query = vi.fn().mockResolvedValue({
       rows: [{ id: "11111111-1111-4111-8111-111111111111", status: "pending" }],
     });
     const screening = vi.fn().mockRejectedValue(new Error("screening table unavailable"));
-    const { app } = buildApp({
+    const { app, sendAccessRequestReceivedEmail } = buildApp({
       query,
       upsertInviteRequestProffScreening: screening,
     });
@@ -173,6 +194,10 @@ describe("prototype-tester application flow", () => {
     expect(response.body).toMatchObject({
       success: true,
       status: "pending",
+      receiptEmailDelivery: {
+        sent: true,
+        provider: "resend",
+      },
       proffAnalysis: {
         recommendation: "approve",
         riskLevel: "low",
@@ -198,6 +223,14 @@ describe("prototype-tester application flow", () => {
         summary: expect.stringContaining("Proff: approve/low"),
       }),
     );
+    expect(sendAccessRequestReceivedEmail).toHaveBeenCalledWith({
+      recipientEmail: baseBody.email,
+      recipientName: "E2E Prototype",
+      requestId: "11111111-1111-4111-8111-111111111111",
+      companyName: baseBody.companyName,
+      professionName: "Fotograf",
+      source: "prototype_tester_pricing",
+    });
   });
 
   it("returns a retryable service error when the database is unavailable", async () => {
@@ -261,5 +294,49 @@ describe("prototype-tester application flow", () => {
       "photographer",
       row.company_name,
     );
+  });
+
+  it("sends the configured decision email when an admin rejects a request", async () => {
+    const row = {
+      id: "33333333-3333-4333-8333-333333333333",
+      email: "rejected.prototype@example.com",
+      first_name: "Reidun",
+      last_name: "Søker",
+      profession: "prototype_tester",
+      tester_profession: "videographer",
+      company_name: "TESTBEDRIFTEN AS",
+      selected_plan: "prototype_tester",
+      plan_name: "Prototype Tester",
+      source: "prototype_tester_pricing",
+      status: "rejected",
+      user_journey_status: "rejected",
+      created_at: new Date().toISOString(),
+    };
+    const query = vi.fn().mockImplementation(async (statement: unknown) => {
+      if (String(statement).includes("UPDATE invite_requests")) {
+        return { rows: [row], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    const { app, sendAccessRequestRejectedEmail } = buildApp({ query });
+
+    const response = await request(app)
+      .post(`/api/invite-requests/${row.id}/process`)
+      .send({ status: "rejected" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.decisionEmailDelivery).toMatchObject({
+      sent: true,
+      provider: "resend",
+      messageId: "rejection-email-id",
+    });
+    expect(sendAccessRequestRejectedEmail).toHaveBeenCalledWith({
+      recipientEmail: row.email,
+      recipientName: "Reidun Søker",
+      requestId: row.id,
+      companyName: row.company_name,
+      professionName: "Videograf",
+      sentByUserId: "daniel-admin",
+    });
   });
 });

@@ -26,6 +26,38 @@ import {
 import { normalizeProfession } from "../../frontend/shared/profession-types.ts";
 import { safeAppBaseUrl } from "./web-origin-allowlist.ts";
 
+export type PrototypeTesterEmailDelivery = {
+  sent: boolean;
+  provider: string | null;
+  reason: string | null;
+  messageId: string | null;
+};
+
+export type PrototypeTesterApprovalEmailSender = (input: {
+  recipientEmail: string;
+  recipientName: string;
+  inviteUrl: string;
+  ctaUrl: string;
+  trackingPixelUrl: string;
+  inviteRequestId: string;
+  sentByUserId: string | null;
+  profession: string | null;
+  company: string | null;
+  programDurationWeeks: number;
+  inviteExpiresDays: number;
+}) => Promise<PrototypeTesterEmailDelivery>;
+
+export type PrototypeTesterAccessActivatedEmailSender = (input: {
+  recipientEmail: string;
+  recipientName: string;
+  loginUrl: string;
+  inviteRequestId: string | null;
+  inviteId: string;
+  profession: string | null;
+  company: string | null;
+  programEndsAt: Date | string;
+}) => Promise<PrototypeTesterEmailDelivery>;
+
 export interface PrototypeTesterInvitesDeps {
   app: express.Application;
   pool: any;
@@ -40,6 +72,7 @@ export interface PrototypeTesterInvitesDeps {
     profession?: string | null,
     company?: string | null,
   ) => Promise<any>;
+  sendAccessActivatedEmail?: PrototypeTesterAccessActivatedEmailSender;
 }
 
 const PROGRAM_DURATION_WEEKS = 12;
@@ -294,7 +327,8 @@ export async function createInviteFromApprovedRequest(
   // tester-profil ved aksept (bare bekreft) + grunnlag for kunde-konvertering.
   memberProfession: string | null = null,
   memberCompany: string | null = null,
-): Promise<{ id: string; token: string; inviteUrl: string; reused: boolean; emailDelivery: Awaited<ReturnType<typeof deliverInviteEmail>> | null } | null> {
+  sendApprovalEmail?: PrototypeTesterApprovalEmailSender,
+): Promise<{ id: string; token: string; inviteUrl: string; reused: boolean; emailDelivery: PrototypeTesterEmailDelivery | null } | null> {
   try {
     await ensureSchema(pool);
     // Skip hvis det allerede finnes en aktiv invitasjon for denne søknaden
@@ -347,19 +381,34 @@ export async function createInviteFromApprovedRequest(
       ],
     );
     const inviteUrl = `${baseUrl}/prototype-tester/accept-invite?token=${encodeURIComponent(token)}`;
+    const tracking = buildInviteTrackUrls(baseUrl, token);
 
-    const emailDelivery = await deliverInviteEmail(
-      pool,
-      email,
-      name,
-      inviteUrl,
-      null,
-      "Du er godkjent som prototype-tester i CreatorHub",
-      "prototype_tester_invite",
-      invitedBy,
-      inviteRequestId,
-      buildInviteTrackUrls(baseUrl, token),
-    );
+    const emailDelivery = sendApprovalEmail
+      ? await sendApprovalEmail({
+          recipientEmail: email,
+          recipientName: name,
+          inviteUrl,
+          ctaUrl: tracking.clickUrl,
+          trackingPixelUrl: tracking.openPixelUrl,
+          inviteRequestId,
+          sentByUserId: invitedBy,
+          profession: normalizeMemberProfession(memberProfession),
+          company: memberCompany,
+          programDurationWeeks: PROGRAM_DURATION_WEEKS,
+          inviteExpiresDays: INVITE_EXPIRES_DAYS,
+        })
+      : await deliverInviteEmail(
+          pool,
+          email,
+          name,
+          inviteUrl,
+          null,
+          "Du er godkjent som prototype-tester i CreatorHub",
+          "prototype_tester_invite",
+          invitedBy,
+          inviteRequestId,
+          tracking,
+        );
 
     if (emailDelivery.sent) {
       await pool.query(
@@ -383,7 +432,15 @@ export async function createInviteFromApprovedRequest(
 }
 
 export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDeps): void {
-  const { app, pool, getPricingUserId, requireUserSession, requireAdminSession, provisionTesterAccount } = deps;
+  const {
+    app,
+    pool,
+    getPricingUserId,
+    requireUserSession,
+    requireAdminSession,
+    provisionTesterAccount,
+    sendAccessActivatedEmail,
+  } = deps;
 
   // ─── Open/click-tracking (public, ingen auth — kalles fra e-postklienter) ───
   // 1×1 transparent GIF; første åpning stemples, senere åpninger beholdes ikke.
@@ -647,10 +704,34 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         }
       }
 
+      let accessActivatedEmailDelivery: PrototypeTesterEmailDelivery | null = null;
+      if (accountUserId && sendAccessActivatedEmail) {
+        try {
+          accessActivatedEmailDelivery = await sendAccessActivatedEmail({
+            recipientEmail: String(upd.rows[0].email || ""),
+            recipientName: ndaName,
+            loginUrl: `${safeAppBaseUrl(req)}/login`,
+            inviteRequestId: upd.rows[0].invite_request_id
+              ? String(upd.rows[0].invite_request_id)
+              : null,
+            inviteId: String(upd.rows[0].id),
+            profession: upd.rows[0].member_profession || null,
+            company: upd.rows[0].member_company || null,
+            programEndsAt: upd.rows[0].program_ends_at || endsAt,
+          });
+        } catch (emailError) {
+          console.error(
+            "[prototype-tester accept] access-activated email failed",
+            emailError,
+          );
+        }
+      }
+
       res.json({
         success: true,
         invite: rowToInvite(upd.rows[0]),
         accountCreated: !!accountUserId,
+        accessActivatedEmailDelivery,
         message: "Velkommen som prototype-tester!",
       });
     } catch (err) {

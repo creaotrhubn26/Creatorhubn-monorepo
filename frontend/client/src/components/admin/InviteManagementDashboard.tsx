@@ -261,6 +261,19 @@ export default function InviteManagementDashboard() {
             message: `Søknaden er godkjent, men invitasjons-e-posten ble ikke sendt (${delivery?.reason || 'ukjent feil'}).`,
           });
         }
+      } else if (variables.status === 'rejected') {
+        const decisionDelivery = data?.decisionEmailDelivery;
+        if (decisionDelivery?.sent) {
+          setReviewFeedback({
+            severity: 'success',
+            message: `Søknaden er avslått og beslutnings-e-posten er sendt via ${decisionDelivery.provider || 'e-postleverandøren'}.`,
+          });
+        } else {
+          setReviewFeedback({
+            severity: 'warning',
+            message: `Søknaden er avslått, men beslutnings-e-posten ble ikke sendt (${decisionDelivery?.reason || 'ukjent feil'}).`,
+          });
+        }
       } else {
         setReviewFeedback({ severity: 'success', message: 'Statusen er oppdatert.' });
       }
