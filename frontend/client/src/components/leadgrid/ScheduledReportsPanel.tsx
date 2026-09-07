@@ -424,7 +424,7 @@ function SubscriptionDialog({ sub, projectId, projectName, onClose, onSaved }: {
   useEffect(() => {
     fetch(
       `/api/leadgrid/assignable-users?role=all&projectId=${encodeURIComponent(projectId)}`,
-      { credentials: "include" },
+      { credentials: "include", headers: authHeaders() },
     )
       .then((r) => r.ok ? r.json() : { users: [] })
       .then((d) => setAssignableUsers(d.users ?? []));
