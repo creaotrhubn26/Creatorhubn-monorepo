@@ -77,26 +77,59 @@ CREATE INDEX IF NOT EXISTS idx_leadgrid_project_invitations_pending_token
 
 -- Preserve memberships attached to projects copied from casting_projects in
 -- migration 0449. Role values are intentionally retained for compatibility.
-INSERT INTO leadgrid_project_members (
-  organization_id, project_id, user_id, role,
-  invited_by, invited_at, last_active_at, meta
-)
-SELECT
-  project.organization_id,
-  project.id,
-  legacy.user_id,
-  legacy.role,
-  legacy.invited_by,
-  legacy.invited_at,
-  legacy.last_active_at,
-  COALESCE(legacy.meta, '{}'::jsonb)
-FROM project_members legacy
-JOIN leadgrid_projects project
-  ON project.id = legacy.project_id
-JOIN users member_user
-  ON member_user.id = legacy.user_id
-WHERE project.organization_id IS NOT NULL
-ON CONFLICT (organization_id, project_id, user_id) DO NOTHING;
+DO $migration$
+DECLARE
+  legacy_last_active_expression TEXT := 'NULL::TIMESTAMPTZ';
+  legacy_meta_expression TEXT := '''{}''::JSONB';
+BEGIN
+  IF EXISTS (
+    SELECT 1
+      FROM information_schema.columns
+     WHERE table_schema = current_schema()
+       AND table_name = 'project_members'
+       AND column_name = 'last_active_at'
+  ) THEN
+    legacy_last_active_expression := 'legacy.last_active_at';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+      FROM information_schema.columns
+     WHERE table_schema = current_schema()
+       AND table_name = 'project_members'
+       AND column_name = 'meta'
+  ) THEN
+    legacy_meta_expression := 'legacy.meta';
+  END IF;
+
+  EXECUTE format(
+    $backfill$
+      INSERT INTO leadgrid_project_members (
+        organization_id, project_id, user_id, role,
+        invited_by, invited_at, last_active_at, meta
+      )
+      SELECT
+        project.organization_id,
+        project.id,
+        legacy.user_id,
+        legacy.role,
+        legacy.invited_by,
+        legacy.invited_at,
+        %s,
+        COALESCE(%s, '{}'::jsonb)
+      FROM project_members legacy
+      JOIN leadgrid_projects project
+        ON project.id = legacy.project_id
+      JOIN users member_user
+        ON member_user.id = legacy.user_id
+      WHERE project.organization_id IS NOT NULL
+      ON CONFLICT (organization_id, project_id, user_id) DO NOTHING
+    $backfill$,
+    legacy_last_active_expression,
+    legacy_meta_expression
+  );
+END
+$migration$;
 
 -- Every project creator must be able to manage the team, including projects
 -- created before this migration.
