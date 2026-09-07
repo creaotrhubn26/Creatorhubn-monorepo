@@ -18,6 +18,59 @@ function _inviteRateLimited(ip: string): boolean {
 const _inviteClientIp = (req: express.Request): string =>
   (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? "?";
 
+const EMAIL_ADDRESS_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const TESTER_PROFESSION_LABELS: Record<string, string> = {
+  photographer: "Fotograf",
+  videographer: "Videograf",
+  music_producer: "Musikkprodusent",
+  vendor: "Leverandør",
+};
+
+const TESTER_PROFESSION_ALIASES: Record<string, string> = {
+  photographer: "photographer",
+  fotograf: "photographer",
+  videographer: "videographer",
+  videograf: "videographer",
+  music_producer: "music_producer",
+  musikkprodusent: "music_producer",
+  vendor: "vendor",
+  leverandor: "vendor",
+  leverandør: "vendor",
+};
+
+function normalizeTesterProfession(value: unknown): string | null {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return TESTER_PROFESSION_ALIASES[normalized] || null;
+}
+
+function parseTesterProfessionFromMessage(message: unknown): string | null {
+  if (typeof message !== "string") return null;
+  const match = message.match(/\[Tester-profesjon:\s*([^\]]+)\]/i);
+  return match ? normalizeTesterProfession(match[1]) : null;
+}
+
+function withTesterProfessionTag(message: unknown, profession: string): string {
+  const base = String(message || "")
+    .replace(/\[Tester-profesjon:\s*[^\]]+\]\s*/gi, "")
+    .trim();
+  const label = TESTER_PROFESSION_LABELS[profession] || profession;
+  return `[Tester-profesjon: ${label}]${base ? `\n\n${base}` : ""}`;
+}
+
+function isPrototypeTesterRequest(body: Record<string, unknown>): boolean {
+  return (
+    String(body.profession || "") === "prototype_tester" ||
+    String(body.selectedPlan || "") === "prototype_tester" ||
+    String(body.planName || "") === "Prototype Tester" ||
+    String(body.source || "") === "prototype_tester_pricing"
+  );
+}
+
+function isDatabaseUnavailable(error: any): boolean {
+  const code = String(error?.code || "");
+  return ["28P01", "08001", "08003", "08006", "57P01", "ETIMEDOUT", "ECONNREFUSED"].includes(code);
+}
+
 const INVITE_REQUEST_APPROVER_ROLES = new Set([
   "admin",
   "super_admin",
@@ -188,6 +241,7 @@ export function setupInviteRequestsRoutes(
     return {
       id: r.id,
       profession: r.profession,
+      testerProfession: normalizeTesterProfession(r.tester_profession) || parseTesterProfessionFromMessage(r.message),
       firstName: r.first_name || "",
       lastName: r.last_name || "",
       email: r.email,
@@ -211,6 +265,13 @@ export function setupInviteRequestsRoutes(
       adminNotes: r.admin_notes || null,
       userJourneyStatus: r.user_journey_status || null,
       source: r.source || null,
+      inviteSentAt: r.invite_sent_at || null,
+      inviteSentCount: Number(r.invite_sent_count || 0),
+      inviteEmailOpenedAt: r.invite_email_opened_at || null,
+      inviteLinkClickedAt: r.invite_link_clicked_at || null,
+      onboardingStartedAt: r.onboarding_started_at || null,
+      onboardingCompletedAt: r.onboarding_completed_at || null,
+      onboardingStep: Number(r.onboarding_step || 0),
       proffAnalysisStatus: proffAnalysis?.screeningStatus || null,
       proffRecommendation: proffAnalysis?.approvalRecommendation || null,
       proffRiskLevel: proffAnalysis?.riskLevel || null,
@@ -234,6 +295,7 @@ export function setupInviteRequestsRoutes(
         firstName,
         lastName,
         profession,
+        testerProfession,
         companyName,
         organizationNumber,
         businessAddress,
@@ -252,11 +314,18 @@ export function setupInviteRequestsRoutes(
         organizationNumber || "",
       ).replace(/\D/g, "");
       const trimmedCompanyName = String(companyName || "").trim();
+      const normalizedFirstName = String(firstName || "").trim();
+      const normalizedLastName = String(lastName || "").trim();
+      const prototypeTesterRequest = isPrototypeTesterRequest(req.body || {});
+      const normalizedTesterProfession = normalizeTesterProfession(testerProfession);
+      const persistedMessage = prototypeTesterRequest && normalizedTesterProfession
+        ? withTesterProfessionTag(message, normalizedTesterProfession)
+        : String(message || "").trim() || null;
 
       if (
         !normalizedEmail ||
-        !firstName ||
-        !lastName ||
+        !normalizedFirstName ||
+        !normalizedLastName ||
         !profession ||
         !trimmedCompanyName ||
         !normalizedOrganizationNumber
@@ -265,6 +334,18 @@ export function setupInviteRequestsRoutes(
           .status(400)
           .json({ error: "Alle obligatoriske felt må fylles ut" });
       }
+
+      if (!EMAIL_ADDRESS_PATTERN.test(normalizedEmail)) {
+        return res.status(400).json({ error: "Oppgi en gyldig e-postadresse." });
+      }
+
+      if (prototypeTesterRequest && !normalizedTesterProfession) {
+        return res.status(400).json({
+          error:
+            "Velg hvilken profesjon du skal teste CreatorHub som.",
+        });
+      }
+
 
       if (!isValidNorwegianOrgNumber(normalizedOrganizationNumber)) {
         return res.status(400).json({
@@ -309,15 +390,16 @@ export function setupInviteRequestsRoutes(
       };
 
       pushInsert("email", normalizedEmail);
-      pushInsert("first_name", firstName);
-      pushInsert("last_name", lastName);
+      pushInsert("first_name", normalizedFirstName);
+      pushInsert("last_name", normalizedLastName);
       pushInsert("profession", profession);
       pushInsert("company_name", persistedCompanyName);
       pushInsert("organization_number", normalizedOrganizationNumber);
       pushInsert("business_address", persistedBusinessAddress);
       pushInsert("phone_number", phoneNumber || null);
       pushInsert("website", website || null);
-      pushInsert("message", message || null);
+      pushInsert("message", persistedMessage);
+      pushInsert("tester_profession", normalizedTesterProfession);
       pushInsert("status", "pending");
       pushInsert("selected_plan", selectedPlan || null);
       pushInsert("plan_name", planName || null);
@@ -342,20 +424,24 @@ export function setupInviteRequestsRoutes(
         values,
       );
 
-      await upsertInviteRequestProffScreening(
-        String(result.rows[0].id),
-        normalizedOrganizationNumber,
-        proffAnalysis,
-      );
+      try {
+        await upsertInviteRequestProffScreening(
+          String(result.rows[0].id),
+          normalizedOrganizationNumber,
+          proffAnalysis,
+        );
+      } catch (screeningError) {
+        console.warn("[invite-requests] screening could not be stored:", screeningError);
+      }
 
       console.log(
         `📨 New invite request from ${normalizedEmail} (${profession}) [${proffAnalysis.approvalRecommendation}/${proffAnalysis.riskLevel}]`,
       );
-      void notifyAdmins(pool, {
+      await notifyAdmins(pool, {
         type: "invite_request",
-        source: "creatorhubn.com · invite-request (landing)",
-        title: `Ny tilgangsforespørsel: ${firstName} ${lastName} (${persistedCompanyName})`,
-        summary: `${profession} · ${normalizedEmail}${planName ? ` · Plan: ${planName}` : ""} · Proff: ${proffAnalysis.approvalRecommendation}/${proffAnalysis.riskLevel}`,
+        source: `creatorhubn.com · ${source || "invite-request (landing)"}`,
+        title: `Ny tilgangsforespørsel: ${normalizedFirstName} ${normalizedLastName} (${persistedCompanyName})`,
+        summary: `${normalizedTesterProfession ? TESTER_PROFESSION_LABELS[normalizedTesterProfession] : profession} · ${normalizedEmail}${planName ? ` · Plan: ${planName}` : ""} · Proff: ${proffAnalysis.approvalRecommendation}/${proffAnalysis.riskLevel}`,
         link: "/admin",
         cta: (req.body && req.body.cta) || null,
         page: req.get("referer") || (req.body && req.body.page) || null,
@@ -385,6 +471,12 @@ export function setupInviteRequestsRoutes(
           .json({
             error: "En forespørsel med denne e-posten finnes allerede.",
           });
+      }
+      if (isDatabaseUnavailable(error)) {
+        return res.status(503).json({
+          error:
+            "Søknadstjenesten er midlertidig utilgjengelig. Prøv igjen om litt.",
+        });
       }
       console.error("Error creating invite request:", error);
       res.status(500).json({ error: "Kunne ikke opprette forespørsel" });
@@ -648,6 +740,7 @@ export function setupInviteRequestsRoutes(
       }
       let provisioning: any = null;
       let communityProvisioning: any = null;
+      let testerInvite: any = null;
 
       if (status === "approved") {
         provisioning = await ensureInviteRequestAccessProvisioning(request);
@@ -695,7 +788,7 @@ export function setupInviteRequestsRoutes(
             if (Number.isFinite(req.body?.teamSize)) {
               teamSize = Math.min(5, Math.max(1, Number(req.body.teamSize)));
             }
-            await createInviteFromApprovedRequest(
+            testerInvite = await createInviteFromApprovedRequest(
               pool,
               String(request.id),
               request.email,
@@ -707,7 +800,7 @@ export function setupInviteRequestsRoutes(
               grantedFeatures,
               teamSize,
               // Bær profesjon + firma fra søknaden → forhåndsutfylt tester-profil.
-              request.profession || null,
+              normalizeTesterProfession(request.tester_profession) || parseTesterProfessionFromMessage(request.message),
               request.company_name || null,
             );
           } catch (bridgeErr) {
@@ -724,6 +817,7 @@ export function setupInviteRequestsRoutes(
         request: mapInviteRow(request, screening),
         provisioning,
         communityProvisioning,
+        testerInvite,
         processedBy: {
           id: approverSession.userId,
           name: approverSession.name,
@@ -848,7 +942,7 @@ export function setupInviteRequestsRoutes(
             grantedFeatures,
             teamSize,
             // Bær profesjon + firma fra søknaden → forhåndsutfylt tester-profil.
-            row.profession || null,
+            normalizeTesterProfession(row.tester_profession) || parseTesterProfessionFromMessage(row.message),
             row.company_name || null,
           );
         }

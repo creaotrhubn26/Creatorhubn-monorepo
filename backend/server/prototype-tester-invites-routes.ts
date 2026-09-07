@@ -19,7 +19,10 @@
 
 import type express from "express";
 import crypto from "crypto";
-import nodemailer from "nodemailer";
+import {
+  isTransactionalEmailConfigured,
+  sendTransactionalEmail,
+} from "./transactional-email-service.ts";
 import { normalizeProfession } from "../../frontend/shared/profession-types.ts";
 import { safeAppBaseUrl } from "./web-origin-allowlist.ts";
 
@@ -115,12 +118,6 @@ async function ensureSchema(pool: any): Promise<void> {
   ).catch(() => undefined);
 }
 
-function getMailer(): ReturnType<typeof nodemailer.createTransport> | null {
-  const mailUser = (process.env.GMAIL_USER || process.env.GOOGLE_WORKSPACE_EMAIL || "").trim();
-  const mailPass = (process.env.GMAIL_APP_PASSWORD || "").trim().replace(/\s+/g, "");
-  if (!mailUser || !mailPass) return null;
-  return nodemailer.createTransport({ service: "gmail", auth: { user: mailUser, pass: mailPass } });
-}
 
 // Open/click-tracking: pixel + klikk-redirect skriver invite_email_opened_at /
 // invite_link_clicked_at på den koblede invite_requests-raden (admin-dashbordets
@@ -174,6 +171,51 @@ function escapeHtml(s: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function buildInviteEmailText(name: string, inviteUrl: string, personalMessage: string | null): string {
+  const personal = personalMessage ? `Melding fra CreatorHub: ${personalMessage}` : "";
+  return [
+    `Hei ${name},`,
+    "",
+    "Søknaden din om å bli prototype-tester i CreatorHub er godkjent.",
+    personal,
+    "Før du får tilgang må du lese programvilkårene og signere NDA-en.",
+    `Åpne invitasjonen: ${inviteUrl}`,
+    `Lenken er gyldig i ${INVITE_EXPIRES_DAYS} dager.`,
+  ].filter(Boolean).join("\n\n");
+}
+
+async function deliverInviteEmail(
+  pool: any,
+  email: string,
+  name: string,
+  inviteUrl: string,
+  personalMessage: string | null,
+  subject: string,
+  kind: string,
+  sentByUserId: string | null = null,
+  projectId: string | null = null,
+  track: { openPixelUrl: string; clickUrl: string } | undefined = undefined,
+) {
+  const result = await sendTransactionalEmail({
+    to: email,
+    subject,
+    html: buildInviteEmailHtml(name, inviteUrl, personalMessage, track),
+    text: buildInviteEmailText(name, inviteUrl, personalMessage),
+    replyTo: "daniel@creatorhubn.com",
+    fromLabel: "CreatorHub",
+    kind,
+    projectId,
+    sentByUserId,
+    pool,
+  });
+  return {
+    sent: result.sent,
+    provider: result.provider,
+    reason: result.reason,
+    messageId: result.messageId,
+  };
 }
 
 function rowToInvite(r: any): any {
@@ -252,7 +294,7 @@ export async function createInviteFromApprovedRequest(
   // tester-profil ved aksept (bare bekreft) + grunnlag for kunde-konvertering.
   memberProfession: string | null = null,
   memberCompany: string | null = null,
-): Promise<{ id: string; token: string; inviteUrl: string } | null> {
+): Promise<{ id: string; token: string; inviteUrl: string; reused: boolean; emailDelivery: Awaited<ReturnType<typeof deliverInviteEmail>> | null } | null> {
   try {
     await ensureSchema(pool);
     // Skip hvis det allerede finnes en aktiv invitasjon for denne søknaden
@@ -268,6 +310,8 @@ export async function createInviteFromApprovedRequest(
         id: row.id,
         token: row.token,
         inviteUrl: `${baseUrl}/prototype-tester/accept-invite?token=${encodeURIComponent(row.token)}`,
+        reused: true,
+        emailDelivery: null,
       };
     }
 
@@ -304,21 +348,34 @@ export async function createInviteFromApprovedRequest(
     );
     const inviteUrl = `${baseUrl}/prototype-tester/accept-invite?token=${encodeURIComponent(token)}`;
 
-    // Send e-post (best effort — ikke blokker hvis mailer ikke konfigurert)
-    const mailer = getMailer();
-    if (mailer) {
-      const mailUser = process.env.GMAIL_USER || process.env.GOOGLE_WORKSPACE_EMAIL || "";
-      mailer.sendMail({
-        from: `"Creatorhubn" <${mailUser}>`,
-        to: email,
-        subject: "Du er godkjent som prototype-tester i Creatorhubn",
-        html: buildInviteEmailHtml(name, inviteUrl, null, buildInviteTrackUrls(baseUrl, token)),
-      }).catch((err: unknown) => console.error("[prototype-tester-invite] mail failed:", (err as { message?: string })?.message || err));
-    } else {
-      console.warn("[prototype-tester-invite] Mailer not configured — invitasjon opprettet uten e-post");
+    const emailDelivery = await deliverInviteEmail(
+      pool,
+      email,
+      name,
+      inviteUrl,
+      null,
+      "Du er godkjent som prototype-tester i CreatorHub",
+      "prototype_tester_invite",
+      invitedBy,
+      inviteRequestId,
+      buildInviteTrackUrls(baseUrl, token),
+    );
+
+    if (emailDelivery.sent) {
+      await pool.query(
+        `UPDATE invite_requests
+            SET invite_sent_at = COALESCE(invite_sent_at, NOW()),
+                invite_sent_count = COALESCE(invite_sent_count, 0) + 1,
+                user_journey_status = 'invite_sent',
+                updated_at = NOW()
+          WHERE id = $1`,
+        [inviteRequestId],
+      ).catch((error: unknown) => {
+        console.warn("[prototype-tester-invite] could not update delivery status:", error);
+      });
     }
 
-    return { id: ins.rows[0].id, token, inviteUrl };
+    return { id: ins.rows[0].id, token, inviteUrl, reused: false, emailDelivery };
   } catch (err) {
     console.error("createInviteFromApprovedRequest failed:", err);
     return null;
@@ -447,17 +504,18 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       const baseUrl = safeAppBaseUrl(req);
       const inviteUrl = `${baseUrl}/prototype-tester/accept-invite?token=${encodeURIComponent(row.token)}`;
 
-      // Send e-post (best effort)
-      const mailer = getMailer();
-      if (mailer) {
-        const mailUser = process.env.GMAIL_USER || process.env.GOOGLE_WORKSPACE_EMAIL || "";
-        mailer.sendMail({
-          from: `"Creatorhubn" <${mailUser}>`,
-          to: email,
-          subject: "Du er invitert som prototype-tester i Creatorhubn",
-          html: buildInviteEmailHtml(name, inviteUrl, personalMessage, buildInviteTrackUrls(baseUrl, row.token)),
-        }).catch((err: unknown) => console.error("[prototype-tester-invite] mail failed:", (err as { message?: string })?.message || err));
-      }
+      const emailDelivery = await deliverInviteEmail(
+        pool,
+        email,
+        name,
+        inviteUrl,
+        personalMessage,
+        "Du er invitert som prototype-tester i CreatorHub",
+        "prototype_tester_invite",
+        invitedBy,
+        null,
+        buildInviteTrackUrls(baseUrl, row.token),
+      );
 
       res.status(201).json({
         id: String(row.id),
@@ -465,7 +523,8 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         inviteUrl,
         expiresAt: row.expires_at,
         createdAt: row.created_at,
-        mailerConfigured: !!mailer,
+        mailerConfigured: isTransactionalEmailConfigured(),
+        emailDelivery,
       });
     } catch (err: any) {
       console.error("POST /prototype-tester-invites:", err);
@@ -798,28 +857,27 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       const baseUrl = safeAppBaseUrl(req);
       const inviteUrl = `${baseUrl}/prototype-tester/accept-invite?token=${encodeURIComponent(token)}`;
 
-      const mailer = getMailer();
-      if (mailer) {
-        const mailUser = process.env.GMAIL_USER || process.env.GOOGLE_WORKSPACE_EMAIL || "";
-        mailer.sendMail({
-          from: `"Creatorhubn" <${mailUser}>`,
-          to: memberEmail,
-          subject: "Du er invitert som prototype-tester (team-medlem)",
-          html: buildInviteEmailHtml(
-            memberName,
-            inviteUrl,
-            `Du har blitt invitert som team-medlem. Når du signerer NDA-en blir du del av det aktive prototype-tester-teamet (program slutter ${new Date(master.program_ends_at).toLocaleDateString("nb-NO")}).`,
-            buildInviteTrackUrls(baseUrl, token),
-          ),
-        }).catch((err) => console.error("[team-invite] mail failed:", err?.message || err));
-      }
+      const teamMessage = `Du har blitt invitert som team-medlem. Når du signerer NDA-en blir du del av det aktive prototype-tester-teamet (program slutter ${new Date(master.program_ends_at).toLocaleDateString("nb-NO")}).`;
+      const emailDelivery = await deliverInviteEmail(
+        pool,
+        memberEmail,
+        memberName,
+        inviteUrl,
+        teamMessage,
+        "Du er invitert som prototype-tester (team-medlem)",
+        "prototype_tester_team_invite",
+        uid,
+        null,
+        buildInviteTrackUrls(baseUrl, token),
+      );
 
       res.status(201).json({
         id: ins.rows[0].id,
         token: ins.rows[0].token,
         inviteUrl,
         sharedProgramEndsAt: master.program_ends_at,
-        mailerConfigured: !!mailer,
+        mailerConfigured: isTransactionalEmailConfigured(),
+        emailDelivery,
       });
     } catch (err) {
       console.error("POST /me/team/invite:", err);
