@@ -16,9 +16,12 @@ components:
       - { name: "@tauri-apps/plugin-updater", declared: "^2", resolved: "2.10.1" }
       - { name: "@types/react", declared: "^19.1.8", resolved: "19.2.15" }
       - { name: "@types/react-dom", declared: "^19.1.6", resolved: "19.2.3" }
+      - { name: "@types/three", declared: "^0.169.0", resolved: "0.169.0" }
       - { name: "@vitejs/plugin-react", declared: "^4.6.0", resolved: "4.7.0" }
+      - { name: "gifenc", declared: "^1.0.3", resolved: "1.0.3" }
       - { name: "react", declared: "^19.1.0", resolved: "19.2.6" }
       - { name: "react-dom", declared: "^19.1.0", resolved: "19.2.6" }
+      - { name: "three", declared: "^0.169.0", resolved: "0.169.0" }
       - { name: "typescript", declared: "~5.8.3", resolved: "5.8.3" }
       - { name: "vite", declared: "^7.0.4", resolved: "7.3.3" }
       - { name: "zustand", declared: "^5.0.14", resolved: "5.0.14" }
