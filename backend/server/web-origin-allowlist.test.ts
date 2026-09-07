@@ -11,6 +11,7 @@ const baseUrlFor = (origin: string): string =>
 describe("safeAppBaseUrl Netlify origins", () => {
   it.each([
     "https://creatorhub-frontend-mig.netlify.app",
+    "https://easeverse.netlify.app",
     "https://leadgrid-no.netlify.app",
     "https://theroleroom.netlify.app",
   ])("accepts a stable first-party Netlify production alias: %s", (origin) => {
