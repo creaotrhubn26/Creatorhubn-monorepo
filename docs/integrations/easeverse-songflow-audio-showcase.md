@@ -1,18 +1,33 @@
 # Integrasjon: EaseVerse ⇄ SongFlow ⇄ Audio Showcase ⇄ Split Sheets
 
 > Plan + spec for å koble musikk-økosystemet sammen ende-til-ende.
-> Sist oppdatert: 2026-06-12.
+> Sist oppdatert: 2026-09-06.
 
-## 1. Systemkart (4 deler)
+## Operativ status (2026-09-06)
+
+- EaseVerse web/API er flyttet til Netlify: `https://easeverse.netlify.app` (Netlify Database/Postgres).
+- iOS-simulatorflyten **Start recording → Session Review → Practice Loop** er verifisert på iPad-simulator mot Netlify-konfigurasjonen.
+- Web-E2E **Lyrics → Sync → Sing → Review → Practice Loop** og PWA-ruting passerer lokalt.
+- WorkspaceShell-E2E for rollen `music_producer` åpner `/workspace/:projectId/sound-room` med musikkfanene og uten runtime-feil.
+- Ny Workspace-E2E verifiserer den synlige **EaseVerse + Pro Tools Companion**-inngangen på Oversikt, Netlify-lenken og flyten videre til Sound Room-paring med 6-sifret engangskode.
+- Pro Tools Companion lagrer fortsatt markører lokalt i Workspace/Sound Room og speiler nå samme kanoniske snapshot til EaseVerse som best-effort. Backendkontraktstester passerer 4/4, Companion Rust-tester 9/9, TypeScript-typecheck og produksjonsbuild passerer.
+- EaseVerse sitt eksterne collaboration-API er fail-closed og produksjonsnøkkelen er konfigurert på begge sider. Uten nøkkel svarer det `401`; autorisert POST/GET mot Netlify Postgres svarer `200`.
+- Produksjons-E2E for Companion-payload mot Netlify (`creatorhub-companion-e2e-20260906`) svarer POST `200` + GET `200`, `storage=postgres`, 2 markører og 126 BPM.
+- CreatorHub-produksjon bruker `EASEVERSE_API_URL=https://easeverse.netlify.app` fra Render-deploy `dep-daeruslg1s2s73dhkfb0` (`live`). Backend-health svarer `200`, og sync-ruten håndhever autentisering.
+- iOS build 23 (1.0.0) er lastet opp og har App Store Connect-status `VALID`. Builden bruker den verifiserte offlineflyten; Clerk-basert innlogging og prosjektfunksjoner er deaktivert som eksplisitt godkjent releasebegrensning.
+- Workspace-/Companion-endringene er lagt på en ren release-kandidat fra siste `main`; produksjonspublisering må fortsatt bekreftes etter merge/deploy.
+
+## 1. Systemkart (5 deler)
 
 | # | System | Hva | Hvor |
 |---|--------|-----|------|
-| A | **EaseVerse (ekstern app)** | Skriv tekst → ta opp vokal-takes → Pro Tools-session → comp keepers | `creaotrhubn26/EaseVerse` (Expo/Vercel, Clerk-auth) |
+| A | **EaseVerse (ekstern app)** | Skriv tekst → ta opp vokal-takes → Pro Tools-session → comp keepers | `creaotrhubn26/EaseVerse` (Expo/Netlify, Clerk-auth) |
 | B | **SongFlow / EaseVerse-tracks** | Track-/prosjekt-hub: recording→mixing→mastering, bpm, key, **lyrics**, stems, collaborators, Drive-backup | CreatorHub `easeverse_projects`/`easeverse_tracks` (index.ts) + `songflow-platform.tsx` |
 | C | **Audio Showcase** | Mix/master-review-studio: versjoner, tidskodede kommentarer, seksjoner, godkjenning, leveranser, tasks | CreatorHub `audio_review_*` + `audio-showcase-routes.ts` + `pages/audio-showcase.tsx` |
 | D | **Split Sheets** | Royalty-splitter knyttet til tracks (sign/share/pdf/revenue) | CreatorHub `split-sheets-routes.ts` |
+| E | **Music Workspace / Sound Room** | Synlig inngang til EaseVerse, Companion-paring, live markører/bounces og review | `OversiktTab.tsx` + `SoundRoomTab.tsx` + `protools-companion-routes.ts` |
 
-Livssyklus: **A (skriv/ta opp) → B (track-hub) → C (review/godkjenn/lever) → D (royalty)**.
+Livssyklus: **E (workspace-start) → A (skriv/ta opp) → B (track-hub) → Companion/Pro Tools → C (review/godkjenn/lever) → D (royalty)**.
 **B (SongFlow) er den naturlige naven** — den har allerede lyrics, bpm, key, collaborators, projectId.
 
 ## 2. Felles nøkler / spine
@@ -26,14 +41,18 @@ Livssyklus: **A (skriv/ta opp) → B (track-hub) → C (review/godkjenn/lever) �
 - SongFlow-API: `GET /api/easeverse-tracks|-projects`, `POST /api/easeverse-tracks`, `…/:id/backup`, `…/:id/sync-lyrics`, `PUT …/:id/lyrics`.
 - **Eksisterende enveis-bro:** `syncLyricsToEaseVerse()` POST-er `{externalTrackId, projectId, title, artist, lyrics, collaborators, source:"creatorhub"}` til `${EASEVERSE_API_URL}/api/v1/collab/lyrics` (env `EASEVERSE_API_URL`/`EASEVERSE_API_KEY`).
 - Split Sheets ↔ track: `POST /api/split-sheets/from-songflow/:trackId`, `…/:id/link-songflow`, `…/:id/songflow`, unlink. Link-kolonner `easeverse_track_id`/`songflow_track_id`.
+- Audio Showcase har nå link-spine, toveis lyrics/metadata, pull av markører/takes, status-synk og idempotent oppretting av split sheet fra review-medlemmer.
+- CreatorHub Pro Tools Companion har device-token-paring, track/Sound Room-valg, Session Info-parser, mappeovervåking, markør-/metadata-synk og bounce → ny review-versjon.
+- Music Workspace viser EaseVerse og Pro Tools Companion før første studiosesjon finnes; CTA-en åpner Sound Room direkte med `?setup=protools` og starter paringsflyten.
+- Nye booth-lenker bruker én konfigurerbar `VITE_EASEVERSE_APP_URL` med `https://easeverse.netlify.app` som produksjonsfallback; gamle `easeverse.vercel.app`-lenker er fjernet.
 
-## 4. Hva MANGLER (gapene denne planen lukker)
-1. **Audio Showcase er frakoblet** — `audio_review_*` har ingen lenke til `easeverse_tracks`. Ingen «send track til review».
-2. **Tekster-fanen i studioet er tom** — ikke koblet til `easeverse_tracks.lyrics`.
-3. **Bro er enveis** — pusher lyrics UT, henter ingenting INN (markers, takes, keeper-WAV) fra ekstern EaseVerse.
-4. **DAW-seksjoner** fra Pro Tools (`/api/v1/collab/protools.markers`) går ikke inn i `audio_review_sections`.
-5. **Takes → versjoner** mangler (keeper/comp-WAV blir ikke review-versjon).
-6. **Split Sheet ↔ godkjenning** er ikke trigget fra review-flyten.
+## 4. Status på de opprinnelige gapene
+1. ✅ **Track ↔ review er koblet:** `audio_review_projects` bærer `easeverse_track_id`/`external_track_id`, og Workspace kan koble låten til Sound Room.
+2. ✅ **Tekst er koblet:** Audio Showcase leser/skriver `easeverse_tracks.lyrics` og bruker last-write-wins mot det eksterne API-et.
+3. ✅ **Broen er toveis:** lyrics, metadata, DAW-markører og keeper-takes kan hentes fra EaseVerse; relevante CreatorHub-endringer pushes ut.
+4. ✅ **DAW-seksjoner virker:** Companion-markører blir `audio_review_sections`, og samme snapshot speiles til `/api/v1/collab/protools`.
+5. ✅ **Takes/bounces blir versjoner:** EaseVerse keeper-takes kan importeres idempotent, og Companion-bounces oppretter nye review-versjoner.
+6. 🟡 **Split Sheet er integrert, men godkjennings-UX kan strammes:** review-medlemmer kan bli et idempotent split sheet; den opprinnelige auto-dialogen etter godkjenning er fortsatt en mulig polering.
 
 ---
 

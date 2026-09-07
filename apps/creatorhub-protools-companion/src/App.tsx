@@ -116,7 +116,10 @@ export default function App() {
     setBusy(true);
     try {
       const r = await api.syncSessionInfo();
-      logLocal("marker", `Synket ${r.markers_stored} markører → ${r.sections_synced} seksjoner`);
+      const easeVerseStatus = r.easeverse_synced
+        ? " · EaseVerse synket"
+        : state?.easeverse_track_id ? " · Sound Room lagret; EaseVerse-synk ikke bekreftet" : "";
+      logLocal("marker", `Synket ${r.markers_stored} markører → ${r.sections_synced} seksjoner${easeVerseStatus}`);
     } catch (e: any) { logLocal("error", `Synk feilet: ${e}`); }
     finally { setBusy(false); }
   };
@@ -131,7 +134,7 @@ export default function App() {
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "background.default", color: "text.primary", p: 3 }}>
-      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 2.5 }}>
+      <Stack direction="row" spacing={1.5} sx={{ mb: 2.5, alignItems: "center" }}>
         <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: "rgba(255,140,0,0.14)", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <GraphicEq sx={{ color: ORANGE }} />
         </Box>
@@ -157,7 +160,7 @@ export default function App() {
           </Typography>
           <Stack spacing={1.5}>
             <TextField label="Paringskode (6 siffer)" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              inputProps={{ inputMode: "numeric", style: { letterSpacing: 6, fontSize: 22, fontWeight: 700 } }} fullWidth />
+              slotProps={{ htmlInput: { inputMode: "numeric", style: { letterSpacing: 6, fontSize: 22, fontWeight: 700 } } }} fullWidth />
             <TextField label="API-adresse" value={apiBase} onChange={(e) => setApiBase(e.target.value)} fullWidth size="small" />
             <Button variant="contained" onClick={doPair} disabled={busy || code.length !== 6}
               sx={{ bgcolor: ORANGE, fontWeight: 700, "&:hover": { bgcolor: "#e07e00" } }}>Koble til</Button>
@@ -192,7 +195,7 @@ export default function App() {
       {state?.paired && state?.session_id && (
         <Panel title={state.session_name || "Sesjon"}>
           <Stack spacing={1.5}>
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
               <Chip size="small" label={state.audio_room_id ? "Koblet til Sound Room" : "Ikke koblet til låt"} sx={{ bgcolor: state.audio_room_id ? "rgba(95,184,138,0.16)" : "rgba(255,255,255,0.06)", color: state.audio_room_id ? "#5fb88a" : "text.secondary" }} />
               <Chip size="small" label={state.watching ? "Overvåker" : "Pauset"} sx={{ bgcolor: state.watching ? "rgba(255,140,0,0.16)" : "rgba(255,255,255,0.06)", color: state.watching ? ORANGE : "text.secondary" }} />
             </Stack>
@@ -216,7 +219,7 @@ export default function App() {
         ) : (
           <Stack spacing={0.5} sx={{ maxHeight: 280, overflowY: "auto" }}>
             {activity.map((a, i) => (
-              <Stack key={i} direction="row" spacing={1} alignItems="baseline">
+              <Stack key={i} direction="row" spacing={1} sx={{ alignItems: "baseline" }}>
                 <Typography sx={{ fontSize: 10.5, color: "text.secondary", minWidth: 60, fontVariantNumeric: "tabular-nums" }}>{new Date(a.ts).toLocaleTimeString()}</Typography>
                 <Box sx={{ width: 7, height: 7, borderRadius: "50%", mt: 0.6, flexShrink: 0, bgcolor: a.kind === "error" ? "#e0606a" : a.kind === "bounce" ? "#5fb88a" : a.kind === "marker" ? ORANGE : "#3fa7d6" }} />
                 <Typography sx={{ fontSize: 12.5 }}>{a.message}</Typography>
@@ -241,7 +244,7 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
 function FilePick({ icon, label, value, hint, onPick }: { icon: React.ReactNode; label: string; value: string | null; hint: string; onPick: () => void }) {
   return (
     <Box sx={{ border: "1px dashed rgba(255,255,255,0.15)", borderRadius: 2, p: 1.5 }}>
-      <Stack direction="row" alignItems="center" spacing={1.25}>
+      <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
         <Box sx={{ color: ORANGE }}>{icon}</Box>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography sx={{ fontSize: 13, fontWeight: 600 }}>{label}</Typography>
@@ -255,7 +258,7 @@ function FilePick({ icon, label, value, hint, onPick }: { icon: React.ReactNode;
 
 function Row({ label, value }: { label: string; value: string | null }) {
   return (
-    <Stack direction="row" spacing={1} alignItems="baseline">
+    <Stack direction="row" spacing={1} sx={{ alignItems: "baseline" }}>
       <Typography sx={{ fontSize: 11.5, color: "text.secondary", minWidth: 96 }}>{label}</Typography>
       <Typography sx={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value || "—"}</Typography>
     </Stack>

@@ -36,6 +36,7 @@ export interface SessionInfo {
 export interface SyncResult {
   markers_stored: number;
   sections_synced: number;
+  easeverse_synced: boolean;
   sample_rate: number | null;
   track_count: number;
 }

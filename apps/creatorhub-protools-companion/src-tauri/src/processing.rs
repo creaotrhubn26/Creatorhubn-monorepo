@@ -16,6 +16,7 @@ use crate::state::{emit_activity, snapshot, SharedConfig};
 pub struct SyncResult {
     pub markers_stored: i64,
     pub sections_synced: i64,
+    pub easeverse_synced: bool,
     pub sample_rate: Option<f64>,
     pub track_count: i64,
 }
@@ -57,6 +58,11 @@ pub async fn sync_session_info(cfg: &SharedConfig, app: &AppHandle) -> Result<Sy
     let markers_count = marker_json.len() as i64;
     let mr = api_client::post_markers(&snap.api_base, token, session_id, Value::Array(marker_json)).await?;
     let sections_synced = mr.get("sectionsSynced").and_then(|v| v.as_i64()).unwrap_or(0);
+    let easeverse_synced = mr
+        .get("easeverseSync")
+        .and_then(|v| v.get("synced"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     // Metadata (samplerate/bitdybde/spor).
     let tracks_json: Vec<Value> = parsed
@@ -74,12 +80,18 @@ pub async fn sync_session_info(cfg: &SharedConfig, app: &AppHandle) -> Result<Sy
     emit_activity(
         app,
         "marker",
-        &format!("Synket {} markører → {} seksjoner", markers_count, sections_synced),
+        &format!(
+            "Synket {} markører → {} seksjoner{}",
+            markers_count,
+            sections_synced,
+            if easeverse_synced { " · EaseVerse ✓" } else { "" },
+        ),
     );
 
     Ok(SyncResult {
         markers_stored: markers_count,
         sections_synced,
+        easeverse_synced,
         sample_rate: parsed.sample_rate,
         track_count: parsed.tracks.len() as i64,
     })
