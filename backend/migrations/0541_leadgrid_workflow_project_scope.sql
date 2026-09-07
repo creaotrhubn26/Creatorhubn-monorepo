@@ -61,47 +61,22 @@ UPDATE leadgrid_workflows
  WHERE project_id IS NULL
    AND is_active = TRUE;
 
--- Prefer the persisted lead tuple for historical executions, then use the
--- workflow tuple only where no lead-bound tuple could be recovered. These are
--- separate UPDATEs so PostgreSQL never has to reference the target alias from
--- a JOIN expression in UPDATE ... FROM.
-UPDATE leadgrid_workflow_executions execution
-   SET project_id = customer.project_id
-  FROM crm_customers customer
-  JOIN leadgrid_projects project
-    ON project.organization_id = customer.organization_id
-   AND project.id = customer.project_id
- WHERE execution.project_id IS NULL
-   AND execution.lead_id = customer.id
-   AND execution.organization_id = customer.organization_id
-   AND customer.project_id IS NOT NULL;
-
+-- Executions and resumable jobs must carry the exact same tenant tuple as
+-- their workflow. A customer can retain a valid but different historical
+-- project, and ambiguous workflows deliberately remain unscoped and inactive.
 UPDATE leadgrid_workflow_executions execution
    SET project_id = workflow.project_id
   FROM leadgrid_workflows workflow
- WHERE execution.project_id IS NULL
-   AND execution.workflow_id = workflow.id
+ WHERE execution.workflow_id = workflow.id
    AND execution.organization_id = workflow.organization_id
-   AND workflow.project_id IS NOT NULL;
-
-UPDATE leadgrid_workflow_resume_jobs job
-   SET project_id = customer.project_id
-  FROM crm_customers customer
-  JOIN leadgrid_projects project
-    ON project.organization_id = customer.organization_id
-   AND project.id = customer.project_id
- WHERE job.project_id IS NULL
-   AND customer.id::text = job.lead_id
-   AND customer.organization_id::text = job.organization_id
-   AND customer.project_id IS NOT NULL;
+   AND execution.project_id IS DISTINCT FROM workflow.project_id;
 
 UPDATE leadgrid_workflow_resume_jobs job
    SET project_id = workflow.project_id
   FROM leadgrid_workflows workflow
- WHERE job.project_id IS NULL
-   AND job.workflow_id = workflow.id
+ WHERE job.workflow_id = workflow.id
    AND workflow.organization_id::text = job.organization_id
-   AND workflow.project_id IS NOT NULL;
+   AND job.project_id IS DISTINCT FROM workflow.project_id;
 
 UPDATE leadgrid_email_tracking_events event
    SET project_id = customer.project_id,
