@@ -10,6 +10,9 @@ export interface AppState {
   bounce_dir: string | null;
   easeverse_track_id: string | null;
   audio_room_id: string | null;
+  workspace_project_id: string | null;
+  easeverse_project_id: string | null;
+  suggested_project_name: string | null;
   watching: boolean;
 }
 

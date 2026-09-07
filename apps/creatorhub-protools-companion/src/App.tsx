@@ -41,6 +41,8 @@ export default function App() {
       setApiBase((prev) => prev || s.api_base);
       if (s.session_info_path) setInfoPath(s.session_info_path);
       if (s.bounce_dir) setBounceDir(s.bounce_dir);
+      if (s.easeverse_track_id) setTrackId((previous) => previous || s.easeverse_track_id || "");
+      if (s.suggested_project_name) setName((previous) => previous || `${s.suggested_project_name} — Mix`);
       if (s.paired && !s.session_id) {
         try { setTracks(await api.listTracks()); } catch { /* */ }
       }
@@ -173,9 +175,12 @@ export default function App() {
         <Panel title="Sett opp sesjon">
           <Stack spacing={1.5}>
             <Chip label={`Innlogget: ${state.user_email || "ukjent"}`} size="small" sx={{ alignSelf: "flex-start", bgcolor: "rgba(255,140,0,0.12)", color: ORANGE }} />
+            {state.workspace_project_id && (
+              <Chip label="Åpnet fra CreatorHub Workspace" size="small" sx={{ alignSelf: "flex-start", bgcolor: "rgba(95,184,138,0.14)", color: "#5fb88a" }} />
+            )}
             <TextField label="Sesjonsnavn" value={name} onChange={(e) => setName(e.target.value)} fullWidth placeholder="f.eks. Running Home — Mix" />
             <TextField select label="Koble til EaseVerse-låt (Sound Room)" value={trackId} onChange={(e) => setTrackId(e.target.value)} fullWidth
-              helperText="Markører og bounces havner i denne låtens Sound Room.">
+              helperText={state.easeverse_track_id ? "Forhåndsvalgt fra Sound Room-pairingen. Markører og bounces havner i samme prosjekt." : "Markører og bounces havner i denne låtens Sound Room."}>
               <MenuItem value="">— ikke koble —</MenuItem>
               {tracks.map((t) => (
                 <MenuItem key={t.id} value={t.id}>{t.title}{t.artist ? ` · ${t.artist}` : ""}{t.review_id ? " ✓ Sound Room" : ""}</MenuItem>
@@ -202,6 +207,7 @@ export default function App() {
             <Row label="Session Info" value={state.session_info_path} />
             <Row label="Bounced Files" value={state.bounce_dir} />
             <Stack direction="row" spacing={1}>
+              {state.workspace_project_id && <Chip size="small" label="Workspace-koblet" sx={{ bgcolor: "rgba(63,167,214,0.14)", color: "#3fa7d6" }} />}
               <Button variant="contained" startIcon={state.watching ? <Stop /> : <PlayArrow />} onClick={toggleWatch} disabled={busy}
                 sx={{ bgcolor: state.watching ? "#e0606a" : ORANGE, fontWeight: 700, "&:hover": { bgcolor: state.watching ? "#c84f58" : "#e07e00" } }}>
                 {state.watching ? "Stopp overvåking" : "Start overvåking"}</Button>

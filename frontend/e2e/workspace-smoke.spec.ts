@@ -333,6 +333,7 @@ test('single-project /workspace auto-redirects into the workspace without React 
 
 test('music producer sees EaseVerse marketing and can start the Pro Tools Companion flow', async ({ page }) => {
   const errors = await collectRuntimeErrors(page);
+  let pairingPayload: Record<string, unknown> | null = null;
   await primeAuthAndApi(page, [sampleProject('p1')]);
   const musicUser = { ...AUTH_USER, role: 'musicproducer', profession: 'musicproducer' };
   await page.addInitScript((user) => {
@@ -368,20 +369,31 @@ test('music producer sees EaseVerse marketing and can start the Pro Tools Compan
   await page.route('**/api/audio-showcases/room-1', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ project: { title: 'Smoke Project p1' }, versions: [], members: [] }) }),
   );
+  await page.route('**/api/projects/p1/easeverse-tracks', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      connected: true, linkedTrackId: 'track-1',
+      tracks: [{ id: 'track-1', title: 'Workspace Song', linked: true, status: 'mixing' }],
+    }) }),
+  );
   await page.route('**/api/protools/web/status*', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }),
   );
   await page.route('**/api/protools/companion/release', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: '0.1.1', downloads: [], icon: '/protools-companion-icon.png' }) }),
   );
-  await page.route('**/api/protools/pair/start', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: '246810', expiresInSeconds: 600 }) }),
-  );
+  await page.route('**/api/protools/pair/start', (route) => {
+    pairingPayload = route.request().postDataJSON();
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: '246810', expiresInSeconds: 600 }) });
+  });
 
   await page.goto(`${ORIGIN}/workspace`, { waitUntil: 'domcontentloaded' });
   await page.waitForURL('**/workspace/p1', { timeout: 30_000 });
   await expect(page.getByText('EaseVerse + Pro Tools Companion', { exact: true })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole('link', { name: 'Åpne EaseVerse' })).toHaveAttribute('href', 'https://easeverse.netlify.app');
+  const overviewHref = await page.getByRole('link', { name: 'Åpne EaseVerse' }).getAttribute('href');
+  const overviewUrl = new URL(overviewHref!);
+  expect(overviewUrl.origin).toBe('https://easeverse.netlify.app');
+  expect(overviewUrl.pathname).toBe('/integrations/creatorhub');
+  expect(overviewUrl.searchParams.get('creatorhubProjectId')).toBe('p1');
 
   await page.getByRole('button', { name: 'Koble Pro Tools Companion' }).click();
   await page.waitForURL('**/workspace/p1/sound-room?setup=protools');
@@ -390,6 +402,12 @@ test('music producer sees EaseVerse marketing and can start the Pro Tools Compan
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText('Pro Tools Companion', { exact: true })).toBeVisible();
   await expect(dialog.getByText('246810', { exact: true })).toBeVisible();
+  await expect.poll(() => pairingPayload).toEqual({ workspaceProjectId: 'p1', audioRoomId: 'room-1', easeverseTrackId: 'track-1', projectName: 'Smoke Project p1' });
+  const soundRoomHref = await page.locator('a[href*="/integrations/creatorhub"]').last().getAttribute('href');
+  const soundRoomUrl = new URL(soundRoomHref!);
+  expect(soundRoomUrl.searchParams.get('creatorhubProjectId')).toBe('p1');
+  expect(soundRoomUrl.searchParams.get('audioReviewProjectId')).toBe('room-1');
+  expect(soundRoomUrl.searchParams.get('externalTrackId')).toBe('track-1');
   await expect(page.getByText('Shotlist', { exact: true })).toHaveCount(0);
   expect(errors, `Runtime errors in music Workspace flow:\n${errors.join('\n')}`).toEqual([]);
 });

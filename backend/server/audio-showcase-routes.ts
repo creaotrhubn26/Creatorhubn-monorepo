@@ -21,6 +21,7 @@ import PDFDocument from "pdfkit";
 import { requireTeamAccess } from "./team-access";
 import { canAccessProject } from "./project-team-routes";
 import { broadcastSoundRoomUpdated, type SoundRoomUpdateReason } from "./sound-room-events";
+import { pushApprovedReferenceMixToEaseVerse } from "./easeverse-protools-sync.js";
 
 // Innebygd TrueType-font (DejaVu Sans, libre) — sikrer at avtale-PDF rendres
 // identisk i alle visere (pdfkit-standardfonter rendres ikke i alle renderere).
@@ -296,6 +297,7 @@ const makeInviteToken = () => "inv_" + randomUUID().replace(/-/g, "");
 
 type AnyPool = {
   query: (text: string, params?: unknown[]) => Promise<{ rows: any[]; rowCount: number }>;
+  connect?: () => Promise<any>;
 };
 
 export interface AudioShowcaseDeps {
@@ -328,6 +330,24 @@ const num = (v: unknown): number | null => { const n = Number(v); return Number.
 // ── Ekstern EaseVerse-bro (stabil toveis tekst-synk) ───────────────────────
 const EV_URL = (process.env.EASEVERSE_API_URL || "").trim().replace(/\/+$/, "");
 const EV_KEY = (process.env.EASEVERSE_API_KEY || "").trim();
+
+function easeVerseServiceAuthorized(req: any): boolean {
+  const bearer = String(req.headers?.authorization || "").replace(/^Bearer\s+/i, "").trim();
+  const supplied = String(req.headers?.["x-api-key"] || bearer).trim();
+  if (!EV_KEY || !supplied) return false;
+  const expected = Buffer.from(EV_KEY);
+  const actual = Buffer.from(supplied);
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
+}
+
+function secureAudioUrl(value: unknown): string | null {
+  try {
+    const url = new URL(String(value || "").trim());
+    return url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
 
 type EvResult = { configured: boolean; reachable: boolean; status?: number; item?: any; latencyMs?: number; error?: string };
 
@@ -838,8 +858,26 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
           WHERE id = (SELECT easeverse_track_id FROM audio_review_projects
                       WHERE id = (SELECT project_id FROM audio_review_versions WHERE id = $1::uuid))::uuid`,
         [versionId, trackStatus]).catch(() => { /* ikke koblet / annen DB-state */ });
+      let easeverseReferenceSync: Awaited<ReturnType<typeof pushApprovedReferenceMixToEaseVerse>> | undefined;
+      if (approvalType !== "changes_requested") {
+        const reference = await pool.query(
+          `SELECT v.file_url,v.file_name,v.duration,p.owner_user_id,
+                  COALESCE(NULLIF(p.external_track_id,''),p.easeverse_track_id::text) AS external_track_id
+             FROM audio_review_versions v JOIN audio_review_projects p ON p.id=v.project_id
+            WHERE v.id=$1::uuid AND p.owner_user_id=$2 LIMIT 1`,
+          [versionId, s.userId],
+        ).catch(() => ({ rows: [], rowCount: 0 }));
+        const linked = reference.rows[0];
+        if (linked?.external_track_id && linked?.file_url) {
+          easeverseReferenceSync = await pushApprovedReferenceMixToEaseVerse({
+            ownerUserId: String(linked.owner_user_id), externalTrackId: String(linked.external_track_id),
+            url: String(linked.file_url), name: linked.file_name ? String(linked.file_name) : null,
+            durationSec: linked.duration == null ? null : Number(linked.duration),
+          });
+        }
+      }
       void notifySoundRoomForVersion(versionId, "approval");
-      return res.status(201).json(a.rows[0]);
+      return res.status(201).json({ ...a.rows[0], ...(easeverseReferenceSync ? { easeverseReferenceSync } : {}) });
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
       console.error("[audio-showcase] approve failed:", e);
@@ -1760,6 +1798,47 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
       console.error("[audio-showcase] pull-takes failed:", e);
       return res.status(500).json({ error: "pull_takes_failed" });
+    }
+  });
+
+  app.post("/api/audio-showcases/easeverse/keeper", async (req, res) => {
+    if (!easeVerseServiceAuthorized(req)) return res.status(401).json({ error: "unauthorized" });
+    const ownerUserId = str(req.body?.ownerUserId, 64);
+    const externalTrackId = str(req.body?.externalTrackId, 160);
+    const fileUrl = secureAudioUrl(req.body?.url);
+    if (!ownerUserId || !externalTrackId || !fileUrl) return res.status(400).json({ error: "owner_track_and_https_url_required" });
+    const client = typeof pool.connect === "function" ? await pool.connect() : pool;
+    try {
+      await client.query("BEGIN");
+      const project = await client.query(
+        `SELECT id FROM audio_review_projects WHERE owner_user_id=$1
+          AND (external_track_id=$2 OR easeverse_track_id::text=$2) AND status<>'archived'
+          ORDER BY updated_at DESC LIMIT 1 FOR UPDATE`, [ownerUserId, externalTrackId]);
+      if (!project.rows.length) { await client.query("ROLLBACK"); return res.status(404).json({ error: "linked_sound_room_not_found" }); }
+      const projectId = String(project.rows[0].id);
+      const duplicate = await client.query(`SELECT id,version_number FROM audio_review_versions WHERE project_id=$1::uuid AND file_url=$2 LIMIT 1`, [projectId, fileUrl]);
+      if (duplicate.rows.length) {
+        await client.query("COMMIT");
+        return res.json({ applied: "up_to_date", reviewVersionId: duplicate.rows[0].id, versionNumber: duplicate.rows[0].version_number });
+      }
+      await client.query(`UPDATE audio_review_versions SET status='superseded' WHERE project_id=$1::uuid AND status='under_review'`, [projectId]);
+      const next = await client.query(`SELECT COALESCE(MAX(version_number),0)+1 AS n FROM audio_review_versions WHERE project_id=$1::uuid`, [projectId]);
+      const versionNumber = Number(next.rows[0]?.n || 1);
+      const created = await client.query(
+        `INSERT INTO audio_review_versions (project_id,version_label,version_number,file_name,file_url,duration,uploaded_by)
+         VALUES ($1::uuid,$2,$3,$4,$5,$6,$7) RETURNING id`,
+        [projectId, str(req.body?.versionLabel, 80) || `Keeper V${versionNumber}`, versionNumber,
+         str(req.body?.filename, 300) || "keeper.wav", fileUrl, num(req.body?.durationSec), "EaseVerse"]);
+      await client.query(`UPDATE audio_review_projects SET status='under_review',updated_at=NOW() WHERE id=$1::uuid`, [projectId]);
+      await client.query("COMMIT");
+      void broadcastSoundRoomUpdated(pool, projectId, "version");
+      return res.status(201).json({ applied: "created", projectId, reviewVersionId: created.rows[0].id, versionNumber });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      console.error("[audio-showcase] EaseVerse keeper failed:", error);
+      return res.status(503).json({ error: "keeper_import_failed" });
+    } finally {
+      if (client !== pool && typeof (client as any).release === "function") (client as any).release();
     }
   });
 
