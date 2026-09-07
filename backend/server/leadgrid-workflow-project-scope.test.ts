@@ -268,11 +268,26 @@ const workflowProjectScopeMigration = readFileSync(
 );
 
 describe("Leadgrid workflow project-scope migration", () => {
-  it("inherits only customer tuples backed by a Leadgrid project", () => {
+  it("inherits artifact tuples only from customers backed by a Leadgrid project", () => {
     const guardedCustomerBackfills = workflowProjectScopeMigration.match(
       /FROM crm_customers customer\s+JOIN leadgrid_projects project\s+ON project\.organization_id = customer\.organization_id\s+AND project\.id = customer\.project_id/g,
     );
 
-    expect(guardedCustomerBackfills).toHaveLength(8);
+    expect(guardedCustomerBackfills).toHaveLength(6);
+  });
+
+  it("makes the workflow tuple authoritative for executions and resume jobs", () => {
+    expect(workflowProjectScopeMigration).toContain(
+      "execution.project_id IS DISTINCT FROM workflow.project_id",
+    );
+    expect(workflowProjectScopeMigration).toContain(
+      "job.project_id IS DISTINCT FROM workflow.project_id",
+    );
+    expect(workflowProjectScopeMigration).not.toMatch(
+      /UPDATE leadgrid_workflow_executions execution[\s\S]{0,250}FROM crm_customers customer/,
+    );
+    expect(workflowProjectScopeMigration).not.toMatch(
+      /UPDATE leadgrid_workflow_resume_jobs job[\s\S]{0,250}FROM crm_customers customer/,
+    );
   });
 });
