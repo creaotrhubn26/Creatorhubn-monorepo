@@ -2,21 +2,62 @@
 --
 -- Bind Public API keys to one Leadgrid customer project by default.
 -- Legacy keys are auto-bound only when the organization has exactly one
--- eligible customer project. Ambiguous legacy keys are revoked and must be
--- rotated deliberately; they never receive silent organization-wide access.
+-- eligible customer project. The migration aborts when an active legacy key
+-- is ambiguous, so rotation remains deliberate and no key receives silent
+-- organization-wide access.
 -- The management route permits new organization-wide keys only through an
 -- explicit admin-only request.
 --
 -- The composite foreign key prevents a project from ever being paired with a
 -- different organization. Deleting a Leadgrid project revokes its bound keys.
 
-BEGIN;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
 SET LOCAL lock_timeout = '10s';
 SET LOCAL statement_timeout = '120s';
 
 ALTER TABLE leadgrid_api_keys
   ADD COLUMN IF NOT EXISTS project_id TEXT,
   ADD COLUMN IF NOT EXISTS access_scope VARCHAR(16);
+
+-- Freeze API-key writes until the inventory assertion and migration updates
+-- commit together. REPEATABLE READ also keeps the project inventory used by
+-- the assertion and backfill on one snapshot without blocking project writes.
+LOCK TABLE leadgrid_api_keys IN SHARE ROW EXCLUSIVE MODE;
+
+DO $migration$
+DECLARE
+  ambiguous_active_keys BIGINT;
+BEGIN
+  WITH eligible_projects AS (
+    SELECT organization_id,
+           COUNT(*) AS project_count
+      FROM leadgrid_projects
+     WHERE organization_id IS NOT NULL
+       AND (status IS NULL OR status NOT IN ('archived', 'deleted'))
+       AND (project_type IS NULL OR project_type NOT IN (
+         'feature_film', 'documentary', 'film', 'short_film',
+         'tv_series', 'commercial', 'music_video', 'casting'
+       ))
+     GROUP BY organization_id
+  )
+  SELECT COUNT(*)
+    INTO ambiguous_active_keys
+    FROM leadgrid_api_keys k
+    LEFT JOIN eligible_projects p
+      ON p.organization_id = k.organization_id
+   WHERE k.revoked_at IS NULL
+     AND k.access_scope IS NULL
+     AND COALESCE(p.project_count, 0) <> 1;
+
+  IF ambiguous_active_keys > 0 THEN
+    RAISE EXCEPTION
+      'Migration 0526 blocked: % active legacy Leadgrid Public API key(s) require deliberate rotation',
+      ambiguous_active_keys
+      USING ERRCODE = 'P0001',
+            HINT = 'Rotate or revoke ambiguous keys, then rerun the canonical production workflow.';
+  END IF;
+END
+$migration$;
 
 -- A single eligible customer project is an unambiguous safe binding.
 WITH eligible_projects AS (

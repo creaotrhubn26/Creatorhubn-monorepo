@@ -178,7 +178,7 @@ describe("continuous Discovery v2 adapter", () => {
 
     expect(result).toMatchObject({
       ok: true,
-      discoveryQuery: "regnskapsbyrå i Asker, Bærum",
+      discoveryQuery: "regnskapsbyrå i Bærum, Asker",
     });
     expect(service.createDiscoveryRun).toHaveBeenCalledWith(
       expect.anything(),
@@ -187,7 +187,7 @@ describe("continuous Discovery v2 adapter", () => {
           city: null,
           geo: null,
           municipality_numbers: ["3201", "3203"],
-          municipality_names: ["Asker", "Bærum"],
+          municipality_names: ["Bærum", "Asker"],
         }),
       }),
     );

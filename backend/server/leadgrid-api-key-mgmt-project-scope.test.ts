@@ -190,6 +190,12 @@ describe("Leadgrid API-key management project scope", () => {
       "utf8",
     );
 
+    expect(migration).toContain("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    expect(migration).toContain(
+      "LOCK TABLE leadgrid_api_keys IN SHARE ROW EXCLUSIVE MODE",
+    );
+    expect(migration).toContain("ambiguous_active_keys > 0");
+    expect(migration).toContain("Migration 0526 blocked");
     expect(migration).toContain("WHERE project_count = 1");
     expect(migration).toContain("SET project_id = single_projects.project_id");
     expect(migration).toContain("'project_scope_migration_requires_rotation'");
