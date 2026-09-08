@@ -216,7 +216,7 @@ describe("Leadgrid domain onboarding routes", () => {
         can_manage_multiple_profiles: true,
         recommended_profiles: [{
           approval_mode: "manual",
-          brief: { industry_queries: ["tannklinikk", "tannlege"] },
+          brief: { industry_queries: ["tannlege"] },
         }],
         skills: expect.arrayContaining([
           expect.objectContaining({ key: "leadgrid_data_quality" }),

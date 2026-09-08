@@ -174,7 +174,11 @@ pub fn parse_session_info(text: &str) -> ParsedSession {
                     // Første ikke-tomme rad er kolonne-headeren.
                     for (i, c) in cols.iter().enumerate() {
                         let u = c.to_uppercase();
-                        if u.contains("NAME") {
+                        // Real Pro Tools exports also contain a later
+                        // "TRACK NAME" column. Only the exact NAME column is
+                        // the marker label; otherwise every marker becomes
+                        // the ruler track name (usually "Markers").
+                        if u == "NAME" {
                             col_name = Some(i);
                         } else if u.contains("TIME REFERENCE") || u == "TIME REFERENCE" {
                             col_timeref = Some(i);
@@ -298,6 +302,14 @@ M A R K E R S  L I S T I N G\n\
         assert!((p.markers[0].start_seconds - 5.0).abs() < 1e-6); // 240000/48000
         assert!((p.markers[1].start_seconds - 24.0).abs() < 1e-6);
         assert!((p.markers[2].start_seconds - 60.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn marker_name_is_not_overwritten_by_track_name_column() {
+        let txt = "SAMPLE RATE:\t48000.0\n\nM A R K E R S  L I S T I N G\n#\tLOCATION\tTIME REFERENCE\tUNITS\tNAME\tTRACK NAME\tTRACK TYPE\n1\t0:00\t0\tSamples\tLocation 1\tMarkers\tRuler\n";
+        let p = parse_session_info(txt);
+        assert_eq!(p.markers.len(), 1);
+        assert_eq!(p.markers[0].name, "Location 1");
     }
 
     #[test]

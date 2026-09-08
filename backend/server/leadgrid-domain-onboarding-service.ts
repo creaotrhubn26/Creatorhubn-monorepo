@@ -188,7 +188,7 @@ const CATEGORY_RULES: CategoryRule[] = [
       "dental",
       "odontolog",
     ],
-    customerTypes: ["tannklinikk", "tannlege"],
+    customerTypes: ["tannlege"],
     idealCustomer:
       "Aktiv tannklinikk eller tannlegesenter med lokal pasientbase og beslutningstaker som kan vurdere synlighet, pasienthenvendelser og vekst.",
     goal:

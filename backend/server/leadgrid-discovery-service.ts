@@ -1254,13 +1254,15 @@ async function cancelDiscoveryRunInProject(
       if ((cancelledJob.rowCount ?? 0) > 0) status = "cancelled";
     }
 
+    // status is reused in the CASE below; the explicit cast prevents
+    // PostgreSQL 42P08 when the parameter is inferred as varchar and text.
     await client.query(
       `UPDATE leadgrid_discovery_runs
-          SET status = $2,
+          SET status = $2::text,
               cancellation_requested_at =
                 COALESCE(cancellation_requested_at, NOW()),
               finished_at = CASE
-                WHEN $2 = 'cancelled' THEN COALESCE(finished_at, NOW())
+                WHEN $2::text = 'cancelled' THEN COALESCE(finished_at, NOW())
                 ELSE finished_at
               END,
               version = version + 1
@@ -4220,13 +4222,14 @@ export async function executeDiscoveryRun(
           : "completed";
     const finishingRun = run;
     const finished = await withTransaction(pool, async (client) => {
+      // Keep the status parameter type-stable across assignment and CASE.
       const statusUpdate = await client.query(
         `UPDATE leadgrid_discovery_runs r
-            SET status = $2,
+            SET status = $2::text,
                 finished_at = NOW(),
-                error_code = CASE WHEN $2 = 'partial'
+                error_code = CASE WHEN $2::text = 'partial'
                   THEN 'partial_results' ELSE NULL END,
-                error_message = CASE WHEN $2 = 'partial'
+                error_message = CASE WHEN $2::text = 'partial'
                   THEN 'Discovery fullførte med enkelte utilgjengelige kilder.'
                   ELSE NULL END,
                 version = r.version + 1
@@ -4321,7 +4324,7 @@ export async function executeDiscoveryRun(
       numberValue(counts.rows[0]?.count) > 0 ? "partial" : "failed";
     const failed = await pool.query(
       `UPDATE leadgrid_discovery_runs r
-          SET status = $2,
+          SET status = $2::text,
               finished_at = NOW(),
               error_code = $3,
               error_message = $4,

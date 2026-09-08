@@ -54,14 +54,34 @@ function buildApp(options: { asyncSession?: boolean } = {}) {
           rowCount: 1,
         };
       }
+      if (sql.includes("FROM projects p") && sql.includes("LIMIT 1") && params[0] === "public-music-admin") {
+        return {
+          rows: [{ id: "public-music-admin", user_id: "owner-user", title: "Admin music project", profession: "admin", category: "music", project_type: "music", _project_source: "public" }],
+          rowCount: 1,
+        };
+      }
       if (sql.includes("SELECT workspace_category FROM profession_types")) {
-        return { rows: [{ workspace_category: "music" }], rowCount: 1 };
+        return { rows: [{ workspace_category: params[0] === "admin" ? "service" : "music" }], rowCount: 1 };
       }
       if (sql.includes("FROM users WHERE id::text")) {
         return { rows: [{ user_id: "owner-user", email: "owner@example.test", first_name: "Ola", last_name: "Eier" }], rowCount: 1 };
       }
       if (sql.includes("UPDATE projects SET")) {
         return { rows: [{ id: "public-project", user_id: "owner-user", title: "Oppdatert", project_type: "album", profession: "music_producer" }], rowCount: 1 };
+      }
+      if (sql.includes("INSERT INTO projects")) {
+        return {
+          rows: [{
+            id: params[0],
+            user_id: params[1],
+            title: params[2],
+            name: params[3],
+            project_type: params[6],
+            profession: params[5],
+            _project_source: "public",
+          }],
+          rowCount: 1,
+        };
       }
       if (sql.includes("DELETE FROM projects") && params[0] === "public-project") {
         return { rows: [{ id: "public-project" }], rowCount: 1 };
@@ -113,6 +133,40 @@ function buildApp(options: { asyncSession?: boolean } = {}) {
 }
 
 describe("generic project access routes", () => {
+  it("creates workspace projects in the public store without requiring legacy schema access", async () => {
+    const { app, captured } = buildApp();
+    const response = await request(app)
+      .post("/api/projects")
+      .set("x-test-user", "owner-user")
+      .send({
+        name: "CreatorHub Sound Room E2E",
+        clientName: "CreatorHub Sound Room E2E",
+        eventDate: "2026-08-08",
+        location: "Oslo",
+        projectType: "music",
+        profession: "music_producer",
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual(expect.objectContaining({
+      title: "CreatorHub Sound Room E2E",
+      project_type: "music",
+      profession: "music_producer",
+      _project_source: "public",
+    }));
+    const insert = captured.find((call) => call.sql.includes("INSERT INTO projects"));
+    expect(insert?.sql).toContain("project_data");
+    expect(insert?.params).toEqual(expect.arrayContaining([
+      "owner-user",
+      "CreatorHub Sound Room E2E",
+      "music_producer",
+      "music",
+      "2026-08-08",
+    ]));
+    expect(captured.some((call) => call.sql.includes("legacy.users"))).toBe(false);
+    expect(captured.some((call) => call.sql.includes("INSERT INTO legacy.projects"))).toBe(false);
+  });
+
   it("lists both owned and active team projects without applying profession to shared projects", async () => {
     const { app, captured } = buildApp();
     const response = await request(app)
@@ -165,6 +219,30 @@ describe("generic project access routes", () => {
       access: { canRead: true, canEdit: true, isOwner: true },
       owner: expect.objectContaining({ userId: "owner-user", name: "Ola Eier" }),
     }));
+  });
+
+  it("uses an explicit music project type even when the owner's profession is admin", async () => {
+    const { app, captured } = buildApp();
+    const response = await request(app)
+      .get("/api/projects/public-music-admin/workspace-bootstrap")
+      .set("x-test-user", "owner-user");
+
+    expect(response.status).toBe(200);
+    expect(response.body.workspaceCategory).toBe("music");
+    expect(captured.some((call) =>
+      call.sql.includes("SELECT workspace_category FROM profession_types")
+      && call.params[0] === "admin",
+    )).toBe(false);
+  });
+
+  it("does not require the optional public priority column to list or load projects", async () => {
+    const { app, captured } = buildApp();
+    await request(app).get("/api/projects/public-project").set("x-test-user", "owner-user");
+    const publicRead = captured.find((call) =>
+      call.sql.includes("FROM projects p") && call.sql.includes("p.id::text = $1"),
+    );
+    expect(publicRead?.sql).toContain("NULL::text AS priority");
+    expect(publicRead?.sql).not.toMatch(/\bp\.priority\b/);
   });
 
   it("updates and deletes public-store projects through the generic contract", async () => {

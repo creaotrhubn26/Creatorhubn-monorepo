@@ -624,6 +624,14 @@ final class AppState {
                     activeProjectSummary = nil
                     projectsLoadState = .loading
                 }
+                #if DEBUG
+                // Domene-onboardingens UI-test bruker en prosesslokal fixture.
+                // Et org-bytte skal derfor ikke validere den syntetiske tokenen
+                // mot produksjons-API-et og åpne SessionExpiredSheet over Discovery.
+                if ProcessInfo.processInfo.environment["QA_TOUR"] == "domain-onboarding" {
+                    return
+                }
+                #endif
                 Task {
                     await api?.setActiveOrganizationId(selectedOrganizationId)
                     await loadOrgContext()

@@ -87,4 +87,36 @@ describe("Pro Tools Companion EaseVerse bridge", () => {
       },
     });
   });
+
+  it("accepts missing Pro Tools tempo as null metadata instead of 0 BPM", async () => {
+    const pool = createPool();
+    const app = express();
+    app.use(express.json());
+    setupProToolsCompanionRoutes({
+      app,
+      pool,
+      requireUserSession: vi.fn(() => null),
+    });
+
+    const response = await request(app)
+      .post("/api/protools/sessions/session-1/metadata")
+      .set("authorization", "Bearer trr_desk_test")
+      .send({
+        eventId: "session-info-1",
+        tempo: null,
+        keySignature: null,
+        timeSignature: null,
+        sampleRate: 48000,
+        bitDepth: 32,
+        tracks: [{ name: "CreatorHub-E2E-source", type: "audio" }],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ ok: true });
+    const sessionUpdate = pool.query.mock.calls.find(([sql]) =>
+      String(sql).includes("UPDATE protools_companion_sessions SET"),
+    );
+    expect(sessionUpdate?.[1]?.[1]).toBeNull();
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+  });
 });
