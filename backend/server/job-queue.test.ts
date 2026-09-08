@@ -96,6 +96,8 @@ describe("processNextJob", () => {
     expect(requeue.params[1]).toBe("queued");
     expect(requeue.params[2]).toBe("30000");
     expect(String(requeue.params[3])).toContain("BRREG nede");
+    expect(requeue.sql).toContain("SET status = $2::text");
+    expect(requeue.sql).toContain("CASE WHEN $2::text = 'dead'");
 
     const last = fakePool({ ...JOB, attempts: 3 });
     expect(await processNextJob(last.pool)).toBe("dead");
@@ -110,6 +112,8 @@ describe("processNextJob", () => {
     expect(update.params[2]).toBe(String(MISSING_HANDLER_DEFER_MS));
     expect(String(update.params[3])).toContain("Ingen handler");
     expect(update.sql).toContain("GREATEST(attempts - 1, 0)");
+    expect(update.sql).toContain("WHEN $2::text = 'queued'");
+    expect(update.sql).toContain("CASE WHEN $2::text = 'dead'");
   });
 
   it("old unknown job type becomes dead instead of being stranded forever", async () => {

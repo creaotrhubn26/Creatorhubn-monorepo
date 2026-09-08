@@ -1726,6 +1726,13 @@ describe("Leadgrid Discovery service", () => {
     expect(events.some((event) => event.data.status === "review_ready")).toBe(
       true,
     );
+    const finalizationWrite = query.mock.calls.find(([queryValue]) =>
+      textOf(queryValue).includes("error_code = CASE WHEN"),
+    );
+    expect(textOf(finalizationWrite?.[0])).toContain("status = $2::text");
+    expect(textOf(finalizationWrite?.[0])).toContain(
+      "CASE WHEN $2::text = 'partial'",
+    );
   });
 
   it("resumes only the unfinished v3 query from its immutable absolute offset", async () => {

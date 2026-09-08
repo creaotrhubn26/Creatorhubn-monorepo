@@ -1198,12 +1198,13 @@ async function planCampaignStep(
           campaign.error_message,
         ],
       );
+      // status is reused in CASE expressions; cast it to one PostgreSQL type.
       await client.query(
         `UPDATE leadgrid_discovery_campaign_runs
-            SET status = $4, active_run_id = NULL,
+            SET status = $4::text, active_run_id = NULL,
                 finished_at = COALESCE(finished_at, NOW()),
-                error_code = CASE WHEN $4 = 'failed' THEN error_code ELSE NULL END,
-                error_message = CASE WHEN $4 = 'failed' THEN error_message ELSE NULL END,
+                error_code = CASE WHEN $4::text = 'failed' THEN error_code ELSE NULL END,
+                error_message = CASE WHEN $4::text = 'failed' THEN error_message ELSE NULL END,
                 version = version + 1, updated_at = NOW()
           WHERE organization_id = $1::uuid
             AND project_id = $2
@@ -1264,9 +1265,9 @@ async function planCampaignStep(
         const nextPosition = integer(campaign.current_position) + 1;
         await client.query(
           `UPDATE leadgrid_discovery_campaign_items
-              SET status = $4, finished_at = COALESCE(finished_at, NOW()),
-                  error_code = CASE WHEN $4 = 'partial' THEN $5 ELSE NULL END,
-                  error_message = CASE WHEN $4 = 'partial' THEN $6 ELSE NULL END,
+              SET status = $4::text, finished_at = COALESCE(finished_at, NOW()),
+                  error_code = CASE WHEN $4::text = 'partial' THEN $5 ELSE NULL END,
+                  error_message = CASE WHEN $4::text = 'partial' THEN $6 ELSE NULL END,
                   updated_at = NOW()
             WHERE organization_id = $1::uuid
               AND project_id = $2
@@ -1621,9 +1622,9 @@ async function failCampaignLaunch(
     const finalStatus = cancellationWon ? "cancelled" : "failed";
     await client.query(
       `UPDATE leadgrid_discovery_campaign_items
-          SET status = $7, finished_at = NOW(),
-              error_code = CASE WHEN $7 = 'cancelled' THEN NULL ELSE $5 END,
-              error_message = CASE WHEN $7 = 'cancelled' THEN NULL ELSE $6 END,
+          SET status = $7::text, finished_at = NOW(),
+              error_code = CASE WHEN $7::text = 'cancelled' THEN NULL ELSE $5 END,
+              error_message = CASE WHEN $7::text = 'cancelled' THEN NULL ELSE $6 END,
               updated_at = NOW()
         WHERE organization_id = $1::uuid
           AND project_id = $2
@@ -1641,9 +1642,9 @@ async function failCampaignLaunch(
     );
     await client.query(
       `UPDATE leadgrid_discovery_campaign_runs
-          SET status = $6, active_run_id = NULL, finished_at = NOW(),
-              error_code = CASE WHEN $6 = 'cancelled' THEN NULL ELSE $4 END,
-              error_message = CASE WHEN $6 = 'cancelled' THEN NULL ELSE $5 END,
+          SET status = $6::text, active_run_id = NULL, finished_at = NOW(),
+              error_code = CASE WHEN $6::text = 'cancelled' THEN NULL ELSE $4 END,
+              error_message = CASE WHEN $6::text = 'cancelled' THEN NULL ELSE $5 END,
               version = version + 1, updated_at = NOW()
         WHERE organization_id = $1::uuid
           AND project_id = $2
