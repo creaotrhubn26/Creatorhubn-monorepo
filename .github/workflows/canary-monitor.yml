@@ -2,19 +2,19 @@ name: Control Center canary-monitor
 
 # Proaktiv drift: kjører syntetiske brukerreiser mot prod hvert 10. min for å
 # fange feil FØR brukerne (401-regresjoner, utløpt Stripe-nøkkel, nede-tjenester).
-# Backend-endepunktet gjør selve prøvingen, registrerer utfall og bygger
-# error_log-incident + super_admin-varsel ved feil. Token-gated via
+# GitHub-runneren måler Role Room-fronten utenfra; backend tester app/auth
+# direkte, registrerer utfall og bygger incident/varsel. Token-gated via
 # CRON_TRIGGER_TOKEN (GitHub secret + Render env) — samme mønster som cockpit-cron.
 #
 # Endepunkt: POST /api/control-center/canary/run
 #
-# NB: workflowen feiler KUN på transport-/auth-feil (401/5xx). Individuelle
-# canary-feil er forventet output og varsles via incident/e-post, ikke her.
+# Workflowen feiler hvis selve cron-kallet eller payload-kontrakten feiler.
+# Individuelle canary-feil varsles via incident/e-post og vises som warning her.
 
 on:
   schedule:
-    - cron: '*/10 * * * *'   # hvert 10. min (GitHub-cron-presisjon ~5–15 min, OK)
-  workflow_dispatch:          # manuell trigger for testing
+    - cron: "*/10 * * * *" # hvert 10. min (GitHub-cron-presisjon ~5–15 min, OK)
+  workflow_dispatch: # manuell trigger for testing
 
 permissions:
   contents: read
@@ -25,6 +25,7 @@ concurrency:
 
 env:
   BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+  FRONTDOOR_URL: https://theroleroom.com
 
 jobs:
   run-canaries:
@@ -32,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: POST /api/control-center/canary/run
+      - name: Mål front-door og kjør canary-journeys
         env:
           CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
         run: |
@@ -40,12 +41,73 @@ jobs:
             echo "::error::CRON_TRIGGER_TOKEN GitHub-secret er ikke satt."
             exit 1
           fi
-          RES=$(curl -s -w "\n%{http_code}" \
+
+          # Kjøres her (utenfor Render) for å unngå Render→Netlify→Render-hairpin.
+          PROBE_STARTED_MS=$(date +%s%3N)
+          FRONTDOOR_STATUS=""
+          FRONTDOOR_EXIT=1
+          FRONTDOOR_ATTEMPTS=0
+          for ATTEMPT in 1 2; do
+            FRONTDOOR_ATTEMPTS=$ATTEMPT
+            set +e
+            FRONTDOOR_STATUS=$(curl -sS -L -o /dev/null -w "%{http_code}" \
+              --connect-timeout 5 \
+              --max-time 20 \
+              "$FRONTDOOR_URL/api/role-room/projects/00000000-0000-0000-0000-0000000ca0a1/my-tabs")
+            FRONTDOOR_EXIT=$?
+            set -e
+            if [ "$FRONTDOOR_EXIT" -eq 0 ] && [[ "$FRONTDOOR_STATUS" =~ ^[1-5][0-9][0-9]$ ]]; then
+              if [ "$FRONTDOOR_STATUS" -lt 500 ] \
+                && [ "$FRONTDOOR_STATUS" -ne 408 ] \
+                && [ "$FRONTDOOR_STATUS" -ne 425 ] \
+                && [ "$FRONTDOOR_STATUS" -ne 429 ]; then
+                break
+              fi
+            fi
+            if [ "$ATTEMPT" -lt 2 ]; then
+              sleep 1
+            fi
+          done
+          PROBE_FINISHED_MS=$(date +%s%3N)
+          FRONTDOOR_LATENCY_MS=$((PROBE_FINISHED_MS - PROBE_STARTED_MS))
+
+          if [ "$FRONTDOOR_EXIT" -eq 0 ] && [[ "$FRONTDOOR_STATUS" =~ ^[1-5][0-9][0-9]$ ]]; then
+            FRONTDOOR_PROBE=$(jq -cn \
+              --argjson status "$FRONTDOOR_STATUS" \
+              --argjson latency "$FRONTDOOR_LATENCY_MS" \
+              --argjson attempts "$FRONTDOOR_ATTEMPTS" \
+              '{httpStatus: $status, latencyMs: $latency, attempts: $attempts}')
+            echo "Role Room front-door: HTTP $FRONTDOOR_STATUS ($FRONTDOOR_LATENCY_MS ms, $FRONTDOOR_ATTEMPTS forsøk)"
+          else
+            FRONTDOOR_ERROR="network"
+            if [ "$FRONTDOOR_EXIT" -eq 28 ]; then
+              FRONTDOOR_ERROR="timeout"
+            fi
+            FRONTDOOR_PROBE=$(jq -cn \
+              --argjson latency "$FRONTDOOR_LATENCY_MS" \
+              --argjson attempts "$FRONTDOOR_ATTEMPTS" \
+              --arg error "$FRONTDOOR_ERROR" \
+              '{httpStatus: null, latencyMs: $latency, error: $error, attempts: $attempts}')
+            echo "::warning::Role Room front-door: $FRONTDOOR_ERROR ($FRONTDOOR_LATENCY_MS ms, $FRONTDOOR_ATTEMPTS forsøk)"
+          fi
+          REQUEST_BODY=$(jq -cn --argjson probe "$FRONTDOOR_PROBE" '{frontdoorProbe: $probe}')
+
+          # Token sendes bare til direkte Render, aldri til FRONTDOOR_URL.
+          set +e
+          RES=$(curl -sS -w "\n%{http_code}" \
             -X POST \
             -H "Content-Type: application/json" \
             -H "x-cron-trigger-token: $CRON_TRIGGER_TOKEN" \
+            --data "$REQUEST_BODY" \
+            --connect-timeout 10 \
             --max-time 120 \
             "$BACKEND_URL/api/control-center/canary/run")
+          BACKEND_EXIT=$?
+          set -e
+          if [ "$BACKEND_EXIT" -ne 0 ]; then
+            echo "::error::Canary-kallet til backend feilet på transport (curl $BACKEND_EXIT)."
+            exit 1
+          fi
           CODE=$(echo "$RES" | tail -1)
           BODY=$(echo "$RES" | sed '$d')
           echo "HTTP $CODE"
@@ -54,11 +116,18 @@ jobs:
             echo "::error::CRON_TRIGGER_TOKEN matcher ikke Render-env."
             exit 1
           fi
-          if [ "$CODE" -ge 500 ]; then
+          if ! [[ "$CODE" =~ ^2[0-9][0-9]$ ]]; then
             echo "::error::Backend-feil ($CODE)"
             exit 1
           fi
-          # Sekundær synlighet: antall feilende canaries (ekte varsel går via incident/e-post).
+          if ! echo "$BODY" | jq -e '
+            (.skipped == 0) and
+            ([.results[]?.key] | index("roleroom-frontdoor-auth-guard") != null)
+          ' >/dev/null; then
+            echo "::error::Backend konsumerte ikke den eksterne front-door-proben."
+            exit 1
+          fi
+          # Sekundær synlighet: ekte varsel går via Control Center/e-post.
           FAILED=$(echo "$BODY" | jq -r '.failed // 0' 2>/dev/null || echo 0)
           if [ "$FAILED" != "0" ] && [ -n "$FAILED" ]; then
             echo "::warning::$FAILED canary-journey(er) feilet — se Control Center «Hendelser»/e-post."
