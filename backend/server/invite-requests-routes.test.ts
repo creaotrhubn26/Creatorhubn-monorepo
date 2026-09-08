@@ -172,6 +172,26 @@ describe("prototype-tester application flow", () => {
     expect(resolveSession).toHaveBeenCalledOnce();
   });
 
+  it("limits raw agreement evidence to admin roles", async () => {
+    const { app, query } = buildApp({
+      getActiveSessionFromRequest: () => ({
+        userId: "instructor-user",
+        email: "instructor@example.com",
+        name: "Instructor",
+        role: "instructor",
+        loginAt: new Date().toISOString(),
+      }),
+    });
+
+    const response = await request(app).get(
+      "/api/invites/admin/requests/request-id/tester-agreements",
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toContain("Kun administratorer");
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it("returns all agreement states in the admin request view", async () => {
     const requestRow = {
       id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",

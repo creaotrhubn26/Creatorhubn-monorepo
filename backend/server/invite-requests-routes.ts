@@ -79,6 +79,7 @@ const INVITE_REQUEST_APPROVER_ROLES = new Set([
   "academy_admin",
   "instructor",
 ]);
+const AGREEMENT_EVIDENCE_ROLES = new Set(["admin", "super_admin"]);
 
 type InviteRequestApproverSession = {
   userId: string;
@@ -1012,7 +1013,13 @@ export function setupInviteRequestsRoutes(
 
   app.get("/api/invites/admin/requests/:id/tester-agreements", async (req, res) => {
     try {
-      if (!(await requireInviteRequestApproverSession(req, res))) return;
+      const approverSession = await requireInviteRequestApproverSession(req, res);
+      if (!approverSession) return;
+      if (!AGREEMENT_EVIDENCE_ROLES.has(String(approverSession.role).toLowerCase())) {
+        return res.status(403).json({
+          error: "Kun administratorer kan laste ned signeringsbevis",
+        });
+      }
       const result = await pool.query(
         `SELECT id, invite_request_id, email, status, accepted_at, accepted_nda_name,
                 accepted_ip, accepted_user_agent, confirmed_signing_authority,
