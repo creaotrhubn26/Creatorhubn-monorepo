@@ -31,7 +31,10 @@ const publicProjectSelect = `
          p.project_type,
          p.profession,
          p.status,
-         p.priority,
+         -- public.projects has never exposed a stable priority column in every
+         -- deployed schema. Keep the normalized contract without making the
+         -- whole project unreadable when that optional legacy field is absent.
+         NULL::text AS priority,
          p.budget,
          p.created_at,
          p.updated_at,

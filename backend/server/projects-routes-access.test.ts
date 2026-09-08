@@ -54,8 +54,14 @@ function buildApp(options: { asyncSession?: boolean } = {}) {
           rowCount: 1,
         };
       }
+      if (sql.includes("FROM projects p") && sql.includes("LIMIT 1") && params[0] === "public-music-admin") {
+        return {
+          rows: [{ id: "public-music-admin", user_id: "owner-user", title: "Admin music project", profession: "admin", category: "music", project_type: "music", _project_source: "public" }],
+          rowCount: 1,
+        };
+      }
       if (sql.includes("SELECT workspace_category FROM profession_types")) {
-        return { rows: [{ workspace_category: "music" }], rowCount: 1 };
+        return { rows: [{ workspace_category: params[0] === "admin" ? "service" : "music" }], rowCount: 1 };
       }
       if (sql.includes("FROM users WHERE id::text")) {
         return { rows: [{ user_id: "owner-user", email: "owner@example.test", first_name: "Ola", last_name: "Eier" }], rowCount: 1 };
@@ -213,6 +219,30 @@ describe("generic project access routes", () => {
       access: { canRead: true, canEdit: true, isOwner: true },
       owner: expect.objectContaining({ userId: "owner-user", name: "Ola Eier" }),
     }));
+  });
+
+  it("uses an explicit music project type even when the owner's profession is admin", async () => {
+    const { app, captured } = buildApp();
+    const response = await request(app)
+      .get("/api/projects/public-music-admin/workspace-bootstrap")
+      .set("x-test-user", "owner-user");
+
+    expect(response.status).toBe(200);
+    expect(response.body.workspaceCategory).toBe("music");
+    expect(captured.some((call) =>
+      call.sql.includes("SELECT workspace_category FROM profession_types")
+      && call.params[0] === "admin",
+    )).toBe(false);
+  });
+
+  it("does not require the optional public priority column to list or load projects", async () => {
+    const { app, captured } = buildApp();
+    await request(app).get("/api/projects/public-project").set("x-test-user", "owner-user");
+    const publicRead = captured.find((call) =>
+      call.sql.includes("FROM projects p") && call.sql.includes("p.id::text = $1"),
+    );
+    expect(publicRead?.sql).toContain("NULL::text AS priority");
+    expect(publicRead?.sql).not.toMatch(/\bp\.priority\b/);
   });
 
   it("updates and deletes public-store projects through the generic contract", async () => {

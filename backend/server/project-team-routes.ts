@@ -194,6 +194,26 @@ function mapMember(r: any): any {
   };
 }
 
+async function loadProjectOwner(pool: any, projectId: string): Promise<any | null> {
+  const publicOwner = await pool.query(
+    `SELECT p.user_id::text AS user_id, u.email, u.first_name, u.last_name
+       FROM projects p LEFT JOIN users u ON u.id = p.user_id
+      WHERE p.id::text = $1
+      LIMIT 1`,
+    [projectId],
+  ).catch(() => ({ rows: [] as any[] }));
+  if (publicOwner.rows[0]) return publicOwner.rows[0];
+
+  const legacyOwner = await pool.query(
+    `SELECT lp.user_id, u.email, u.first_name, u.last_name
+       FROM legacy.projects lp LEFT JOIN users u ON u.id::text = lp.user_id
+      WHERE lp.id = $1
+      LIMIT 1`,
+    [projectId],
+  ).catch(() => ({ rows: [] as any[] }));
+  return legacyOwner.rows[0] ?? null;
+}
+
 export function setupProjectTeamRoutes(deps: ProjectTeamRoutesDeps): void {
   const { app, pool, requireUserSession, escapeHtml } = deps;
 
@@ -208,26 +228,15 @@ export function setupProjectTeamRoutes(deps: ProjectTeamRoutesDeps): void {
         return res.status(403).json({ error: "Ingen tilgang til prosjektet" });
       }
       await ensureProjectTeamSchema(pool);
-      // Eier kan ligge i public.projects ELLER legacy.projects (workspace) —
-      // uten legacy-grenen ble owner null og «Ansvarlig»-lister tomme.
-      const owner = await pool.query(
-        `SELECT p.user_id, u.email, u.first_name, u.last_name
-           FROM projects p LEFT JOIN users u ON u.id = p.user_id
-          WHERE p.id::text = $1
-        UNION ALL
-        SELECT lp.user_id, u.email, u.first_name, u.last_name
-           FROM legacy.projects lp LEFT JOIN users u ON u.id::text = lp.user_id
-          WHERE lp.id = $1
-        LIMIT 1`,
-        [projectId],
-      );
+      // Project stores can have different production privileges. A denied
+      // legacy schema must not make the owner of a public project disappear.
+      const ownerRow = await loadProjectOwner(pool, projectId);
       const members = await pool.query(
         `SELECT * FROM project_team_members
           WHERE project_id = $1 AND deactivated_at IS NULL
           ORDER BY invited_at ASC`,
         [projectId],
       );
-      const ownerRow = owner.rows[0];
       res.json({
         owner: ownerRow ? {
           userId: ownerRow.user_id,
@@ -396,23 +405,17 @@ export function setupProjectTeamRoutes(deps: ProjectTeamRoutesDeps): void {
         return res.status(403).json({ error: "Ingen tilgang" });
       }
       await ensureProjectTeamSchema(pool);
-      // Aktive medlemmer + eier fra begge prosjekt-tabellene. DISTINCT ON
-      // dedupliserer eier hvis vedkommende også har en historisk medlemsrad.
+      const owner = await loadProjectOwner(pool, projectId);
+      const ownerName = owner
+        ? [owner.first_name, owner.last_name].filter(Boolean).join(" ") || owner.email
+        : null;
+      // Feed the already resolved owner into the presence query. This keeps
+      // public-project presence available even if legacy SELECT is denied.
       const rows = await pool.query(
         `WITH participants AS (
-           SELECT p.user_id::text AS user_id, u.email,
-                  NULLIF(CONCAT_WS(' ', u.first_name, u.last_name), '') AS name,
+           SELECT $2::text AS user_id, $3::text AS email, $4::text AS name,
                   NULL::varchar AS crew_role, true AS is_owner
-             FROM projects p
-             LEFT JOIN users u ON u.id = p.user_id
-            WHERE p.id::text = $1
-           UNION ALL
-           SELECT lp.user_id::text AS user_id, u.email,
-                  NULLIF(CONCAT_WS(' ', u.first_name, u.last_name), '') AS name,
-                  NULL::varchar AS crew_role, true AS is_owner
-             FROM legacy.projects lp
-             LEFT JOIN users u ON u.id::text = lp.user_id
-            WHERE lp.id = $1
+            WHERE NULLIF($2::text, '') IS NOT NULL
            UNION ALL
            SELECT m.user_id::text, m.email, m.name, m.crew_role, false AS is_owner
              FROM project_team_members m
@@ -433,7 +436,7 @@ export function setupProjectTeamRoutes(deps: ProjectTeamRoutesDeps): void {
                     OR pr.current_route LIKE '/workspace/' || $1 || '/%')) AS online
            FROM deduped d
            LEFT JOIN user_presence pr ON pr.user_id::text = d.user_id`,
-        [projectId],
+        [projectId, owner?.user_id || "", owner?.email || null, ownerName],
       ).catch(() => ({ rows: [] }));
       const online = rows.rows.filter((r: any) => r.online).length;
       res.json({
