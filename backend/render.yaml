@@ -94,7 +94,7 @@ services:
       - key: LEADGRID_PUBLIC_URL
         sync: false
       - key: LEADGRID_DISCOVERY_ENABLED
-        value: "false"
+        value: "true"
       - key: GOOGLE_REDIRECT_URI
         sync: false
       - key: ROLE_ROOM_GOOGLE_CLIENT_ID

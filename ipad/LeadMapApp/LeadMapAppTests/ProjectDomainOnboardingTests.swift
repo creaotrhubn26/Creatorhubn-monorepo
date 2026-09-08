@@ -66,7 +66,7 @@ final class ProjectDomainOnboardingTests: XCTestCase {
             "is_default":true,
             "status":"active",
             "brief":{
-              "industry_queries":["tannklinikk","tannlege"],
+              "industry_queries":["tannlege"],
               "exclusion_terms":["tannteknisk laboratorium"],
               "city":"Oslo",
               "geo":null,
@@ -118,7 +118,7 @@ final class ProjectDomainOnboardingTests: XCTestCase {
         XCTAssertEqual(preview.recommendedProfiles.count, 1)
         XCTAssertEqual(
             preview.recommendedProfiles[0].brief.industryQueries,
-            ["tannklinikk", "tannlege"]
+            ["tannlege"]
         )
         XCTAssertEqual(preview.recommendedProfiles[0].brief.city, "Oslo")
         XCTAssertNil(preview.recommendedProfiles[0].brief.validationMessage)
