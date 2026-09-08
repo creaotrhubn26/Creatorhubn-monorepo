@@ -1,8 +1,4 @@
 //! Persistent companion-config i ~/.creatorhub-protools-companion/config.json.
-//!
-//! Lagrer device-token (fra paring), API-base, valgt companion-sesjon og hvilke
-//! filer/mapper som overvåkes. Forwards-compat: alle felter har serde-default,
-//! korrupt JSON faller stille til default i stedet for å krasje.
 
 use std::fs;
 use std::path::PathBuf;
@@ -20,6 +16,8 @@ pub struct AppConfig {
     #[serde(default)]
     pub user_email: Option<String>,
     #[serde(default)]
+    pub device_id: Option<String>,
+    #[serde(default)]
     pub session_id: Option<String>,
     #[serde(default)]
     pub session_name: Option<String>,
@@ -31,7 +29,13 @@ pub struct AppConfig {
     pub easeverse_track_id: Option<String>,
     #[serde(default)]
     pub audio_room_id: Option<String>,
-    /// Storage-nøkler vi allerede har lastet opp (dedup mot re-bounce av samme fil).
+    #[serde(default)]
+    pub workspace_project_id: Option<String>,
+    #[serde(default)]
+    pub easeverse_project_id: Option<String>,
+    #[serde(default)]
+    pub suggested_project_name: Option<String>,
+    /// Filfingerprints som er fullført hos backend, brukt for idempotens over omstart.
     #[serde(default)]
     pub uploaded_bounces: Vec<String>,
 }
@@ -46,12 +50,16 @@ impl Default for AppConfig {
             api_base: default_api_base(),
             device_token: None,
             user_email: None,
+            device_id: None,
             session_id: None,
             session_name: None,
             session_info_path: None,
             bounce_dir: None,
             easeverse_track_id: None,
             audio_room_id: None,
+            workspace_project_id: None,
+            easeverse_project_id: None,
+            suggested_project_name: None,
             uploaded_bounces: Vec::new(),
         }
     }
@@ -100,6 +108,7 @@ mod tests {
         let c = AppConfig::default();
         assert_eq!(c.api_base, DEFAULT_API_BASE);
         assert!(c.device_token.is_none());
+        assert!(c.workspace_project_id.is_none());
     }
 
     #[test]
@@ -111,8 +120,7 @@ mod tests {
 
     #[test]
     fn unknown_fields_ignored() {
-        let c: AppConfig =
-            serde_json::from_str(r#"{"api_base":"https://x","future":1}"#).unwrap();
+        let c: AppConfig = serde_json::from_str(r#"{"api_base":"https://x","future":1}"#).unwrap();
         assert_eq!(c.api_base, "https://x");
     }
 }

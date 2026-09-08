@@ -8,7 +8,7 @@
 //   - `DemoModeManager.shared.isActive` (read/write)
 //   - `DemoModeManager.shared.mockLeads` (50 leads spredt i Oslo-området)
 //   - `MockDataBanner` view (legg som overlay på toppen av MainTabView)
-//   - `DemoModeToggleRow` (legg i MyProfileSheet eller Innstillinger)
+//   - `DemoModeToggleRow` (kun DEBUG; kan monteres i en intern QA-flate)
 
 import SwiftUI
 
@@ -20,9 +20,14 @@ final class DemoModeManager {
     /// UserDefaults-nøkkel — nonisolated så isActiveNonisolated kan lese.
     nonisolated static let key = "ipad.demo_mode"
 
-    /// Demo-modus aktiv? Persisterer i UserDefaults.
+    /// Demo-modus finnes kun i DEBUG. TestFlight/App Store kan aldri
+    /// erstatte tenant-data med mock-data, selv med en gammel UserDefaults-verdi.
     var isActive: Bool {
-        didSet { UserDefaults.standard.set(isActive, forKey: Self.key) }
+        didSet {
+            #if DEBUG
+            UserDefaults.standard.set(isActive, forKey: Self.key)
+            #endif
+        }
     }
 
     /// Nonisolated read av toggle for enum-mock-data-getters som ikke kan
@@ -31,8 +36,10 @@ final class DemoModeManager {
     nonisolated static var isActiveNonisolated: Bool {
         #if DEBUG
         if ProcessInfo.processInfo.environment["QA_DEMO"] == "1" { return true }
-        #endif
         return UserDefaults.standard.bool(forKey: key)
+        #else
+        return false
+        #endif
     }
 
     nonisolated static var hideBadgeForCapture: Bool {
@@ -46,10 +53,10 @@ final class DemoModeManager {
     private init() {
         #if DEBUG
         let envDemo = ProcessInfo.processInfo.environment["QA_DEMO"] == "1"
-        #else
-        let envDemo = false
-        #endif
         self.isActive = envDemo || UserDefaults.standard.bool(forKey: Self.key)
+        #else
+        self.isActive = false
+        #endif
         self.mockLeads = Self.generateMockLeads()
     }
 
@@ -230,7 +237,9 @@ struct MockDataBanner: View {
 
 // MARK: - DemoModeToggleRow
 
-/// Bruk i MyProfileSheet eller Innstillinger-flate.
+#if DEBUG
+
+/// Kan brukes i en intern DEBUG-/QA-flate.
 struct DemoModeToggleRow: View {
     @Bindable var manager = DemoModeManager.shared
 
@@ -266,3 +275,4 @@ struct DemoModeToggleRow: View {
         )
     }
 }
+#endif

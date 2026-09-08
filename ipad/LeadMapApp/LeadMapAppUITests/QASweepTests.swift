@@ -203,6 +203,57 @@ final class QASweepTests: XCTestCase {
         app.terminate()
     }
 
+    func testProfileEditValidationAndPersistenceFlow() throws {
+        let app = launchApp(tab: 0, environment: ["QA_TOUR": "profile"])
+
+        let avatar = app.buttons["header-profile-button"].firstMatch
+        XCTAssertTrue(avatar.waitForExistence(timeout: 8))
+        avatar.tap()
+
+        let openProfile = button(in: app, containing: "Min profil")
+        XCTAssertTrue(openProfile.waitForExistence(timeout: 5))
+        openProfile.tap()
+
+        XCTAssertTrue(app.otherElements["profile-screen"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["profile-display-name"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.staticTexts["profile-display-name"].label, "Ada Nordmann")
+
+        let edit = app.buttons["profile-edit-toolbar-button"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 3))
+        edit.tap()
+        XCTAssertTrue(app.otherElements["profile-edit-screen"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["profile-email-readonly"].exists)
+
+        let phone = app.textFields["profile-field-phone"]
+        XCTAssertTrue(phone.waitForExistence(timeout: 3))
+        replaceText(in: phone, with: "1234")
+        XCTAssertTrue(app.staticTexts["profile-error-phone"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.otherElements["profile-edit-screen"].exists, "Ugyldig felt skal ikke lukke skjemaet")
+
+        replaceText(in: phone, with: "+47 988 77 666", tapBeforeEditing: false)
+        XCTAssertFalse(app.staticTexts["profile-error-phone"].exists)
+        app.scrollViews.firstMatch.swipeDown()
+
+        let firstName = app.textFields["profile-field-first-name"]
+        XCTAssertTrue(firstName.waitForExistence(timeout: 3))
+        replaceText(in: firstName, with: "Grace")
+        app.scrollViews.firstMatch.swipeDown()
+        app.buttons["profile-save-button"].tap()
+
+        XCTAssertTrue(app.staticTexts["profile-display-name"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["profile-display-name"].label, "Grace Nordmann")
+        XCTAssertFalse(app.otherElements["profile-edit-screen"].exists)
+        snap(app, "profile-edit-saved")
+        app.terminate()
+    }
+
+    private func replaceText(in field: XCUIElement, with value: String, tapBeforeEditing: Bool = true) {
+        if tapBeforeEditing { field.tap() }
+        let current = field.value as? String ?? ""
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
+        field.typeText(value)
+    }
+
     func testKartAndLeadsOpenTheSharedLeadForm() throws {
         for tab in [1, 2] {
             let app = XCUIApplication()

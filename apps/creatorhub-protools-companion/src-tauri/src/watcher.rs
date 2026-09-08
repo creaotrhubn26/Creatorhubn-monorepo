@@ -16,7 +16,10 @@ use crate::state::{emit_activity, snapshot, SharedConfig, SharedWatcher};
 
 fn is_audio(path: &Path) -> bool {
     matches!(
-        path.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase()).as_deref(),
+        path.extension()
+            .and_then(|e| e.to_str())
+            .map(|s| s.to_lowercase())
+            .as_deref(),
         Some("wav") | Some("aif") | Some("aiff") | Some("mp3") | Some("m4a") | Some("flac")
     )
 }
@@ -54,7 +57,11 @@ async fn wait_until_stable(path: &Path) -> bool {
     last > 0
 }
 
-pub fn start(app: AppHandle, cfg: SharedConfig, watcher_state: SharedWatcher) -> Result<(), String> {
+pub fn start(
+    app: AppHandle,
+    cfg: SharedConfig,
+    watcher_state: SharedWatcher,
+) -> Result<(), String> {
     let snap = snapshot(&cfg);
     if snap.session_info_path.is_none() && snap.bounce_dir.is_none() {
         return Err("Velg «Session Info»-fil og/eller «Bounced Files»-mappe først".into());
@@ -119,15 +126,52 @@ pub fn start(app: AppHandle, cfg: SharedConfig, watcher_state: SharedWatcher) ->
                         Some(m) => m,
                         None => continue,
                     };
+                    if processing::is_bounce_uploaded(&cfg2, path) {
+                        seen_bounces.insert(path.clone(), meta);
+                        continue;
+                    }
                     if seen_bounces.get(path) == Some(&meta) {
                         continue; // allerede håndtert, uendret
                     }
                     if wait_until_stable(path).await {
                         // Re-stat etter stabilisering (mtime kan ha endret seg).
                         let final_meta = file_meta(path).unwrap_or(meta);
-                        seen_bounces.insert(path.clone(), final_meta);
-                        if let Err(e) = processing::upload_bounce(&cfg2, &app2, path).await {
-                            emit_activity(&app2, "error", &format!("Opplasting feilet: {}", e));
+                        let mut uploaded = false;
+                        let mut last_error = String::new();
+                        for (attempt, delay) in [0_u64, 2, 5, 15].iter().enumerate() {
+                            if *delay > 0 {
+                                tokio::time::sleep(Duration::from_secs(*delay)).await;
+                            }
+                            match processing::upload_bounce(&cfg2, &app2, path).await {
+                                Ok(_) => {
+                                    uploaded = true;
+                                    break;
+                                }
+                                Err(error) => {
+                                    last_error = error;
+                                    emit_activity(
+                                        &app2,
+                                        "error",
+                                        &format!(
+                                            "Opplasting feilet (forsøk {}/4): {}",
+                                            attempt + 1,
+                                            last_error,
+                                        ),
+                                    );
+                                }
+                            }
+                        }
+                        if uploaded {
+                            seen_bounces.insert(path.clone(), final_meta);
+                        } else {
+                            emit_activity(
+                                &app2,
+                                "error",
+                                &format!(
+                                    "Filen blir forsøkt igjen ved neste endring: {}",
+                                    last_error
+                                ),
+                            );
                         }
                     }
                 }
