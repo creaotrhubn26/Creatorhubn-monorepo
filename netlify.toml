@@ -47,6 +47,17 @@
     X-Frame-Options = "DENY"
     Content-Security-Policy = "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://creatorhub-backend-rtbl.onrender.com; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'"
 
+# Invitasjonslenken er et bearer-token i URL-en. Ikke la nettleser, mellomledd,
+# søkemotorer eller innebyggende sider lagre eller lekke den.
+[[headers]]
+  for = "/prototype-tester/accept-invite"
+  [headers.values]
+    Cache-Control = "no-store, max-age=0, must-revalidate"
+    X-Robots-Tag = "noindex, nofollow, noarchive"
+    Referrer-Policy = "no-referrer"
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://creatorhub-backend-rtbl.onrender.com; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'"
+
 # ─────────────────────────── REDIRECTS (301) ───────────────────────────
 # Netlify bruker første treff → permanente redirects må stå før rewrites.
 

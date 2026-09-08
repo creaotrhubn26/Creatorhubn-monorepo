@@ -16,6 +16,9 @@ describe("CreatorHub email branding", () => {
       ),
     ).toBe(CREATORHUB_LANDING_WORDMARK_URL);
     expect(
+      normalizeCreatorHubEmailLogoUrl("/creatorhub-wordmark-light.png"),
+    ).toBe(CREATORHUB_LANDING_WORDMARK_URL);
+    expect(
       creatorHubEmailLogoDimensions(CREATORHUB_LANDING_WORDMARK_URL),
     ).toEqual(expect.objectContaining({ width: 176, height: 52 }));
   });
@@ -25,6 +28,27 @@ describe("CreatorHub email branding", () => {
     expect(normalizeCreatorHubEmailLogoUrl(customLogo)).toBe(customLogo);
     expect(creatorHubEmailLogoDimensions(customLogo)).toEqual(
       expect.objectContaining({ width: 42, height: 42 }),
+    );
+  });
+
+  it("makes same-origin relative assets email-safe and rejects unsafe schemes", () => {
+    expect(normalizeCreatorHubEmailLogoUrl("/custom/email-logo.png")).toBe(
+      "https://creatorhubn.com/custom/email-logo.png",
+    );
+    expect(normalizeCreatorHubEmailLogoUrl("javascript:alert(1)")).toBe(
+      CREATORHUB_LANDING_WORDMARK_URL,
+    );
+    expect(normalizeCreatorHubEmailLogoUrl("data:image/svg+xml,<svg />")).toBe(
+      CREATORHUB_LANDING_WORDMARK_URL,
+    );
+    expect(normalizeCreatorHubEmailLogoUrl("http://example.com/logo.png")).toBe(
+      CREATORHUB_LANDING_WORDMARK_URL,
+    );
+    expect(
+      normalizeCreatorHubEmailLogoUrl("https://user:secret@example.com/logo.png"),
+    ).toBe(CREATORHUB_LANDING_WORDMARK_URL);
+    expect(normalizeCreatorHubEmailLogoUrl("//attacker.example/logo.png")).toBe(
+      CREATORHUB_LANDING_WORDMARK_URL,
     );
   });
 });

@@ -104,6 +104,14 @@ export interface PrototypeTesterInvitesDeps {
 
 const PROGRAM_DURATION_WEEKS = 12;
 const INVITE_EXPIRES_DAYS = 14;
+const MAX_EMAIL_LENGTH = 320;
+const MAX_NAME_LENGTH = 200;
+const MAX_COMPANY_LENGTH = 160;
+const MAX_TESTING_AREAS = 16;
+const MAX_TESTING_AREA_LENGTH = 80;
+const MAX_PERSONAL_MESSAGE_LENGTH = 2000;
+const DISALLOWED_SINGLE_LINE_CHARS = /[\u0000-\u001F\u007F]/;
+const DISALLOWED_TEXT_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
 
 async function ensureSchema(pool: any): Promise<void> {
   await pool.query(`
@@ -755,12 +763,16 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
     const adminSession = await requireAdminSession(req, res);
     if (!adminSession) return;
     try {
-      await ensureSchema(pool);
       const body = req.body ?? {};
       const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
       const name = typeof body.name === "string" ? body.name.trim() : "";
-      const testingAreas = Array.isArray(body.testingAreas) ? body.testingAreas : [];
-      const personalMessage = typeof body.personalMessage === "string" ? body.personalMessage.slice(0, 2000) : null;
+      const rawTestingAreas = Array.isArray(body.testingAreas) ? body.testingAreas : [];
+      const testingAreas = rawTestingAreas.every((area: unknown) => typeof area === "string")
+        ? rawTestingAreas.map((area: string) => area.trim())
+        : [];
+      const personalMessage = typeof body.personalMessage === "string"
+        ? body.personalMessage.trim()
+        : null;
       const invitedBy =
         typeof adminSession === "object" && adminSession && "userId" in adminSession
           ? String(adminSession.userId)
@@ -770,16 +782,51 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       const memberProfession = normalizeMemberProfession(body.profession);
       const memberCompany =
         typeof body.company === "string" && body.company.trim()
-          ? body.company.trim().slice(0, 160)
+          ? body.company.trim()
           : null;
 
-      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      if (
+        !email ||
+        email.length > MAX_EMAIL_LENGTH ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+      ) {
         return res.status(400).json({ error: "Gyldig e-post er påkrevd" });
       }
-      if (!name || name.length < 2) {
-        return res.status(400).json({ error: "Navn er påkrevd (min 2 tegn)" });
+      if (
+        name.length < 2 ||
+        name.length > MAX_NAME_LENGTH ||
+        DISALLOWED_SINGLE_LINE_CHARS.test(name)
+      ) {
+        return res.status(400).json({ error: "Navn må være mellom 2 og 200 tegn" });
+      }
+      if (
+        rawTestingAreas.length > MAX_TESTING_AREAS ||
+        testingAreas.length !== rawTestingAreas.length ||
+        testingAreas.some(
+          (area: string) =>
+            !area ||
+            area.length > MAX_TESTING_AREA_LENGTH ||
+            DISALLOWED_SINGLE_LINE_CHARS.test(area),
+        )
+      ) {
+        return res.status(400).json({ error: "Ugyldige testområder" });
+      }
+      if (
+        memberCompany &&
+        (memberCompany.length > MAX_COMPANY_LENGTH ||
+          DISALLOWED_SINGLE_LINE_CHARS.test(memberCompany))
+      ) {
+        return res.status(400).json({ error: "Firmanavn kan være maks 160 tegn" });
+      }
+      if (
+        personalMessage &&
+        (personalMessage.length > MAX_PERSONAL_MESSAGE_LENGTH ||
+          DISALLOWED_TEXT_CHARS.test(personalMessage))
+      ) {
+        return res.status(400).json({ error: "Personlig melding kan være maks 2000 tegn" });
       }
 
+      await ensureSchema(pool);
       const token = crypto.randomBytes(24).toString("hex");
       const expiresAt = new Date(Date.now() + INVITE_EXPIRES_DAYS * 24 * 60 * 60 * 1000);
       const ins = await pool.query(
@@ -939,7 +986,6 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
   // ─── POST /api/prototype-tester-invites/:token/accept ───────
   app.post("/api/prototype-tester-invites/:token/accept", async (req, res) => {
     try {
-      await ensureSchema(pool);
       const body = req.body ?? {};
       const ndaName = typeof body.ndaName === "string" ? body.ndaName.trim() : "";
       const acceptedProgramTerms = body.acceptedProgramTerms === true;
@@ -952,8 +998,12 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         : { program_terms: programTermsVersion };
       const confirmedSigningAuthority = body.confirmedSigningAuthority === true;
 
-      if (!ndaName || ndaName.length < 2) {
-        return res.status(400).json({ error: "Fullt navn er påkrevd som signatur" });
+      if (
+        ndaName.length < 2 ||
+        ndaName.length > MAX_NAME_LENGTH ||
+        DISALLOWED_SINGLE_LINE_CHARS.test(ndaName)
+      ) {
+        return res.status(400).json({ error: "Fullt navn må være mellom 2 og 200 tegn" });
       }
       const missingAgreements = AGREEMENT_KEYS.filter((key) => acceptedAgreements[key] !== true);
       if (!acceptedProgramTerms || missingAgreements.length > 0 || !confirmedSigningAuthority) {
@@ -964,6 +1014,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         });
       }
 
+      await ensureSchema(pool);
       const existing = await pool.query(
         `SELECT * FROM prototype_tester_invites WHERE token = $1 LIMIT 1`,
         [req.params.token],

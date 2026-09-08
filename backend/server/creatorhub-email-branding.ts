@@ -4,6 +4,7 @@ export const CREATORHUB_LANDING_WORDMARK_URL =
 const LEGACY_CREATORHUB_EMAIL_LOGO_URLS = new Set([
   "/creatorhub-logo-amber.svg",
   "https://creatorhubn.com/creatorhub-logo-amber.svg",
+  "https://www.creatorhubn.com/creatorhub-logo-amber.svg",
 ]);
 
 /**
@@ -17,7 +18,20 @@ export function normalizeCreatorHubEmailLogoUrl(
   if (!configured || LEGACY_CREATORHUB_EMAIL_LOGO_URLS.has(configured)) {
     return CREATORHUB_LANDING_WORDMARK_URL;
   }
-  return configured;
+  if (configured === "/creatorhub-wordmark-light.png") {
+    return CREATORHUB_LANDING_WORDMARK_URL;
+  }
+  if (configured.startsWith("/") && !configured.startsWith("//")) {
+    return new URL(configured, "https://creatorhubn.com").href;
+  }
+  try {
+    const parsed = new URL(configured);
+    return parsed.protocol === "https:" && !parsed.username && !parsed.password
+      ? parsed.href
+      : CREATORHUB_LANDING_WORDMARK_URL;
+  } catch {
+    return CREATORHUB_LANDING_WORDMARK_URL;
+  }
 }
 
 export function creatorHubEmailLogoDimensions(url: string): {

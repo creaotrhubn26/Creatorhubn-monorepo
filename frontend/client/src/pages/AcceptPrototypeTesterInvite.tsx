@@ -138,6 +138,7 @@ function PrototypeInvitePageFrame({ children }: { children: React.ReactNode }) {
               component="img"
               src="/creatorhub-wordmark-light.png"
               alt="Creatorhub"
+              referrerPolicy="no-referrer"
               sx={{
                 width: { xs: 154, sm: 184 },
                 height: "auto",
