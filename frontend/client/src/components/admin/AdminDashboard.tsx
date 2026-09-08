@@ -179,6 +179,7 @@ import CommunityManagementDashboard from './CommunityManagementDashboard';
 import FineTuningMonitoringPanel from './FineTuningMonitoringPanel';
 import OAuthScopeChecker from './OAuthScopeChecker';
 import TidumAccessRequestsPanel from './TidumAccessRequestsPanel';
+import PrototypeTesterAdminPanel from './PrototypeTesterAdminPanel';
 
 // Integration props for unified workflow connectivity
 interface AdminDashboardProps {
@@ -3526,6 +3527,7 @@ export default function AdminDashboard({
               <AdminPaymentStatusCard />
             </Box>
             <InviteManagementDashboard />
+            <PrototypeTesterAdminPanel />
           </>
         );
       case 'send-notifications':
