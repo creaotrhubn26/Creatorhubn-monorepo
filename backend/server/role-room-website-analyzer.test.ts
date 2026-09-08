@@ -246,6 +246,30 @@ describe("analyzeWebsite", () => {
     expect(claudeFn.messages.create).not.toHaveBeenCalled();
   });
 
+  it("uses static signals when Claude refinement is unavailable", async () => {
+    __setWebsiteAnalyzerHttp(mockHttp() as never);
+    __setWebsiteAnalyzerAnthropic({
+      messages: {
+        create: vi.fn(async () => {
+          throw new Error("provider unavailable");
+        }),
+      },
+    } as never);
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const profile = await analyzeWebsite("holycrust.no");
+
+    expect(profile.businessName).toBe("Holy Crust");
+    expect(profile.tagline).toContain("Surdeigsbakeri");
+    expect(profile.industry).toBe("other");
+    expect(profile.toneOfVoice).toBe("professional");
+    expect(warning).toHaveBeenCalledWith(
+      "[website-analyzer] Claude refinement unavailable; using static signals",
+      "Error",
+    );
+    warning.mockRestore();
+  });
+
   it("throws on HTTP failure", async () => {
     __setWebsiteAnalyzerHttp(
       (async () => ({
