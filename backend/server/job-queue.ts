@@ -189,16 +189,18 @@ export async function processNextJob(
       transition.status === "queued"
         ? `Ingen handler registrert for '${job.job_type}'. Utsatt for rolling deploy.`
         : `Ingen handler registrert for '${job.job_type}' innen defer-vinduet.`;
+    // The status parameter is reused in CASE expressions. Cast it explicitly
+    // so PostgreSQL does not infer both varchar and text for the same value.
     const updated = await pool.query(
       `UPDATE background_jobs
-          SET status = $2,
+          SET status = $2::text,
               attempts = CASE
-                WHEN $2 = 'queued' THEN GREATEST(attempts - 1, 0)
+                WHEN $2::text = 'queued' THEN GREATEST(attempts - 1, 0)
                 ELSE attempts
               END,
               run_after = now() + ($3 || ' milliseconds')::interval,
               last_error = $4,
-              completed_at = CASE WHEN $2 = 'dead' THEN now() ELSE NULL END,
+              completed_at = CASE WHEN $2::text = 'dead' THEN now() ELSE NULL END,
               heartbeat_at = NULL,
               lease_token = NULL,
               updated_at = now()
@@ -264,11 +266,12 @@ export async function processNextJob(
     return (completed.rowCount ?? 0) === 1 ? "completed" : "lease_lost";
   } catch (err) {
     const t = transitionForFailure(job.attempts, job.max_attempts);
+    // Keep the retry/dead transition type-stable for PostgreSQL as well.
     const failed = await pool.query(
       `UPDATE background_jobs
-          SET status = $2, updated_at = now(),
+          SET status = $2::text, updated_at = now(),
               run_after = now() + ($3 || ' milliseconds')::interval,
-              completed_at = CASE WHEN $2 = 'dead' THEN now() ELSE NULL END,
+              completed_at = CASE WHEN $2::text = 'dead' THEN now() ELSE NULL END,
               last_error = $4,
               heartbeat_at = NULL,
               lease_token = NULL

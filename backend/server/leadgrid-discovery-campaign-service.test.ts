@@ -27,6 +27,16 @@ const handlerSource = readFileSync(
 );
 
 describe("Leadgrid Discovery campaign orchestration", () => {
+  it("casts reused status parameters so PostgreSQL resolves one type", () => {
+    expect(serviceSource).toContain("SET status = $4::text");
+    expect(serviceSource).toContain("CASE WHEN $4::text = 'failed'");
+    expect(serviceSource).toContain("CASE WHEN $4::text = 'partial'");
+    expect(serviceSource).toContain("SET status = $7::text");
+    expect(serviceSource).toContain("CASE WHEN $7::text = 'cancelled'");
+    expect(serviceSource).toContain("SET status = $6::text");
+    expect(serviceSource).toContain("CASE WHEN $6::text = 'cancelled'");
+  });
+
   it("uses one stable child-run key for every retry of the same item attempt", () => {
     const first = discoveryCampaignAttemptKey("campaign-a", 2, 3);
     expect(first).toBe("campaign:campaign-a:position:2:attempt:3");
