@@ -100,7 +100,16 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     upsertShotListForProject,
   } = deps;
 
-  const resolveWorkspaceCategory = async (profession: unknown) => {
+  const resolveWorkspaceCategory = async (
+    profession: unknown,
+    projectType?: unknown,
+  ) => {
+    const normalizedProjectType = (readString(projectType) || "")
+      .toLowerCase()
+      .replace(/[\s_-]+/g, "");
+    if (["music", "musikk", "audio", "song", "album", "recording"].includes(normalizedProjectType)) {
+      return "music";
+    }
     const normalized = normalizeProfession(profession);
     const baseline = CANONICAL_PROFESSIONS.find((entry) => entry.name === normalized)?.workspaceCategory ?? "service";
     if (!normalized) return baseline;
@@ -222,7 +231,10 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
             ORDER BY invited_at ASC`,
           [req.params.id],
         ).catch(() => ({ rows: [] as any[] })),
-        resolveWorkspaceCategory(project.profession),
+        resolveWorkspaceCategory(
+          project.profession,
+          project.projectType ?? project.project_type ?? project.category,
+        ),
       ]);
       const owner = ownerResult.rows[0];
       res.json({

@@ -29,6 +29,7 @@ import type { Pool } from "pg";
 import crypto from "crypto";
 
 import { canEditProject } from "./project-team-routes";
+import { findProjectRowById } from "./project-repository";
 
 export interface WorkflowOrchestrationRoutesDeps {
   app: express.Express;
@@ -48,23 +49,13 @@ export function setupWorkflowOrchestrationRoutes(
 ): void {
   const { app, pool, requireUserSession } = deps;
 
-  // Tilgangssjekk: eier (legacy.projects.user_id) eller aktivt team-medlem
-  // (project_team_members via canAccessProject). Returnerer raden eller null.
+  // Resolve both project stores, then enforce the shared edit-access gate.
   async function accessibleProject(
     projectId: string,
     userId: string,
   ): Promise<Record<string, any> | null> {
-    const result = await pool.query(
-      `SELECT id, user_id, name, title, category, profession, client_email,
-              client_phone, event_date, date, location
-         FROM legacy.projects
-        WHERE id = $1
-        LIMIT 1`,
-      [projectId],
-    );
-    const project = result.rows[0];
+    const project = await findProjectRowById(pool, projectId);
     if (!project) return null;
-    if (project.user_id === userId) return project;
     return (await canEditProject(pool, userId, projectId)) ? project : null;
   }
 
@@ -77,12 +68,22 @@ export function setupWorkflowOrchestrationRoutes(
     projectId: string,
     patch: Record<string, unknown>,
   ): Promise<void> {
+    const serializedPatch = JSON.stringify(patch);
+    const publicUpdate = await pool.query(
+      `UPDATE projects
+          SET project_data = COALESCE(project_data, '{}')::jsonb || $1::jsonb,
+              updated_at = NOW()
+        WHERE id::text = $2
+        RETURNING id`,
+      [serializedPatch, projectId],
+    ).catch(() => ({ rows: [] as any[] }));
+    if (publicUpdate.rows[0]) return;
     await pool.query(
       `UPDATE legacy.projects
           SET metadata = COALESCE(metadata, '{}')::jsonb || $1::jsonb,
               updated_at = NOW()
         WHERE id = $2`,
-      [JSON.stringify(patch), projectId],
+      [serializedPatch, projectId],
     );
   }
 
