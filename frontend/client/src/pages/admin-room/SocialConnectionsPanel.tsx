@@ -42,6 +42,55 @@ const EMPTY_STATUS: ConnectionStatus = {
   tiktok: { connected: false },
 };
 
+/**
+ * Oversetter de tre API-svarene til koblingsstatus.
+ *
+ * Trukket ut som ren funksjon fordi nettopp denne kartleggingen var feil
+ * på to punkter samtidig, og begge feilene var usynlige i UI-et — de ga
+ * bare et troverdig «Ikke tilkoblet»:
+ *
+ *   1. `configured` ble lest fra profile.data/ig.data/cta.data. Backend
+ *      har det på TOPPNIVÅ i summary-svaret; feltene som ble lest finnes
+ *      ikke, så FB og IG var alltid frakoblet.
+ *   2. LinkedIn ble hentet fra /linkedin/connection-status (finnes ikke)
+ *      og lest som `.connected` (svaret har `state`).
+ *
+ * Alt her tåler tomme og uventede svar — kalleren skal aldri krasje på
+ * en API-endring, bare vise «ikke tilkoblet».
+ */
+export function mapSocialConnections(
+  cockpitData: unknown,
+  tiktokData: unknown,
+  linkedinData: unknown,
+): ConnectionStatus {
+  const cockpit = (cockpitData ?? {}) as Record<string, any>;
+  const tt = (tiktokData ?? {}) as Record<string, any>;
+  const li = (linkedinData ?? {}) as Record<string, any>;
+
+  const cfg = cockpit.configured ?? {};
+  // Både id OG token kreves: en Page-ID uten token gir ingen kall som
+  // virker, så «konfigurert» ville vært en løgn.
+  const fbConfigured = !!cfg.pageId && !!cfg.pageToken;
+  const igConfigured = !!cfg.igUserId && !!cfg.pageToken;
+
+  return {
+    // Backend kaller feltene `id` og `userId` — ikke pageId/igUserId.
+    facebook: { configured: fbConfigured, pageId: cockpit.profile?.data?.id },
+    instagram: { configured: igConfigured, userId: cockpit.ig?.data?.userId },
+    linkedin: {
+      connected: li.state === 'connected',
+      memberId: li.connection?.linkedInMemberId ?? undefined,
+    },
+    tiktok: {
+      connected: !!tt.connected || !!tt.connection?.connected,
+      username: tt.username ?? tt.connection?.username,
+      displayName: tt.displayName ?? tt.connection?.displayName,
+      avatarUrl: tt.avatarUrl ?? tt.connection?.avatarUrl,
+      scopes: tt.scopes ?? tt.connection?.scopes ?? [],
+    },
+  };
+}
+
 function PlatformRow({
   icon, name, status, action, helper,
 }: {
@@ -88,40 +137,23 @@ export default function SocialConnectionsPanel() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. FB/IG fra env-var-status (via cockpit-summary)
+      // Tre uavhengige kilder; LinkedIn er best-effort.
       const cockpit = await fetch('/api/role-room/marketing-cockpit/summary?brandKey=theroleroom', {
         credentials: 'include',
       });
       const cockpitData = await cockpit.json().catch(() => ({}));
-      const fbConfigured = !!cockpitData?.cta?.data?.configured || !!cockpitData?.profile?.data?.configured;
-      const igConfigured = !!cockpitData?.ig?.data?.configured;
 
-      // 2. TikTok-status
       const ttResp = await fetch('/api/role-room/tiktok/connection', { credentials: 'include' });
       const ttData = await ttResp.json().catch(() => ({}));
 
-      // 3. LinkedIn-status (best-effort)
-      let linkedinConnected = false;
+      let liData: unknown = {};
       try {
-        const liResp = await fetch('/api/role-room/linkedin/connection-status', { credentials: 'include' });
-        if (liResp.ok) {
-          const liData = await liResp.json().catch(() => ({}));
-          linkedinConnected = !!liData?.connected;
-        }
-      } catch { /* ignore */ }
+        const liResp = await fetch('/api/role-room/linkedin/status', { credentials: 'include' });
+        if (liResp.ok) liData = await liResp.json().catch(() => ({}));
+      } catch { /* ignore — LinkedIn er valgfri */ }
 
-      setStatus({
-        facebook: { configured: fbConfigured, pageId: cockpitData?.profile?.data?.pageId },
-        instagram: { configured: igConfigured, userId: cockpitData?.ig?.data?.igUserId },
-        linkedin: { connected: linkedinConnected },
-        tiktok: {
-          connected: !!ttData?.connected || !!ttData?.connection?.connected,
-          username: ttData?.username ?? ttData?.connection?.username,
-          displayName: ttData?.displayName ?? ttData?.connection?.displayName,
-          avatarUrl: ttData?.avatarUrl ?? ttData?.connection?.avatarUrl,
-          scopes: ttData?.scopes ?? ttData?.connection?.scopes ?? [],
-        },
-      });
+      setStatus(mapSocialConnections(cockpitData, ttData, liData));
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

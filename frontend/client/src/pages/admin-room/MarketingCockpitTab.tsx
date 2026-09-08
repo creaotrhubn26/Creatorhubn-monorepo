@@ -27,6 +27,7 @@ import EventIcon from '@mui/icons-material/Event';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import CompetitorsPanel from './CompetitorsPanel';
 import B2BAcquisitionPanel from './B2BAcquisitionPanel';
 import AgencyAcquisitionDashboard from './AgencyAcquisitionDashboard';
@@ -332,6 +333,43 @@ const cockpitDarkTheme = createTheme({
   },
 });
 
+/**
+ * Panel-isolasjon.
+ *
+ * Cockpiten mounter ~20 selvstendige paneler, og alle lå under den ENE
+ * ErrorBoundary-en workspacet setter rundt hele flaten. Krasjet ett
+ * panel, forsvant hele fanen — inkludert fane-rekka, så du kunne ikke
+ * engang bytte til en fane som virket.
+ *
+ * Hvert panel får derfor sin egen grense. Nabo-panelene overlever, og
+ * feilen navngis så det er tydelig HVA som falt ut — samme holdning som
+ * per-seksjon-degraderingen i Meta-aggregatoren.
+ */
+function Panel({ name, children }: { name: string; children: React.ReactNode }) {
+  return (
+    <ErrorBoundary
+      componentName={`cockpit:${name}`}
+      fallback={
+        <Card sx={PANEL_SX} data-testid={`panel-crashed-${name}`}>
+          <CardContent sx={{ p: 2 }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <ReportProblemIcon sx={{ color: '#f87171', fontSize: 18 }} />
+              <Typography sx={{ fontWeight: 600, color: '#e2e8f0' }}>
+                «{name}» kunne ikke vises
+              </Typography>
+            </Stack>
+            <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.6)' }}>
+              Resten av cockpiten virker. Last siden på nytt for å prøve dette panelet igjen.
+            </Typography>
+          </CardContent>
+        </Card>
+      }
+    >
+      {children}
+    </ErrorBoundary>
+  );
+}
+
 const COCKPIT_TABS = [
   { value: 'oversikt', label: 'Oversikt' },
   { value: 'innhold', label: 'Innhold & kampanjer' },
@@ -474,7 +512,7 @@ export default function MarketingCockpitTab() {
         <Chip label="SOSIALE KOBLINGER" size="small"
           sx={{ background: 'rgba(34,197,94,0.15)', color: '#86efac', fontSize: '0.7rem' }} />
       </Divider>
-      <SocialConnectionsPanel />
+      <Panel name="Sosiale koblinger"><SocialConnectionsPanel /></Panel>
 
       {data && (
         <>
@@ -685,15 +723,15 @@ export default function MarketingCockpitTab() {
           panelene henter selv, og skal ikke dø når Meta-API-et feiler. */}
 
       {cockpitTab === 'innhold' && (<>
-        <PostDraftsPanel />
+        <Panel name="Post-utkast"><PostDraftsPanel /></Panel>
         <CampaignActionsPanel onAction={() => void load()} />
         {/* TikTok — The Role Rooms egen markedsføring */}
-        <MarketingCockpitTiktokSection />
+        <Panel name="TikTok"><MarketingCockpitTiktokSection /></Panel>
       </>)}
 
       {cockpitTab === 'konkurrenter' && (<>
-        <CompetitorReportPanel />
-        <CompetitorsPanel />
+        <Panel name="Konkurrent-rapport"><CompetitorReportPanel /></Panel>
+        <Panel name="Konkurrenter"><CompetitorsPanel /></Panel>
       </>)}
 
       {cockpitTab === 'b2b' && (<>
@@ -701,13 +739,13 @@ export default function MarketingCockpitTab() {
           <Chip label="B2B-AKKVISISJON" size="small"
             sx={{ background: 'rgba(217,70,239,0.18)', color: '#e879f9', fontSize: '0.7rem', fontWeight: 700 }} />
         </Divider>
-        <AgencyAcquisitionDashboard />
-        <B2BAcquisitionPanel />
+        <Panel name="Byrå-akkvisisjon"><AgencyAcquisitionDashboard /></Panel>
+        <Panel name="B2B-akkvisisjon"><B2BAcquisitionPanel /></Panel>
         <Divider sx={{ borderColor: 'rgba(168,85,247,0.32)' }}>
           <Chip label="CUSTOMER SUCCESS" size="small"
             sx={{ background: 'rgba(52,211,153,0.18)', color: '#34d399', fontSize: '0.7rem', fontWeight: 700 }} />
         </Divider>
-        <CustomerSuccessDashboard />
+        <Panel name="Customer Success"><CustomerSuccessDashboard /></Panel>
       </>)}
 
       {cockpitTab === 'leads' && (<>
@@ -715,24 +753,24 @@ export default function MarketingCockpitTab() {
           <Chip label="MIN DAG" size="small"
             sx={{ background: 'rgba(192,132,252,0.18)', color: '#c084fc', fontSize: '0.7rem', fontWeight: 700 }} />
         </Divider>
-        <LeadMapMyDayPanel />
+        <Panel name="Min dag"><LeadMapMyDayPanel /></Panel>
         <Divider sx={{ borderColor: 'rgba(168,85,247,0.32)' }}>
           <Chip label="TEAM-LEADERBOARD" size="small"
             sx={{ background: 'rgba(249,115,22,0.18)', color: '#f97316', fontSize: '0.7rem', fontWeight: 700 }} />
         </Divider>
-        <LeadMapLeaderboardPanel />
+        <Panel name="Team-leaderboard"><LeadMapLeaderboardPanel /></Panel>
         <Divider sx={{ borderColor: 'rgba(168,85,247,0.32)' }}>
           <Chip label="LEAD MAP" size="small"
             sx={{ background: 'rgba(251,191,36,0.18)', color: '#fbbf24', fontSize: '0.7rem', fontWeight: 700 }} />
         </Divider>
-        <LeadMapPanel />
+        <Panel name="Lead Map"><LeadMapPanel /></Panel>
         <Divider sx={{ borderColor: 'rgba(168,85,247,0.32)' }}>
           <Chip label="GRIDS / TERRITORIER" size="small"
             sx={{ background: 'rgba(251,191,36,0.18)', color: '#fbbf24', fontSize: '0.7rem', fontWeight: 700 }} />
         </Divider>
-        <TerritoryGridManager />
-        <TerritoryCoveragePanel />
-        <TerritoryManagerDashboard />
+        <Panel name="Territorie-grids"><TerritoryGridManager /></Panel>
+        <Panel name="Territorie-dekning"><TerritoryCoveragePanel /></Panel>
+        <Panel name="Territorie-ledelse"><TerritoryManagerDashboard /></Panel>
       </>)}
 
       {cockpitTab === 'anbud' && (<>
@@ -740,15 +778,17 @@ export default function MarketingCockpitTab() {
           <Chip label="ANBUD — TRIAGE / FRISTER / RADAR" size="small"
             sx={{ background: 'rgba(192,132,252,0.18)', color: '#c084fc', fontSize: '0.7rem', fontWeight: 700 }} />
         </Divider>
-        <TenderBoardPanel />
-        <TenderIntelPanel />
+        <Panel name="Anbudstavle"><TenderBoardPanel /></Panel>
+        <Panel name="Anbudsintelligens"><TenderIntelPanel /></Panel>
       </>)}
 
       {cockpitTab === 'mi' && (
-        <MarketIntelligenceSection
-          projectId="theroleroom"
-          defaultBrandScanUrl="https://theroleroom.com"
-        />
+        <Panel name="Markedsintelligens">
+          <MarketIntelligenceSection
+            projectId="theroleroom"
+            defaultBrandScanUrl="https://theroleroom.com"
+          />
+        </Panel>
       )}
     </Stack>
     </ThemeProvider>
