@@ -56,6 +56,12 @@ Start: `cd backend && ../node_modules/.bin/tsx server/index.ts`
 Auth: bearer-tokenet `dev-admin-local-session` gir en admin-sesjon
 (`server/index.ts:2289`) uten at det finnes noen bruker i databasen.
 
+`DEV_LOCAL_ADMIN_EMAIL=daniel@creatorhubn.com` er nødvendig for
+AdminWorkspace-rutene: `requireAdminRoomAccess` låser hele
+`/api/admin-room/*` til produkteierens e-post, så med standard
+`admin@local.dev` svarer samtlige 403 og backenden er utestbar lokalt.
+Overstyringen er kun aktiv utenfor produksjon.
+
 ## 3. Graph-stand-in
 
 `META_GRAPH_BASE_URL` peker på en lokal server som svarer med Metas egne
@@ -71,6 +77,27 @@ cd frontend
 PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers \
   npx playwright test e2e/marketing-cockpit-e2e.spec.ts --project=chromium
 ```
+
+## AdminWorkspace-modulene (migrasjon 0350)
+
+Verifisert mot samme stack, som eier:
+
+| Endepunkt | Resultat |
+|---|---|
+| `GET /workspace/{projects,documents,files,settings}` | 200 |
+| `GET /workspace/{channels,team,client-projects}` | 200 |
+| `POST /workspace/channels` → `/:id/messages` → `GET` | full rundtur |
+| Tom meldingstekst | 400 (CHECK `length(body) BETWEEN 1 AND 8000`) |
+| `POST /workspace/team` → `PATCH` → `/:id/absences` | 200/201 |
+| Fravær med sluttdato før startdato | 400 (CHECK `absences_range`) |
+| `PATCH /workspace/settings` → `GET` | verdien leses tilbake |
+
+`GET /workspace/channels` oppretter default-kanalen `general` ved første
+kall; den partielle unike indeksen fra 0350 hindrer duplikater når to
+samtidige kall prøver det samme.
+
+`GET /workspace/projects` svarer `unavailable: ["casting_projects"]` når
+tabellen mangler — rutene er skjemadrift-tolerante og faller ikke over.
 
 ## Hva suiten beviser
 

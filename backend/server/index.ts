@@ -2297,9 +2297,16 @@ function getLocalDevelopmentSession(
     return null;
   }
 
+  // E-posten er overstyrbar fordi Admin Room-rutene er låst til
+  // produkteierens adresse (requireAdminRoomAccess). Med en fast
+  // admin@local.dev kan dev-sesjonen ikke nå EN ENESTE av dem, og hele
+  // AdminWorkspace-backenden blir utestbar lokalt. Kun tilgjengelig
+  // utenfor produksjon — vakten over returnerer null der.
   return {
     userId: "local-admin",
-    email: "admin@local.dev",
+    email:
+      process.env.DEV_LOCAL_ADMIN_EMAIL?.trim().toLowerCase() ||
+      "admin@local.dev",
     name: "Local Admin",
     role: "admin",
     roleLabel: "Admin",
