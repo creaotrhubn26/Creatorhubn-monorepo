@@ -21,11 +21,21 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
-import { persistSession } from "./persistent-session-store.js";
+import {
+  loadPersistedAuthSession,
+  persistAuthSession,
+} from "./auth-session-store.js";
 
 const SUPER_ADMIN_EMAIL = "daniel@creatorhubn.com";
 
-type SessionData = { userId: string; role?: string; email?: string };
+type SessionData = {
+  userId: string;
+  email: string;
+  name: string;
+  role: string;
+  loginAt: string;
+  isAdmin?: boolean;
+};
 
 interface Deps {
   app: Express;
@@ -79,8 +89,16 @@ export function registerSuperAdminEmergencyLoginRoutes({
 
     // Finn Daniels user-id i users-tabellen
     try {
-      const userResult = await pool.query<{ id: string; email: string }>(
-        `SELECT id, email FROM users WHERE LOWER(email) = $1 LIMIT 1`,
+      const userResult = await pool.query<{
+        id: string;
+        email: string;
+        first_name: string | null;
+        last_name: string | null;
+      }>(
+        `SELECT id, email, first_name, last_name
+           FROM users
+          WHERE LOWER(email) = $1
+          LIMIT 1`,
         [SUPER_ADMIN_EMAIL],
       );
       if (userResult.rows.length === 0) {
@@ -90,24 +108,33 @@ export function registerSuperAdminEmergencyLoginRoutes({
 
       // Generer ny session-token
       const sessionToken = crypto.randomBytes(32).toString("hex");
+      const name = [user.first_name, user.last_name]
+        .filter(Boolean)
+        .join(" ") || "Daniel Qazi";
       const sessionData = {
         userId: user.id,
         email: user.email,
+        name,
         role: "admin",
+        loginAt: new Date().toISOString(),
+        isAdmin: true,
       };
-      activeSessions.set(sessionToken, sessionData);
 
-      // Persistér til DB så sessionen overlever Render-restart.
-      // Best-effort: hvis DB skriv feiler logger vi men returnerer
-      // fortsatt token (in-memory holder fortsatt på denne instansen).
-      void persistSession(pool, {
-        token: sessionToken,
-        session: sessionData,
-        source: "emergency_login",
-        ttlDays: 30,
-        ip,
-        userAgent: req.headers["user-agent"] as string | undefined,
-      });
+      // Bruk den kanoniske session-tabellen som alle asynkrone auth-resolvere
+      // leser. Den tidligere persistent_auth_sessions-tabellen ble bare hydret
+      // ved oppstart, så tokenet virket på pod A og ga 401 på pod B. Verifiser
+      // read-after-write før tokenet eksponeres; en adminsession skal aldri være
+      // gyldig bare i minnet på én produksjonsinstans.
+      await persistAuthSession(pool, sessionToken, sessionData);
+      const persistedSession = await loadPersistedAuthSession<SessionData>(
+        pool,
+        sessionToken,
+      );
+      if (!persistedSession) {
+        console.error("[emergency-login] canonical session persistence failed");
+        return res.status(503).json({ error: "session_persistence_failed" });
+      }
+      activeSessions.set(sessionToken, persistedSession);
 
       // Logg aktiviteten
       try {
@@ -130,7 +157,9 @@ export function registerSuperAdminEmergencyLoginRoutes({
         user: {
           id: user.id,
           email: user.email,
+          name,
           role: "admin",
+          isAdmin: true,
         },
       });
     } catch (err) {
