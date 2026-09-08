@@ -16,7 +16,7 @@ import type express from "express";
 export interface AdminConfigCheckDeps {
   app: express.Application;
   pool: any;
-  requireAdminSession: (req: any, res: any) => any;
+  requireAdminSession: (req: any, res: any) => any | Promise<any>;
 }
 
 async function tableExists(pool: any, tableName: string): Promise<boolean> {
@@ -37,7 +37,7 @@ export function setupAdminConfigCheckRoutes(deps: AdminConfigCheckDeps): void {
   const { app, pool, requireAdminSession } = deps;
 
   app.get("/api/admin/config-check", async (req, res) => {
-    if (!requireAdminSession(req, res)) return;
+    if (!(await requireAdminSession(req, res))) return;
     try {
       // Env-vars — fortell IKKE verdiene, bare om de er satt (sikkerhet)
       const stripeSecretSet = !!(

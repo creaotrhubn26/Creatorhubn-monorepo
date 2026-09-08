@@ -19,7 +19,11 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Pool } from "pg";
 import Stripe from "stripe";
 
-type RequireAdminSession = (req: Request, res: Response, next: NextFunction) => void;
+type AdminSession = { userId: string; email: string; name: string; role: string; loginAt: string };
+type RequireAdminSession = (
+  req: Request,
+  res: Response,
+) => AdminSession | null | Promise<AdminSession | null>;
 
 // ─── Stripe-klient (delt med resten av backend) ─────────────────────
 let stripeClient: Stripe | null = null;
@@ -187,17 +191,15 @@ export function registerMarketplaceAppConfigRoutes(
   // is exactly the attribution-forgery hole this closes on the checkout path.
   resolveSessionUserId: (req: Request) => string | null = () => null,
 ) {
-  // requireAdminSession is a GUARD (returns session | null, sends 401/403) — it
-  // is NOT Express middleware. Used directly as `app.get(path, requireAdminSession, …)`
-  // it never calls next(), so for a VALID admin the request hangs forever (it
-  // only "works" for non-admins, who get a 403 response). Wrap it as real
-  // middleware so the routes below proceed for admins.
-  // The runtime value is the index.ts guard `(req,res) => session | null` (sends
-  // 401/403 itself), even though the local type models it as middleware — which
-  // is exactly why tsc never flagged the hang. Call it as the guard.
-  const guard = requireAdminSession as unknown as (req: Request, res: Response) => unknown;
-  const adminGuard = (req: Request, res: Response, next: NextFunction): void => {
-    if (guard(req, res)) next();
+  // requireAdminSession is a GUARD (returns session | null, sends 401/403), not
+  // Express middleware. It may resolve a persisted session asynchronously when
+  // another production instance created the session, so await it before next().
+  const adminGuard = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (await requireAdminSession(req, res)) next();
+    } catch (error) {
+      next(error);
+    }
   };
 
   // ─── Public: motta event-log fra frontend (fire-and-forget) ────

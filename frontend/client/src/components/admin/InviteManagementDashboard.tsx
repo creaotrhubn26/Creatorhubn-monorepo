@@ -43,6 +43,7 @@ import {
   stepConnectorClasses,
   ThemeProvider,
   InputAdornment,
+  Stack,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
 import { TableVirtuoso } from 'react-virtuoso';
@@ -98,6 +99,25 @@ const JourneyConnector = styled(StepConnector)(({ theme }) => ({
 // User journey status type
 type UserJourneyStatus = 'request_submitted' | 'under_review' | 'invite_sent' | 'account_created' | 'onboarding_started' | 'onboarding_completed' | 'active';
 
+interface TesterAgreementStatus {
+  inviteId: string;
+  inviteStatus: string;
+  expiresAt?: string | null;
+  acceptedAt?: string | null;
+  signerName?: string | null;
+  confirmedSigningAuthority: boolean;
+  agreementDigest?: string | null;
+  complete: boolean;
+  legacyAcceptance: boolean;
+  accountProvisioningComplete: boolean;
+  documents: Array<{
+    key: string;
+    title: string;
+    version: string;
+    accepted: boolean;
+  }>;
+}
+
 interface InviteRequest {
   id: string;
   businessName: string;
@@ -136,6 +156,7 @@ interface InviteRequest {
   onboardingStartedAt?: string;
   onboardingCompletedAt?: string;
   onboardingStep?: number;
+  testerAgreementStatus?: TesterAgreementStatus | null;
 }
 
 interface InviteStats {
@@ -295,6 +316,7 @@ export default function InviteManagementDashboard() {
   const [selectedInvite, setSelectedInvite] = useState<InviteRequest | null>(null);
   const [showReviewDialog, setShowReviewDialog] = useState(false);
   const [reviewStatus, setReviewStatus] = useState('');
+  const [agreementEvidenceLoading, setAgreementEvidenceLoading] = useState(false);
   const [adminNotes, setAdminNotes] = useState('');
   const [search, setSearch] = useState('');
 
@@ -331,7 +353,40 @@ export default function InviteManagementDashboard() {
 
   const handleSendInvite = (inviteId: string) => {
     sendInviteMutation.mutate(inviteId);
-};
+  };
+
+  const handleDownloadAgreementEvidence = async (invite: InviteRequest) => {
+    setAgreementEvidenceLoading(true);
+    try {
+      const headers = await auth.getAuthHeader();
+      const payload = await apiRequest(
+        "/api/invites/admin/requests/" + encodeURIComponent(invite.id) + "/tester-agreements",
+        { headers },
+      );
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "creatorhub-signeringsbevis-" + invite.id + ".json";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setReviewFeedback({
+        severity: payload?.evidence?.digestVerified ? "success" : "warning",
+        message: payload?.evidence?.digestVerified
+          ? "Signeringsbeviset er lastet ned og SHA-256-kontrollen er verifisert."
+          : "Akseptbeviset er lastet ned, men mangler et verifiserbart 4-dokumentsavtrykk.",
+      });
+    } catch (error: any) {
+      setReviewFeedback({
+        severity: "error",
+        message: error?.message || "Kunne ikke laste ned signeringsbeviset.",
+      });
+    } finally {
+      setAgreementEvidenceLoading(false);
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -850,6 +905,76 @@ export default function InviteManagementDashboard() {
                   </Box>
                 </CardContent>
               </MuiCard>
+
+              {selectedInvite.testerAgreementStatus && (
+                <MuiCard
+                  data-testid="tester-agreement-status"
+                  sx={{ mb: 3, backgroundColor: "rgba(76,175,80,0.05)" }}
+                >
+                  <CardContent>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+                      <Typography variant="h6" component="h3" sx={{ color: themeColors.primary }}>
+                        Avtaledokumenter
+                      </Typography>
+                      <Chip
+                        size="small"
+                        color={
+                          selectedInvite.testerAgreementStatus.complete &&
+                          selectedInvite.testerAgreementStatus.accountProvisioningComplete
+                            ? "success"
+                            : "warning"
+                        }
+                        label={
+                          selectedInvite.testerAgreementStatus.complete &&
+                          !selectedInvite.testerAgreementStatus.accountProvisioningComplete
+                            ? "Avtaler ok · konto venter"
+                            : selectedInvite.testerAgreementStatus.complete
+                              ? "Alle 4 akseptert"
+                            : selectedInvite.testerAgreementStatus.legacyAcceptance
+                              ? "Historisk aksept (før 4 dokumenter)"
+                              : "Venter på komplett aksept"
+                        }
+                      />
+                    </Stack>
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                      {selectedInvite.testerAgreementStatus.documents.map((document) => (
+                        <Chip
+                          key={document.key}
+                          size="small"
+                          variant={document.accepted ? "filled" : "outlined"}
+                          color={document.accepted ? "success" : "default"}
+                          icon={document.accepted ? <CheckCircle /> : <Schedule />}
+                          label={`${document.title} v${document.version}`}
+                        />
+                      ))}
+                    </Stack>
+                    {selectedInvite.testerAgreementStatus.acceptedAt && (
+                      <Typography variant="body2" sx={{ mt: 2 }}>
+                        Signert av <strong>{selectedInvite.testerAgreementStatus.signerName || "ukjent"}</strong>
+                        {` ${new Date(selectedInvite.testerAgreementStatus.acceptedAt).toLocaleString("nb-NO")}`}
+                        {selectedInvite.testerAgreementStatus.confirmedSigningAuthority ? " · fullmakt bekreftet" : ""}
+                      </Typography>
+                    )}
+                    {selectedInvite.testerAgreementStatus.agreementDigest && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1, wordBreak: "break-all" }}>
+                        SHA-256: <code>{selectedInvite.testerAgreementStatus.agreementDigest}</code>
+                      </Typography>
+                    )}
+                    {selectedInvite.testerAgreementStatus.acceptedAt && (
+                      <AdminButton
+                        tone="secondary"
+                        size="small"
+                        startIcon={<Assignment />}
+                        loading={agreementEvidenceLoading}
+                        onClick={() => void handleDownloadAgreementEvidence(selectedInvite)}
+                        sx={{ mt: 2 }}
+                      >
+                        Last ned signeringsbevis
+                      </AdminButton>
+                    )}
+                  </CardContent>
+                </MuiCard>
+              )}
 
               {/* Subscription Plan Info */}
               {selectedInvite.planName && (

@@ -1,55 +1,49 @@
-// @ts-nocheck
-/**
- * AcceptPrototypeTesterInvite — Slice 9X.53
- *
- * Public-side hvor en godkjent prototype-tester:
- *   1. Ser hva som forventes i 12-ukers-perioden (program-vilkår)
- *   2. Leser NDA-en
- *   3. Krysser av begge (program-terms + NDA)
- *   4. Signerer med fullt navn
- *   5. Blir aktivert og redirectes til dashboard med velkomst-modal
- *
- * Adskilt fra /role-room/accept-invite — det er kun for Role Room.
- */
-
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  Container,
+  Alert,
+  Box,
+  Button,
   Card,
   CardContent,
-  Stack,
-  Typography,
-  Button,
-  Alert,
-  CircularProgress,
-  Chip,
-  Box,
-  Divider,
   Checkbox,
+  Chip,
+  CircularProgress,
+  Container,
+  Divider,
   FormControlLabel,
-  TextField,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  Stepper,
+  Paper,
+  Stack,
   Step,
   StepLabel,
-  Paper,
-} from '@mui/material';
+  Stepper,
+  TextField,
+  Typography,
+} from "@mui/material";
 import {
-  Science as TesterIcon,
-  Gavel as NdaIcon,
+  AssignmentOutlined,
   CheckCircle as CheckIcon,
-  Cancel as XIcon,
-  Drafts as MailIcon,
-  Schedule as ClockIcon,
-} from '@mui/icons-material';
-import { useLocation } from 'wouter';
-import { apiRequest } from '@/lib/queryClient';
-import { TESTER_PROGRAM_TERMS, PROGRAM_TERMS_VERSION, programTermsAsText } from '@/lib/tester-program-terms';
-import { trackEvent } from '@/utils/ga4-client-tracking';
-import { testerEvents } from '@/utils/creatorhub-events';
+  GavelOutlined,
+  HandshakeOutlined,
+  HowToRegOutlined,
+  LockOutlined,
+  MailOutline,
+  PrivacyTipOutlined,
+} from "@mui/icons-material";
+import { useLocation } from "wouter";
+import { apiRequest } from "@/lib/queryClient";
+import { trackEvent } from "@/utils/ga4-client-tracking";
+import { testerEvents } from "@/utils/creatorhub-events";
+import type {
+  PrototypeTesterAgreementDocument,
+  PrototypeTesterAgreementKey,
+} from "@shared/prototype-tester-agreements";
+
+type MemberProfession =
+  | "photographer"
+  | "videographer"
+  | "music_producer"
+  | "vendor"
+  | null;
 
 interface Invite {
   id: string;
@@ -57,27 +51,59 @@ interface Invite {
   name: string;
   testingAreas: string[];
   personalMessage: string | null;
-  ndaVersion: string;
-  programTermsVersion: string;
-  status: 'pending' | 'accepted' | 'revoked' | 'expired';
+  status: "pending" | "accepted" | "revoked" | "expired";
   expiresAt: string;
   programDurationWeeks: number;
-  memberProfession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | null;
+  memberProfession: MemberProfession;
+  memberCompany: string | null;
+  agreements: PrototypeTesterAgreementDocument[];
+  accountProvisioningComplete: boolean;
+  agreementAcceptance?: {
+    complete: boolean;
+    signerName: string | null;
+    confirmedSigningAuthority: boolean;
+    documents: Array<{ key: PrototypeTesterAgreementKey; accepted: boolean }>;
+  };
 }
 
-const dashboardForProfession = (profession: Invite['memberProfession']): string => {
-  const routes: Record<Exclude<Invite['memberProfession'], null>, string> = {
-    photographer: '/photographer-dashboard-material',
-    videographer: '/videographer-dashboard-material',
-    music_producer: '/music_producer-dashboard-material',
-    vendor: '/vendor-dashboard-material',
+const dashboardForProfession = (profession: MemberProfession): string => {
+  const routes: Record<Exclude<MemberProfession, null>, string> = {
+    photographer: "/photographer-dashboard-material",
+    videographer: "/videographer-dashboard-material",
+    music_producer: "/music_producer-dashboard-material",
+    vendor: "/vendor-dashboard-material",
   };
-  return profession ? routes[profession] : '/workspace';
+  return profession ? routes[profession] : "/workspace";
 };
 
 const readToken = (): string => {
-  try { return new URLSearchParams(window.location.search).get('token') ?? ''; } catch { return ''; }
+  try {
+    return new URLSearchParams(window.location.search).get("token") ?? "";
+  } catch {
+    return "";
+  }
 };
+
+const agreementIcon = (key: PrototypeTesterAgreementKey, active: boolean) => {
+  const color = active ? "primary" : "disabled";
+  switch (key) {
+    case "program_terms":
+      return <AssignmentOutlined color={color} />;
+    case "nda":
+      return <GavelOutlined color={color} />;
+    case "dpa":
+      return <PrivacyTipOutlined color={color} />;
+    case "letter_of_intent":
+      return <HandshakeOutlined color={color} />;
+  }
+};
+
+const emptyAcceptance = (): Record<PrototypeTesterAgreementKey, boolean> => ({
+  program_terms: false,
+  nda: false,
+  dpa: false,
+  letter_of_intent: false,
+});
 
 const AcceptPrototypeTesterInvite: React.FC = () => {
   const [, navigate] = useLocation();
@@ -85,65 +111,159 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
   const [invite, setInvite] = useState<Invite | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Steg
   const [activeStep, setActiveStep] = useState(0);
-  const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [acceptedNda, setAcceptedNda] = useState(false);
-  const [signerName, setSignerName] = useState('');
+  const [accepted, setAccepted] = useState(emptyAcceptance);
+  const [confirmedAuthority, setConfirmedAuthority] = useState(false);
+  const [signerName, setSignerName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    if (!token) { setError('Token mangler i URL'); setLoading(false); return; }
+    if (!token) {
+      setError("Token mangler i URL-en.");
+      setLoading(false);
+      return;
+    }
     apiRequest(`/api/prototype-tester-invites/${encodeURIComponent(token)}`)
-      .then((r: any) => {
-        setInvite(r);
-        setSignerName(r.name || '');
+      .then((response: Invite) => {
+        if (
+          !Array.isArray(response.agreements) ||
+          response.agreements.length !== 4
+        ) {
+          throw new Error(
+            "Avtaledokumentene er ikke tilgjengelige. Kontakt CreatorHub.",
+          );
+        }
+        setInvite(response);
+        setSignerName(response.name || "");
+        if (
+          response.status === "accepted" &&
+          !response.accountProvisioningComplete &&
+          response.agreementAcceptance?.complete
+        ) {
+          const restoredAcceptance = emptyAcceptance();
+          for (const document of response.agreementAcceptance.documents) {
+            restoredAcceptance[document.key] = document.accepted;
+          }
+          setAccepted(restoredAcceptance);
+          setConfirmedAuthority(
+            response.agreementAcceptance.confirmedSigningAuthority,
+          );
+          setSignerName(
+            response.agreementAcceptance.signerName || response.name || "",
+          );
+          setActiveStep(response.agreements.length);
+        }
       })
-      .catch((e: any) => setError(e?.message || 'Invitasjon ikke funnet'))
+      .catch((cause: unknown) => {
+        const message =
+          cause instanceof Error
+            ? cause.message
+            : "Invitasjonen ble ikke funnet.";
+        setError(message);
+      })
       .finally(() => setLoading(false));
   }, [token]);
 
+  const agreements = invite?.agreements ?? [];
+  const signatureStep = agreements.length;
+  const allAccepted = useMemo(
+    () =>
+      agreements.length === 4 &&
+      agreements.every((document) => accepted[document.key]),
+    [accepted, agreements],
+  );
+  const activationRetry = Boolean(
+    invite?.status === "accepted" &&
+    !invite.accountProvisioningComplete &&
+    invite.agreementAcceptance?.complete,
+  );
+
   const handleAccept = async () => {
-    if (!acceptedTerms || !acceptedNda) { setError('Du må krysse av begge boksene'); return; }
-    if (!signerName.trim() || signerName.trim().length < 2) { setError('Skriv fullt navn'); return; }
+    if (!allAccepted) {
+      setError("Du må lese og godta alle fire dokumentene.");
+      return;
+    }
+    if (!confirmedAuthority) {
+      setError("Du må bekrefte at du kan inngå avtalene.");
+      return;
+    }
+    if (signerName.trim().length < 2) {
+      setError("Skriv fullt navn.");
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     try {
-      await apiRequest(`/api/prototype-tester-invites/${encodeURIComponent(token)}/accept`, {
-        method: 'POST',
-        body: {
-          ndaName: signerName.trim(),
-          acceptedProgramTerms: true,
-          programTermsVersion: PROGRAM_TERMS_VERSION,
+      const agreementVersions = Object.fromEntries(
+        agreements.map((document) => [document.key, document.version]),
+      );
+      await apiRequest(
+        `/api/prototype-tester-invites/${encodeURIComponent(token)}/accept`,
+        {
+          method: "POST",
+          body: {
+            ndaName: signerName.trim(),
+            acceptedProgramTerms: true,
+            programTermsVersion: agreementVersions.program_terms,
+            acceptedAgreements: accepted,
+            agreementVersions,
+            confirmedSigningAuthority: true,
+          },
         },
-      });
-      trackEvent('prototype_tester_nda_signed', {
-        program_terms_version: PROGRAM_TERMS_VERSION,
-      });
+      );
+      trackEvent(
+        activationRetry
+          ? "prototype_tester_activation_retried"
+          : "prototype_tester_agreements_signed",
+        { agreement_versions: agreementVersions },
+      );
       testerEvents.sessionStarted(token);
       setSuccess(true);
-      // Sett flag som velkomst-modalen leser
-      try { sessionStorage.setItem('prototype-tester-just-signed', '1'); } catch { /* ignore */ }
-      setTimeout(() => navigate(dashboardForProfession(invite?.memberProfession ?? null)), 2500);
-    } catch (e: any) {
-      setError(e?.message || 'Signering feilet — prøv igjen');
+      try {
+        sessionStorage.setItem("prototype-tester-just-signed", "1");
+      } catch {
+        // Storage can be disabled; activation has already succeeded server-side.
+      }
+      setTimeout(() => {
+        const dashboard = dashboardForProfession(
+          invite?.memberProfession ?? null,
+        );
+        navigate(`/login?redirect=${encodeURIComponent(dashboard)}`);
+      }, 2500);
+    } catch (cause: unknown) {
+      const message =
+        cause instanceof Error
+          ? cause.message
+          : "Signering feilet — prøv igjen.";
+      setError(message);
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (loading) return <Container sx={{ py: 6, textAlign: 'center' }}><CircularProgress /></Container>;
-  if (error && !invite) {
-    return <Container maxWidth="sm" sx={{ py: 4 }}><Alert severity="error">{error}</Alert></Container>;
+  if (loading) {
+    return (
+      <Container sx={{ py: 6, textAlign: "center" }}>
+        <CircularProgress aria-label="Laster avtaledokumenter" />
+      </Container>
+    );
   }
-  if (!invite) return null;
-  if (invite.status !== 'pending') {
+  if (error && !invite) {
     return (
       <Container maxWidth="sm" sx={{ py: 4 }}>
-        <Alert severity={invite.status === 'accepted' ? 'success' : 'warning'}>
-          Denne invitasjonen er {invite.status === 'accepted' ? 'allerede signert' : invite.status}.
+        <Alert severity="error">{error}</Alert>
+      </Container>
+    );
+  }
+  if (!invite) return null;
+  if (invite.status !== "pending" && !activationRetry) {
+    return (
+      <Container maxWidth="sm" sx={{ py: 4 }}>
+        <Alert severity={invite.status === "accepted" ? "success" : "warning"}>
+          Denne invitasjonen er{" "}
+          {invite.status === "accepted" ? "allerede signert" : invite.status}.
         </Alert>
       </Container>
     );
@@ -152,11 +272,14 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
     return (
       <Container maxWidth="sm" sx={{ py: 6 }}>
         <Card>
-          <CardContent sx={{ textAlign: 'center', py: 6 }}>
-            <CheckIcon sx={{ fontSize: 72, color: 'success.main' }} />
-            <Typography variant="h5" sx={{ mt: 2 }}>Velkommen som tester!</Typography>
-            <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
-              Du redirectes til dashbordet om noen sekunder…
+          <CardContent sx={{ py: 6, textAlign: "center" }}>
+            <CheckIcon sx={{ color: "success.main", fontSize: 72 }} />
+            <Typography variant="h5" sx={{ mt: 2 }}>
+              Avtalene er registrert
+            </Typography>
+            <Typography color="text.secondary" sx={{ mt: 1 }}>
+              CreatorHub-tilgangen er aktivert. Du sendes til innlogging og
+              deretter videre til dashbordet.
             </Typography>
           </CardContent>
         </Card>
@@ -164,183 +287,243 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
     );
   }
 
+  const daysRemaining = Math.max(
+    0,
+    Math.ceil(
+      (new Date(invite.expiresAt).getTime() - Date.now()) /
+        (24 * 60 * 60 * 1000),
+    ),
+  );
+
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
       <Card>
         <CardContent>
-          <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1 }}>
-            <TesterIcon color="primary" sx={{ fontSize: 32 }} />
+          <Stack
+            direction="row"
+            alignItems="center"
+            spacing={1.5}
+            sx={{ mb: 1 }}
+          >
+            <LockOutlined color="primary" sx={{ fontSize: 32 }} />
             <Stack>
-              <Typography variant="overline" color="primary">Du er invitert!</Typography>
-              <Typography variant="h5">Velkommen som prototype-tester</Typography>
+              <Typography variant="overline" color="primary">
+                Godkjent prototype-tester
+              </Typography>
+              <Typography variant="h5">
+                Les og signer avtalegrunnlaget
+              </Typography>
             </Stack>
           </Stack>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Hei {invite.name}! CreatorHub har godkjent søknaden din. Før du får tilgang må du
-            gå gjennom forpliktelses-vilkårene og signere NDA-en.
+          <Typography color="text.secondary" sx={{ mb: 2 }}>
+            Hei {invite.name}. Før kontoen aktiveres må du lese fire dokumenter
+            og signere elektronisk med fullt navn.
           </Typography>
+          {activationRetry && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Avtalene er allerede registrert, men kontoaktiveringen ble ikke
+              fullført. Kontroller navnet og prøv aktiveringen på nytt.
+            </Alert>
+          )}
+          <Alert severity="info" sx={{ mb: 3 }}>
+            Databehandleravtalen gjelder når du bruker CreatorHub til å behandle
+            personopplysninger på vegne av egen virksomhet. Intensjonsavtalen er
+            uttrykkelig ikke-bindende; de tre øvrige dokumentene er bindende når
+            de aksepteres.
+          </Alert>
 
           {invite.personalMessage && (
-            <Paper variant="outlined" sx={{ p: 2, mb: 3, bgcolor: 'action.hover' }}>
-              <Typography variant="caption" color="text.secondary">Personlig melding fra CreatorHub:</Typography>
-              <Typography variant="body2" sx={{ mt: 0.5, fontStyle: 'italic' }}>"{invite.personalMessage}"</Typography>
+            <Paper
+              variant="outlined"
+              sx={{ p: 2, mb: 3, bgcolor: "action.hover" }}
+            >
+              <Typography variant="caption" color="text.secondary">
+                Personlig melding fra CreatorHub
+              </Typography>
+              <Typography sx={{ mt: 0.5, fontStyle: "italic" }}>
+                “{invite.personalMessage}”
+              </Typography>
             </Paper>
           )}
 
-          <Stepper activeStep={activeStep} orientation="vertical" sx={{ mb: 3 }}>
-            {/* Steg 1: Program-vilkår */}
-            <Step expanded>
-              <StepLabel icon={<ClockIcon color={activeStep >= 0 ? 'primary' : 'disabled'} />}>
-                <b>Hva du forplikter deg til</b>
-              </StepLabel>
-              <Box sx={{ ml: 4, mb: 2 }}>
-                <Stack direction="row" spacing={1} sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
-                  <Chip size="small" label={`${TESTER_PROGRAM_TERMS.durationWeeks} uker`} color="primary" />
-                  <Chip size="small" label={`~${TESTER_PROGRAM_TERMS.expectedHoursPerWeek} t/uke`} variant="outlined" />
-                  <Chip size="small" label={`Min ${TESTER_PROGRAM_TERMS.feedbackMinimumPerMonth} feedback/mnd`} variant="outlined" />
-                </Stack>
-
-                <Typography variant="subtitle2" sx={{ mt: 1 }}>Forpliktelser</Typography>
-                <List dense disablePadding>
-                  {TESTER_PROGRAM_TERMS.obligations.map((o, i) => (
-                    <ListItem key={i} sx={{ py: 0.25 }}>
-                      <ListItemIcon sx={{ minWidth: 30 }}><CheckIcon fontSize="small" color="action" /></ListItemIcon>
-                      <ListItemText primaryTypographyProps={{ variant: 'body2' }} primary={o} />
-                    </ListItem>
-                  ))}
-                </List>
-
-                <Typography variant="subtitle2" sx={{ mt: 2 }}>Du får</Typography>
-                <List dense disablePadding>
-                  {TESTER_PROGRAM_TERMS.benefits.map((b, i) => (
-                    <ListItem key={i} sx={{ py: 0.25 }}>
-                      <ListItemIcon sx={{ minWidth: 30 }}><CheckIcon fontSize="small" color="success" /></ListItemIcon>
-                      <ListItemText primaryTypographyProps={{ variant: 'body2' }} primary={b} />
-                    </ListItem>
-                  ))}
-                </List>
-
-                <Typography variant="subtitle2" sx={{ mt: 2 }}>Hva du IKKE får</Typography>
-                <List dense disablePadding>
-                  {TESTER_PROGRAM_TERMS.whatYouDoNotGet.map((b, i) => (
-                    <ListItem key={i} sx={{ py: 0.25 }}>
-                      <ListItemIcon sx={{ minWidth: 30 }}><XIcon fontSize="small" color="action" /></ListItemIcon>
-                      <ListItemText primaryTypographyProps={{ variant: 'body2' }} primary={b} />
-                    </ListItem>
-                  ))}
-                </List>
-
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-                  Exit-klausul: {TESTER_PROGRAM_TERMS.exitClause}
-                </Typography>
-
-                <FormControlLabel
-                  sx={{ mt: 2, alignItems: 'flex-start' }}
-                  control={
-                    <Checkbox
-                      checked={acceptedTerms}
-                      onChange={(e) => setAcceptedTerms(e.target.checked)}
-                      sx={{ pt: 0.5 }}
-                    />
-                  }
-                  label={
-                    <Typography variant="body2">
-                      Jeg har lest og forstår forpliktelses-vilkårene (versjon {PROGRAM_TERMS_VERSION}).
-                      Jeg vil teste minst 1 funksjon per uke og logge minst {TESTER_PROGRAM_TERMS.feedbackMinimumPerMonth} feedback-items per måned.
-                    </Typography>
-                  }
-                />
-
-                <Box sx={{ mt: 1.5 }}>
-                  <Button
-                    variant="contained"
-                    size="small"
-                    disabled={!acceptedTerms}
-                    onClick={() => setActiveStep(1)}
+          <Stepper activeStep={activeStep} orientation="vertical">
+            {agreements.map((document, index) => (
+              <Step
+                key={document.key}
+                expanded={activeStep === index}
+                completed={accepted[document.key]}
+              >
+                <StepLabel
+                  icon={agreementIcon(document.key, activeStep >= index)}
+                >
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    alignItems="center"
+                    flexWrap="wrap"
+                    useFlexGap
                   >
-                    Fortsett til NDA
-                  </Button>
-                </Box>
-              </Box>
-            </Step>
+                    <Typography fontWeight={700}>{document.title}</Typography>
+                    <Chip
+                      size="small"
+                      label={`v${document.version}`}
+                      variant="outlined"
+                    />
+                    <Chip
+                      size="small"
+                      label={
+                        document.bindingNature === "binding"
+                          ? "Bindende"
+                          : "Ikke-bindende"
+                      }
+                      color={
+                        document.bindingNature === "binding"
+                          ? "warning"
+                          : "default"
+                      }
+                    />
+                  </Stack>
+                </StepLabel>
+                {activeStep === index && (
+                  <Box sx={{ ml: 4, mb: 3 }}>
+                    <Paper
+                      variant="outlined"
+                      data-testid={`agreement-content-${document.key}`}
+                      sx={{ p: 2, maxHeight: 360, overflow: "auto", mb: 2 }}
+                    >
+                      <Typography
+                        component="pre"
+                        variant="body2"
+                        sx={{
+                          whiteSpace: "pre-wrap",
+                          fontFamily: "inherit",
+                          lineHeight: 1.65,
+                        }}
+                      >
+                        {document.content}
+                      </Typography>
+                    </Paper>
+                    <FormControlLabel
+                      sx={{ alignItems: "flex-start" }}
+                      control={
+                        <Checkbox
+                          checked={accepted[document.key]}
+                          data-testid={`accept-${document.key}`}
+                          onChange={(event) => {
+                            setAccepted((current) => ({
+                              ...current,
+                              [document.key]: event.target.checked,
+                            }));
+                          }}
+                          sx={{ pt: 0.5 }}
+                        />
+                      }
+                      label={
+                        <Typography variant="body2">
+                          {document.acceptanceLabel}
+                        </Typography>
+                      }
+                    />
+                    <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
+                      {index > 0 && (
+                        <Button onClick={() => setActiveStep(index - 1)}>
+                          Tilbake
+                        </Button>
+                      )}
+                      <Button
+                        variant="contained"
+                        disabled={!accepted[document.key]}
+                        onClick={() => setActiveStep(index + 1)}
+                      >
+                        Neste dokument
+                      </Button>
+                    </Stack>
+                  </Box>
+                )}
+              </Step>
+            ))}
 
-            {/* Steg 2: NDA + signering */}
-            <Step expanded={activeStep >= 1}>
-              <StepLabel icon={<NdaIcon color={activeStep >= 1 ? 'primary' : 'disabled'} />}>
-                <b>NDA + signering</b>
-              </StepLabel>
-              {activeStep >= 1 && (
-                <Box sx={{ ml: 4, mb: 2 }}>
-                  <Paper variant="outlined" sx={{ p: 2, maxHeight: 280, overflow: 'auto', mb: 2 }}>
-                    <Typography variant="body2" component="pre" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>
-{`NON-DISCLOSURE AGREEMENT (NDA) — Prototype Tester Program (v${invite.ndaVersion})
-
-Mellom:
-  Creatorhubn AS ("Creatorhubn")
-og
-  ${invite.name} ("Tester")
-
-1. KONFIDENSIELL INFORMASJON
-Tester får tilgang til Creatorhubns ikke-frigjorte funksjoner, interne
-roadmap, design-iterasjoner og feilrapport-detaljer. Alt dette behandles
-som konfidensielt.
-
-2. FORPLIKTELSER
-Tester forplikter seg til:
-  a) Ikke dele skjermbilder, video eller funksjons-beskrivelser fra
-     plattformen offentlig (sosiale medier, blogger, presentasjoner).
-  b) Ikke vise plattformen til personer utenfor programmet uten
-     skriftlig samtykke fra Creatorhubn.
-  c) Ikke benytte informasjon om kommende funksjoner kommersielt
-     før de er offentlig frigjort.
-
-3. VARIGHET
-Konfidensialiteten gjelder under hele test-perioden og 12 måneder etter
-at programmet er avsluttet, uansett årsak.
-
-4. UNNTAK
-NDA-en gjelder ikke informasjon som:
-  - Er eller blir offentlig kjent uten Testers feil.
-  - Tester allerede besatt før programmet startet.
-  - Lovkrav (offentlig myndighet) krever offentliggjøring av.
-
-5. KONSEKVENSER VED BRUDD
-Brudd kan medføre umiddelbar utestengelse fra programmet, tap av
-post-program-belønning, og krav om kompensasjon for dokumentert skade.
-
-6. SIGNATUR
-Ved å skrive ditt fulle navn og klikke "Signer og aktiver"-knappen,
-bekrefter du elektronisk denne avtalen. Signatur, IP-adresse og
-tidspunkt lagres som juridisk dokumentasjon.`}
-                    </Typography>
-                  </Paper>
-
-                  <FormControlLabel
-                    control={<Checkbox checked={acceptedNda} onChange={(e) => setAcceptedNda(e.target.checked)} />}
-                    label="Jeg har lest og godtar NDA-en"
+            <Step expanded={activeStep === signatureStep} completed={success}>
+              <StepLabel
+                icon={
+                  <HowToRegOutlined
+                    color={activeStep >= signatureStep ? "primary" : "disabled"}
                   />
-
+                }
+              >
+                <Typography fontWeight={700}>Elektronisk signatur</Typography>
+              </StepLabel>
+              {activeStep === signatureStep && (
+                <Box sx={{ ml: 4, mb: 2 }}>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ mb: 2 }}
+                  >
+                    Vi lagrer navn, e-post, tidspunkt, IP-adresse, brukeragent,
+                    full dokumenttekst, versjoner og SHA-256-kontrollsum som
+                    dokumentasjon på aksepten.
+                  </Typography>
+                  <FormControlLabel
+                    sx={{ alignItems: "flex-start", mb: 1 }}
+                    control={
+                      <Checkbox
+                        checked={confirmedAuthority}
+                        data-testid="confirm-signing-authority"
+                        onChange={(event) =>
+                          setConfirmedAuthority(event.target.checked)
+                        }
+                        sx={{ pt: 0.5 }}
+                      />
+                    }
+                    label={
+                      <Typography variant="body2">
+                        Jeg bekrefter at jeg inngår avtalene for meg selv og,
+                        dersom virksomhet er oppgitt, at jeg har fullmakt til å
+                        akseptere databehandleravtalen på dens vegne.
+                      </Typography>
+                    }
+                  />
                   <TextField
                     fullWidth
-                    label="Fullt navn (slik det står på legitimasjon)"
-                    value={signerName}
-                    onChange={(e) => setSignerName(e.target.value)}
-                    sx={{ mt: 2 }}
                     required
-                    helperText="Din elektroniske signatur"
+                    label="Fullt navn"
+                    value={signerName}
+                    onChange={(event) => setSignerName(event.target.value)}
+                    helperText="Navnet brukes som din elektroniske signatur"
+                    inputProps={{ "data-testid": "agreement-signer-name" }}
                   />
-
-                  {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
-
+                  {error && (
+                    <Alert severity="error" sx={{ mt: 2 }}>
+                      {error}
+                    </Alert>
+                  )}
                   <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-                    <Button onClick={() => setActiveStep(0)} disabled={submitting}>Tilbake</Button>
+                    <Button
+                      onClick={() =>
+                        setActiveStep(Math.max(0, signatureStep - 1))
+                      }
+                      disabled={submitting}
+                    >
+                      Tilbake
+                    </Button>
                     <Button
                       variant="contained"
                       color="success"
+                      data-testid="sign-and-activate"
                       onClick={handleAccept}
-                      disabled={submitting || !acceptedNda || !signerName.trim()}
+                      disabled={
+                        submitting ||
+                        !allAccepted ||
+                        !confirmedAuthority ||
+                        signerName.trim().length < 2
+                      }
                     >
-                      {submitting ? 'Signerer…' : 'Signer og aktiver tester-tilgang'}
+                      {submitting
+                        ? "Registrerer…"
+                        : activationRetry
+                          ? "Prøv kontoaktivering på nytt"
+                          : "Signer alle og aktiver tilgang"}
                     </Button>
                   </Stack>
                 </Box>
@@ -349,10 +532,17 @@ tidspunkt lagres som juridisk dokumentasjon.`}
           </Stepper>
 
           <Divider sx={{ my: 2 }} />
-          <Stack direction="row" spacing={1} alignItems="center" justifyContent="center" sx={{ color: 'text.secondary' }}>
-            <MailIcon fontSize="small" />
+          <Stack
+            direction="row"
+            spacing={1}
+            alignItems="center"
+            justifyContent="center"
+            color="text.secondary"
+          >
+            <MailOutline fontSize="small" />
             <Typography variant="caption">
-              Du har {new Date(invite.expiresAt).getTime() > Date.now() ? Math.ceil((new Date(invite.expiresAt).getTime() - Date.now()) / (24 * 3600 * 1000)) : 0} dager igjen før invitasjonen utløper.
+              Den personlige invitasjonen utløper om {daysRemaining} dager.
+              Spørsmål kan sendes til daniel@creatorhubn.com.
             </Typography>
           </Stack>
         </CardContent>

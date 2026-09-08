@@ -29,6 +29,29 @@ describe("prototype tester invitation delivery", () => {
     });
   });
 
+  it("awaits the persisted admin-session guard before creating a manual invite", async () => {
+    const query = vi.fn();
+    const app = express();
+    app.use(express.json());
+    setupPrototypeTesterInvitesRoutes({
+      app,
+      pool: { query },
+      getPricingUserId: () => "",
+      requireUserSession: () => true,
+      requireAdminSession: async (_req, res) => {
+        res.status(401).json({ error: "Admin-innlogging kreves" });
+        return null;
+      },
+    });
+
+    const response = await request(app)
+      .post("/api/prototype-tester-invites")
+      .send({ email: "tester@example.com", name: "Test Tester" });
+
+    expect(response.status).toBe(401);
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it("sends approval invitations through the centralized provider and records the journey", async () => {
     const query = vi.fn().mockImplementation(async (statement: unknown) => {
       const sql = String(statement);
@@ -191,18 +214,20 @@ describe("prototype tester invitation delivery", () => {
     };
     const query = vi.fn().mockImplementation(async (statement: unknown) => {
       const sql = String(statement);
-      if (sql.includes("SELECT id, status, expires_at")) {
+      if (sql.includes("SELECT * FROM prototype_tester_invites WHERE token")) {
         return {
           rows: [{
-            id: acceptedRow.id,
+            ...acceptedRow,
             status: "pending",
             expires_at: new Date("2099-01-01T00:00:00.000Z"),
+            nda_version: "1.1",
+            program_terms_version: "1.0",
+            dpa_version: "1.0",
+            letter_of_intent_version: "1.0",
+            master_invite_id: null,
           }],
           rowCount: 1,
         };
-      }
-      if (sql.includes("SELECT master_invite_id")) {
-        return { rows: [{ master_invite_id: null }], rowCount: 1 };
       }
       if (sql.includes("RETURNING *")) {
         return { rows: [acceptedRow], rowCount: 1 };
@@ -233,6 +258,19 @@ describe("prototype tester invitation delivery", () => {
         ndaName: "Activated Tester",
         acceptedProgramTerms: true,
         programTermsVersion: "1.0",
+        acceptedAgreements: {
+          program_terms: true,
+          nda: true,
+          dpa: true,
+          letter_of_intent: true,
+        },
+        agreementVersions: {
+          program_terms: "1.0",
+          nda: "1.1",
+          dpa: "1.0",
+          letter_of_intent: "1.0",
+        },
+        confirmedSigningAuthority: true,
       });
 
     expect(response.status).toBe(200);
@@ -248,7 +286,7 @@ describe("prototype tester invitation delivery", () => {
     expect(sendAccessActivatedEmail).toHaveBeenCalledWith({
       recipientEmail: acceptedRow.email,
       recipientName: "Activated Tester",
-      loginUrl: "https://creatorhubn.com/login",
+      loginUrl: "https://creatorhubn.com/login?redirect=%2Fvideographer-dashboard-material",
       inviteRequestId: acceptedRow.invite_request_id,
       inviteId: acceptedRow.id,
       profession: acceptedRow.member_profession,
