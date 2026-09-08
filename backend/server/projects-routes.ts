@@ -500,24 +500,13 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
       const projectId = crypto.randomUUID();
       const customerId = data.customerId || data.customer_id || null;
 
-      // legacy.projects.user_id har FK til legacy.users — nye brukere finnes
-      // kun i moderne `users`, så prosjektopprettelse FK-feilet (500) for dem.
-      // Speil brukeren inn (idempotent) før insert.
-      await pool.query(
-        `INSERT INTO legacy.users (id, email, first_name, last_name, profession, role)
-         SELECT u.id::varchar, u.email, u.first_name, u.last_name, u.profession, u.role
-         FROM users u WHERE u.id::text = $1
-         ON CONFLICT (id) DO NOTHING`,
-        [userId],
-      );
-
       const result = await pool.query(
-        `INSERT INTO legacy.projects 
-          (id, user_id, title, name, description, profession, category, status,
-           client_email, client_phone, date, event_date, location, budget,
-           settings, metadata, customer_id, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,'active',$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),NOW())
-         RETURNING *`,
+        `INSERT INTO projects
+          (id, user_id, title, name, description, profession, project_type, status,
+           client_name, event_date, location, budget, settings, project_data,
+           created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'active',$8,$9,$10,$11,$12::jsonb,$13::jsonb,NOW(),NOW())
+         RETURNING *, 'public'::text AS _project_source`,
         [
           projectId,
           userId,
@@ -526,15 +515,12 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
           data.description || "",
           data.profession || "photographer",
           data.projectType || "wedding",
-          data.clientEmail || "",
-          data.clientPhone || "",
-          data.eventDate || null,
+          data.clientName || null,
           data.eventDate || null,
           data.location || "",
           data.budget || null,
           JSON.stringify(settings),
           JSON.stringify(metadata),
-          customerId,
         ],
       );
 
