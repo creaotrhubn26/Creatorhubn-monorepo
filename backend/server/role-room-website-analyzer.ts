@@ -170,7 +170,15 @@ export async function analyzeWebsite(
   if (options.skipClaude) {
     claudeRefinement = staticToClaudeFallback(staticSignals);
   } else {
-    claudeRefinement = await refineWithClaude(staticSignals);
+    try {
+      claudeRefinement = await refineWithClaude(staticSignals);
+    } catch (error) {
+      console.warn(
+        "[website-analyzer] Claude refinement unavailable; using static signals",
+        error instanceof Error ? error.name : "unknown_error",
+      );
+      claudeRefinement = staticToClaudeFallback(staticSignals);
+    }
   }
 
   return {
