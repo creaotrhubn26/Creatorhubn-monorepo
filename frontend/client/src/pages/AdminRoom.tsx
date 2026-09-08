@@ -101,7 +101,7 @@ import { OperatingSystemTab } from '../components/admin/content-marketing/Operat
 import { AiCitationTab } from '../components/admin/content-marketing/AiCitationTab';
 import { RoleRoomEconomyTab } from '../components/admin/content-marketing/RoleRoomEconomyTab';
 import { NewsletterStudioTab } from '../components/admin/content-marketing/NewsletterStudioTab';
-import { RoleRoomTesterInviteDialog } from '../components/invite/RoleRoomTesterInviteDialog';
+import { PrototypeTesterInviteDialog } from '../components/invite/RoleRoomTesterInviteDialog';
 import { STUDENT_PAGE_CONFIGS } from '../components/role-room/components/StudentSEOPage';
 import { COMPETITOR_CONFIGS } from '../components/role-room/components/CompetitorComparisonPage';
 import { MARKETING_PAGES, PILLAR_LABELS } from '../components/admin/content-marketing/marketingPagesConfig';
@@ -115,7 +115,7 @@ import AutoAwesomeMosaicIcon from '@mui/icons-material/AutoAwesomeMosaic';
 import MarketingCockpitTab from './admin-room/MarketingCockpitTab';
 import RoleRoomAgentTab from './admin-room/RoleRoomAgentTab';
 import ContentCalendarTab from './admin-room/ContentCalendarTab';
-import { clearClientAuthState } from '../lib/queryClient';
+import { apiRequest, clearClientAuthState } from '../lib/queryClient';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
@@ -4443,8 +4443,61 @@ function PresenceContactsView() {
 // Prototype testers
 // ─────────────────────────────────────────────────────────
 
+interface PrototypeTesterAdminInvite {
+  id: string;
+  name: string;
+  email: string;
+  status: 'pending' | 'accepted' | 'expired' | string;
+  inviteRequestId?: string | null;
+  inviteUrl: string;
+  createdAt?: string | null;
+  acceptedAt?: string | null;
+  emailOpenedAt?: string | null;
+  inviteLinkClickedAt?: string | null;
+  accountProvisioningComplete: boolean;
+  soloProActive: boolean;
+  emailDelivery?: {
+    sent: boolean;
+    sentAt?: string | null;
+    provider?: string | null;
+    reason?: string | null;
+  } | null;
+}
+
+function formatPrototypeTesterTimestamp(value?: string | null) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return new Intl.DateTimeFormat('nb-NO', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(date);
+}
+
 function PrototypeTestersTab() {
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [invites, setInvites] = useState<PrototypeTesterAdminInvite[]>([]);
+  const [invitesLoading, setInvitesLoading] = useState(true);
+  const [invitesError, setInvitesError] = useState<string | null>(null);
+
+  const loadInvites = useCallback(async () => {
+    setInvitesLoading(true);
+    setInvitesError(null);
+    try {
+      const result = await apiRequest('/api/prototype-tester-invites');
+      setInvites(Array.isArray(result?.invites) ? result.invites : []);
+    } catch (error) {
+      setInvitesError(
+        error instanceof Error ? error.message : 'Kunne ikke hente invitasjonene.',
+      );
+    } finally {
+      setInvitesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadInvites();
+  }, [loadInvites]);
 
   return (
     <Stack spacing={3}>
@@ -4454,7 +4507,7 @@ function PrototypeTestersTab() {
             Prototype-testere
           </Typography>
           <Typography variant="body2" sx={{ color: 'rgba(203,213,225,0.7)', mt: 0.5 }}>
-            Inviter testere direkte med NDA og system-krav, eller åpne den fulle
+            Inviter testere direkte med komplett avtalegrunnlag, eller åpne den fulle
             admin-flaten for å godkjenne søknader som kommer inn organisk.
           </Typography>
         </Box>
@@ -4485,12 +4538,109 @@ function PrototypeTestersTab() {
           </Typography>
           <Box component="ol" sx={{ pl: 2.5, color: 'rgba(203,213,225,0.86)', m: 0 }}>
             <li><strong>Invitasjon:</strong> Du sender en one-time-link til tester. Den utløper om 14 dager.</li>
-            <li><strong>NDA-signering:</strong> Tester må lese gjennom og signere NDA før tilgang aktiveres.</li>
-            <li><strong>System-sjekk:</strong> Auto-test av nettleser/skjerm/storage/WebGL. Advarsler hvis miljø er undermåls.</li>
-            <li><strong>Tilgang:</strong> Tester får begrenset Role Room-tilgang (read+test-write, ingen produksjons-data).</li>
+            <li><strong>Avtalegrunnlag:</strong> Tester må godta programvilkår, NDA, databehandleravtale og intensjonsavtale.</li>
+            <li><strong>Juridisk bevis:</strong> Signaturnavn, fullmakt, tidspunkt, IP, brukeragent, dokumentversjoner og kontrollsum lagres.</li>
+            <li><strong>Tilgang:</strong> Konto opprettes med valgt profesjon og reell <code>solo_pro</code>-tilgang.</li>
             <li><strong>Feedback:</strong> Universal feedback-widget er aktiv på alle paneler.</li>
-            <li><strong>Avslutning:</strong> Etter test-periode trekkes tilgangen automatisk. NDA-perioden løper videre.</li>
+            <li><strong>Oppfølging:</strong> Programperiode, feedback og eventuell videre fordel følges opp i admin. NDA-perioden løper videre.</li>
           </Box>
+        </CardContent>
+      </Card>
+
+      <Card sx={{ bgcolor: 'rgba(2,6,23,0.6)', border: '1px solid rgba(255,255,255,0.08)' }}>
+        <CardContent>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, mb: 2 }}>
+            <Box>
+              <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                Invitasjonsstatus
+              </Typography>
+              <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.66)' }}>
+                Levering, engasjement, juridisk aksept og faktisk solo_pro-tilgang.
+              </Typography>
+            </Box>
+            <Button size="small" onClick={() => void loadInvites()} disabled={invitesLoading}>
+              Oppdater
+            </Button>
+          </Box>
+
+          {invitesError && <Alert severity="error" sx={{ mb: 2 }}>{invitesError}</Alert>}
+          {invitesLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress size={28} />
+            </Box>
+          ) : invites.length === 0 ? (
+            <Alert severity="info" variant="outlined">
+              Ingen prototypeinvitasjoner er opprettet ennå.
+            </Alert>
+          ) : (
+            <TableContainer sx={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 1.5 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Tester</TableCell>
+                    <TableCell>Kilde</TableCell>
+                    <TableCell>E-postløp</TableCell>
+                    <TableCell>Avtale og tilgang</TableCell>
+                    <TableCell>Opprettet</TableCell>
+                    <TableCell align="right">Lenke</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {invites.map((invite) => (
+                    <TableRow key={invite.id} hover>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 700, color: '#f8fafc' }}>
+                          {invite.name}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.68)' }}>
+                          {invite.email}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          label={invite.inviteRequestId ? 'Søknad' : 'Direkte'}
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Stack direction="row" useFlexGap flexWrap="wrap" gap={0.75}>
+                          <Chip size="small" label="Sendt" color={invite.emailDelivery?.sent ? 'success' : 'default'} />
+                          <Chip size="small" label="Åpnet" color={invite.emailOpenedAt ? 'success' : 'default'} />
+                          <Chip size="small" label="Klikket" color={invite.inviteLinkClickedAt ? 'success' : 'default'} />
+                        </Stack>
+                        {invite.emailDelivery?.reason && (
+                          <Typography variant="caption" color="error.main">
+                            {invite.emailDelivery.reason}
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Stack direction="row" useFlexGap flexWrap="wrap" gap={0.75}>
+                          <Chip size="small" label="4 avtaler" color={invite.acceptedAt ? 'success' : 'default'} />
+                          <Chip size="small" label="Konto" color={invite.accountProvisioningComplete ? 'success' : 'default'} />
+                          <Chip size="small" label="solo_pro" color={invite.soloProActive ? 'success' : 'default'} />
+                          {invite.status === 'expired' && <Chip size="small" label="Utløpt" color="warning" />}
+                        </Stack>
+                      </TableCell>
+                      <TableCell>{formatPrototypeTesterTimestamp(invite.createdAt)}</TableCell>
+                      <TableCell align="right">
+                        <Button
+                          size="small"
+                          component="a"
+                          href={invite.inviteUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Åpne
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
         </CardContent>
       </Card>
 
@@ -4503,9 +4653,13 @@ function PrototypeTestersTab() {
         admin-flaten (<strong>/admin-invite-system</strong>) — denne fanen fokuserer på direkte invitasjoner.
       </Alert>
 
-      <RoleRoomTesterInviteDialog
+      <PrototypeTesterInviteDialog
         open={inviteOpen}
-        onClose={() => setInviteOpen(false)}
+        onClose={() => {
+          setInviteOpen(false);
+          void loadInvites();
+        }}
+        endpoint="/api/prototype-tester-invites"
       />
     </Stack>
   );

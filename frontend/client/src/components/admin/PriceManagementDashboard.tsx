@@ -118,6 +118,7 @@ interface CreatorHubEmailTemplateRow {
     | 'creatorhub_payment_recovered'
     | 'creatorhub_subscription_cancelled'
     | 'creatorhub_access_request_received'
+    | 'creatorhub_prototype_tester_invite'
     | 'creatorhub_access_request_approved'
     | 'creatorhub_access_request_rejected'
     | 'creatorhub_tester_access_activated';
@@ -436,6 +437,18 @@ const defaultCreatorHubEmailSettings: CreatorHubEmailSettings = {
           'Du trenger ikke sende inn søknaden på nytt. Svar på denne e-posten hvis du vil legge til noe.',
       },
       {
+        id: 'creatorhub_prototype_tester_invite',
+        name: 'Direkte prototype-invitasjon',
+        description: 'Sendes når CreatorHub inviterer en prototype-tester direkte fra adminpanelet.',
+        subject: 'Du er invitert til CreatorHubs prototypeprogram',
+        title: 'Vil du bli prototype-tester?',
+        body:
+          '<p>Hei {{recipientName}},</p><p>CreatorHub-teamet har invitert deg til prototype-testerprogrammet.</p><p>Programmet varer i <strong>{{programDurationWeeks}} uker</strong>. Før tilgangen aktiveres må du lese og akseptere programvilkårene, NDA-en, databehandleravtalen og intensjonsavtalen via knappen under.</p>',
+        ctaLabel: 'Les vilkår og signer',
+        footerNote:
+          'Den personlige lenken utløper om {{inviteExpiresDays}} dager. Svar på denne e-posten hvis du trenger hjelp.',
+      },
+      {
         id: 'creatorhub_access_request_approved',
         name: 'Tilgangsforespørsel godkjent',
         description: 'Sendes når en prototype-tester er godkjent og skal lese og signere hele avtalegrunnlaget.',
@@ -480,6 +493,7 @@ function getCreatorHubTemplateSenderKind(
   switch (templateId) {
     case 'creatorhub_account_activated':
     case 'creatorhub_access_request_received':
+    case 'creatorhub_prototype_tester_invite':
     case 'creatorhub_access_request_approved':
     case 'creatorhub_access_request_rejected':
     case 'creatorhub_tester_access_activated':

@@ -52,6 +52,154 @@ describe("prototype tester invitation delivery", () => {
     expect(query).not.toHaveBeenCalled();
   });
 
+  it("sends a manual admin invite through the CreatorHub Email Designer sender", async () => {
+    const query = vi.fn().mockImplementation(async (statement: unknown) => {
+      if (String(statement).includes("INSERT INTO prototype_tester_invites")) {
+        return {
+          rows: [
+            {
+              id: "manual-invite-id",
+              token: "manual-invite-token",
+              expires_at: new Date("2027-02-14T12:00:00.000Z"),
+              created_at: new Date("2027-01-31T12:00:00.000Z"),
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    const sendInviteEmail = vi.fn().mockResolvedValue({
+      sent: true,
+      provider: "resend",
+      reason: null,
+      messageId: "manual-email-id",
+    });
+    const app = express();
+    app.use(express.json());
+    setupPrototypeTesterInvitesRoutes({
+      app,
+      pool: { query },
+      getPricingUserId: () => "",
+      requireUserSession: () => true,
+      requireAdminSession: async () => ({ userId: "verified-admin-id" }),
+      sendInviteEmail,
+    });
+
+    const response = await request(app)
+      .post("/api/prototype-tester-invites")
+      .send({
+        email: "manual.tester@example.com",
+        name: "Manual Tester",
+        profession: "photographer",
+        company: "Manual AS",
+        testingAreas: ["Story Arc Studio"],
+        personalMessage: "Vi vil gjerne ha deg med.",
+        invitedBy: "spoofed-admin-id",
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({
+      id: "manual-invite-id",
+      emailDelivery: {
+        sent: true,
+        provider: "resend",
+        messageId: "manual-email-id",
+      },
+    });
+    expect(sendInviteEmail).toHaveBeenCalledWith({
+      recipientEmail: "manual.tester@example.com",
+      recipientName: "Manual Tester",
+      inviteUrl: expect.stringContaining("/prototype-tester/accept-invite?token="),
+      ctaUrl: expect.stringContaining("/api/prototype-tester-invites/track/click/"),
+      trackingPixelUrl: expect.stringContaining("/api/prototype-tester-invites/track/open/"),
+      inviteId: "manual-invite-id",
+      sentByUserId: "verified-admin-id",
+      profession: "photographer",
+      company: "Manual AS",
+      testingAreas: ["Story Arc Studio"],
+      personalMessage: "Vi vil gjerne ha deg med.",
+      programDurationWeeks: 12,
+      inviteExpiresDays: 14,
+    });
+    expect(sendTransactionalEmailMock).not.toHaveBeenCalled();
+    expect(
+      query.mock.calls.some(([sql]) =>
+        String(sql).includes("SET email_sent_at = CASE"),
+      ),
+    ).toBe(true);
+
+    const openResponse = await request(app).get(
+      "/api/prototype-tester-invites/track/open/manual-invite-token",
+    );
+    expect(openResponse.status).toBe(200);
+    expect(
+      query.mock.calls.some(([sql]) =>
+        String(sql).includes("SET email_opened_at = COALESCE(email_opened_at, NOW())"),
+      ),
+    ).toBe(true);
+  });
+
+  it("returns a protected admin funnel with legal and solo_pro status", async () => {
+    const query = vi.fn().mockImplementation(async (statement: unknown) => {
+      const sql = String(statement);
+      if (sql.includes("FROM prototype_tester_invites p")) {
+        return {
+          rows: [
+            {
+              id: "listed-invite-id",
+              token: "listed-invite-token",
+              email: "listed.tester@example.com",
+              name: "Listed Tester",
+              testing_areas: ["Story Arc Studio"],
+              status: "accepted",
+              nda_version: "1.1",
+              program_terms_version: "1.0",
+              dpa_version: "1.0",
+              letter_of_intent_version: "1.0",
+              accepted_at: new Date("2027-01-31T12:30:00.000Z"),
+              provisioned_user_id: "listed-user-id",
+              email_sent_at: new Date("2027-01-31T12:00:00.000Z"),
+              email_opened_at: new Date("2027-01-31T12:10:00.000Z"),
+              invite_link_clicked_at: new Date("2027-01-31T12:20:00.000Z"),
+              solo_pro_active: true,
+              created_at: new Date("2027-01-31T11:59:00.000Z"),
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    const app = express();
+    setupPrototypeTesterInvitesRoutes({
+      app,
+      pool: { query },
+      getPricingUserId: () => "",
+      requireUserSession: () => true,
+      requireAdminSession: async () => ({ userId: "verified-admin-id" }),
+    });
+
+    const response = await request(app).get("/api/prototype-tester-invites");
+
+    expect(response.status).toBe(200);
+    expect(response.body.invites[0]).toMatchObject({
+      id: "listed-invite-id",
+      status: "accepted",
+      accountProvisioningComplete: true,
+      soloProActive: true,
+      emailDelivery: { sent: true },
+      emailOpenedAt: "2027-01-31T12:10:00.000Z",
+      inviteLinkClickedAt: "2027-01-31T12:20:00.000Z",
+      inviteUrl: expect.stringContaining("/prototype-tester/accept-invite?token="),
+    });
+    expect(
+      query.mock.calls.some(([sql]) =>
+        String(sql).includes("s.plan_id = 'solo_pro'"),
+      ),
+    ).toBe(true);
+  });
+
   it("sends approval invitations through the centralized provider and records the journey", async () => {
     const query = vi.fn().mockImplementation(async (statement: unknown) => {
       const sql = String(statement);

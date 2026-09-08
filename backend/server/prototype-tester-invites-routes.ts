@@ -57,6 +57,22 @@ export type PrototypeTesterApprovalEmailSender = (input: {
   inviteExpiresDays: number;
 }) => Promise<PrototypeTesterEmailDelivery>;
 
+export type PrototypeTesterDirectInviteEmailSender = (input: {
+  recipientEmail: string;
+  recipientName: string;
+  inviteUrl: string;
+  ctaUrl: string;
+  trackingPixelUrl: string;
+  inviteId: string;
+  sentByUserId: string | null;
+  profession: string | null;
+  company: string | null;
+  testingAreas: string[];
+  personalMessage: string | null;
+  programDurationWeeks: number;
+  inviteExpiresDays: number;
+}) => Promise<PrototypeTesterEmailDelivery>;
+
 export type PrototypeTesterAccessActivatedEmailSender = (input: {
   recipientEmail: string;
   recipientName: string;
@@ -82,6 +98,7 @@ export interface PrototypeTesterInvitesDeps {
     profession?: string | null,
     company?: string | null,
   ) => Promise<any>;
+  sendInviteEmail?: PrototypeTesterDirectInviteEmailSender;
   sendAccessActivatedEmail?: PrototypeTesterAccessActivatedEmailSender;
 }
 
@@ -125,6 +142,12 @@ async function ensureSchema(pool: any): Promise<void> {
       last_feedback_at            TIMESTAMPTZ,
       last_login_at               TIMESTAMPTZ,
       last_digest_sent_at         TIMESTAMPTZ,
+      email_sent_at               TIMESTAMPTZ,
+      email_provider              VARCHAR(80),
+      email_message_id            TEXT,
+      email_delivery_reason       TEXT,
+      email_opened_at             TIMESTAMPTZ,
+      invite_link_clicked_at      TIMESTAMPTZ,
       invited_by                  TEXT,
       expires_at                  TIMESTAMPTZ NOT NULL,
       created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -150,6 +173,12 @@ async function ensureSchema(pool: any): Promise<void> {
     `agreement_digest VARCHAR(64)`,
     `provisioned_user_id TEXT`,
     `provisioned_at TIMESTAMPTZ`,
+    `email_sent_at TIMESTAMPTZ`,
+    `email_provider VARCHAR(80)`,
+    `email_message_id TEXT`,
+    `email_delivery_reason TEXT`,
+    `email_opened_at TIMESTAMPTZ`,
+    `invite_link_clicked_at TIMESTAMPTZ`,
   ]) {
     await pool.query(`ALTER TABLE prototype_tester_invites ADD COLUMN IF NOT EXISTS ${col}`).catch(() => undefined);
   }
@@ -185,9 +214,9 @@ async function ensureSchema(pool: any): Promise<void> {
 }
 
 
-// Open/click-tracking: pixel + klikk-redirect skriver invite_email_opened_at /
-// invite_link_clicked_at på den koblede invite_requests-raden (admin-dashbordets
-// Email Conversion-widget). Manuelle invitasjoner uten invite_request_id no-op'er.
+// Open/click-tracking persists on the tester invitation itself and, when the
+// invitation came from an application, on invite_requests for its conversion
+// dashboard as well.
 function buildInviteTrackUrls(baseUrl: string, token: string): { openPixelUrl: string; clickUrl: string } {
   const t = encodeURIComponent(token);
   return {
@@ -423,6 +452,38 @@ function rowToInvite(r: any): any {
   };
 }
 
+function rowToAdminInviteSummary(r: any, baseUrl: string): any {
+  const invite = rowToInvite(r);
+  return {
+    id: invite.id,
+    email: invite.email,
+    name: invite.name,
+    testingAreas: invite.testingAreas,
+    status: invite.status,
+    expiresAt: invite.expiresAt,
+    acceptedAt: invite.acceptedAt,
+    programStartedAt: invite.programStartedAt,
+    programEndsAt: invite.programEndsAt,
+    accountProvisioningComplete: invite.accountProvisioningComplete,
+    soloProActive: Boolean(r.solo_pro_active),
+    memberProfession: invite.memberProfession,
+    memberCompany: invite.memberCompany,
+    inviteRequestId: r.invite_request_id || null,
+    createdAt: r.created_at,
+    emailDelivery: {
+      sent: Boolean(r.dashboard_email_sent_at || r.email_sent_at),
+      sentAt: r.dashboard_email_sent_at || r.email_sent_at || null,
+      provider: r.email_provider || null,
+      reason: r.email_delivery_reason || null,
+      messageId: r.email_message_id || null,
+    },
+    emailOpenedAt: r.dashboard_email_opened_at || r.email_opened_at || null,
+    inviteLinkClickedAt:
+      r.dashboard_invite_link_clicked_at || r.invite_link_clicked_at || null,
+    inviteUrl: `${baseUrl}/prototype-tester/accept-invite?token=${encodeURIComponent(r.token)}`,
+  };
+}
+
 // Slice 9X.58 — Gyldige profesjoner et team-medlem kan ha. Må matche
 // frontend-keys (useProfessionAdapter) → riktig dashboard-orchestrator.
 const ALLOWED_MEMBER_PROFESSIONS = new Set([
@@ -557,6 +618,26 @@ export async function createInviteFromApprovedRequest(
           tracking,
         );
 
+    await pool.query(
+      `UPDATE prototype_tester_invites
+          SET email_sent_at = CASE
+                WHEN $2::boolean THEN COALESCE(email_sent_at, NOW())
+                ELSE email_sent_at
+              END,
+              email_provider = $3,
+              email_message_id = $4,
+              email_delivery_reason = $5,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [
+        ins.rows[0].id,
+        emailDelivery.sent,
+        emailDelivery.provider,
+        emailDelivery.messageId,
+        emailDelivery.reason,
+      ],
+    );
+
     if (emailDelivery.sent) {
       await pool.query(
         `UPDATE invite_requests
@@ -586,6 +667,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
     requireUserSession,
     requireAdminSession,
     provisionTesterAccount,
+    sendInviteEmail,
     sendAccessActivatedEmail,
   } = deps;
 
@@ -600,6 +682,13 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
   // direkte (generiske invitasjoner fra /send-invite har ingen tester-rad).
   app.get("/api/prototype-tester-invites/track/open/:token", async (req, res) => {
     try {
+      await pool.query(
+        `UPDATE prototype_tester_invites
+            SET email_opened_at = COALESCE(email_opened_at, NOW()),
+                updated_at = NOW()
+          WHERE token = $1`,
+        [req.params.token],
+      );
       await pool.query(
         `UPDATE invite_requests
             SET invite_email_opened_at = COALESCE(invite_email_opened_at, NOW()),
@@ -629,7 +718,12 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
     let isTesterToken = false;
     try {
       const match = await pool.query(
-        `SELECT 1 FROM prototype_tester_invites WHERE token = $1 LIMIT 1`,
+        `UPDATE prototype_tester_invites
+            SET email_opened_at = COALESCE(email_opened_at, NOW()),
+                invite_link_clicked_at = COALESCE(invite_link_clicked_at, NOW()),
+                updated_at = NOW()
+          WHERE token = $1
+          RETURNING 1`,
         [token],
       );
       isTesterToken = match.rows.length > 0;
@@ -658,7 +752,8 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
   // Admin oppretter invitasjon manuelt (push-modell, i tillegg til
   // auto-bro fra approval).
   app.post("/api/prototype-tester-invites", async (req, res) => {
-    if (!(await requireAdminSession(req, res))) return;
+    const adminSession = await requireAdminSession(req, res);
+    if (!adminSession) return;
     try {
       await ensureSchema(pool);
       const body = req.body ?? {};
@@ -666,7 +761,10 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       const name = typeof body.name === "string" ? body.name.trim() : "";
       const testingAreas = Array.isArray(body.testingAreas) ? body.testingAreas : [];
       const personalMessage = typeof body.personalMessage === "string" ? body.personalMessage.slice(0, 2000) : null;
-      const invitedBy = typeof body.invitedBy === "string" ? body.invitedBy : null;
+      const invitedBy =
+        typeof adminSession === "object" && adminSession && "userId" in adminSession
+          ? String(adminSession.userId)
+          : getPricingUserId(req) || null;
       // Fang profesjon + firma ved invitasjon → forhåndsutfylt tester-profil
       // (bare bekreft, ikke fyll på nytt) + grunnlag for kunde-konvertering.
       const memberProfession = normalizeMemberProfession(body.profession);
@@ -710,18 +808,55 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       const row = ins.rows[0];
       const baseUrl = safeAppBaseUrl(req);
       const inviteUrl = `${baseUrl}/prototype-tester/accept-invite?token=${encodeURIComponent(row.token)}`;
+      const tracking = buildInviteTrackUrls(baseUrl, row.token);
 
-      const emailDelivery = await deliverInviteEmail(
-        pool,
-        email,
-        name,
-        inviteUrl,
-        personalMessage,
-        "Du er invitert som prototype-tester i CreatorHub",
-        "prototype_tester_invite",
-        invitedBy,
-        null,
-        buildInviteTrackUrls(baseUrl, row.token),
+      const emailDelivery = sendInviteEmail
+        ? await sendInviteEmail({
+            recipientEmail: email,
+            recipientName: name,
+            inviteUrl,
+            ctaUrl: tracking.clickUrl,
+            trackingPixelUrl: tracking.openPixelUrl,
+            inviteId: String(row.id),
+            sentByUserId: invitedBy,
+            profession: memberProfession,
+            company: memberCompany,
+            testingAreas,
+            personalMessage,
+            programDurationWeeks: PROGRAM_DURATION_WEEKS,
+            inviteExpiresDays: INVITE_EXPIRES_DAYS,
+          })
+        : await deliverInviteEmail(
+            pool,
+            email,
+            name,
+            inviteUrl,
+            personalMessage,
+            "Du er invitert som prototype-tester i CreatorHub",
+            "prototype_tester_invite",
+            invitedBy,
+            null,
+            tracking,
+          );
+
+      await pool.query(
+        `UPDATE prototype_tester_invites
+            SET email_sent_at = CASE
+                  WHEN $2::boolean THEN COALESCE(email_sent_at, NOW())
+                  ELSE email_sent_at
+                END,
+                email_provider = $3,
+                email_message_id = $4,
+                email_delivery_reason = $5,
+                updated_at = NOW()
+          WHERE id = $1`,
+        [
+          row.id,
+          emailDelivery.sent,
+          emailDelivery.provider,
+          emailDelivery.messageId,
+          emailDelivery.reason,
+        ],
       );
 
       res.status(201).json({
@@ -736,6 +871,42 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
     } catch (err: any) {
       console.error("POST /prototype-tester-invites:", err);
       res.status(500).json({ error: "Kunne ikke opprette invitasjon" });
+    }
+  });
+
+  // ─── GET /api/prototype-tester-invites ──────────────────────
+  // Adminoversikt for både direkte og søknadsbaserte invitasjoner. Tokenet
+  // returneres bare innbakt i den adminbeskyttede akseptlenken.
+  app.get("/api/prototype-tester-invites", async (req, res) => {
+    if (!(await requireAdminSession(req, res))) return;
+    try {
+      await ensureSchema(pool);
+      const result = await pool.query(
+        `SELECT p.*,
+                r.invite_sent_at AS dashboard_email_sent_at,
+                r.invite_email_opened_at AS dashboard_email_opened_at,
+                r.invite_link_clicked_at AS dashboard_invite_link_clicked_at,
+                EXISTS (
+                  SELECT 1
+                    FROM user_subscriptions s
+                   WHERE s.user_id::text = p.provisioned_user_id::text
+                     AND s.plan_id = 'solo_pro'
+                     AND s.status IN ('active', 'trial')
+                ) AS solo_pro_active
+           FROM prototype_tester_invites p
+           LEFT JOIN invite_requests r ON r.id = p.invite_request_id
+          ORDER BY p.created_at DESC
+          LIMIT 200`,
+      );
+      const baseUrl = safeAppBaseUrl(req);
+      res.json({
+        invites: result.rows.map((row: any) =>
+          rowToAdminInviteSummary(row, baseUrl),
+        ),
+      });
+    } catch (err) {
+      console.error("GET /prototype-tester-invites:", err);
+      res.status(500).json({ error: "Kunne ikke hente prototype-invitasjoner" });
     }
   });
 

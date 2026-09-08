@@ -1,21 +1,18 @@
 /**
- * RoleRoomTesterInviteDialog — admin-flate for å invitere prototype-testere
- * direkte (push-modell), i tillegg til den eksisterende pull-modellen
- * (testere søker, admin godkjenner).
+ * PrototypeTesterInviteDialog — CreatorHub-adminflate for å invitere
+ * prototype-testere direkte (push-modell), i tillegg til den eksisterende
+ * pull-modellen (testere søker, admin godkjenner).
  *
  * Workflow:
  *  1. Admin fyller inn epost + navn + valgte testområder
- *  2. Optional: forhåndsbekreft NDA-versjon
- *  3. Submit → backend genererer one-time-link og sender invitasjons-epost
- *  4. Tester mottar link, lander på /role-room/accept-invite?token=…,
- *     signerer NDA, sjekker system-krav, og aktiveres
+ *  2. Submit → backend genererer one-time-link og sender invitasjons-e-post
+ *  3. Tester mottar lenken og godtar hele avtalegrunnlaget
+ *  4. CreatorHub oppretter konto og solo_pro-tilgang
  *
  * Backend-API som forventes:
- *   POST /api/role-room/tester-invites
- *     body: { email, name, testingAreas, ndaVersion, expiresAt }
- *     returns: { id, token, inviteUrl }
- *
- * Hvis API-et ikke finnes ennå returnerer den 404 og vi viser melding.
+ *   POST /api/prototype-tester-invites
+ *     body: { email, name, profession, company, testingAreas, personalMessage }
+ *     returns: { id, token, inviteUrl, emailDelivery }
  */
 
 import { useState } from 'react';
@@ -33,44 +30,60 @@ import {
   Typography,
   Alert,
   CircularProgress,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
 } from '@mui/material';
 import {
   Close as CloseIcon,
   Send as SendIcon,
   ContentCopy as CopyIcon,
 } from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
 
 const DEFAULT_TESTING_AREAS = [
-  'Casting Planner',
+  'CreatorHub-dashboard',
   'Story Arc Studio',
-  'Storyboard-tegning',
-  'Klient-godkjenning',
-  'Live Set',
+  'Prosjekt og arbeidsflyt',
+  'Showcase og klient-godkjenning',
+  'Kontrakt og fakturering',
+  'Integrasjoner',
   'Mobil',
   'iPad',
 ];
 
-interface RoleRoomTesterInviteDialogProps {
+const PROFESSION_OPTIONS = [
+  { value: 'photographer', label: 'Fotograf' },
+  { value: 'videographer', label: 'Videograf' },
+  { value: 'music_producer', label: 'Musikkprodusent' },
+  { value: 'vendor', label: 'Leverandør' },
+] as const;
+
+interface PrototypeTesterInviteDialogProps {
   open: boolean;
   onClose: () => void;
-  /** Endepunkt for å opprette en invitasjon. Default: '/api/role-room/tester-invites'. */
+  /** Endepunkt for å opprette en invitasjon. Default: CreatorHub-programmet. */
   endpoint?: string;
-  /** Standard utløpstid for invitasjonen i dager. Default: 14. */
-  defaultExpiresDays?: number;
 }
 
 interface InviteResponse {
   id: string;
   token: string;
   inviteUrl: string;
+  emailDelivery?: {
+    sent: boolean;
+    provider?: string | null;
+    reason?: string | null;
+    messageId?: string | null;
+  } | null;
 }
 
-export const RoleRoomTesterInviteDialog = ({
+export const PrototypeTesterInviteDialog = ({
   open,
   onClose,
-  endpoint = '/api/role-room/tester-invites',
-  defaultExpiresDays = 14,
-}: RoleRoomTesterInviteDialogProps) => {
+  endpoint = '/api/prototype-tester-invites',
+}: PrototypeTesterInviteDialogProps) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [profession, setProfession] = useState('');
@@ -113,33 +126,22 @@ export const RoleRoomTesterInviteDialog = ({
     if (!canSubmit) return;
     setSubmitting(true);
     setError(null);
-    const expiresAt = new Date(
-      Date.now() + defaultExpiresDays * 24 * 60 * 60 * 1000,
-    ).toISOString();
     try {
-      const response = await fetch(endpoint, {
+      const data = await apiRequest(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: {
           email: email.trim(),
           name: name.trim(),
           profession: profession.trim() || undefined,
           company: company.trim() || undefined,
           testingAreas: selectedAreas,
           personalMessage: personalMessage.trim() || undefined,
-          ndaVersion: '1.0',
-          expiresAt,
-        }),
+        },
       });
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error('Invite-API-et er ikke deployet ennå. Be backend om POST /api/role-room/tester-invites.');
-        }
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.error || `Kunne ikke opprette invitasjon (${response.status})`);
+      if (!data?.id || !data?.token || !data?.inviteUrl) {
+        throw new Error('Invitasjonen ble ikke opprettet med en gyldig lenke.');
       }
-      const data = (await response.json()) as InviteResponse;
-      setResult(data);
+      setResult(data as InviteResponse);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ukjent feil');
     } finally {
@@ -177,7 +179,7 @@ export const RoleRoomTesterInviteDialog = ({
             Inviter prototype-tester
           </Typography>
           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)' }}>
-            Sender en one-time-link med NDA og system-krav. Utløper om {defaultExpiresDays} dager.
+            Sender en 14-dagers lenke med programvilkår, NDA, databehandleravtale og intensjonsavtale.
           </Typography>
         </Box>
         <IconButton onClick={handleClose} aria-label="Lukk" sx={{ color: 'rgba(255,255,255,0.7)' }}>
@@ -188,8 +190,13 @@ export const RoleRoomTesterInviteDialog = ({
       <DialogContent dividers sx={{ borderColor: 'rgba(255,255,255,0.08)' }}>
         {result ? (
           <Stack spacing={2}>
-            <Alert severity="success" variant="outlined">
-              Invitasjon opprettet og e-post sendt til {email}.
+            <Alert
+              severity={result.emailDelivery?.sent ? 'success' : 'warning'}
+              variant="outlined"
+            >
+              {result.emailDelivery?.sent
+                ? `Invitasjon opprettet og e-post sendt til ${email}.`
+                : `Invitasjonen er opprettet, men e-posten ble ikke bekreftet sendt${result.emailDelivery?.reason ? `: ${result.emailDelivery.reason}` : '.'}`}
             </Alert>
             <Box>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', mb: 0.5, display: 'block' }}>
@@ -243,24 +250,31 @@ export const RoleRoomTesterInviteDialog = ({
               InputLabelProps={{ sx: { color: 'rgba(255,255,255,0.6)' } }}
             />
             <Stack direction="row" spacing={2}>
-              <TextField
-                label="Profesjon (valgfri)"
-                value={profession}
-                onChange={(e) => setProfession(e.target.value)}
-                fullWidth
-                size="small"
-                helperText="Forhåndsutfyller testerens profil"
-                InputProps={{ sx: { color: '#fff' } }}
-                InputLabelProps={{ sx: { color: 'rgba(255,255,255,0.6)' } }}
-                FormHelperTextProps={{ sx: { color: 'rgba(255,255,255,0.4)' } }}
-              />
+              <FormControl fullWidth size="small">
+                <InputLabel sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                  Profesjon (valgfri)
+                </InputLabel>
+                <Select
+                  label="Profesjon (valgfri)"
+                  value={profession}
+                  onChange={(e) => setProfession(e.target.value)}
+                  sx={{ color: '#fff' }}
+                >
+                  <MenuItem value=""><em>Ikke valgt</em></MenuItem>
+                  {PROFESSION_OPTIONS.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
               <TextField
                 label="Bedrift (valgfri)"
                 value={company}
                 onChange={(e) => setCompany(e.target.value)}
                 fullWidth
                 size="small"
-                helperText="Bekreftes senere via Brønnøysund"
+                helperText="Tas med i avtalegrunnlaget"
                 InputProps={{ sx: { color: '#fff' } }}
                 InputLabelProps={{ sx: { color: 'rgba(255,255,255,0.6)' } }}
                 FormHelperTextProps={{ sx: { color: 'rgba(255,255,255,0.4)' } }}
@@ -298,7 +312,7 @@ export const RoleRoomTesterInviteDialog = ({
               multiline
               rows={3}
               size="small"
-              placeholder="Hei! Vil du teste The Role Room? Du får tilgang i 14 dager…"
+              placeholder="Hei! Vi vil gjerne invitere deg til CreatorHubs prototypeprogram …"
               InputProps={{ sx: { color: '#fff' } }}
               InputLabelProps={{ sx: { color: 'rgba(255,255,255,0.6)' } }}
             />
@@ -335,4 +349,7 @@ export const RoleRoomTesterInviteDialog = ({
   );
 };
 
-export default RoleRoomTesterInviteDialog;
+// Bakoverkompatibelt eksportnavn mens eldre imports fases ut.
+export const RoleRoomTesterInviteDialog = PrototypeTesterInviteDialog;
+
+export default PrototypeTesterInviteDialog;
