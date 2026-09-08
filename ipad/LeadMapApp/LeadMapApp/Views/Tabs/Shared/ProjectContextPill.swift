@@ -39,8 +39,11 @@ struct ProjectContextPill: View {
         appState.activeProjectId != nil
     }
 
-    @State private var nyttProsjektAapen = false
-    @State private var nyttProsjektNavn = ""
+    @State private var projectOnboardingOpen = false
+    @State private var pendingOnboardingResult: LeadgridProjectOnboardingResult?
+    #if DEBUG
+    @State private var didAutoOpenProjectOnboarding = false
+    #endif
 
     var body: some View {
         // Vis også når lista er TOM: Leadgrid oppretter nå egne prosjekter
@@ -69,38 +72,81 @@ struct ProjectContextPill: View {
                     }
                 }
                 Divider()
-                Button {
-                    nyttProsjektNavn = ""
-                    nyttProsjektAapen = true
-                } label: {
-                    Label("Nytt prosjekt …", systemImage: "folder.badge.plus")
+                if appState.isSuperAdmin
+                    || (appState.can("projects.create") && appState.can("lead_research.run")) {
+                    Button {
+                        projectOnboardingOpen = true
+                    } label: {
+                        Label("Nytt prosjekt fra domene …", systemImage: "sparkles.rectangle.stack")
+                    }
+                    .accessibilityIdentifier("project-onboarding.open")
                 }
             } label: {
                 pill
             }
-            .alert("Nytt prosjekt", isPresented: $nyttProsjektAapen) {
-                TextField("Prosjektnavn", text: $nyttProsjektNavn)
-                Button("Opprett") {
-                    let navn = nyttProsjektNavn.trimmingCharacters(in: .whitespaces)
-                    guard navn.count >= 2, let api = appState.api,
-                          let organizationId = appState.activeOrganizationId else { return }
-                    Task { @MainActor in
-                        if let prosjekt = try? await api.createLeadMapProject(
-                            name: navn, organizationId: organizationId) {
-                            appState.projects.insert(prosjekt, at: 0)
-                            appState.activeProjectId = prosjekt.id
+            .sheet(isPresented: $projectOnboardingOpen, onDismiss: activateOnboardedProject) {
+                if let api = appState.api,
+                   let organizationId = appState.activeOrganizationId {
+                    ProjectDomainOnboardingView(
+                        api: api,
+                        organizationId: organizationId,
+                        onCompleted: { result in
+                            pendingOnboardingResult = result
                         }
-                    }
+                    )
+                } else {
+                    ContentUnavailableView(
+                        "Velg organisasjon",
+                        systemImage: "building.2.crop.circle",
+                        description: Text("En aktiv organisasjon kreves før kundeprosjektet kan opprettes.")
+                    )
                 }
-                Button("Avbryt", role: .cancel) {}
-            } message: {
-                Text("Prosjektet grupperer leads, brand-kit og markedsscan — helt uavhengig av The Role Room.")
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
             .accessibilityIdentifier("header-project-pill")
             .accessibilityLabel("Aktivt prosjekt: \(currentLabel)")
+            .onAppear {
+                #if DEBUG
+                if ProcessInfo.processInfo.environment["QA_TOUR"] == "domain-onboarding",
+                   !didAutoOpenProjectOnboarding {
+                    didAutoOpenProjectOnboarding = true
+                    projectOnboardingOpen = true
+                }
+                #endif
+            }
+            .fullScreenCover(isPresented: Binding(
+                get: { appState.discoveryCoordinator.isPresented },
+                set: { presented in
+                    if presented {
+                        appState.discoveryCoordinator.showWorkspace()
+                    } else {
+                        appState.discoveryCoordinator.dismissWorkspace()
+                    }
+                }
+            )) {
+                DiscoveryWorkspaceView(coordinator: appState.discoveryCoordinator)
+            }
             .macCatalystHover()
+        }
+    }
+
+    @MainActor
+    private func activateOnboardedProject() {
+        guard let result = pendingOnboardingResult else { return }
+        pendingOnboardingResult = nil
+        if let index = appState.projects.firstIndex(where: { $0.id == result.project.id }) {
+            appState.projects[index] = result.project
+        } else {
+            appState.projects.insert(result.project, at: 0)
+        }
+        appState.activeProjectId = result.project.id
+        Task { @MainActor in
+            // Vent til onboarding-arket er helt lukket før fullskjerms-Discovery
+            // presenteres. Da unngår vi konkurrerende SwiftUI-presentasjoner.
+            await Task.yield()
+            await appState.configureDiscovery()
+            appState.discoveryCoordinator.showWorkspace()
         }
     }
 

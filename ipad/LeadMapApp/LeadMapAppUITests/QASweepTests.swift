@@ -276,6 +276,48 @@ final class QASweepTests: XCTestCase {
         }
     }
 
+    func testSuperAdminDomainOnboardingOpensDiscovery() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["QA_TOUR"] = "domain-onboarding"
+        app.launchEnvironment["QA_TAB"] = "0"
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["Nytt kundeprosjekt"].waitForExistence(timeout: 12))
+        let domain = app.textFields["project-onboarding.domain"]
+        XCTAssertTrue(domain.waitForExistence(timeout: 3))
+        domain.tap()
+        domain.typeText("dentum.no")
+        app.buttons["project-onboarding.analyze"].tap()
+
+        let category = app.staticTexts["project-onboarding.category"]
+        XCTAssertTrue(category.waitForExistence(timeout: 5))
+        XCTAssertTrue(category.label.contains("Tannhelse"))
+        XCTAssertTrue(app.staticTexts["Tannhelse – Oslo"].exists)
+
+        let addProfile = app.buttons["project-onboarding.profile.add"]
+        for _ in 0..<12 where !addProfile.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(addProfile.exists)
+        addProfile.tap()
+
+        let commit = app.buttons["project-onboarding.commit"]
+        for _ in 0..<12 where !commit.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(commit.isHittable)
+        XCTAssertTrue(app.staticTexts["Finn duplikater"].exists)
+        XCTAssertTrue(app.staticTexts["Sjekk datakvalitet"].exists)
+        commit.tap()
+
+        XCTAssertTrue(
+            app.buttons["discovery.close"].waitForExistence(timeout: 8),
+            "Et bekreftet domeneprosjekt skal åpnes direkte i Discovery"
+        )
+        XCTAssertFalse(app.navigationBars["Nytt kundeprosjekt"].exists)
+        app.terminate()
+    }
+
     func testLeadgridAgentProposalRequiresConfirmationBeforeExecution() throws {
         #if !targetEnvironment(macCatalyst)
         XCUIDevice.shared.orientation = .landscapeLeft

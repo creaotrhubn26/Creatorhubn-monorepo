@@ -504,6 +504,11 @@ final class AppState {
             }
             clearProjectBoundPresentation()
             clearWidgetSnapshot()
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["QA_TOUR"] == "domain-onboarding" {
+                return
+            }
+            #endif
             Task {
                 await loadFromCache()
                 await refreshAll()
@@ -948,8 +953,15 @@ func configureDiscovery() async {
             && project.id == activeProjectId
             && (project.organizationId == nil || project.organizationId == activeOrganizationId)
     }
+    #if DEBUG
+    let discoveryAPI = ProcessInfo.processInfo.environment["QA_TOUR"] == "domain-onboarding"
+        ? nil
+        : api
+    #else
+    let discoveryAPI = api
+    #endif
     await discoveryCoordinator.configure(
-        api: api,
+        api: discoveryAPI,
         actorUserId: currentUserId,
         organizationId: activeOrganizationId,
         projectId: scopedProject?.id,
@@ -972,6 +984,20 @@ func configureDiscovery() async {
         // QA-hook (landing-videoer): QA_TOUR kjører på ren demo-data og
         // trenger ingen backend — hopp over pairing hvis sesjonen mangler.
         // Reverteres m/ task #59-følget.
+        if let qaTour = ProcessInfo.processInfo.environment["QA_TOUR"],
+           qaTour == "domain-onboarding" {
+            self.authToken = "qa-tour-domain-onboarding"
+            self.userEmail = "superadmin@leadgrid.no"
+            self.currentUserId = "qa-super-admin"
+            self.activeOrganizationId = "11111111-1111-4111-8111-111111111111"
+            self.activeProjectId = nil
+            self.permissions = ["projects.create", "lead_research.run"]
+            self.roleInOrg = "admin"
+            self.userRole = "super_admin"
+            self.leadgridDiscoveryEnabled = true
+            self.api = APIClient(token: "qa-tour-domain-onboarding", actorUserId: "qa-super-admin")
+            return
+        }
         if let qaTour = ProcessInfo.processInfo.environment["QA_TOUR"],
            AuthClient.loadToken() == nil {
             self.authToken = "qa-tour-demo"

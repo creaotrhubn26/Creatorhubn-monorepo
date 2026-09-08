@@ -616,6 +616,7 @@ import { registerLeadgridImportRoutes } from "./leadgrid-import-routes.js";
 import { registerLeadgridContinuousDiscoveryCron } from "./leadgrid-continuous-discovery.js";
 import { registerLeadgridDiscoveryRoutes } from "./leadgrid-discovery-routes.js";
 import { registerLeadgridDiscoveryConfigRoutes } from "./leadgrid-discovery-config-routes.js";
+import { registerLeadgridDomainOnboardingRoutes } from "./leadgrid-domain-onboarding-routes.js";
 import { registerLeadgridIndustriesRoutes } from "./leadgrid-industries-routes.js";
 import { registerLeadgridDealsRoutes } from "./leadgrid-deals-routes.js";
 import { registerLeadgridWorkflowRoutes } from "./leadgrid-workflow-routes.js";
@@ -25679,6 +25680,7 @@ registerLeadgridDiscoveryRoutes({ app, pool, activeSessions });
 // CRUD for per-prosjekt-config + 5-min poller som kjører discovery
 // for auto_discover_enabled prosjekter.
 registerLeadgridDiscoveryConfigRoutes({ app, pool, activeSessions });
+registerLeadgridDomainOnboardingRoutes({ app, pool, activeSessions });
 registerLeadgridContinuousDiscoveryCron(pool);
 // Industries-katalog + member-spesialiseringer (mig 329).
 // 3-lags bransje-system: industries (global+custom) + crm_customers.industry_id
