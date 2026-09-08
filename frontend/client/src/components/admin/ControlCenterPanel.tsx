@@ -168,6 +168,8 @@ interface CanaryJourneyView {
   label: string;
   vertical: CanaryVertical;
   status: CanaryStatus;
+  pending?: boolean;
+  stale?: boolean;
   httpStatus: number | null;
   latencyMs: number | null;
   expected: string;
@@ -858,7 +860,6 @@ const CanarySection: React.FC<{ canary: ReturnType<typeof useQuery<CanaryRespons
   const { journeys, overall, generatedAt } = canary.data;
   const overallMeta = CANARY_STATUS_META[overall] ?? CANARY_STATUS_META.unknown;
   const upCount = journeys.filter((j) => j.status === 'up').length;
-  const ranCount = journeys.filter((j) => j.status !== 'unknown').length;
 
   return (
     <Box sx={{ display: 'grid', gap: 2 }}>
@@ -871,7 +872,7 @@ const CanarySection: React.FC<{ canary: ReturnType<typeof useQuery<CanaryRespons
         />
         <KpiCard
           label="Grønne nå"
-          value={`${upCount}/${ranCount || journeys.length}`}
+          value={`${upCount}/${journeys.length}`}
           hint="Journeys som svarer som forventet"
         />
       </Stack>
@@ -891,8 +892,18 @@ const CanarySection: React.FC<{ canary: ReturnType<typeof useQuery<CanaryRespons
         </TableHead>
         <TableBody>
           {journeys.map((j) => {
-            const meta = CANARY_STATUS_META[j.status] ?? CANARY_STATUS_META.unknown;
-            const detail = j.status === 'down' ? (j.message ?? j.note) : j.note;
+            const pending = j.pending === true;
+            const meta = pending
+              ? { label: 'AVVENTER', color: '#b7791f' }
+              : (CANARY_STATUS_META[j.status] ?? CANARY_STATUS_META.unknown);
+            const detail = j.status === 'up' ? j.note : (j.message ?? j.note);
+            const statusTooltip = pending
+              ? 'Én midlertidig feil observert; varsler først ved to på rad'
+              : j.stale
+                ? 'Målingen er for gammel til å regnes som grønn'
+                : j.status === 'down' && j.lastFailureAt
+                  ? `Sist feil ${relTime(j.lastFailureAt)}`
+                  : '';
             return (
               <TableRow key={j.key}>
                 <TableCell sx={{ fontSize: 12.5, fontWeight: 600 }}>{j.label}</TableCell>
@@ -900,7 +911,7 @@ const CanarySection: React.FC<{ canary: ReturnType<typeof useQuery<CanaryRespons
                   {CANARY_VERTICAL_LABEL[j.vertical] ?? j.vertical}
                 </TableCell>
                 <TableCell>
-                  <Tooltip title={j.status === 'down' && j.lastFailureAt ? `Sist feil ${relTime(j.lastFailureAt)}` : ''}>
+                  <Tooltip title={statusTooltip}>
                     <Chip
                       size="small"
                       label={j.httpStatus != null ? `${meta.label} · ${j.httpStatus}` : meta.label}
