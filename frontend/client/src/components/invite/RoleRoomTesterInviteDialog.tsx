@@ -35,12 +35,14 @@ import {
   MenuItem,
   Select,
 } from '@mui/material';
+import { ThemeProvider } from '@mui/material/styles';
 import {
   Close as CloseIcon,
   Send as SendIcon,
   ContentCopy as CopyIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
+import { ws, workspaceDarkTheme } from '@/components/workspace/workspaceTheme';
 
 const DEFAULT_TESTING_AREAS = [
   'CreatorHub-dashboard',
@@ -160,6 +162,7 @@ export const PrototypeTesterInviteDialog = ({
   };
 
   return (
+    <ThemeProvider theme={workspaceDarkTheme}>
     <Dialog
       open={open}
       onClose={handleClose}
@@ -167,27 +170,29 @@ export const PrototypeTesterInviteDialog = ({
       fullWidth
       PaperProps={{
         sx: {
-          bgcolor: '#0f172a',
-          color: '#fff',
-          border: '1px solid rgba(184,107,255,0.32)',
+          bgcolor: ws.panelSolid,
+          color: ws.text,
+          border: `1px solid ${ws.border}`,
+          backgroundImage: 'none',
+          boxShadow: '0 28px 80px rgba(0,0,0,0.5)',
         },
       }}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Box>
-          <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
+          <Typography variant="h6" sx={{ color: ws.text, fontWeight: 800 }}>
             Inviter prototype-tester
           </Typography>
-          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)' }}>
+          <Typography variant="caption" sx={{ color: ws.textDim }}>
             Sender en 14-dagers lenke med programvilkår, NDA, databehandleravtale og intensjonsavtale.
           </Typography>
         </Box>
-        <IconButton onClick={handleClose} aria-label="Lukk" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+        <IconButton onClick={handleClose} aria-label="Lukk" sx={{ color: ws.textDim }}>
           <CloseIcon />
         </IconButton>
       </DialogTitle>
 
-      <DialogContent dividers sx={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+      <DialogContent dividers sx={{ borderColor: ws.border }}>
         {result ? (
           <Stack spacing={2}>
             <Alert
@@ -199,7 +204,7 @@ export const PrototypeTesterInviteDialog = ({
                 : `Invitasjonen er opprettet, men e-posten ble ikke bekreftet sendt${result.emailDelivery?.reason ? `: ${result.emailDelivery.reason}` : '.'}`}
             </Alert>
             <Box>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', mb: 0.5, display: 'block' }}>
+              <Typography variant="caption" sx={{ color: ws.textDim, mb: 0.5, display: 'block' }}>
                 One-time-link (kopier og del manuelt om e-posten ikke kommer fram):
               </Typography>
               <Box
@@ -208,8 +213,8 @@ export const PrototypeTesterInviteDialog = ({
                   alignItems: 'center',
                   gap: 1,
                   p: 1.25,
-                  bgcolor: 'rgba(2,6,15,0.6)',
-                  border: '1px solid rgba(255,255,255,0.08)',
+                  bgcolor: ws.bg,
+                  border: `1px solid ${ws.border}`,
                   borderRadius: 1,
                 }}
               >
@@ -220,7 +225,7 @@ export const PrototypeTesterInviteDialog = ({
                   onClick={handleCopyLink}
                   aria-label="Kopier link"
                   size="small"
-                  sx={{ color: '#b86bff' }}
+                  sx={{ color: ws.accent }}
                 >
                   <CopyIcon fontSize="small" />
                 </IconButton>
@@ -236,8 +241,7 @@ export const PrototypeTesterInviteDialog = ({
               fullWidth
               size="small"
               autoFocus
-              InputProps={{ sx: { color: '#fff' } }}
-              InputLabelProps={{ sx: { color: 'rgba(255,255,255,0.6)' } }}
+              InputProps={{ sx: { bgcolor: ws.panelInput } }}
             />
             <TextField
               label="E-post"
@@ -246,19 +250,18 @@ export const PrototypeTesterInviteDialog = ({
               onChange={(e) => setEmail(e.target.value)}
               fullWidth
               size="small"
-              InputProps={{ sx: { color: '#fff' } }}
-              InputLabelProps={{ sx: { color: 'rgba(255,255,255,0.6)' } }}
+              InputProps={{ sx: { bgcolor: ws.panelInput } }}
             />
             <Stack direction="row" spacing={2}>
               <FormControl fullWidth size="small">
-                <InputLabel sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                <InputLabel>
                   Profesjon (valgfri)
                 </InputLabel>
                 <Select
                   label="Profesjon (valgfri)"
                   value={profession}
                   onChange={(e) => setProfession(e.target.value)}
-                  sx={{ color: '#fff' }}
+                  sx={{ bgcolor: ws.panelInput }}
                 >
                   <MenuItem value=""><em>Ikke valgt</em></MenuItem>
                   {PROFESSION_OPTIONS.map((option) => (
@@ -275,13 +278,11 @@ export const PrototypeTesterInviteDialog = ({
                 fullWidth
                 size="small"
                 helperText="Tas med i avtalegrunnlaget"
-                InputProps={{ sx: { color: '#fff' } }}
-                InputLabelProps={{ sx: { color: 'rgba(255,255,255,0.6)' } }}
-                FormHelperTextProps={{ sx: { color: 'rgba(255,255,255,0.4)' } }}
+                InputProps={{ sx: { bgcolor: ws.panelInput } }}
               />
             </Stack>
             <Box>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.65)', display: 'block', mb: 1 }}>
+              <Typography variant="caption" sx={{ color: ws.textDim, display: 'block', mb: 1 }}>
                 Områder å teste (velg minst ett)
               </Typography>
               <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
@@ -293,9 +294,9 @@ export const PrototypeTesterInviteDialog = ({
                       label={area}
                       onClick={() => toggleArea(area)}
                       sx={{
-                        bgcolor: isSelected ? 'rgba(184,107,255,0.24)' : 'rgba(255,255,255,0.06)',
-                        color: isSelected ? '#e9d5ff' : 'rgba(255,255,255,0.78)',
-                        border: isSelected ? '1px solid rgba(184,107,255,0.5)' : '1px solid rgba(255,255,255,0.12)',
+                        bgcolor: isSelected ? ws.accentSoft : ws.panelInput,
+                        color: isSelected ? ws.accent : ws.textDim,
+                        border: `1px solid ${isSelected ? ws.accentBorder : ws.border}`,
                         fontWeight: 600,
                         cursor: 'pointer',
                       }}
@@ -313,8 +314,7 @@ export const PrototypeTesterInviteDialog = ({
               rows={3}
               size="small"
               placeholder="Hei! Vi vil gjerne invitere deg til CreatorHubs prototypeprogram …"
-              InputProps={{ sx: { color: '#fff' } }}
-              InputLabelProps={{ sx: { color: 'rgba(255,255,255,0.6)' } }}
+              InputProps={{ sx: { bgcolor: ws.panelInput } }}
             />
             {error && <Alert severity="error" variant="outlined">{error}</Alert>}
           </Stack>
@@ -326,7 +326,7 @@ export const PrototypeTesterInviteDialog = ({
           <Button variant="contained" onClick={handleClose}>Ferdig</Button>
         ) : (
           <>
-            <Button onClick={handleClose} sx={{ color: 'rgba(255,255,255,0.7)' }}>
+            <Button onClick={handleClose} sx={{ color: ws.textDim }}>
               Avbryt
             </Button>
             <Button
@@ -335,9 +335,10 @@ export const PrototypeTesterInviteDialog = ({
               disabled={!canSubmit}
               startIcon={submitting ? <CircularProgress size={16} /> : <SendIcon />}
               sx={{
-                bgcolor: '#b86bff',
-                '&:hover': { bgcolor: '#a855f7' },
-                '&:disabled': { bgcolor: 'rgba(184,107,255,0.3)' },
+                bgcolor: ws.accent,
+                color: ws.accentContrast,
+                fontWeight: 800,
+                '&:hover': { bgcolor: ws.accentHover },
               }}
             >
               {submitting ? 'Sender…' : 'Send invitasjon'}
@@ -346,6 +347,7 @@ export const PrototypeTesterInviteDialog = ({
         )}
       </DialogActions>
     </Dialog>
+    </ThemeProvider>
   );
 };
 

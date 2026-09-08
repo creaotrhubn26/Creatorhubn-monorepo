@@ -22,6 +22,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { PrototypeTesterInviteDialog } from '../invite/RoleRoomTesterInviteDialog';
+import { ws } from '../workspace/workspaceTheme';
 
 interface PrototypeTesterAdminInvite {
   id: string;
@@ -78,14 +79,14 @@ export default function PrototypeTesterAdminPanel() {
 
   return (
     <Box sx={{ px: { xs: 1.5, sm: 2.5 }, pb: 4 }} data-testid="prototype-tester-admin-panel">
-      <Card sx={{ bgcolor: 'rgba(2,6,23,0.72)', border: '1px solid rgba(255,255,255,0.1)' }}>
+      <Card sx={{ bgcolor: ws.panel, border: `1px solid ${ws.border}`, borderRadius: `${ws.radius}px` }}>
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, flexWrap: 'wrap', mb: 2 }}>
             <Box>
-              <Typography variant="h5" sx={{ color: '#fff', fontWeight: 700 }}>
+              <Typography variant="h5" sx={{ color: ws.text, fontWeight: 800 }}>
                 Prototype-testere og direkte invitasjoner
               </Typography>
-              <Typography variant="body2" sx={{ color: 'rgba(203,213,225,0.72)', mt: 0.5 }}>
+              <Typography variant="body2" sx={{ color: ws.textDim, mt: 0.5 }}>
                 Samme verifiserbare flyt som søknadene over: e-post, fire avtaler,
                 konto og faktisk solo_pro-tilgang.
               </Typography>
@@ -95,7 +96,7 @@ export default function PrototypeTesterAdminPanel() {
                 variant="contained"
                 startIcon={<AddIcon />}
                 onClick={() => setInviteOpen(true)}
-                sx={{ bgcolor: '#ff8c00', color: '#111827', fontWeight: 700, '&:hover': { bgcolor: '#f59e0b' } }}
+                sx={{ bgcolor: ws.accent, color: ws.accentContrast, fontWeight: 800, '&:hover': { bgcolor: ws.accentHover } }}
               >
                 Inviter ny tester
               </Button>
@@ -103,7 +104,7 @@ export default function PrototypeTesterAdminPanel() {
                 variant="outlined"
                 startIcon={<OpenInNewIcon />}
                 href="/admin-invite-system"
-                sx={{ color: '#ffb45b', borderColor: 'rgba(255,180,91,0.5)' }}
+                sx={{ color: ws.accent, borderColor: ws.accentBorder }}
               >
                 Full søknadsflate
               </Button>
@@ -129,7 +130,7 @@ export default function PrototypeTesterAdminPanel() {
               Ingen prototypeinvitasjoner er opprettet ennå.
             </Alert>
           ) : (
-            <TableContainer sx={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 1.5 }}>
+            <TableContainer sx={{ border: `1px solid ${ws.border}`, borderRadius: `${ws.radiusSm}px` }}>
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -145,10 +146,10 @@ export default function PrototypeTesterAdminPanel() {
                   {invites.map((invite) => (
                     <TableRow key={invite.id} hover data-testid={`prototype-tester-invite-${invite.id}`}>
                       <TableCell>
-                        <Typography variant="body2" sx={{ fontWeight: 700, color: '#f8fafc' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 700, color: ws.text }}>
                           {invite.name}
                         </Typography>
-                        <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.68)' }}>
+                        <Typography variant="caption" sx={{ color: ws.textDim }}>
                           {invite.email}
                         </Typography>
                       </TableCell>

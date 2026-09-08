@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   Box,
@@ -9,30 +9,38 @@ import {
   Chip,
   CircularProgress,
   Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   FormControlLabel,
+  IconButton,
+  LinearProgress,
   Paper,
   Stack,
-  Step,
-  StepLabel,
-  Stepper,
   TextField,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
+import { ThemeProvider } from "@mui/material/styles";
 import {
   AssignmentOutlined,
   CheckCircle as CheckIcon,
+  Close as CloseIcon,
   GavelOutlined,
   HandshakeOutlined,
   HowToRegOutlined,
   LockOutlined,
   MailOutline,
+  MenuBookOutlined,
   PrivacyTipOutlined,
 } from "@mui/icons-material";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { trackEvent } from "@/utils/ga4-client-tracking";
 import { testerEvents } from "@/utils/creatorhub-events";
+import { ws, workspaceDarkTheme } from "@/components/workspace/workspaceTheme";
 import type {
   PrototypeTesterAgreementDocument,
   PrototypeTesterAgreementKey,
@@ -84,35 +92,79 @@ const readToken = (): string => {
   }
 };
 
-const agreementIcon = (key: PrototypeTesterAgreementKey, active: boolean) => {
-  const color = active ? "primary" : "disabled";
+const agreementIcon = (
+  key: PrototypeTesterAgreementKey,
+  completed: boolean,
+) => {
+  const sx = { color: completed ? ws.green : ws.accent, fontSize: 23 };
   switch (key) {
     case "program_terms":
-      return <AssignmentOutlined color={color} />;
+      return <AssignmentOutlined sx={sx} />;
     case "nda":
-      return <GavelOutlined color={color} />;
+      return <GavelOutlined sx={sx} />;
     case "dpa":
-      return <PrivacyTipOutlined color={color} />;
+      return <PrivacyTipOutlined sx={sx} />;
     case "letter_of_intent":
-      return <HandshakeOutlined color={color} />;
+      return <HandshakeOutlined sx={sx} />;
   }
 };
 
-const emptyAcceptance = (): Record<PrototypeTesterAgreementKey, boolean> => ({
+const emptyDocumentState = (): Record<
+  PrototypeTesterAgreementKey,
+  boolean
+> => ({
   program_terms: false,
   nda: false,
   dpa: false,
   letter_of_intent: false,
 });
 
+function PrototypeInvitePageFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <ThemeProvider theme={workspaceDarkTheme}>
+      <Box
+        sx={{
+          minHeight: "100vh",
+          bgcolor: ws.bg,
+          color: ws.text,
+          backgroundImage:
+            "radial-gradient(circle at 80% 0%, rgba(255,140,0,0.13), transparent 32%), radial-gradient(circle at 12% 65%, rgba(96,165,250,0.07), transparent 30%)",
+          py: { xs: 2, sm: 4 },
+        }}
+      >
+        <Container maxWidth="md">
+          <Box component="header" sx={{ mb: { xs: 2.5, sm: 3.5 } }}>
+            <Box
+              component="img"
+              src="/creatorhub-wordmark-light.png"
+              alt="Creatorhub"
+              sx={{
+                width: { xs: 154, sm: 184 },
+                height: "auto",
+                display: "block",
+              }}
+            />
+          </Box>
+          {children}
+        </Container>
+      </Box>
+    </ThemeProvider>
+  );
+}
+
 const AcceptPrototypeTesterInvite: React.FC = () => {
   const [, navigate] = useLocation();
+  const compactReader = useMediaQuery(
+    workspaceDarkTheme.breakpoints.down("sm"),
+  );
   const token = readToken();
   const [invite, setInvite] = useState<Invite | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeStep, setActiveStep] = useState(0);
-  const [accepted, setAccepted] = useState(emptyAcceptance);
+  const [accepted, setAccepted] = useState(emptyDocumentState);
+  const [reviewed, setReviewed] = useState(emptyDocumentState);
+  const [activeDocumentKey, setActiveDocumentKey] =
+    useState<PrototypeTesterAgreementKey | null>(null);
   const [confirmedAuthority, setConfirmedAuthority] = useState(false);
   const [signerName, setSignerName] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -141,43 +193,52 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
           !response.accountProvisioningComplete &&
           response.agreementAcceptance?.complete
         ) {
-          const restoredAcceptance = emptyAcceptance();
+          const restoredAcceptance = emptyDocumentState();
+          const restoredReview = emptyDocumentState();
           for (const document of response.agreementAcceptance.documents) {
             restoredAcceptance[document.key] = document.accepted;
+            restoredReview[document.key] = document.accepted;
           }
           setAccepted(restoredAcceptance);
+          setReviewed(restoredReview);
           setConfirmedAuthority(
             response.agreementAcceptance.confirmedSigningAuthority,
           );
           setSignerName(
             response.agreementAcceptance.signerName || response.name || "",
           );
-          setActiveStep(response.agreements.length);
         }
       })
       .catch((cause: unknown) => {
-        const message =
+        setError(
           cause instanceof Error
             ? cause.message
-            : "Invitasjonen ble ikke funnet.";
-        setError(message);
+            : "Invitasjonen ble ikke funnet.",
+        );
       })
       .finally(() => setLoading(false));
   }, [token]);
 
   const agreements = invite?.agreements ?? [];
-  const signatureStep = agreements.length;
-  const allAccepted = useMemo(
-    () =>
-      agreements.length === 4 &&
-      agreements.every((document) => accepted[document.key]),
-    [accepted, agreements],
-  );
+  const activeDocument =
+    agreements.find((document) => document.key === activeDocumentKey) ?? null;
+  const acceptedCount = agreements.filter(
+    (document) => accepted[document.key],
+  ).length;
+  const allAccepted =
+    agreements.length === 4 &&
+    agreements.every((document) => accepted[document.key]);
   const activationRetry = Boolean(
     invite?.status === "accepted" &&
     !invite.accountProvisioningComplete &&
     invite.agreementAcceptance?.complete,
   );
+
+  const markActiveDocumentReviewed = () => {
+    if (!activeDocument) return;
+    setReviewed((current) => ({ ...current, [activeDocument.key]: true }));
+    setActiveDocumentKey(null);
+  };
 
   const handleAccept = async () => {
     if (!allAccepted) {
@@ -233,11 +294,11 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
         navigate(`/login?redirect=${encodeURIComponent(dashboard)}`);
       }, 2500);
     } catch (cause: unknown) {
-      const message =
+      setError(
         cause instanceof Error
           ? cause.message
-          : "Signering feilet — prøv igjen.";
-      setError(message);
+          : "Signering feilet — prøv igjen.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -245,45 +306,47 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
 
   if (loading) {
     return (
-      <Container sx={{ py: 6, textAlign: "center" }}>
-        <CircularProgress aria-label="Laster avtaledokumenter" />
-      </Container>
+      <PrototypeInvitePageFrame>
+        <Box sx={{ py: 8, textAlign: "center" }}>
+          <CircularProgress aria-label="Laster avtaledokumenter" />
+        </Box>
+      </PrototypeInvitePageFrame>
     );
   }
   if (error && !invite) {
     return (
-      <Container maxWidth="sm" sx={{ py: 4 }}>
+      <PrototypeInvitePageFrame>
         <Alert severity="error">{error}</Alert>
-      </Container>
+      </PrototypeInvitePageFrame>
     );
   }
   if (!invite) return null;
   if (invite.status !== "pending" && !activationRetry) {
     return (
-      <Container maxWidth="sm" sx={{ py: 4 }}>
+      <PrototypeInvitePageFrame>
         <Alert severity={invite.status === "accepted" ? "success" : "warning"}>
           Denne invitasjonen er{" "}
           {invite.status === "accepted" ? "allerede signert" : invite.status}.
         </Alert>
-      </Container>
+      </PrototypeInvitePageFrame>
     );
   }
   if (success) {
     return (
-      <Container maxWidth="sm" sx={{ py: 6 }}>
-        <Card>
-          <CardContent sx={{ py: 6, textAlign: "center" }}>
-            <CheckIcon sx={{ color: "success.main", fontSize: 72 }} />
-            <Typography variant="h5" sx={{ mt: 2 }}>
+      <PrototypeInvitePageFrame>
+        <Card sx={{ bgcolor: ws.panel, border: `1px solid ${ws.border}` }}>
+          <CardContent sx={{ py: 7, textAlign: "center" }}>
+            <CheckIcon sx={{ color: ws.green, fontSize: 72 }} />
+            <Typography variant="h5" sx={{ mt: 2, fontWeight: 800 }}>
               Avtalene er registrert
             </Typography>
-            <Typography color="text.secondary" sx={{ mt: 1 }}>
+            <Typography sx={{ color: ws.textDim, mt: 1 }}>
               CreatorHub-tilgangen er aktivert. Du sendes til innlogging og
               deretter videre til dashbordet.
             </Typography>
           </CardContent>
         </Card>
-      </Container>
+      </PrototypeInvitePageFrame>
     );
   }
 
@@ -296,48 +359,101 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
   );
 
   return (
-    <Container maxWidth="md" sx={{ py: 4 }}>
-      <Card>
-        <CardContent>
-          <Stack
-            direction="row"
-            alignItems="center"
-            spacing={1.5}
-            sx={{ mb: 1 }}
-          >
-            <LockOutlined color="primary" sx={{ fontSize: 32 }} />
-            <Stack>
-              <Typography variant="overline" color="primary">
+    <PrototypeInvitePageFrame>
+      <Card
+        data-testid="prototype-agreement-card"
+        sx={{
+          bgcolor: ws.panel,
+          border: `1px solid ${ws.border}`,
+          borderRadius: `${ws.radius}px`,
+          backdropFilter: "blur(18px)",
+          overflow: "hidden",
+        }}
+      >
+        <CardContent sx={{ p: { xs: 2, sm: 3.5 } }}>
+          <Stack direction="row" alignItems="flex-start" spacing={1.5}>
+            <Box
+              sx={{
+                width: 46,
+                height: 46,
+                borderRadius: 2.5,
+                bgcolor: ws.accentSoft,
+                border: `1px solid ${ws.accentBorder}`,
+                display: "grid",
+                placeItems: "center",
+                flexShrink: 0,
+              }}
+            >
+              <LockOutlined sx={{ color: ws.accent }} />
+            </Box>
+            <Box>
+              <Typography
+                variant="overline"
+                sx={{
+                  color: ws.accent,
+                  fontWeight: 800,
+                  letterSpacing: "0.13em",
+                }}
+              >
                 Godkjent prototype-tester
               </Typography>
-              <Typography variant="h5">
+              <Typography variant="h4" sx={{ fontWeight: 800, mt: -0.25 }}>
                 Les og signer avtalegrunnlaget
               </Typography>
-            </Stack>
+            </Box>
           </Stack>
-          <Typography color="text.secondary" sx={{ mb: 2 }}>
-            Hei {invite.name}. Før kontoen aktiveres må du lese fire dokumenter
-            og signere elektronisk med fullt navn.
+
+          <Typography sx={{ color: ws.textDim, mt: 2, maxWidth: 700 }}>
+            Hei {invite.name}. Åpne hvert dokument, les hele teksten og bekreft
+            det separat før du signerer samlet.
           </Typography>
+
+          <Box sx={{ mt: 3, mb: 3 }}>
+            <Stack
+              direction="row"
+              justifyContent="space-between"
+              sx={{ mb: 0.75 }}
+            >
+              <Typography variant="caption" sx={{ color: ws.textDim }}>
+                Avtalegjennomgang
+              </Typography>
+              <Typography
+                variant="caption"
+                sx={{ color: ws.text, fontWeight: 700 }}
+              >
+                {acceptedCount} av 4 godkjent
+              </Typography>
+            </Stack>
+            <LinearProgress
+              variant="determinate"
+              value={(acceptedCount / 4) * 100}
+              sx={{ height: 7, borderRadius: 99, bgcolor: ws.panelAlt }}
+            />
+          </Box>
+
           {activationRetry && (
-            <Alert severity="warning" sx={{ mb: 2 }}>
+            <Alert severity="warning" sx={{ mb: 2.5 }}>
               Avtalene er allerede registrert, men kontoaktiveringen ble ikke
               fullført. Kontroller navnet og prøv aktiveringen på nytt.
             </Alert>
           )}
-          <Alert severity="info" sx={{ mb: 3 }}>
-            Databehandleravtalen gjelder når du bruker CreatorHub til å behandle
-            personopplysninger på vegne av egen virksomhet. Intensjonsavtalen er
-            uttrykkelig ikke-bindende; de tre øvrige dokumentene er bindende når
-            de aksepteres.
+          <Alert severity="info" variant="outlined" sx={{ mb: 3 }}>
+            Databehandleravtalen gjelder behandling av personopplysninger.
+            Intensjonsavtalen er ikke-bindende; de tre øvrige dokumentene er
+            bindende når de aksepteres.
           </Alert>
 
           {invite.personalMessage && (
             <Paper
               variant="outlined"
-              sx={{ p: 2, mb: 3, bgcolor: "action.hover" }}
+              sx={{
+                p: 2,
+                mb: 3,
+                bgcolor: ws.panelInput,
+                borderColor: ws.border,
+              }}
             >
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{ color: ws.textDim }}>
                 Personlig melding fra CreatorHub
               </Typography>
               <Typography sx={{ mt: 0.5, fontStyle: "italic" }}>
@@ -346,198 +462,244 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
             </Paper>
           )}
 
-          <Stepper activeStep={activeStep} orientation="vertical">
-            {agreements.map((document, index) => (
-              <Step
-                key={document.key}
-                expanded={activeStep === index}
-                completed={accepted[document.key]}
-              >
-                <StepLabel
-                  icon={agreementIcon(document.key, activeStep >= index)}
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: {
+                xs: "1fr",
+                md: "repeat(2, minmax(0, 1fr))",
+              },
+              gap: 2,
+            }}
+          >
+            {agreements.map((document) => {
+              const hasBeenRead = reviewed[document.key];
+              const hasBeenAccepted = accepted[document.key];
+              return (
+                <Card
+                  key={document.key}
+                  variant="outlined"
+                  data-testid={`agreement-summary-${document.key}`}
+                  sx={{
+                    bgcolor: ws.panelInput,
+                    borderColor: hasBeenAccepted ? ws.green : ws.border,
+                    borderRadius: `${ws.radiusSm}px`,
+                    display: "flex",
+                  }}
                 >
-                  <Stack
-                    direction="row"
-                    spacing={1}
-                    alignItems="center"
-                    flexWrap="wrap"
-                    useFlexGap
+                  <CardContent
+                    sx={{
+                      p: 2.25,
+                      width: "100%",
+                      display: "flex",
+                      flexDirection: "column",
+                    }}
                   >
-                    <Typography fontWeight={700}>{document.title}</Typography>
-                    <Chip
-                      size="small"
-                      label={`v${document.version}`}
-                      variant="outlined"
-                    />
-                    <Chip
-                      size="small"
-                      label={
-                        document.bindingNature === "binding"
-                          ? "Bindende"
-                          : "Ikke-bindende"
-                      }
-                      color={
-                        document.bindingNature === "binding"
-                          ? "warning"
-                          : "default"
-                      }
-                    />
-                  </Stack>
-                </StepLabel>
-                {activeStep === index && (
-                  <Box sx={{ ml: 4, mb: 3 }}>
-                    <Paper
-                      variant="outlined"
-                      data-testid={`agreement-content-${document.key}`}
-                      sx={{ p: 2, maxHeight: 360, overflow: "auto", mb: 2 }}
+                    <Stack
+                      direction="row"
+                      spacing={1.25}
+                      alignItems="flex-start"
                     >
-                      <Typography
-                        component="pre"
-                        variant="body2"
+                      <Box
                         sx={{
-                          whiteSpace: "pre-wrap",
-                          fontFamily: "inherit",
-                          lineHeight: 1.65,
+                          width: 38,
+                          height: 38,
+                          borderRadius: 2,
+                          bgcolor: hasBeenAccepted
+                            ? ws.greenSoft
+                            : ws.accentSoft,
+                          display: "grid",
+                          placeItems: "center",
+                          flexShrink: 0,
                         }}
                       >
-                        {document.content}
-                      </Typography>
-                    </Paper>
+                        {agreementIcon(document.key, hasBeenAccepted)}
+                      </Box>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography fontWeight={800} sx={{ lineHeight: 1.3 }}>
+                          {document.title}
+                        </Typography>
+                        <Stack
+                          direction="row"
+                          spacing={0.75}
+                          useFlexGap
+                          flexWrap="wrap"
+                          sx={{ mt: 1 }}
+                        >
+                          <Chip
+                            size="small"
+                            label={`v${document.version}`}
+                            variant="outlined"
+                          />
+                          <Chip
+                            size="small"
+                            label={
+                              document.bindingNature === "binding"
+                                ? "Bindende"
+                                : "Ikke-bindende"
+                            }
+                            color={
+                              document.bindingNature === "binding"
+                                ? "warning"
+                                : "default"
+                            }
+                          />
+                          {hasBeenRead && (
+                            <Chip size="small" label="Lest" color="success" />
+                          )}
+                        </Stack>
+                      </Box>
+                    </Stack>
+
+                    <Typography
+                      variant="body2"
+                      sx={{ color: ws.textDim, mt: 2, mb: 2 }}
+                    >
+                      Åpne dokumentleseren for å se hele teksten før du godtar.
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      startIcon={<MenuBookOutlined />}
+                      data-testid={`read-${document.key}`}
+                      onClick={() => setActiveDocumentKey(document.key)}
+                      sx={{ alignSelf: "flex-start", mb: 1.5 }}
+                    >
+                      {hasBeenRead
+                        ? "Les dokumentet igjen"
+                        : "Åpne og les dokumentet"}
+                    </Button>
                     <FormControlLabel
-                      sx={{ alignItems: "flex-start" }}
+                      sx={{ alignItems: "flex-start", mt: "auto", mr: 0 }}
+                      disabled={!hasBeenRead}
                       control={
                         <Checkbox
-                          checked={accepted[document.key]}
+                          checked={hasBeenAccepted}
                           data-testid={`accept-${document.key}`}
-                          onChange={(event) => {
+                          onChange={(event) =>
                             setAccepted((current) => ({
                               ...current,
                               [document.key]: event.target.checked,
-                            }));
-                          }}
-                          sx={{ pt: 0.5 }}
+                            }))
+                          }
+                          sx={{ pt: 0.35 }}
                         />
                       }
                       label={
-                        <Typography variant="body2">
+                        <Typography
+                          variant="body2"
+                          sx={{ color: hasBeenRead ? ws.text : ws.textFaint }}
+                        >
                           {document.acceptanceLabel}
                         </Typography>
                       }
                     />
-                    <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
-                      {index > 0 && (
-                        <Button onClick={() => setActiveStep(index - 1)}>
-                          Tilbake
-                        </Button>
-                      )}
-                      <Button
-                        variant="contained"
-                        disabled={!accepted[document.key]}
-                        onClick={() => setActiveStep(index + 1)}
-                      >
-                        Neste dokument
-                      </Button>
-                    </Stack>
-                  </Box>
-                )}
-              </Step>
-            ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </Box>
 
-            <Step expanded={activeStep === signatureStep} completed={success}>
-              <StepLabel
-                icon={
-                  <HowToRegOutlined
-                    color={activeStep >= signatureStep ? "primary" : "disabled"}
+          <Divider sx={{ my: 3.5, borderColor: ws.border }} />
+
+          <Card
+            variant="outlined"
+            sx={{
+              bgcolor: ws.panelInput,
+              borderColor: allAccepted ? ws.accentBorder : ws.border,
+              borderRadius: `${ws.radiusSm}px`,
+            }}
+          >
+            <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
+              <Stack
+                direction="row"
+                spacing={1.25}
+                alignItems="center"
+                sx={{ mb: 2 }}
+              >
+                <HowToRegOutlined
+                  sx={{ color: allAccepted ? ws.accent : ws.textFaint }}
+                />
+                <Box>
+                  <Typography fontWeight={800}>Elektronisk signatur</Typography>
+                  <Typography variant="caption" sx={{ color: ws.textDim }}>
+                    Aktiveres når alle fire dokumentene er lest og godkjent.
+                  </Typography>
+                </Box>
+              </Stack>
+              <Typography variant="body2" sx={{ color: ws.textDim, mb: 2 }}>
+                Vi lagrer navn, e-post, tidspunkt, IP-adresse, brukeragent, full
+                dokumenttekst, versjoner og SHA-256-kontrollsum som
+                dokumentasjon.
+              </Typography>
+              <FormControlLabel
+                disabled={!allAccepted}
+                sx={{ alignItems: "flex-start", mb: 1 }}
+                control={
+                  <Checkbox
+                    checked={confirmedAuthority}
+                    data-testid="confirm-signing-authority"
+                    onChange={(event) =>
+                      setConfirmedAuthority(event.target.checked)
+                    }
+                    sx={{ pt: 0.5 }}
                   />
                 }
-              >
-                <Typography fontWeight={700}>Elektronisk signatur</Typography>
-              </StepLabel>
-              {activeStep === signatureStep && (
-                <Box sx={{ ml: 4, mb: 2 }}>
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ mb: 2 }}
-                  >
-                    Vi lagrer navn, e-post, tidspunkt, IP-adresse, brukeragent,
-                    full dokumenttekst, versjoner og SHA-256-kontrollsum som
-                    dokumentasjon på aksepten.
+                label={
+                  <Typography variant="body2">
+                    Jeg bekrefter at jeg inngår avtalene for meg selv og, dersom
+                    virksomhet er oppgitt, at jeg har fullmakt til å akseptere
+                    databehandleravtalen på dens vegne.
                   </Typography>
-                  <FormControlLabel
-                    sx={{ alignItems: "flex-start", mb: 1 }}
-                    control={
-                      <Checkbox
-                        checked={confirmedAuthority}
-                        data-testid="confirm-signing-authority"
-                        onChange={(event) =>
-                          setConfirmedAuthority(event.target.checked)
-                        }
-                        sx={{ pt: 0.5 }}
-                      />
-                    }
-                    label={
-                      <Typography variant="body2">
-                        Jeg bekrefter at jeg inngår avtalene for meg selv og,
-                        dersom virksomhet er oppgitt, at jeg har fullmakt til å
-                        akseptere databehandleravtalen på dens vegne.
-                      </Typography>
-                    }
-                  />
-                  <TextField
-                    fullWidth
-                    required
-                    label="Fullt navn"
-                    value={signerName}
-                    onChange={(event) => setSignerName(event.target.value)}
-                    helperText="Navnet brukes som din elektroniske signatur"
-                    inputProps={{ "data-testid": "agreement-signer-name" }}
-                  />
-                  {error && (
-                    <Alert severity="error" sx={{ mt: 2 }}>
-                      {error}
-                    </Alert>
-                  )}
-                  <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-                    <Button
-                      onClick={() =>
-                        setActiveStep(Math.max(0, signatureStep - 1))
-                      }
-                      disabled={submitting}
-                    >
-                      Tilbake
-                    </Button>
-                    <Button
-                      variant="contained"
-                      color="success"
-                      data-testid="sign-and-activate"
-                      onClick={handleAccept}
-                      disabled={
-                        submitting ||
-                        !allAccepted ||
-                        !confirmedAuthority ||
-                        signerName.trim().length < 2
-                      }
-                    >
-                      {submitting
-                        ? "Registrerer…"
-                        : activationRetry
-                          ? "Prøv kontoaktivering på nytt"
-                          : "Signer alle og aktiver tilgang"}
-                    </Button>
-                  </Stack>
-                </Box>
+                }
+              />
+              <TextField
+                fullWidth
+                required
+                disabled={!allAccepted}
+                label="Fullt navn"
+                value={signerName}
+                onChange={(event) => setSignerName(event.target.value)}
+                helperText="Navnet brukes som din elektroniske signatur"
+                inputProps={{ "data-testid": "agreement-signer-name" }}
+                sx={{ mt: 1 }}
+              />
+              {error && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {error}
+                </Alert>
               )}
-            </Step>
-          </Stepper>
+              <Button
+                variant="contained"
+                data-testid="sign-and-activate"
+                onClick={handleAccept}
+                disabled={
+                  submitting ||
+                  !allAccepted ||
+                  !confirmedAuthority ||
+                  signerName.trim().length < 2
+                }
+                sx={{
+                  mt: 2,
+                  bgcolor: ws.accent,
+                  color: ws.accentContrast,
+                  fontWeight: 800,
+                }}
+              >
+                {submitting
+                  ? "Registrerer…"
+                  : activationRetry
+                    ? "Prøv kontoaktivering på nytt"
+                    : "Signer alle og aktiver tilgang"}
+              </Button>
+            </CardContent>
+          </Card>
 
-          <Divider sx={{ my: 2 }} />
           <Stack
-            direction="row"
+            direction={{ xs: "column", sm: "row" }}
             spacing={1}
             alignItems="center"
             justifyContent="center"
-            color="text.secondary"
+            sx={{ color: ws.textDim, mt: 3, textAlign: "center" }}
           >
             <MailOutline fontSize="small" />
             <Typography variant="caption">
@@ -547,7 +709,118 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
           </Stack>
         </CardContent>
       </Card>
-    </Container>
+
+      <Dialog
+        open={Boolean(activeDocument)}
+        onClose={() => setActiveDocumentKey(null)}
+        maxWidth="md"
+        fullWidth
+        fullScreen={compactReader}
+        aria-labelledby="agreement-reader-title"
+        PaperProps={{
+          sx: {
+            bgcolor: ws.panelSolid,
+            color: ws.text,
+            border: `1px solid ${ws.border}`,
+            backgroundImage: "none",
+          },
+        }}
+      >
+        {activeDocument && (
+          <>
+            <DialogTitle id="agreement-reader-title" sx={{ pr: 7 }}>
+              <Stack
+                direction="row"
+                spacing={1}
+                useFlexGap
+                flexWrap="wrap"
+                alignItems="center"
+              >
+                <Typography variant="h6" component="span" fontWeight={800}>
+                  {activeDocument.title}
+                </Typography>
+                <Chip
+                  size="small"
+                  label={`v${activeDocument.version}`}
+                  variant="outlined"
+                />
+                <Chip
+                  size="small"
+                  label={
+                    activeDocument.bindingNature === "binding"
+                      ? "Bindende"
+                      : "Ikke-bindende"
+                  }
+                  color={
+                    activeDocument.bindingNature === "binding"
+                      ? "warning"
+                      : "default"
+                  }
+                />
+              </Stack>
+              <IconButton
+                onClick={() => setActiveDocumentKey(null)}
+                aria-label="Lukk dokumentet"
+                sx={{
+                  position: "absolute",
+                  right: 14,
+                  top: 14,
+                  color: ws.textDim,
+                }}
+              >
+                <CloseIcon />
+              </IconButton>
+            </DialogTitle>
+            <DialogContent
+              dividers
+              sx={{ borderColor: ws.border, p: { xs: 2, sm: 3 } }}
+            >
+              <Paper
+                variant="outlined"
+                data-testid={`agreement-content-${activeDocument.key}`}
+                sx={{
+                  p: { xs: 2, sm: 3 },
+                  bgcolor: ws.bg,
+                  borderColor: ws.border,
+                  minHeight: { sm: 420 },
+                }}
+              >
+                <Typography
+                  component="pre"
+                  variant="body2"
+                  sx={{
+                    m: 0,
+                    color: ws.text,
+                    whiteSpace: "pre-wrap",
+                    overflowWrap: "anywhere",
+                    fontFamily: "inherit",
+                    fontSize: { xs: "0.88rem", sm: "0.95rem" },
+                    lineHeight: 1.75,
+                  }}
+                >
+                  {activeDocument.content}
+                </Typography>
+              </Paper>
+            </DialogContent>
+            <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: 2 }}>
+              <Button onClick={() => setActiveDocumentKey(null)}>Lukk</Button>
+              <Button
+                variant="contained"
+                data-testid={`mark-read-${activeDocument.key}`}
+                onClick={markActiveDocumentReviewed}
+                sx={{
+                  bgcolor: ws.accent,
+                  color: ws.accentContrast,
+                  fontWeight: 800,
+                }}
+              >
+                Merk som lest og lukk
+              </Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
+    </PrototypeInvitePageFrame>
   );
 };
 
