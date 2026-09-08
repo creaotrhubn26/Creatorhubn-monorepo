@@ -131,5 +131,11 @@ describe("prototype tester account activation recovery", () => {
       ),
     ).toHaveLength(1);
     expect(sendAccessActivatedEmail).toHaveBeenCalledOnce();
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "registered_user_id = COALESCE(registered_user_id, $2)",
+      ),
+      [expect.any(String), "retry-user-id", persistedRow.invite_request_id],
+    );
   });
 });

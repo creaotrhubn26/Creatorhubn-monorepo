@@ -948,13 +948,14 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       if (acceptedInvite.invite_request_id) {
         await pool.query(
           `UPDATE invite_requests
-              SET onboarding_started_at = COALESCE(onboarding_started_at, $1),
+              SET registered_user_id = COALESCE(registered_user_id, $2),
+                  onboarding_started_at = COALESCE(onboarding_started_at, $1),
                   onboarding_completed_at = COALESCE(onboarding_completed_at, $1),
                   onboarding_step = GREATEST(COALESCE(onboarding_step, 0), 4),
                   user_journey_status = 'active',
                   updated_at = NOW()
-            WHERE id = $2`,
-          [acceptedAt, acceptedInvite.invite_request_id],
+            WHERE id = $3`,
+          [acceptedAt, accountUserId, acceptedInvite.invite_request_id],
         ).catch((journeyError: unknown) => {
           console.warn("[prototype-tester accept] could not mark journey active", journeyError);
         });
