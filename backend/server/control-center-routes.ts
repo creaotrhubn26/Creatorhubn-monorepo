@@ -48,7 +48,13 @@ import {
 import { overageMarkup } from "./ai-plan-budgets.js";
 import { billAiOverage } from "./ai-overage-billing.js";
 import { timingSafeEqual } from "crypto";
-import { runCanaries, getCanaryStatus } from "./control-center-canary.js";
+import {
+  CanaryRunInProgressError,
+  CanaryStoreUnavailableError,
+  runCanaries,
+  getCanaryStatus,
+  parseExternalFrontdoorProbe,
+} from "./control-center-canary.js";
 import { runSecretWatch, getSecretStatus } from "./control-center-secret-watch.js";
 import { runAnomalyScan, getAnomalyView } from "./control-center-anomaly.js";
 import { runReleaseMonitor, getReleaseStatus } from "./control-center-release-monitor.js";
@@ -687,10 +693,26 @@ export function setupControlCenterRoutes(deps: Deps): void {
 
   app.post("/api/control-center/canary/run", async (req, res) => {
     if (!verifyCronToken(req)) return res.status(401).json({ error: "unauthorized" });
+    let frontdoorProbe;
     try {
-      const summary = await runCanaries(pool);
-      return res.json({ ...summary, ok: true });
+      frontdoorProbe = parseExternalFrontdoorProbe(req.body?.frontdoorProbe);
     } catch (err) {
+      console.warn("[control-center/canary/run] invalid frontdoor probe:", (err as Error).message);
+      return res.status(400).json({ error: "invalid_frontdoor_probe" });
+    }
+    if (!frontdoorProbe) {
+      return res.status(400).json({ error: "missing_frontdoor_probe" });
+    }
+    try {
+      const summary = await runCanaries(pool, { frontdoorProbe });
+      return res.json({ ...summary });
+    } catch (err) {
+      if (err instanceof CanaryRunInProgressError) {
+        return res.status(409).json({ ok: false, error: "canary_run_in_progress" });
+      }
+      if (err instanceof CanaryStoreUnavailableError) {
+        return res.status(503).json({ ok: false, error: "canary_store_unavailable" });
+      }
       console.error("[control-center/canary/run] failed:", (err as Error).message);
       return res.status(500).json({ ok: false, error: "canary_run_failed" });
     }

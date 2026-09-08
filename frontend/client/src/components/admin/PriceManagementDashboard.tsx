@@ -438,11 +438,11 @@ const defaultCreatorHubEmailSettings: CreatorHubEmailSettings = {
       {
         id: 'creatorhub_access_request_approved',
         name: 'Tilgangsforespørsel godkjent',
-        description: 'Sendes når en prototype-tester er godkjent og skal lese vilkårene og signere NDA.',
+        description: 'Sendes når en prototype-tester er godkjent og skal lese og signere hele avtalegrunnlaget.',
         subject: 'Du er godkjent som prototype-tester i CreatorHub',
         title: 'Søknaden din er godkjent',
         body:
-          '<p>Hei {{recipientName}},</p><p>Vi har godkjent søknaden din til CreatorHub sitt prototype-testerprogram.</p><p>Programmet varer i <strong>{{programDurationWeeks}} uker</strong>. Før tilgangen aktiveres må du lese programvilkårene og signere NDA-en via knappen under.</p>',
+          '<p>Hei {{recipientName}},</p><p>Vi har godkjent søknaden din til CreatorHub sitt prototype-testerprogram.</p><p>Programmet varer i <strong>{{programDurationWeeks}} uker</strong>. Før tilgangen aktiveres må du lese og akseptere programvilkårene, NDA-en, databehandleravtalen og intensjonsavtalen via knappen under.</p>',
         ctaLabel: 'Les vilkår og signer',
         footerNote:
           'Den personlige lenken utløper om {{inviteExpiresDays}} dager. Svar på denne e-posten hvis du trenger hjelp.',
@@ -461,11 +461,11 @@ const defaultCreatorHubEmailSettings: CreatorHubEmailSettings = {
       {
         id: 'creatorhub_tester_access_activated',
         name: 'Prototype-tilgang aktivert',
-        description: 'Sendes etter at testeren har signert NDA og kontoen er aktivert.',
+        description: 'Sendes etter at testeren har akseptert hele avtalegrunnlaget og kontoen er aktivert.',
         subject: 'Tilgangen din til CreatorHub er aktivert',
         title: 'Velkommen som prototype-tester',
         body:
-          '<p>Hei {{recipientName}},</p><p>NDA-en og programvilkårene er registrert, og CreatorHub-kontoen din er nå aktiv.</p><p>Logg inn med <strong>{{recipientEmail}}</strong>. Testperioden varer til <strong>{{programEndsAt}}</strong>.</p>',
+          '<p>Hei {{recipientName}},</p><p>Programvilkårene, NDA-en, databehandleravtalen og intensjonsavtalen er registrert, og CreatorHub-kontoen din er nå aktiv.</p><p>Logg inn med <strong>{{recipientEmail}}</strong>. Testperioden varer til <strong>{{programEndsAt}}</strong>.</p>',
         ctaLabel: 'Logg inn i CreatorHub',
         footerNote:
           'Svar på denne e-posten hvis du trenger hjelp med innlogging eller tilgang.',

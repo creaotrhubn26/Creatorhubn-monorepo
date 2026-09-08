@@ -2478,6 +2478,26 @@ function requireAdminSession(
   return session;
 }
 
+async function requireResolvedAdminSession(
+  req: express.Request,
+  res: express.Response,
+): Promise<{ userId: string; email: string; name: string; role: string; loginAt: string } | null> {
+  const session = await resolveActiveSessionFromRequest(req);
+  if (!session) {
+    res.status(401).json({ error: "Admin-innlogging kreves" });
+    return null;
+  }
+
+  const normalizedRole = String(session.role || "").trim().toLowerCase();
+  if (!ADMIN_SESSION_ROLES.has(normalizedRole)) {
+    res.status(403).json({ error: "Admin-tilgang kreves" });
+    return null;
+  }
+
+  (req as any).adminSession = session;
+  return session;
+}
+
 // ─── GET /api/admin/presence/online ──────────────────────────────────────
 // Admin-guardet oversikt over hvilke brukere som er pålogget akkurat nå.
 // Håndhev impersonation-TTL før alle applikasjonsruter. Standalone target-
@@ -2543,7 +2563,7 @@ app.get("/api/admin/presence/online", async (req, res) => {
 
 registerTidumAdminRoutes(app, pool, requireAdminSession);
 registerStripePriceDriftRoutes(app, pool, requireAdminSession);
-registerMarketplaceAppConfigRoutes(app, pool, requireAdminSession, (req) =>
+registerMarketplaceAppConfigRoutes(app, pool, requireResolvedAdminSession, (req) =>
   getActiveSessionFromRequest(req)?.userId ?? null,
 );
 configureAIUsageTracker(pool);
@@ -16734,11 +16754,11 @@ const CREATORHUB_PLATFORM_DEFAULT_EMAIL_TEMPLATES: CreatorHubPlatformEmailTempla
       id: "creatorhub_access_request_approved",
       name: "Tilgangsforespørsel godkjent",
       description:
-        "Sendes når en prototype-tester er godkjent og skal lese vilkårene og signere NDA.",
+        "Sendes når en prototype-tester er godkjent og skal lese og signere hele avtalegrunnlaget.",
       subject: "Du er godkjent som prototype-tester i CreatorHub",
       title: "Søknaden din er godkjent",
       body:
-        "<p>Hei {{recipientName}},</p><p>Vi har godkjent søknaden din til CreatorHub sitt prototype-testerprogram.</p><p>Programmet varer i <strong>{{programDurationWeeks}} uker</strong>. Før tilgangen aktiveres må du lese programvilkårene og signere NDA-en via knappen under.</p>",
+        "<p>Hei {{recipientName}},</p><p>Vi har godkjent søknaden din til CreatorHub sitt prototype-testerprogram.</p><p>Programmet varer i <strong>{{programDurationWeeks}} uker</strong>. Før tilgangen aktiveres må du lese og akseptere programvilkårene, NDA-en, databehandleravtalen og intensjonsavtalen via knappen under.</p>",
       ctaLabel: "Les vilkår og signer",
       footerNote:
         "Den personlige lenken utløper om {{inviteExpiresDays}} dager. Svar på denne e-posten hvis du trenger hjelp.",
@@ -16759,16 +16779,25 @@ const CREATORHUB_PLATFORM_DEFAULT_EMAIL_TEMPLATES: CreatorHubPlatformEmailTempla
       id: "creatorhub_tester_access_activated",
       name: "Prototype-tilgang aktivert",
       description:
-        "Sendes etter at testeren har signert NDA og kontoen er aktivert.",
+        "Sendes etter at testeren har akseptert hele avtalegrunnlaget og kontoen er aktivert.",
       subject: "Tilgangen din til CreatorHub er aktivert",
       title: "Velkommen som prototype-tester",
       body:
-        "<p>Hei {{recipientName}},</p><p>NDA-en og programvilkårene er registrert, og CreatorHub-kontoen din er nå aktiv.</p><p>Logg inn med <strong>{{recipientEmail}}</strong>. Testperioden varer til <strong>{{programEndsAt}}</strong>.</p>",
+        "<p>Hei {{recipientName}},</p><p>Programvilkårene, NDA-en, databehandleravtalen og intensjonsavtalen er registrert, og CreatorHub-kontoen din er nå aktiv.</p><p>Logg inn med <strong>{{recipientEmail}}</strong>. Testperioden varer til <strong>{{programEndsAt}}</strong>.</p>",
       ctaLabel: "Logg inn i CreatorHub",
       footerNote:
         "Svar på denne e-posten hvis du trenger hjelp med innlogging eller tilgang.",
     },
   ];
+
+const CREATORHUB_PLATFORM_LEGACY_ACCESS_TEMPLATE_BODIES: Partial<
+  Record<CreatorHubPlatformEmailTemplateId, string>
+> = {
+  creatorhub_access_request_approved:
+    "<p>Hei {{recipientName}},</p><p>Vi har godkjent søknaden din til CreatorHub sitt prototype-testerprogram.</p><p>Programmet varer i <strong>{{programDurationWeeks}} uker</strong>. Før tilgangen aktiveres må du lese programvilkårene og signere NDA-en via knappen under.</p>",
+  creatorhub_tester_access_activated:
+    "<p>Hei {{recipientName}},</p><p>NDA-en og programvilkårene er registrert, og CreatorHub-kontoen din er nå aktiv.</p><p>Logg inn med <strong>{{recipientEmail}}</strong>. Testperioden varer til <strong>{{programEndsAt}}</strong>.</p>",
+};
 
 function creatorHubEmailSettingsStoreKey(userId?: string) {
   return dbLegacySettingKey(
@@ -16782,6 +16811,12 @@ function normalizeCreatorHubPlatformEmailTemplate(
   fallback: CreatorHubPlatformEmailTemplate,
 ): CreatorHubPlatformEmailTemplate {
   const record = normalizeJsonObjectField(value) || {};
+  const configuredBody = readString(record.body);
+  const legacyDefaultBody = CREATORHUB_PLATFORM_LEGACY_ACCESS_TEMPLATE_BODIES[fallback.id];
+  const normalizedBody =
+    configuredBody && configuredBody !== legacyDefaultBody
+      ? configuredBody
+      : fallback.body;
   return {
     ...fallback,
     ...(record as Partial<CreatorHubPlatformEmailTemplate>),
@@ -16790,7 +16825,7 @@ function normalizeCreatorHubPlatformEmailTemplate(
     description: readString(record.description) || fallback.description,
     subject: readString(record.subject) || fallback.subject,
     title: readString(record.title) || fallback.title,
-    body: readString(record.body) || fallback.body,
+    body: normalizedBody,
     ...(Object.prototype.hasOwnProperty.call(record, "ctaLabel")
       ? { ctaLabel: readString(record.ctaLabel) || undefined }
       : fallback.ctaLabel !== undefined
@@ -30119,7 +30154,7 @@ async function sendCreatorHubPrototypeTesterApprovalEmail(options: {
     detailRows: [
       { label: "Rolle", value: professionName },
       { label: "Programlengde", value: `${options.programDurationWeeks} uker` },
-      { label: "Neste steg", value: "Les vilkår og signer NDA" },
+      { label: "Neste steg", value: "Les og signer fire dokumenter" },
       { label: "Lenken utløper", value: `${options.inviteExpiresDays} dager` },
     ],
     projectId: options.inviteRequestId,
@@ -30163,6 +30198,7 @@ async function sendCreatorHubTesterAccessActivatedEmail(options: {
     ctaUrl: options.loginUrl,
     detailRows: [
       { label: "Status", value: "Tilgang aktiv" },
+      { label: "Avtaler", value: "Programvilkår, NDA, DPA og intensjonsavtale" },
       { label: "Rolle", value: professionName },
       { label: "Innlogging", value: options.recipientEmail },
       { label: "Testperiode til", value: programEndsAt },
@@ -67192,7 +67228,7 @@ setupWeddingAssistantCollabRoutes({ app, pool, requireUserSession, getPricingUse
 
 // Slice 9X.53 — Prototype-tester NDA + program-vilkår-flyt (adskilt fra Role Room).
 setupPrototypeTesterInvitesRoutes({
-  app, pool, getPricingUserId, requireUserSession, requireAdminSession,
+  app, pool, getPricingUserId, requireUserSession, requireAdminSession: requireResolvedAdminSession,
   // Oppretter (gjenbruker) en brukerkonto for en tester ved aksept, så hvert
   // teammedlem faktisk har en konto (matchende e-post) å logge inn med (Google
   // OAuth / e-post-match). Gjenbruker den velprøvde upsertAdminAccountUser.
@@ -67252,7 +67288,7 @@ setupPrototypeTesterInvitesRoutes({
 setupInviteRequestsRoutes({
   app,
   pool,
-  getActiveSessionFromRequest,
+  getActiveSessionFromRequest: resolveActiveSessionFromRequest,
   isValidNorwegianOrgNumber,
   getTableColumns,
   hasTable,
@@ -68689,7 +68725,7 @@ setInterval(() => {
 }, 60 * 60 * 1000); // hver time
 
 // Slice 9X.58 — Admin config-check (Stripe + Gmail + schema-tilstand)
-setupAdminConfigCheckRoutes({ app, pool, requireAdminSession });
+setupAdminConfigCheckRoutes({ app, pool, requireAdminSession: requireResolvedAdminSession });
 
 // Slice 9X.126 — Admin development-tools (placeholder-scan via grep-pipeline)
 setupAdminDevelopmentToolsRoutes({ app, requireAdminSession });

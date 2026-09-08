@@ -1,8 +1,10 @@
 import express, { type Express } from "express";
+import crypto from "crypto";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Pool } from "pg";
 import { setupInviteRequestsRoutes } from "./invite-requests-routes.js";
+import { canonicalJsonStringify } from "../../frontend/shared/prototype-tester-agreements.js";
 
 const { notifyAdminsMock } = vi.hoisted(() => ({
   notifyAdminsMock: vi.fn().mockResolvedValue(undefined),
@@ -148,6 +150,125 @@ function buildApp(overrides: Record<string, any> = {}) {
 describe("prototype-tester application flow", () => {
   beforeEach(() => {
     notifyAdminsMock.mockClear();
+  });
+
+  it("accepts an approver session resolved asynchronously from persistent storage", async () => {
+    const resolveSession = vi.fn().mockResolvedValue({
+      userId: "daniel-admin",
+      email: "daniel@creatorhubn.com",
+      name: "Daniel",
+      role: "super_admin",
+      loginAt: new Date().toISOString(),
+    });
+    const { app } = buildApp({ getActiveSessionFromRequest: resolveSession });
+
+    const response = await request(app).get("/api/invites/admin/requests");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      invitations: [],
+      stats: { total: 0, pending: 0, approved: 0, rejected: 0 },
+    });
+    expect(resolveSession).toHaveBeenCalledOnce();
+  });
+
+  it("limits raw agreement evidence to admin roles", async () => {
+    const { app, query } = buildApp({
+      getActiveSessionFromRequest: () => ({
+        userId: "instructor-user",
+        email: "instructor@example.com",
+        name: "Instructor",
+        role: "instructor",
+        loginAt: new Date().toISOString(),
+      }),
+    });
+
+    const response = await request(app).get(
+      "/api/invites/admin/requests/request-id/tester-agreements",
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toContain("Kun administratorer");
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it("returns all agreement states in the admin request view", async () => {
+    const requestRow = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      email: "tester@example.com",
+      first_name: "Test",
+      last_name: "Tester",
+      profession: "prototype_tester",
+      status: "approved",
+      created_at: new Date().toISOString(),
+    };
+    const snapshot = {
+      schemaVersion: 1,
+      signerName: "Test Tester",
+      signerEmail: "tester@example.com",
+      representedCompany: "Test AS",
+      documents: [{ key: "dpa", version: "1.0", content: "DPA" }],
+    };
+    const digest = crypto.createHash("sha256").update(canonicalJsonStringify(snapshot), "utf8").digest("hex");
+    const query = vi.fn().mockImplementation(async (statement: unknown) => {
+      const sql = String(statement);
+      if (sql.includes("SELECT * FROM invite_requests ORDER BY")) {
+        return { rows: [requestRow], rowCount: 1 };
+      }
+      if (sql.includes("FROM prototype_tester_invites")) {
+        return {
+          rows: [{
+            invite_request_id: requestRow.id,
+            id: "tester-invite-id",
+            status: "accepted",
+            accepted_at: "2026-09-07T20:00:00.000Z",
+            accepted_nda_name: "Test Tester",
+            accepted_program_terms: true,
+            accepted_dpa: true,
+            accepted_letter_of_intent: true,
+            confirmed_signing_authority: true,
+            nda_version: "1.1",
+            program_terms_version: "1.0",
+            dpa_version: "1.0",
+            letter_of_intent_version: "1.0",
+            accepted_ip: "198.51.100.10",
+            accepted_user_agent: "test-agent",
+            accepted_agreements_snapshot: snapshot,
+            agreement_digest: digest,
+            provisioned_user_id: "tester-user-id",
+            provisioned_at: "2026-09-07T20:00:01.000Z",
+          }],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    const { app } = buildApp({ query });
+
+    const response = await request(app).get("/api/invites/admin/requests");
+
+    expect(response.status).toBe(200);
+    expect(response.body.invitations[0].testerAgreementStatus).toMatchObject({
+      complete: true,
+      signerName: "Test Tester",
+      confirmedSigningAuthority: true,
+      agreementDigest: digest,
+      accountProvisioningComplete: true,
+    });
+    expect(response.body.invitations[0].testerAgreementStatus.documents).toHaveLength(4);
+
+    const evidenceResponse = await request(app).get(
+      "/api/invites/admin/requests/" + requestRow.id + "/tester-agreements",
+    );
+    expect(evidenceResponse.status).toBe(200);
+    expect(evidenceResponse.body.accountProvisioningComplete).toBe(true);
+    expect(evidenceResponse.body.evidence).toMatchObject({
+      signerName: "Test Tester",
+      digest,
+      recalculatedDigest: digest,
+      digestVerified: true,
+      snapshot,
+    });
   });
 
   it("rejects malformed email addresses before database work", async () => {
