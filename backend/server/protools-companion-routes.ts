@@ -752,6 +752,10 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
 
   // ── små parser-hjelpere ──
   function intOrNull(v: any): number | null { const n = parseInt(String(v), 10); return isFinite(n) ? n : null; }
-  function numOrNull(v: any): number | null { const n = Number(v); return isFinite(n) ? n : null; }
+  function numOrNull(v: any): number | null {
+    if (v == null || (typeof v === "string" && !v.trim())) return null;
+    const n = Number(v);
+    return isFinite(n) ? n : null;
+  }
   function strOrNull(v: any, max: number): string | null { if (v == null) return null; const s = String(v).trim(); return s ? s.slice(0, max) : null; }
 }
