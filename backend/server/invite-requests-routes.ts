@@ -1,7 +1,9 @@
 import express from "express";
+import crypto from "crypto";
 import type { Pool } from "pg";
 import { notifyAdmins } from "./admin-notify";
 import { safeAppBaseUrl } from "./web-origin-allowlist";
+import { canonicalJsonStringify } from "../../frontend/shared/prototype-tester-agreements";
 import {
   sendTransactionalEmail,
   isTransactionalEmailConfigured,
@@ -265,7 +267,56 @@ export function setupInviteRequestsRoutes(
     return screeningMap.get(inviteRequestId) || null;
   }
 
-  function mapInviteRow(r: any, proffAnalysis?: any) {
+  async function getPrototypeTesterAgreementStatusMap(inviteRequestIds: string[]) {
+    if (inviteRequestIds.length === 0) return new Map<string, any>();
+    try {
+      const result = await pool.query(
+        `SELECT invite_request_id, id, status, expires_at, accepted_at,
+                accepted_nda_name, accepted_program_terms, accepted_dpa,
+                accepted_letter_of_intent, confirmed_signing_authority,
+                nda_version, program_terms_version, dpa_version,
+                letter_of_intent_version, agreement_digest, provisioned_user_id, provisioned_at
+           FROM prototype_tester_invites
+          WHERE invite_request_id::text = ANY($1::text[])
+          ORDER BY created_at DESC`,
+        [inviteRequestIds],
+      );
+      const statuses = new Map<string, any>();
+      for (const row of result.rows) {
+        const requestId = String(row.invite_request_id || "");
+        if (!requestId || statuses.has(requestId)) continue;
+        const documents = [
+          { key: "program_terms", title: "Programvilkår", version: row.program_terms_version, accepted: row.accepted_program_terms === true },
+          { key: "nda", title: "NDA", version: row.nda_version, accepted: Boolean(row.accepted_nda_name) },
+          { key: "dpa", title: "Databehandleravtale", version: row.dpa_version, accepted: row.accepted_dpa === true },
+          { key: "letter_of_intent", title: "Intensjonsavtale", version: row.letter_of_intent_version, accepted: row.accepted_letter_of_intent === true },
+        ];
+        statuses.set(requestId, {
+          inviteId: row.id,
+          inviteStatus: row.status,
+          expiresAt: row.expires_at,
+          acceptedAt: row.accepted_at,
+          signerName: row.accepted_nda_name,
+          confirmedSigningAuthority: row.confirmed_signing_authority === true,
+          agreementDigest: row.agreement_digest,
+          legacyAcceptance: row.status === "accepted" && Boolean(row.accepted_at) && !row.agreement_digest,
+          accountProvisioningComplete: Boolean(
+            row.provisioned_user_id ||
+            row.provisioned_at ||
+            (row.status === "accepted" && !row.agreement_digest),
+          ),
+          complete: documents.every((document) => document.accepted),
+          documents,
+        });
+      }
+      return statuses;
+    } catch (error) {
+      console.warn("[invite-requests] agreement status unavailable", error);
+      return new Map<string, any>();
+    }
+  }
+
+  function mapInviteRow(r: any, proffAnalysis?: any, testerAgreementStatus?: any) {
     return {
       id: r.id,
       profession: r.profession,
@@ -312,6 +363,7 @@ export function setupInviteRequestsRoutes(
       proffScreeningSource: proffAnalysis?.screeningSource || null,
       proffBrregVerified: proffAnalysis?.brregVerified || false,
       proffAnalysis: proffAnalysis || null,
+      testerAgreementStatus: testerAgreementStatus || null,
     };
   }
 
@@ -929,8 +981,15 @@ export function setupInviteRequestsRoutes(
       const screeningMap = await getInviteRequestProffScreeningMap(
         result.rows.map((row: any) => String(row.id)),
       );
+      const agreementStatusMap = await getPrototypeTesterAgreementStatusMap(
+        result.rows.map((row: any) => String(row.id)),
+      );
       const invitations = result.rows.map((row: any) =>
-        mapInviteRow(row, screeningMap.get(String(row.id)) || null),
+        mapInviteRow(
+          row,
+          screeningMap.get(String(row.id)) || null,
+          agreementStatusMap.get(String(row.id)) || null,
+        ),
       );
       const pending = invitations.filter(
         (r: any) => r.status === "pending",
@@ -948,6 +1007,69 @@ export function setupInviteRequestsRoutes(
     } catch (error) {
       console.error("Error fetching invite requests:", error);
       res.status(500).json({ error: "Kunne ikke hente forespørsler" });
+    }
+  });
+
+  app.get("/api/invites/admin/requests/:id/tester-agreements", async (req, res) => {
+    try {
+      if (!(await requireInviteRequestApproverSession(req, res))) return;
+      const result = await pool.query(
+        `SELECT id, invite_request_id, email, status, accepted_at, accepted_nda_name,
+                accepted_ip, accepted_user_agent, confirmed_signing_authority,
+                accepted_agreements_snapshot, agreement_digest, provisioned_user_id, provisioned_at
+           FROM prototype_tester_invites
+          WHERE invite_request_id = $1
+          ORDER BY created_at DESC
+          LIMIT 1`,
+        [req.params.id],
+      );
+      if (!result.rows.length) {
+        return res.status(404).json({ error: "Ingen prototype-testerinvitasjon funnet" });
+      }
+
+      const row = result.rows[0];
+      let snapshot = row.accepted_agreements_snapshot || null;
+      if (typeof snapshot === "string") {
+        try {
+          snapshot = JSON.parse(snapshot);
+        } catch {
+          snapshot = null;
+        }
+      }
+      const recalculatedDigest = snapshot
+        ? crypto.createHash("sha256").update(canonicalJsonStringify(snapshot), "utf8").digest("hex")
+        : null;
+      const digest = row.agreement_digest || null;
+
+      res.json({
+        schemaVersion: 1,
+        exportedAt: new Date().toISOString(),
+        inviteRequestId: row.invite_request_id,
+        inviteId: row.id,
+        inviteStatus: row.status,
+        legacyAcceptance: row.status === "accepted" && Boolean(row.accepted_at) && !digest,
+        accountProvisioningComplete: Boolean(
+          row.provisioned_user_id ||
+          row.provisioned_at ||
+          (row.status === "accepted" && !digest),
+        ),
+        evidence: {
+          acceptedAt: row.accepted_at || null,
+          signerName: row.accepted_nda_name || null,
+          signerEmail: snapshot?.signerEmail || row.email || null,
+          representedCompany: snapshot?.representedCompany || null,
+          acceptedIp: row.accepted_ip || null,
+          acceptedUserAgent: row.accepted_user_agent || null,
+          confirmedSigningAuthority: row.confirmed_signing_authority === true,
+          digest,
+          recalculatedDigest,
+          digestVerified: Boolean(digest && recalculatedDigest && digest === recalculatedDigest),
+          snapshot,
+        },
+      });
+    } catch (error) {
+      console.error("Error exporting prototype tester agreement evidence:", error);
+      res.status(500).json({ error: "Kunne ikke eksportere signeringsbevis" });
     }
   });
 

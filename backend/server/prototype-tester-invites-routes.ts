@@ -25,6 +25,16 @@ import {
 } from "./transactional-email-service.ts";
 import { normalizeProfession } from "../../frontend/shared/profession-types.ts";
 import { safeAppBaseUrl } from "./web-origin-allowlist.ts";
+import {
+  buildPrototypeTesterAgreementBundle,
+  canonicalJsonStringify,
+  DPA_VERSION,
+  LETTER_OF_INTENT_VERSION,
+  NDA_VERSION,
+  PROGRAM_TERMS_VERSION,
+  type PrototypeTesterAgreementDocument,
+  type PrototypeTesterAgreementKey,
+} from "../../frontend/shared/prototype-tester-agreements.ts";
 
 export type PrototypeTesterEmailDelivery = {
   sent: boolean;
@@ -77,8 +87,6 @@ export interface PrototypeTesterInvitesDeps {
 
 const PROGRAM_DURATION_WEEKS = 12;
 const INVITE_EXPIRES_DAYS = 14;
-const PROGRAM_TERMS_VERSION = "1.0";
-const NDA_VERSION = "1.0";
 
 async function ensureSchema(pool: any): Promise<void> {
   await pool.query(`
@@ -92,11 +100,21 @@ async function ensureSchema(pool: any): Promise<void> {
       invite_request_id           UUID,
       nda_version                 VARCHAR(16) NOT NULL DEFAULT '1.0',
       program_terms_version       VARCHAR(16) NOT NULL DEFAULT '1.0',
+      dpa_version                 VARCHAR(16) NOT NULL DEFAULT '1.0',
+      letter_of_intent_version    VARCHAR(16) NOT NULL DEFAULT '1.0',
       status                      VARCHAR(20) NOT NULL DEFAULT 'pending',
       accepted_at                 TIMESTAMPTZ,
       accepted_nda_name           TEXT,
       accepted_program_terms      BOOLEAN DEFAULT false,
+      accepted_dpa                BOOLEAN NOT NULL DEFAULT false,
+      accepted_letter_of_intent   BOOLEAN NOT NULL DEFAULT false,
       accepted_ip                 TEXT,
+      accepted_user_agent         TEXT,
+      confirmed_signing_authority BOOLEAN NOT NULL DEFAULT false,
+      accepted_agreements_snapshot JSONB,
+      agreement_digest            VARCHAR(64),
+      provisioned_user_id         TEXT,
+      provisioned_at              TIMESTAMPTZ,
       program_started_at          TIMESTAMPTZ,
       program_ends_at             TIMESTAMPTZ,
       program_duration_weeks      INTEGER NOT NULL DEFAULT 12,
@@ -117,6 +135,21 @@ async function ensureSchema(pool: any): Promise<void> {
   for (const col of [
     `granted_plan VARCHAR(50) NOT NULL DEFAULT 'tester_all_access'`,
     `granted_features JSONB NOT NULL DEFAULT '[]'::jsonb`,
+  ]) {
+    await pool.query(`ALTER TABLE prototype_tester_invites ADD COLUMN IF NOT EXISTS ${col}`).catch(() => undefined);
+  }
+  // Complete legal bundle + immutable acceptance evidence.
+  for (const col of [
+    `dpa_version VARCHAR(16) NOT NULL DEFAULT '1.0'`,
+    `letter_of_intent_version VARCHAR(16) NOT NULL DEFAULT '1.0'`,
+    `accepted_dpa BOOLEAN NOT NULL DEFAULT false`,
+    `accepted_letter_of_intent BOOLEAN NOT NULL DEFAULT false`,
+    `accepted_user_agent TEXT`,
+    `confirmed_signing_authority BOOLEAN NOT NULL DEFAULT false`,
+    `accepted_agreements_snapshot JSONB`,
+    `agreement_digest VARCHAR(64)`,
+    `provisioned_user_id TEXT`,
+    `provisioned_at TIMESTAMPTZ`,
   ]) {
     await pool.query(`ALTER TABLE prototype_tester_invites ADD COLUMN IF NOT EXISTS ${col}`).catch(() => undefined);
   }
@@ -178,8 +211,8 @@ function buildInviteEmailHtml(
       </p>
       ${personalMessage ? `<div style="background:#fff8ee;border-left:3px solid #ffba6c;padding:12px 16px;margin:16px 0;font-style:italic;">"${escapeHtml(personalMessage)}"</div>` : ""}
       <p style="font-size:15px;line-height:1.6;">
-        Før du får tilgang må du gå gjennom forpliktelses-vilkårene (12 uker, ~2 t/uke,
-        min. 4 feedback per måned) og signere en NDA.
+        Før du får tilgang må du gå gjennom avtalegrunnlaget (programvilkår, NDA, databehandleravtale og intensjonsavtale; 12 uker, ~2 t/uke,
+        min. 4 feedback per måned) og signere den samlede avtaleaksepten.
       </p>
       <div style="text-align:center;margin:32px 0;">
         <a href="${linkUrl}" style="display:inline-block;background:#ffba6c;color:#150d05;padding:14px 28px;border-radius:999px;text-decoration:none;font-weight:700;">Les vilkår og signer</a>
@@ -213,7 +246,7 @@ function buildInviteEmailText(name: string, inviteUrl: string, personalMessage: 
     "",
     "Søknaden din om å bli prototype-tester i CreatorHub er godkjent.",
     personal,
-    "Før du får tilgang må du lese programvilkårene og signere NDA-en.",
+    "Før du får tilgang må du lese og akseptere programvilkårene, NDA-en, databehandleravtalen og intensjonsavtalen.",
     `Åpne invitasjonen: ${inviteUrl}`,
     `Lenken er gyldig i ${INVITE_EXPIRES_DAYS} dager.`,
   ].filter(Boolean).join("\n\n");
@@ -251,6 +284,108 @@ async function deliverInviteEmail(
   };
 }
 
+function dashboardForProfession(profession: string | null): string {
+  switch (profession) {
+    case "photographer":
+      return "/photographer-dashboard-material";
+    case "videographer":
+      return "/videographer-dashboard-material";
+    case "music_producer":
+      return "/music_producer-dashboard-material";
+    case "vendor":
+      return "/vendor-dashboard-material";
+    default:
+      return "/workspace";
+  }
+}
+
+const AGREEMENT_KEYS: PrototypeTesterAgreementKey[] = [
+  "program_terms",
+  "nda",
+  "dpa",
+  "letter_of_intent",
+];
+
+function parseAgreementSnapshot(value: unknown): any | null {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function agreementVersionsForRow(r: any) {
+  return {
+    program_terms: String(r.program_terms_version || PROGRAM_TERMS_VERSION),
+    nda: String(r.nda_version || NDA_VERSION),
+    dpa: String(r.dpa_version || DPA_VERSION),
+    letter_of_intent: String(r.letter_of_intent_version || LETTER_OF_INTENT_VERSION),
+  };
+}
+
+function buildAgreementsForRow(r: any): PrototypeTesterAgreementDocument[] {
+  const stored = parseAgreementSnapshot(r.accepted_agreements_snapshot);
+  if (Array.isArray(stored?.documents) && stored.documents.length === AGREEMENT_KEYS.length) {
+    return stored.documents as PrototypeTesterAgreementDocument[];
+  }
+  return buildPrototypeTesterAgreementBundle(
+    {
+      testerName: String(r.name || r.email || "Tester"),
+      testerEmail: String(r.email || ""),
+      testerCompany: r.member_company || null,
+    },
+    agreementVersionsForRow(r),
+  );
+}
+
+function agreementAcceptanceForRow(r: any) {
+  const documents = buildAgreementsForRow(r);
+  const acceptedByKey: Record<PrototypeTesterAgreementKey, boolean> = {
+    program_terms: r.accepted_program_terms === true,
+    nda: Boolean(r.accepted_nda_name),
+    dpa: r.accepted_dpa === true,
+    letter_of_intent: r.accepted_letter_of_intent === true,
+  };
+  return {
+    complete: AGREEMENT_KEYS.every((key) => acceptedByKey[key]),
+    acceptedAt: r.accepted_at || null,
+    signerName: r.accepted_nda_name || null,
+    digest: r.agreement_digest || null,
+    confirmedSigningAuthority: r.confirmed_signing_authority === true,
+    documents: documents.map((document) => ({
+      key: document.key,
+      title: document.title,
+      version: document.version,
+      accepted: acceptedByKey[document.key],
+      bindingNature: document.bindingNature,
+    })),
+  };
+}
+
+function buildAgreementSnapshot(
+  documents: PrototypeTesterAgreementDocument[],
+  row: any,
+  signerName: string,
+  acceptedAt: string,
+) {
+  return {
+    schemaVersion: 1,
+    acceptedAt,
+    signerName,
+    signerEmail: String(row.email || ""),
+    representedCompany: row.member_company || null,
+    confirmedSigningAuthority: true,
+    documents: documents.map((document) => ({ ...document })),
+  };
+}
+
+function agreementSnapshotDigest(snapshot: unknown): string {
+  return crypto.createHash("sha256").update(canonicalJsonStringify(snapshot), "utf8").digest("hex");
+}
+
 function rowToInvite(r: any): any {
   return {
     id: r.id,
@@ -260,6 +395,15 @@ function rowToInvite(r: any): any {
     personalMessage: r.personal_message,
     ndaVersion: r.nda_version,
     programTermsVersion: r.program_terms_version,
+    dpaVersion: r.dpa_version || DPA_VERSION,
+    letterOfIntentVersion: r.letter_of_intent_version || LETTER_OF_INTENT_VERSION,
+    agreements: buildAgreementsForRow(r),
+    agreementAcceptance: agreementAcceptanceForRow(r),
+    accountProvisioningComplete: Boolean(
+      r.provisioned_user_id ||
+      r.provisioned_at ||
+      (r.status === "accepted" && !r.agreement_digest),
+    ),
     status: r.status,
     expiresAt: r.expires_at,
     acceptedAt: r.accepted_at,
@@ -356,9 +500,10 @@ export async function createInviteFromApprovedRequest(
     const ins = await pool.query(
       `INSERT INTO prototype_tester_invites
          (token, email, name, testing_areas, invite_request_id, nda_version,
-          program_terms_version, expires_at, invited_by, granted_plan,
-          granted_features, team_role, max_team_size, member_profession, member_company)
-       VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, $15)
+          program_terms_version, dpa_version, letter_of_intent_version,
+          expires_at, invited_by, granted_plan, granted_features, team_role,
+          max_team_size, member_profession, member_company)
+       VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16, $17)
        RETURNING id, token`,
       [
         token,
@@ -368,6 +513,8 @@ export async function createInviteFromApprovedRequest(
         inviteRequestId,
         NDA_VERSION,
         PROGRAM_TERMS_VERSION,
+        DPA_VERSION,
+        LETTER_OF_INTENT_VERSION,
         expiresAt.toISOString(),
         invitedBy,
         grantedPlan,
@@ -540,8 +687,9 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       const ins = await pool.query(
         `INSERT INTO prototype_tester_invites
            (token, email, name, testing_areas, personal_message, nda_version,
-            program_terms_version, expires_at, invited_by, member_profession, member_company)
-         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11)
+            program_terms_version, dpa_version, letter_of_intent_version,
+            expires_at, invited_by, member_profession, member_company)
+         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING id, token, expires_at, created_at`,
         [
           token,
@@ -551,6 +699,8 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
           personalMessage,
           NDA_VERSION,
           PROGRAM_TERMS_VERSION,
+          DPA_VERSION,
+          LETTER_OF_INTENT_VERSION,
           expiresAt.toISOString(),
           invitedBy,
           memberProfession,
@@ -623,24 +773,38 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       const ndaName = typeof body.ndaName === "string" ? body.ndaName.trim() : "";
       const acceptedProgramTerms = body.acceptedProgramTerms === true;
       const programTermsVersion = typeof body.programTermsVersion === "string" ? body.programTermsVersion : PROGRAM_TERMS_VERSION;
+      const acceptedAgreements = body.acceptedAgreements && typeof body.acceptedAgreements === "object"
+        ? body.acceptedAgreements as Record<string, unknown>
+        : {};
+      const submittedVersions: Record<string, unknown> = body.agreementVersions && typeof body.agreementVersions === "object"
+        ? body.agreementVersions as Record<string, unknown>
+        : { program_terms: programTermsVersion };
+      const confirmedSigningAuthority = body.confirmedSigningAuthority === true;
 
       if (!ndaName || ndaName.length < 2) {
         return res.status(400).json({ error: "Fullt navn er påkrevd som signatur" });
       }
-      if (!acceptedProgramTerms) {
-        return res.status(400).json({ error: "Du må godta forpliktelses-vilkårene" });
+      const missingAgreements = AGREEMENT_KEYS.filter((key) => acceptedAgreements[key] !== true);
+      if (!acceptedProgramTerms || missingAgreements.length > 0 || !confirmedSigningAuthority) {
+        return res.status(400).json({
+          error: "Du må godta alle fire dokumentene før tilgangen kan aktiveres",
+          missingAgreements,
+          signingAuthorityRequired: !confirmedSigningAuthority,
+        });
       }
 
       const existing = await pool.query(
-        `SELECT id, status, expires_at FROM prototype_tester_invites WHERE token = $1 LIMIT 1`,
+        `SELECT * FROM prototype_tester_invites WHERE token = $1 LIMIT 1`,
         [req.params.token],
       );
       if (!existing.rows.length) return res.status(404).json({ error: "Invitasjon ikke funnet" });
       const inv = existing.rows[0];
-      if (inv.status !== "pending") {
-        return res.status(409).json({ error: `Invitasjon er allerede ${inv.status}` });
+      const activationRetry =
+        inv.status === "accepted" && Boolean(inv.agreement_digest) && !inv.provisioned_user_id;
+      if (inv.status !== "pending" && !activationRetry) {
+        return res.status(409).json({ error: "Invitasjon er allerede " + inv.status });
       }
-      if (new Date(inv.expires_at).getTime() < Date.now()) {
+      if (!activationRetry && new Date(inv.expires_at).getTime() < Date.now()) {
         await pool.query(
           `UPDATE prototype_tester_invites SET status = 'expired', updated_at = NOW() WHERE id = $1`,
           [inv.id],
@@ -648,18 +812,53 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         return res.status(410).json({ error: "Invitasjon har utløpt — kontakt daniel@creatorhubn.com for ny" });
       }
 
+      const expectedVersions = agreementVersionsForRow(inv);
+      const mismatchedVersions = AGREEMENT_KEYS.filter(
+        (key) => String(submittedVersions[key] || "") !== expectedVersions[key],
+      );
+      if (mismatchedVersions.length > 0) {
+        return res.status(409).json({
+          error: "Avtaledokumentene er oppdatert. Last siden på nytt før du signerer.",
+          mismatchedVersions,
+        });
+      }
+      const agreementDocuments = buildAgreementsForRow(inv);
+
+      const storedSnapshot = parseAgreementSnapshot(inv.accepted_agreements_snapshot);
+      if (
+        activationRetry &&
+        (!storedSnapshot || agreementSnapshotDigest(storedSnapshot) !== String(inv.agreement_digest))
+      ) {
+        return res.status(409).json({
+          error: "Det lagrede signeringsbeviset kunne ikke verifiseres. Kontakt CreatorHub.",
+        });
+      }
+
       const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || (req as any).ip || null;
-      const startsAt = new Date();
-      let endsAt = new Date(startsAt.getTime() + PROGRAM_DURATION_WEEKS * 7 * 24 * 60 * 60 * 1000);
+      const startsAt = activationRetry && inv.program_started_at
+        ? new Date(inv.program_started_at)
+        : new Date();
+      const acceptedAt = activationRetry && inv.accepted_at
+        ? new Date(inv.accepted_at).toISOString()
+        : startsAt.toISOString();
+      const effectiveSignerName = activationRetry
+        ? String(inv.accepted_nda_name || ndaName)
+        : ndaName;
+      const userAgent = String(req.headers["user-agent"] || "").slice(0, 1000) || null;
+      const agreementSnapshot = activationRetry
+        ? storedSnapshot
+        : buildAgreementSnapshot(agreementDocuments, inv, effectiveSignerName, acceptedAt);
+      const agreementDigest = activationRetry
+        ? String(inv.agreement_digest)
+        : agreementSnapshotDigest(agreementSnapshot);
+      let endsAt = activationRetry && inv.program_ends_at
+        ? new Date(inv.program_ends_at)
+        : new Date(startsAt.getTime() + PROGRAM_DURATION_WEEKS * 7 * 24 * 60 * 60 * 1000);
 
       // Slice 9X.56 — Aligned team-end-date: hvis dette er et team-medlem,
       // arv master's program_ends_at slik at alle slutter samtidig.
-      const inviteFull = await pool.query(
-        `SELECT master_invite_id FROM prototype_tester_invites WHERE id = $1 LIMIT 1`,
-        [inv.id],
-      );
-      const masterId = inviteFull.rows[0]?.master_invite_id;
-      if (masterId) {
+      const masterId = inv.master_invite_id;
+      if (!activationRetry && masterId) {
         const masterR = await pool.query(
           `SELECT program_ends_at FROM prototype_tester_invites WHERE id = $1 AND status = 'accepted' LIMIT 1`,
           [masterId],
@@ -669,34 +868,55 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         }
       }
 
-      const upd = await pool.query(
+      let acceptedInvite = inv;
+      if (!activationRetry) {
+        const upd = await pool.query(
         `UPDATE prototype_tester_invites
            SET status = 'accepted',
-               accepted_at = NOW(),
+               accepted_at = $2,
                accepted_nda_name = $1,
                accepted_program_terms = true,
-               program_terms_version = $2,
+               accepted_dpa = true,
+               accepted_letter_of_intent = true,
                accepted_ip = $3,
-               program_started_at = $4,
-               program_ends_at = $5,
+               accepted_user_agent = $4,
+               confirmed_signing_authority = true,
+               accepted_agreements_snapshot = $5::jsonb,
+               agreement_digest = $6,
+               program_started_at = $7,
+               program_ends_at = $8,
                updated_at = NOW()
-           WHERE id = $6 AND status = 'pending'
+           WHERE id = $9 AND status = 'pending'
          RETURNING *`,
-        [ndaName.slice(0, 200), programTermsVersion, ip, startsAt, endsAt, inv.id],
+        [
+          effectiveSignerName.slice(0, 200),
+          acceptedAt,
+          ip,
+          userAgent,
+          JSON.stringify(agreementSnapshot),
+          agreementDigest,
+          startsAt,
+          endsAt,
+          inv.id,
+        ],
       );
-      if (!upd.rows.length) return res.status(409).json({ error: "Invitasjonen er allerede akseptert" });
+        if (!upd.rows.length) {
+          return res.status(409).json({ error: "Invitasjonen er allerede akseptert" });
+        }
+        acceptedInvite = upd.rows[0];
+      }
 
       // Opprett brukerkonto for testeren (master/medlem) ved aksept, så de
       // faktisk har en konto med matchende e-post å logge inn med (Google OAuth /
-      // e-post-match → gjenkjennes som tester). Aldri-blokkerende.
+      // e-post-match → gjenkjennes som tester). Ved feil beholdes aksepten, og tokenet kan brukes til trygg aktiveringsretry.
       let accountUserId: string | null = null;
       if (provisionTesterAccount) {
         try {
           const acct = await provisionTesterAccount(
-            String(upd.rows[0].email || ""),
-            ndaName,
-            upd.rows[0].member_profession || null,
-            upd.rows[0].member_company || null,
+            String(acceptedInvite.email || ""),
+            effectiveSignerName,
+            acceptedInvite.member_profession || null,
+            acceptedInvite.member_company || null,
           );
           accountUserId = acct?.id ? String(acct.id) : null;
         } catch (acctErr) {
@@ -704,20 +924,58 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         }
       }
 
+      if (!accountUserId) {
+        return res.status(503).json({
+          error:
+            "Avtalene er registrert, men kontoen kunne ikke aktiveres. Prøv igjen om litt.",
+          agreementsAccepted: true,
+          accountCreated: false,
+          retryable: true,
+        });
+      }
+
+      const provisioned = await pool.query(
+        `UPDATE prototype_tester_invites
+            SET provisioned_user_id = $1,
+                provisioned_at = COALESCE(provisioned_at, NOW()),
+                updated_at = NOW()
+          WHERE id = $2
+        RETURNING *`,
+        [accountUserId, acceptedInvite.id],
+      );
+      if (provisioned.rows.length) acceptedInvite = provisioned.rows[0];
+
+      if (acceptedInvite.invite_request_id) {
+        await pool.query(
+          `UPDATE invite_requests
+              SET onboarding_started_at = COALESCE(onboarding_started_at, $1),
+                  onboarding_completed_at = COALESCE(onboarding_completed_at, $1),
+                  onboarding_step = GREATEST(COALESCE(onboarding_step, 0), 4),
+                  user_journey_status = 'active',
+                  updated_at = NOW()
+            WHERE id = $2`,
+          [acceptedAt, acceptedInvite.invite_request_id],
+        ).catch((journeyError: unknown) => {
+          console.warn("[prototype-tester accept] could not mark journey active", journeyError);
+        });
+      }
+
       let accessActivatedEmailDelivery: PrototypeTesterEmailDelivery | null = null;
       if (accountUserId && sendAccessActivatedEmail) {
         try {
           accessActivatedEmailDelivery = await sendAccessActivatedEmail({
-            recipientEmail: String(upd.rows[0].email || ""),
-            recipientName: ndaName,
-            loginUrl: `${safeAppBaseUrl(req)}/login`,
-            inviteRequestId: upd.rows[0].invite_request_id
-              ? String(upd.rows[0].invite_request_id)
+            recipientEmail: String(acceptedInvite.email || ""),
+            recipientName: effectiveSignerName,
+            loginUrl: `${safeAppBaseUrl(req)}/login?redirect=${encodeURIComponent(
+              dashboardForProfession(acceptedInvite.member_profession || null),
+            )}`,
+            inviteRequestId: acceptedInvite.invite_request_id
+              ? String(acceptedInvite.invite_request_id)
               : null,
-            inviteId: String(upd.rows[0].id),
-            profession: upd.rows[0].member_profession || null,
-            company: upd.rows[0].member_company || null,
-            programEndsAt: upd.rows[0].program_ends_at || endsAt,
+            inviteId: String(acceptedInvite.id),
+            profession: acceptedInvite.member_profession || null,
+            company: acceptedInvite.member_company || null,
+            programEndsAt: acceptedInvite.program_ends_at || endsAt,
           });
         } catch (emailError) {
           console.error(
@@ -729,7 +987,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
 
       res.json({
         success: true,
-        invite: rowToInvite(upd.rows[0]),
+        invite: rowToInvite(acceptedInvite),
         accountCreated: !!accountUserId,
         accessActivatedEmailDelivery,
         message: "Velkommen som prototype-tester!",
@@ -914,10 +1172,11 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       const expiresAt = new Date(Date.now() + INVITE_EXPIRES_DAYS * 24 * 60 * 60 * 1000);
       const ins = await pool.query(
         `INSERT INTO prototype_tester_invites
-           (token, email, name, nda_version, program_terms_version, expires_at,
-            invited_by, granted_plan, granted_features, team_role,
-            master_invite_id, max_team_size, member_profession, member_company)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, 'member', $10, 1, $11, $12)
+           (token, email, name, nda_version, program_terms_version, dpa_version,
+            letter_of_intent_version, expires_at, invited_by, granted_plan,
+            granted_features, team_role, master_invite_id, max_team_size,
+            member_profession, member_company)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, 'member', $12, 1, $13, $14)
          RETURNING id, token`,
         [
           token,
@@ -925,6 +1184,8 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
           memberName,
           NDA_VERSION,
           PROGRAM_TERMS_VERSION,
+          DPA_VERSION,
+          LETTER_OF_INTENT_VERSION,
           expiresAt.toISOString(),
           uid,
           master.granted_plan,
@@ -938,7 +1199,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       const baseUrl = safeAppBaseUrl(req);
       const inviteUrl = `${baseUrl}/prototype-tester/accept-invite?token=${encodeURIComponent(token)}`;
 
-      const teamMessage = `Du har blitt invitert som team-medlem. Når du signerer NDA-en blir du del av det aktive prototype-tester-teamet (program slutter ${new Date(master.program_ends_at).toLocaleDateString("nb-NO")}).`;
+      const teamMessage = `Du har blitt invitert som team-medlem. Når du aksepterer avtalegrunnlaget blir du del av det aktive prototype-tester-teamet (program slutter ${new Date(master.program_ends_at).toLocaleDateString("nb-NO")}).`;
       const emailDelivery = await deliverInviteEmail(
         pool,
         memberEmail,
