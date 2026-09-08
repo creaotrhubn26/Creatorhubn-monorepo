@@ -16,8 +16,16 @@ describe("Leadgrid domain onboarding migration", () => {
     expect(migration).toMatch(/created_by\s+VARCHAR\(255\) NOT NULL/);
     expect(migration).toContain("expires_at");
     expect(migration).toContain("leadgrid_project_onboarding_commit_pair_check");
-    expect(migration).toContain("FOREIGN KEY (organization_id, committed_project_id)");
+    expect(migration).toContain("committed_organization_id UUID");
+    expect(migration).toContain("FOREIGN KEY (committed_organization_id, committed_project_id)");
     expect(migration).toContain("REFERENCES leadgrid_projects(organization_id, id)");
+  });
+
+  it("binds sales teams and invitations to the committed customer project", () => {
+    expect(migration).toContain("leadgrid_project_sales_teams");
+    expect(migration).toContain("PRIMARY KEY (organization_id, project_id, sales_team_id)");
+    expect(migration).toContain("organization_role VARCHAR(30)");
+    expect(migration).toContain("sales_team_role VARCHAR(20)");
   });
 
   it("keeps the analysis plan structured and expired previews indexable", () => {

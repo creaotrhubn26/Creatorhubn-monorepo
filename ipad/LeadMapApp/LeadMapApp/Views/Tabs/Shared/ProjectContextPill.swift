@@ -90,6 +90,8 @@ struct ProjectContextPill: View {
                     ProjectDomainOnboardingView(
                         api: api,
                         organizationId: organizationId,
+                        organizations: appState.organizations,
+                        defaultAdministratorEmail: appState.userEmail ?? "",
                         onCompleted: { result in
                             pendingOnboardingResult = result
                         }
@@ -135,6 +137,30 @@ struct ProjectContextPill: View {
     private func activateOnboardedProject() {
         guard let result = pendingOnboardingResult else { return }
         pendingOnboardingResult = nil
+        if appState.activeOrganizationId != result.project.organizationId {
+            appState.activeOrganizationId = result.project.organizationId
+        }
+        // Commit-responsen er en autoritativ serververifikasjon av både
+        // organisasjons- og prosjekt-ACL. Behold fail-closed som standard,
+        // men la denne bekreftede overgangen åpne Discovery umiddelbart mens
+        // org-entitlements lastes på nytt i bakgrunnen.
+        if result.access?.discoveryAccessVerified == true {
+            appState.leadgridDiscoveryEnabled = true
+        }
+        if !appState.organizations.contains(where: { $0.id == result.project.organizationId }),
+           let access = result.access {
+            appState.organizations.append(.init(
+                id: access.organization.id,
+                name: access.organization.name,
+                slug: nil,
+                plan: "free",
+                orgType: "customer",
+                logoUrl: nil,
+                role: "member",
+                memberCount: 1 + access.invitations.count,
+                projectCount: 1
+            ))
+        }
         if let index = appState.projects.firstIndex(where: { $0.id == result.project.id }) {
             appState.projects[index] = result.project
         } else {

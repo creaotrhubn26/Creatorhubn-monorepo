@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import type { Pool, PoolClient } from "pg";
 
@@ -76,6 +76,47 @@ export interface ProjectOnboardingPlan {
   skills: typeof LEADGRID_ONBOARDING_SKILLS;
 }
 
+export type ProjectOnboardingProjectRole = "owner" | "member" | "viewer";
+export type ProjectOnboardingTeamRole = "leader" | "member" | "none";
+
+export interface ProjectOnboardingAccessSetup {
+  organization:
+    | { mode: "current" }
+    | { mode: "existing"; organization_id: string }
+    | { mode: "create"; name: string };
+  administrator_email: string;
+  team:
+    | { mode: "none" }
+    | { mode: "existing"; id: string }
+    | { mode: "create"; name: string; color_hex: string };
+  invitations: Array<{
+    email: string;
+    project_role: ProjectOnboardingProjectRole;
+    team_role: ProjectOnboardingTeamRole;
+  }>;
+}
+
+export interface ProjectOnboardingAccessResult {
+  organization: { id: string; name: string; reused: boolean };
+  team: { id: string; name: string; reused: boolean } | null;
+  administrator: {
+    email: string;
+    status: "active" | "invited";
+    organization_role: "admin";
+    project_role: "owner";
+    email_status: string;
+  };
+  invitations: Array<{
+    id: string | null;
+    email: string;
+    status: "active" | "invited";
+    project_role: ProjectOnboardingProjectRole;
+    team_role: ProjectOnboardingTeamRole;
+    email_status: string;
+  }>;
+  discovery_access_verified: boolean;
+}
+
 export interface StoredProjectOnboardingPreview {
   id: string;
   organization_id: string;
@@ -107,6 +148,21 @@ export interface ProjectOnboardingResult {
   skills: typeof LEADGRID_ONBOARDING_SKILLS;
   reused_project: boolean;
   replayed: boolean;
+  access?: ProjectOnboardingAccessResult;
+}
+
+export interface ProjectOnboardingInvitationDispatch {
+  id: string;
+  token: string;
+  email: string;
+  projectName: string;
+  projectRole: ProjectOnboardingProjectRole;
+  organizationId: string;
+  projectId: string;
+}
+
+export interface ProjectOnboardingServiceResult extends ProjectOnboardingResult {
+  invitation_dispatches: ProjectOnboardingInvitationDispatch[];
 }
 
 type Queryable = Pick<PoolClient, "query">;
@@ -688,6 +744,519 @@ function slug(value: string): string {
   return normalized || "kunde";
 }
 
+function normalizeEmail(value: string): string {
+  return value.trim().toLocaleLowerCase("en-US");
+}
+
+async function ensureTargetOrganization(
+  client: Queryable,
+  args: {
+    sourceOrganizationId: string;
+    userId: string;
+    plan: ProjectOnboardingPlan;
+    accessSetup?: ProjectOnboardingAccessSetup;
+  },
+): Promise<{ id: string; name: string; reused: boolean }> {
+  const selection = args.accessSetup?.organization ?? { mode: "current" as const };
+  if (selection.mode === "create") {
+    const existing = await client.query<{ id: string; name: string }>(
+      `SELECT id::text, name
+         FROM organizations
+        WHERE LOWER(COALESCE(meta->>'customer_domain', '')) = $1
+           OR LOWER(REGEXP_REPLACE(
+                SPLIT_PART(SPLIT_PART(COALESCE(website, ''), '//', 2), '/', 1),
+                '^www\\.', ''
+              )) = $1
+        ORDER BY created_at ASC
+        LIMIT 1
+        FOR UPDATE`,
+      [args.plan.website_domain],
+    );
+    if (existing.rows[0]) return { ...existing.rows[0], reused: true };
+    const baseSlug = slug(selection.name || args.plan.project_name).slice(0, 60);
+    const created = await client.query<{ id: string; name: string }>(
+      `INSERT INTO organizations (
+         name, slug, org_type, plan, owner_user_id, website, industry,
+         contact_email, meta
+       ) VALUES (
+         $1, $2, 'customer', 'free', $3, $4, $5, $6,
+         jsonb_build_object(
+           'leadgrid_source', 'domain_onboarding',
+           'customer_domain', $7::text
+         )
+       )
+       RETURNING id::text, name`,
+      [
+        safeText(selection.name || args.plan.project_name, 200),
+        `${baseSlug}-${randomUUID().slice(0, 6)}`,
+        args.userId,
+        args.plan.website_url,
+        args.plan.category,
+        normalizeEmail(args.accessSetup?.administrator_email ?? "") || null,
+        args.plan.website_domain,
+      ],
+    );
+    if (!created.rows[0]) throw new Error("project_onboarding_organization_failed");
+    return { ...created.rows[0], reused: false };
+  }
+
+  const organizationId = selection.mode === "existing"
+    ? selection.organization_id
+    : args.sourceOrganizationId;
+  const result = await client.query<{ id: string; name: string }>(
+    `SELECT id::text, name FROM organizations WHERE id = $1::uuid LIMIT 1 FOR UPDATE`,
+    [organizationId],
+  );
+  if (!result.rows[0]) throw new Error("project_onboarding_organization_not_found");
+  return { ...result.rows[0], reused: true };
+}
+
+async function ensureOrganizationMembership(
+  client: Queryable,
+  organizationId: string,
+  userId: string,
+  role: "admin" | "member" | "viewer",
+  invitedBy: string,
+): Promise<void> {
+  await client.query(
+    `INSERT INTO organization_members (
+       organization_id, user_id, role, invited_by, invited_at, joined_at
+     ) VALUES ($1::uuid, $2, $3, $4, NOW(), NOW())
+     ON CONFLICT (organization_id, user_id) DO UPDATE SET
+       role = CASE
+         WHEN organization_members.role = 'admin' OR EXCLUDED.role = 'admin' THEN 'admin'
+         WHEN organization_members.role = 'viewer' AND EXCLUDED.role = 'member' THEN 'member'
+         ELSE organization_members.role
+       END`,
+    [organizationId, userId, role, invitedBy],
+  );
+}
+
+async function ensureProjectMembership(
+  client: Queryable,
+  args: {
+    organizationId: string;
+    projectId: string;
+    userId: string;
+    role: ProjectOnboardingProjectRole;
+    invitedBy: string;
+  },
+): Promise<void> {
+  await client.query(
+    `INSERT INTO leadgrid_project_members (
+       organization_id, project_id, user_id, role, invited_by, invited_at
+     ) VALUES ($1::uuid, $2, $3, $4, $5, NOW())
+     ON CONFLICT (organization_id, project_id, user_id) DO UPDATE SET
+       role = CASE
+         WHEN leadgrid_project_members.role = 'owner' OR EXCLUDED.role = 'owner' THEN 'owner'
+         WHEN leadgrid_project_members.role = 'viewer' AND EXCLUDED.role = 'member' THEN 'member'
+         ELSE leadgrid_project_members.role
+       END`,
+    [args.organizationId, args.projectId, args.userId, args.role, args.invitedBy],
+  );
+}
+
+async function ensureSalesTeam(
+  client: Queryable,
+  args: {
+    organizationId: string;
+    projectId: string;
+    userId: string;
+    team: ProjectOnboardingAccessSetup["team"];
+  },
+): Promise<{ id: string; name: string; reused: boolean } | null> {
+  if (args.team.mode === "none") return null;
+  let team: { id: string; name: string; reused: boolean } | null = null;
+  if (args.team.mode === "existing") {
+    const existing = await client.query<{ id: string; name: string }>(
+      `SELECT id, name
+         FROM leadgrid_sales_teams
+        WHERE organization_id = $1 AND id = $2
+        LIMIT 1
+        FOR UPDATE`,
+      [args.organizationId, args.team.id],
+    );
+    if (!existing.rows[0]) throw new Error("project_onboarding_team_not_found");
+    team = { ...existing.rows[0], reused: true };
+  } else {
+    const existing = await client.query<{ id: string; name: string }>(
+      `SELECT id, name
+         FROM leadgrid_sales_teams
+        WHERE organization_id = $1 AND LOWER(name) = LOWER($2)
+        ORDER BY created_at ASC
+        LIMIT 1
+        FOR UPDATE`,
+      [args.organizationId, args.team.name],
+    );
+    if (existing.rows[0]) {
+      team = { ...existing.rows[0], reused: true };
+    } else {
+      const id = `${slug(args.team.name)}-${randomUUID().slice(0, 8)}`;
+      const created = await client.query<{ id: string; name: string }>(
+        `INSERT INTO leadgrid_sales_teams (
+           organization_id, id, name, color_hex, member_user_ids, created_by
+         ) VALUES ($1, $2, $3, $4, '[]'::jsonb, $5)
+         RETURNING id, name`,
+        [args.organizationId, id, args.team.name, args.team.color_hex, args.userId],
+      );
+      if (!created.rows[0]) throw new Error("project_onboarding_team_failed");
+      team = { ...created.rows[0], reused: false };
+    }
+  }
+  await client.query(
+    `INSERT INTO leadgrid_project_sales_teams (
+       organization_id, project_id, sales_team_id, created_by
+     ) VALUES ($1::uuid, $2, $3, $4)
+     ON CONFLICT (organization_id, project_id, sales_team_id) DO NOTHING`,
+    [args.organizationId, args.projectId, team.id, args.userId],
+  );
+  return team;
+}
+
+async function attachUserToSalesTeam(
+  client: Queryable,
+  args: {
+    organizationId: string;
+    teamId: string;
+    userId: string;
+    role: Exclude<ProjectOnboardingTeamRole, "none">;
+  },
+): Promise<void> {
+  if (args.role === "leader") {
+    await client.query(
+      `UPDATE leadgrid_sales_teams
+          SET leader_user_id = $3::text,
+              member_user_ids = COALESCE(member_user_ids, '[]'::jsonb) - $3::text,
+              updated_at = NOW()
+        WHERE organization_id = $1 AND id = $2`,
+      [args.organizationId, args.teamId, args.userId],
+    );
+    return;
+  }
+  await client.query(
+    `UPDATE leadgrid_sales_teams
+        SET member_user_ids = CASE
+              WHEN COALESCE(member_user_ids, '[]'::jsonb) @> to_jsonb(ARRAY[$3]::text[])
+                THEN COALESCE(member_user_ids, '[]'::jsonb)
+              ELSE COALESCE(member_user_ids, '[]'::jsonb) || to_jsonb(ARRAY[$3]::text[])
+            END,
+            updated_at = NOW()
+      WHERE organization_id = $1 AND id = $2`,
+    [args.organizationId, args.teamId, args.userId],
+  );
+}
+
+async function provisionAccessEntry(
+  client: Queryable,
+  args: {
+    organizationId: string;
+    projectId: string;
+    projectName: string;
+    invitedBy: string;
+    email: string;
+    organizationRole: "admin" | "member" | "viewer";
+    projectRole: ProjectOnboardingProjectRole;
+    teamId: string | null;
+    teamRole: ProjectOnboardingTeamRole;
+  },
+): Promise<{
+  summary: ProjectOnboardingAccessResult["invitations"][number];
+  dispatch?: ProjectOnboardingInvitationDispatch;
+  userId?: string;
+}> {
+  const email = normalizeEmail(args.email);
+  const user = await client.query<{ id: string }>(
+    `SELECT id FROM users WHERE LOWER(NULLIF(TRIM(email), '')) = $1 LIMIT 1`,
+    [email],
+  );
+  if (user.rows[0]) {
+    const userId = user.rows[0].id;
+    await ensureOrganizationMembership(
+      client,
+      args.organizationId,
+      userId,
+      args.organizationRole,
+      args.invitedBy,
+    );
+    await ensureProjectMembership(client, {
+      organizationId: args.organizationId,
+      projectId: args.projectId,
+      userId,
+      role: args.projectRole,
+      invitedBy: args.invitedBy,
+    });
+    if (args.teamId && args.teamRole !== "none") {
+      await attachUserToSalesTeam(client, {
+        organizationId: args.organizationId,
+        teamId: args.teamId,
+        userId,
+        role: args.teamRole,
+      });
+    }
+    return {
+      userId,
+      summary: {
+        id: null,
+        email,
+        status: "active",
+        project_role: args.projectRole,
+        team_role: args.teamRole,
+        email_status: "not_required",
+      },
+    };
+  }
+
+  const existing = await client.query<{
+    id: string;
+    token: string;
+    email_status: string | null;
+  }>(
+    `SELECT id::text, token, email_status
+       FROM leadgrid_project_invitations
+      WHERE organization_id = $1::uuid
+        AND project_id = $2
+        AND LOWER(email) = $3
+        AND accepted_at IS NULL
+        AND expires_at > NOW()
+      ORDER BY invited_at DESC
+      LIMIT 1
+      FOR UPDATE`,
+    [args.organizationId, args.projectId, email],
+  );
+  if (existing.rows[0]) {
+    await client.query(
+      `UPDATE leadgrid_project_invitations
+          SET role = $4,
+              organization_role = $5,
+              sales_team_id = $6,
+              sales_team_role = NULLIF($7, 'none')
+        WHERE id = $1::uuid
+          AND organization_id = $2::uuid
+          AND project_id = $3`,
+      [
+        existing.rows[0].id,
+        args.organizationId,
+        args.projectId,
+        args.projectRole,
+        args.organizationRole,
+        args.teamId,
+        args.teamRole,
+      ],
+    );
+    return {
+      summary: {
+        id: existing.rows[0].id,
+        email,
+        status: "invited",
+        project_role: args.projectRole,
+        team_role: args.teamRole,
+        email_status: existing.rows[0].email_status ?? "pending",
+      },
+    };
+  }
+
+  const token = randomBytes(32).toString("base64url");
+  const inserted = await client.query<{ id: string }>(
+    `INSERT INTO leadgrid_project_invitations (
+       organization_id, project_id, email, role, organization_role,
+       sales_team_id, sales_team_role, token, invited_by, expires_at,
+       email_status
+     ) VALUES (
+       $1::uuid, $2, $3, $4, $5, $6, NULLIF($7, 'none'), $8, $9,
+       NOW() + INTERVAL '7 days', 'pending'
+     )
+     RETURNING id::text`,
+    [
+      args.organizationId,
+      args.projectId,
+      email,
+      args.projectRole,
+      args.organizationRole,
+      args.teamId,
+      args.teamRole,
+      token,
+      args.invitedBy,
+    ],
+  );
+  const id = inserted.rows[0]?.id;
+  if (!id) throw new Error("project_onboarding_invitation_failed");
+  return {
+    summary: {
+      id,
+      email,
+      status: "invited",
+      project_role: args.projectRole,
+      team_role: args.teamRole,
+      email_status: "pending",
+    },
+    dispatch: {
+      id,
+      token,
+      email,
+      projectName: args.projectName,
+      projectRole: args.projectRole,
+      organizationId: args.organizationId,
+      projectId: args.projectId,
+    },
+  };
+}
+
+async function loadAccessEntrySummary(
+  client: Queryable,
+  args: {
+    organizationId: string;
+    projectId: string;
+    email: string;
+    projectRole: ProjectOnboardingProjectRole;
+    teamRole: ProjectOnboardingTeamRole;
+  },
+): Promise<ProjectOnboardingAccessResult["invitations"][number]> {
+  const email = normalizeEmail(args.email);
+  const result = await client.query<{
+    invitation_id: string | null;
+    email_status: string | null;
+    accepted_at: Date | string | null;
+    member_user_id: string | null;
+  }>(
+    `SELECT invitation.id::text AS invitation_id,
+            invitation.email_status,
+            invitation.accepted_at,
+            member.user_id AS member_user_id
+       FROM (SELECT $3::text AS email) requested
+       LEFT JOIN users account
+         ON LOWER(NULLIF(TRIM(account.email), '')) = requested.email
+       LEFT JOIN leadgrid_project_members member
+         ON member.organization_id = $1::uuid
+        AND member.project_id = $2
+        AND member.user_id = account.id
+       LEFT JOIN LATERAL (
+         SELECT id, email_status, accepted_at
+           FROM leadgrid_project_invitations
+          WHERE organization_id = $1::uuid
+            AND project_id = $2
+            AND LOWER(email) = requested.email
+          ORDER BY invited_at DESC
+          LIMIT 1
+       ) invitation ON TRUE
+      LIMIT 1`,
+    [args.organizationId, args.projectId, email],
+  );
+  const row = result.rows[0];
+  return {
+    id: row?.invitation_id ?? null,
+    email,
+    status: row?.member_user_id || row?.accepted_at ? "active" : "invited",
+    project_role: args.projectRole,
+    team_role: args.teamRole,
+    email_status: row?.member_user_id
+      ? "not_required"
+      : (row?.email_status ?? "pending"),
+  };
+}
+
+async function loadProvisionedAccess(
+  client: Queryable,
+  args: {
+    organizationId: string;
+    projectId: string;
+    userId: string;
+  },
+): Promise<ProjectOnboardingAccessResult | undefined> {
+  const base = await client.query<{
+    organization_name: string;
+    metadata: Record<string, unknown>;
+  }>(
+    `SELECT organization.name AS organization_name,
+            COALESCE(project.metadata, '{}'::jsonb) AS metadata
+       FROM leadgrid_projects project
+       JOIN organizations organization ON organization.id = project.organization_id
+      WHERE project.organization_id = $1::uuid AND project.id = $2
+      LIMIT 1`,
+    [args.organizationId, args.projectId],
+  );
+  const row = base.rows[0];
+  const administratorEmail = typeof row?.metadata?.customer_admin_email === "string"
+    ? normalizeEmail(row.metadata.customer_admin_email)
+    : "";
+  if (!row || !administratorEmail) return undefined;
+  const teamId = typeof row.metadata.sales_team_id === "string"
+    ? row.metadata.sales_team_id
+    : null;
+  let team: ProjectOnboardingAccessResult["team"] = null;
+  if (teamId) {
+    const teamResult = await client.query<{ id: string; name: string }>(
+      `SELECT team.id, team.name
+         FROM leadgrid_project_sales_teams project_team
+         JOIN leadgrid_sales_teams team
+           ON team.organization_id = project_team.organization_id::text
+          AND team.id = project_team.sales_team_id
+        WHERE project_team.organization_id = $1::uuid
+          AND project_team.project_id = $2
+          AND project_team.sales_team_id = $3
+        LIMIT 1`,
+      [args.organizationId, args.projectId, teamId],
+    );
+    if (teamResult.rows[0]) team = { ...teamResult.rows[0], reused: true };
+  }
+  const admin = await loadAccessEntrySummary(client, {
+    organizationId: args.organizationId,
+    projectId: args.projectId,
+    email: administratorEmail,
+    projectRole: "owner",
+    teamRole: team ? "leader" : "none",
+  });
+  const rawEntries = Array.isArray(row.metadata.onboarding_access_entries)
+    ? row.metadata.onboarding_access_entries
+    : [];
+  const invitations: ProjectOnboardingAccessResult["invitations"] = [];
+  for (const rawEntry of rawEntries) {
+    if (!rawEntry || typeof rawEntry !== "object") continue;
+    const entry = rawEntry as Record<string, unknown>;
+    if (
+      typeof entry.email !== "string"
+      || !["owner", "member", "viewer"].includes(String(entry.project_role))
+      || !["leader", "member", "none"].includes(String(entry.team_role))
+    ) continue;
+    invitations.push(await loadAccessEntrySummary(client, {
+      organizationId: args.organizationId,
+      projectId: args.projectId,
+      email: entry.email,
+      projectRole: entry.project_role as ProjectOnboardingProjectRole,
+      teamRole: entry.team_role as ProjectOnboardingTeamRole,
+    }));
+  }
+  const authorized = await client.query<{ allowed: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+         FROM leadgrid_project_members member
+         JOIN organization_members organization_member
+           ON organization_member.organization_id = member.organization_id
+          AND organization_member.user_id = member.user_id
+        WHERE member.organization_id = $1::uuid
+          AND member.project_id = $2
+          AND member.user_id = $3
+     ) AS allowed`,
+    [args.organizationId, args.projectId, args.userId],
+  );
+  return {
+    organization: {
+      id: args.organizationId,
+      name: row.organization_name,
+      reused: true,
+    },
+    team,
+    administrator: {
+      email: admin.email,
+      status: admin.status,
+      organization_role: "admin",
+      project_role: "owner",
+      email_status: admin.email_status,
+    },
+    invitations,
+    discovery_access_verified: authorized.rows[0]?.allowed === true,
+  };
+}
+
 export async function commitProjectOnboarding(
   pool: Pool,
   args: {
@@ -695,8 +1264,9 @@ export async function commitProjectOnboarding(
     organizationId: string;
     userId: string;
     editedProfiles?: ProjectOnboardingProfilePlan[];
+    accessSetup?: ProjectOnboardingAccessSetup;
   },
-): Promise<ProjectOnboardingResult> {
+): Promise<ProjectOnboardingServiceResult> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -705,9 +1275,11 @@ export async function commitProjectOnboarding(
       plan: ProjectOnboardingPlan;
       expires_at: Date | string;
       committed_at: Date | string | null;
+      committed_organization_id: string | null;
       committed_project_id: string | null;
     }>(
-      `SELECT id::text, plan, expires_at, committed_at, committed_project_id
+      `SELECT id::text, plan, expires_at, committed_at,
+              committed_organization_id::text, committed_project_id
          FROM leadgrid_project_onboarding_previews
         WHERE id = $1::uuid
           AND organization_id = $2::uuid
@@ -721,16 +1293,23 @@ export async function commitProjectOnboarding(
       throw new Error("project_onboarding_preview_expired");
     }
     if (preview.committed_project_id) {
+      const committedOrganizationId = preview.committed_organization_id
+        ?? args.organizationId;
       const project = await loadResultProject(
         client,
-        args.organizationId,
+        committedOrganizationId,
         preview.committed_project_id,
       );
       const profiles = await loadActiveProfiles(
         client,
-        args.organizationId,
+        committedOrganizationId,
         preview.committed_project_id,
       );
+      const access = await loadProvisionedAccess(client, {
+        organizationId: committedOrganizationId,
+        projectId: preview.committed_project_id,
+        userId: args.userId,
+      });
       await client.query("COMMIT");
       return {
         project,
@@ -738,6 +1317,8 @@ export async function commitProjectOnboarding(
         skills: LEADGRID_ONBOARDING_SKILLS,
         reused_project: true,
         replayed: true,
+        access,
+        invitation_dispatches: [],
       };
     }
     const storedPlan = preview.plan;
@@ -763,8 +1344,23 @@ export async function commitProjectOnboarding(
     });
 
     await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
-      `${args.organizationId}|project-domain-onboarding|${storedPlan.website_domain}`,
+      `project-domain-onboarding|${storedPlan.website_domain}`,
     ]);
+
+    const organization = await ensureTargetOrganization(client, {
+      sourceOrganizationId: args.organizationId,
+      userId: args.userId,
+      plan: storedPlan,
+      accessSetup: args.accessSetup,
+    });
+    const targetOrganizationId = organization.id;
+    await ensureOrganizationMembership(
+      client,
+      targetOrganizationId,
+      args.userId,
+      "member",
+      args.userId,
+    );
 
     let replayed = false;
     let reusedProject = false;
@@ -793,7 +1389,7 @@ export async function commitProjectOnboarding(
             )
           ORDER BY p.created_at ASC
           LIMIT 1`,
-        [args.organizationId, storedPlan.website_domain],
+        [targetOrganizationId, storedPlan.website_domain],
       );
       projectId = existing.rows[0]?.id ?? null;
       reusedProject = Boolean(projectId);
@@ -810,7 +1406,7 @@ export async function commitProjectOnboarding(
          )`,
         [
           projectId,
-          args.organizationId,
+          targetOrganizationId,
           storedPlan.project_name,
           storedPlan.project_description || null,
           storedPlan.category,
@@ -829,7 +1425,7 @@ export async function commitProjectOnboarding(
            organization_id, project_id, user_id, role, invited_by, invited_at
          ) VALUES ($1::uuid, $2, $3, 'owner', $3, NOW())
          ON CONFLICT (organization_id, project_id, user_id) DO NOTHING`,
-        [args.organizationId, projectId, args.userId],
+        [targetOrganizationId, projectId, args.userId],
       );
     } else {
       await client.query(
@@ -839,7 +1435,7 @@ export async function commitProjectOnboarding(
                 updated_at = NOW()
           WHERE organization_id = $1::uuid AND id = $2`,
         [
-          args.organizationId,
+          targetOrganizationId,
           projectId,
           storedPlan.category,
           JSON.stringify({
@@ -852,28 +1448,145 @@ export async function commitProjectOnboarding(
       );
     }
 
+    await ensureProjectMembership(client, {
+      organizationId: targetOrganizationId,
+      projectId,
+      userId: args.userId,
+      role: "owner",
+      invitedBy: args.userId,
+    });
+
     await persistBrandProfile(client, {
       projectId,
       userId: args.userId,
       plan: storedPlan,
     });
     await ensureRecommendedProfiles(client, {
-      organizationId: args.organizationId,
+      organizationId: targetOrganizationId,
       projectId,
       userId: args.userId,
       plans,
     });
+
+    let access: ProjectOnboardingAccessResult | undefined;
+    const invitationDispatches: ProjectOnboardingInvitationDispatch[] = [];
+    if (args.accessSetup) {
+      const team = await ensureSalesTeam(client, {
+        organizationId: targetOrganizationId,
+        projectId,
+        userId: args.userId,
+        team: args.accessSetup.team,
+      });
+      const administrator = await provisionAccessEntry(client, {
+        organizationId: targetOrganizationId,
+        projectId,
+        projectName: storedPlan.project_name,
+        invitedBy: args.userId,
+        email: args.accessSetup.administrator_email,
+        organizationRole: "admin",
+        projectRole: "owner",
+        teamId: team?.id ?? null,
+        teamRole: team ? "leader" : "none",
+      });
+      if (administrator.dispatch) invitationDispatches.push(administrator.dispatch);
+      if (administrator.userId) {
+        await client.query(
+          `UPDATE organizations
+              SET owner_user_id = $2,
+                  contact_email = COALESCE(NULLIF(contact_email, ''), $3),
+                  updated_at = NOW()
+            WHERE id = $1::uuid`,
+          [targetOrganizationId, administrator.userId, administrator.summary.email],
+        );
+      }
+
+      const invitationSummaries: ProjectOnboardingAccessResult["invitations"] = [];
+      for (const invitation of args.accessSetup.invitations) {
+        if (normalizeEmail(invitation.email) === administrator.summary.email) continue;
+        const provisioned = await provisionAccessEntry(client, {
+          organizationId: targetOrganizationId,
+          projectId,
+          projectName: storedPlan.project_name,
+          invitedBy: args.userId,
+          email: invitation.email,
+          organizationRole: invitation.project_role === "viewer" ? "viewer" : "member",
+          projectRole: invitation.project_role,
+          teamId: team?.id ?? null,
+          teamRole: team ? invitation.team_role : "none",
+        });
+        invitationSummaries.push(provisioned.summary);
+        if (provisioned.dispatch) invitationDispatches.push(provisioned.dispatch);
+      }
+
+      await client.query(
+        `UPDATE leadgrid_projects
+            SET metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb,
+                updated_at = NOW()
+          WHERE organization_id = $1::uuid AND id = $2`,
+        [
+          targetOrganizationId,
+          projectId,
+          JSON.stringify({
+            customer_admin_email: administrator.summary.email,
+            sales_team_id: team?.id ?? null,
+            onboarding_access_entries: args.accessSetup.invitations
+              .filter((invitation) => normalizeEmail(invitation.email) !== administrator.summary.email)
+              .map((invitation) => ({
+                email: normalizeEmail(invitation.email),
+                project_role: invitation.project_role,
+                team_role: team ? invitation.team_role : "none",
+              })),
+          }),
+        ],
+      );
+      const authorized = await client.query<{ allowed: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1
+             FROM leadgrid_project_members member
+             JOIN organization_members organization_member
+               ON organization_member.organization_id = member.organization_id
+              AND organization_member.user_id = member.user_id
+            WHERE member.organization_id = $1::uuid
+              AND member.project_id = $2
+              AND member.user_id = $3
+         ) AS allowed`,
+        [targetOrganizationId, projectId, args.userId],
+      );
+      if (authorized.rows[0]?.allowed !== true) {
+        throw new Error("project_onboarding_discovery_access_failed");
+      }
+      access = {
+        organization,
+        team,
+        administrator: {
+          email: administrator.summary.email,
+          status: administrator.summary.status,
+          organization_role: "admin",
+          project_role: "owner",
+          email_status: administrator.summary.email_status,
+        },
+        invitations: invitationSummaries,
+        discovery_access_verified: true,
+      };
+    }
     await client.query(
       `UPDATE leadgrid_project_onboarding_previews
           SET committed_at = COALESCE(committed_at, NOW()),
-              committed_project_id = COALESCE(committed_project_id, $4)
+              committed_organization_id = COALESCE(committed_organization_id, $4::uuid),
+              committed_project_id = COALESCE(committed_project_id, $5)
         WHERE id = $1::uuid
           AND organization_id = $2::uuid
           AND created_by = $3`,
-      [args.previewId, args.organizationId, args.userId, projectId],
+      [
+        args.previewId,
+        args.organizationId,
+        args.userId,
+        targetOrganizationId,
+        projectId,
+      ],
     );
-    const project = await loadResultProject(client, args.organizationId, projectId);
-    const profiles = await loadActiveProfiles(client, args.organizationId, projectId);
+    const project = await loadResultProject(client, targetOrganizationId, projectId);
+    const profiles = await loadActiveProfiles(client, targetOrganizationId, projectId);
     await client.query("COMMIT");
     return {
       project,
@@ -881,6 +1594,8 @@ export async function commitProjectOnboarding(
       skills: LEADGRID_ONBOARDING_SKILLS,
       reused_project: reusedProject,
       replayed,
+      access,
+      invitation_dispatches: invitationDispatches,
     };
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);

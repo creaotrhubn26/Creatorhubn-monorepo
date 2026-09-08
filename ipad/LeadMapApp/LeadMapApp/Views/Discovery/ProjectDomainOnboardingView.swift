@@ -3,6 +3,8 @@ import SwiftUI
 struct ProjectDomainOnboardingView: View {
     let api: APIClient
     let organizationId: String
+    let organizations: [OrganizationSummary]
+    let defaultAdministratorEmail: String
     let onCompleted: (LeadgridProjectOnboardingResult) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -12,6 +14,16 @@ struct ProjectDomainOnboardingView: View {
     @State private var isAnalyzing = false
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var organizationChoice = "create"
+    @State private var companyName = ""
+    @State private var administratorEmail = ""
+    @State private var teamChoice = "create"
+    @State private var teamName = ""
+    @State private var existingTeamId = ""
+    @State private var invitations: [LeadgridProjectOnboardingInvitationWrite] = []
+    @State private var completionResult: LeadgridProjectOnboardingResult?
+    @State private var organizationOptions: [LeadgridProjectOnboardingAccessOptions.Organization] = []
+    @State private var availableTeams: [LeadgridProjectOnboardingAccessOptions.Team] = []
 
     private var trimmedWebsite: String {
         website.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -36,6 +48,33 @@ struct ProjectDomainOnboardingView: View {
             return "Profilene må ha unike navn."
         }
         return profiles.compactMap { $0.brief.validationMessage }.first
+    }
+
+    private var accessError: String? {
+        guard preview?.canManageMultipleProfiles == true else { return nil }
+        if organizationChoice == "create" && companyName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Selskapsnavn må fylles ut."
+        }
+        if organizationChoice != "create" && !organizationOptions.contains(where: { $0.id == organizationChoice }) {
+            return "Velg en gyldig kundeorganisasjon."
+        }
+        if !Self.isValidEmail(administratorEmail) {
+            return "Kundeadmin må ha en gyldig e-postadresse."
+        }
+        if teamChoice == "create" && teamName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Teamnavn må fylles ut."
+        }
+        if teamChoice == "existing" && existingTeamId.isEmpty {
+            return "Velg et eksisterende salgsteam."
+        }
+        let emails = [administratorEmail] + invitations.map(\.email)
+        if emails.contains(where: { !Self.isValidEmail($0) }) {
+            return "Alle inviterte må ha en gyldig e-postadresse."
+        }
+        if Set(emails.map { $0.lowercased() }).count != emails.count {
+            return "Samme e-postadresse kan bare legges til én gang."
+        }
+        return nil
     }
 
     var body: some View {
@@ -90,6 +129,10 @@ struct ProjectDomainOnboardingView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
+                    }
+
+                    if preview.canManageMultipleProfiles {
+                        accessSetupSection
                     }
 
                     Section {
@@ -169,8 +212,40 @@ struct ProjectDomainOnboardingView: View {
                             }
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(isSaving || profileError != nil)
+                        .disabled(isSaving || profileError != nil || accessError != nil)
                         .accessibilityIdentifier("project-onboarding.commit")
+                    }
+                }
+
+                if let completionResult, let access = completionResult.access {
+                    Section("Tilgang er klar") {
+                        Label("\(access.organization.name) er koblet til prosjektet", systemImage: "building.2.fill")
+                        if let team = access.team {
+                            Label("\(team.name) er koblet til prosjektet", systemImage: "person.3.fill")
+                        }
+                        accessStatusRow(
+                            email: access.administrator.email,
+                            status: access.administrator.status,
+                            emailStatus: access.administrator.emailStatus,
+                            label: "Kundeadmin"
+                        )
+                        ForEach(access.invitations, id: \.stableId) { invitation in
+                            accessStatusRow(
+                                email: invitation.email,
+                                status: invitation.status,
+                                emailStatus: invitation.emailStatus,
+                                label: invitation.projectRole.title
+                            )
+                        }
+                        Label(
+                            access.discoveryAccessVerified
+                                ? "Discovery-tilgang er verifisert"
+                                : "Discovery-tilgang mangler",
+                            systemImage: access.discoveryAccessVerified
+                                ? "checkmark.shield.fill"
+                                : "xmark.shield.fill"
+                        )
+                        .foregroundStyle(access.discoveryAccessVerified ? .green : .red)
                     }
                 }
 
@@ -182,6 +257,18 @@ struct ProjectDomainOnboardingView: View {
                     }
                 }
             }
+            .safeAreaInset(edge: .top) {
+                if completionResult?.access?.discoveryAccessVerified == true {
+                    Label("Tilgang bekreftet – åpner Discovery", systemImage: "checkmark.shield.fill")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity)
+                        .background(Color.green)
+                        .accessibilityIdentifier("project-onboarding.access-ready")
+                }
+            }
             .navigationTitle("Nytt kundeprosjekt")
             .navigationBarTitleDisplayMode(.inline)
             .interactiveDismissDisabled(isAnalyzing || isSaving)
@@ -191,6 +278,119 @@ struct ProjectDomainOnboardingView: View {
                         .disabled(isAnalyzing || isSaving)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var accessSetupSection: some View {
+        Section {
+            Picker("Kundebedrift", selection: $organizationChoice) {
+                Text("Opprett eller gjenbruk fra domenet").tag("create")
+                ForEach(organizationOptions) { organization in
+                    Text(organization.name).tag(organization.id)
+                }
+            }
+            .accessibilityIdentifier("project-onboarding.organization")
+
+            if organizationChoice == "create" {
+                TextField("Selskapsnavn", text: $companyName)
+                    .accessibilityIdentifier("project-onboarding.company-name")
+            }
+
+            TextField("Kundeadmin", text: $administratorEmail)
+                .textContentType(.emailAddress)
+                .keyboardType(.emailAddress)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("project-onboarding.admin-email")
+
+            Picker("Salgsteam", selection: $teamChoice) {
+                Text("Opprett nytt team").tag("create")
+                if !availableTeams.isEmpty {
+                    Text("Velg eksisterende team").tag("existing")
+                }
+                Text("Ikke bruk team").tag("none")
+            }
+            if teamChoice == "create" {
+                TextField("Teamnavn", text: $teamName)
+                    .accessibilityIdentifier("project-onboarding.team-name")
+            } else if teamChoice == "existing" {
+                Picker("Eksisterende team", selection: $existingTeamId) {
+                    Text("Velg team").tag("")
+                    ForEach(availableTeams) { team in
+                        Text(team.name).tag(team.id)
+                    }
+                }
+            }
+
+            ForEach($invitations) { $invitation in
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField("navn@bedrift.no", text: $invitation.email)
+                        .textContentType(.emailAddress)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Picker("Prosjektrolle", selection: $invitation.projectRole) {
+                        ForEach(LeadgridProjectOnboardingProjectRole.allCases) { role in
+                            Text(role.title).tag(role)
+                        }
+                    }
+                    if teamChoice != "none" {
+                        Picker("Teamrolle", selection: $invitation.teamRole) {
+                            ForEach(LeadgridProjectOnboardingTeamRole.allCases) { role in
+                                Text(role.title).tag(role)
+                            }
+                        }
+                    }
+                    Button("Fjern invitasjon", role: .destructive) {
+                        invitations.removeAll { $0.id == invitation.id }
+                    }
+                }
+            }
+
+            if invitations.count < 20 {
+                Button {
+                    invitations.append(.init(
+                        email: "",
+                        projectRole: .member,
+                        teamRole: teamChoice == "none" ? .none : .member
+                    ))
+                } label: {
+                    Label("Inviter bruker", systemImage: "person.badge.plus")
+                }
+                .accessibilityIdentifier("project-onboarding.invitation.add")
+            }
+        } header: {
+            Text("Bedrift og tilgang")
+        } footer: {
+            Text("Kundeadmin får eierrolle. Eksisterende brukere legges til direkte; nye brukere får en invitasjon med synlig leveringsstatus.")
+        }
+        .onChange(of: organizationChoice) { _, selected in
+            guard selected != "create" else {
+                availableTeams = []
+                existingTeamId = ""
+                if teamChoice == "existing" { teamChoice = "create" }
+                return
+            }
+            Task { await loadTeams(for: selected) }
+        }
+    }
+
+    private func accessStatusRow(
+        email: String,
+        status: String,
+        emailStatus: String,
+        label: String
+    ) -> some View {
+        HStack {
+            VStack(alignment: .leading) {
+                Text(email)
+                Text(label).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(status == "active" ? "Aktiv" : (emailStatus == "sent" ? "Sendt" : "Invitert"))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(status == "active" || emailStatus == "sent" ? .green : .orange)
         }
     }
 
@@ -211,8 +411,44 @@ struct ProjectDomainOnboardingView: View {
             preview = result
             profiles = result.recommendedProfiles
             website = result.websiteDomain
+            if companyName.isEmpty { companyName = result.projectName }
+            if administratorEmail.isEmpty { administratorEmail = defaultAdministratorEmail }
+            if teamName.isEmpty { teamName = "\(result.projectName) salg" }
+            let fallbackOrganizations = organizations.map {
+                LeadgridProjectOnboardingAccessOptions.Organization(id: $0.id, name: $0.name)
+            }
+            if let accessOptions = try? await api.fetchLeadgridProjectOnboardingAccessOptions(
+                sourceOrganizationId: organizationId
+            ) {
+                organizationOptions = accessOptions.organizations
+            } else {
+                organizationOptions = fallbackOrganizations
+            }
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func loadTeams(for targetOrganizationId: String) async {
+        do {
+            let options = try await api.fetchLeadgridProjectOnboardingAccessOptions(
+                sourceOrganizationId: organizationId,
+                targetOrganizationId: targetOrganizationId
+            )
+            guard organizationChoice == targetOrganizationId else { return }
+            organizationOptions = options.organizations
+            availableTeams = options.teams
+            if !options.teams.contains(where: { $0.id == existingTeamId }) {
+                existingTeamId = ""
+                if teamChoice == "existing" { teamChoice = "create" }
+            }
+        } catch {
+            guard organizationChoice == targetOrganizationId else { return }
+            availableTeams = []
+            existingTeamId = ""
+            if teamChoice == "existing" { teamChoice = "create" }
+            errorMessage = "Eksisterende team kunne ikke lastes. Du kan opprette et nytt team."
         }
     }
 
@@ -223,21 +459,74 @@ struct ProjectDomainOnboardingView: View {
             errorMessage = profileError
             return
         }
+        if let accessError {
+            errorMessage = accessError
+            return
+        }
         isSaving = true
         errorMessage = nil
         do {
             let result = try await api.commitLeadgridProjectOnboarding(
                 previewId: preview.id,
                 organizationId: organizationId,
-                profiles: preview.canManageMultipleProfiles ? profiles : nil
+                profiles: preview.canManageMultipleProfiles ? profiles : nil,
+                accessSetup: preview.canManageMultipleProfiles ? makeAccessSetup() : nil
             )
-            onCompleted(result)
             isSaving = false
+            if preview.canManageMultipleProfiles,
+               result.access?.discoveryAccessVerified != true {
+                errorMessage = "Prosjektet er lagret, men Discovery-tilgangen kunne ikke bekreftes."
+                return
+            }
+            completionResult = result
+            try? await Task.sleep(for: .milliseconds(1_400))
+            onCompleted(result)
             dismiss()
         } catch {
             isSaving = false
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func makeAccessSetup() -> LeadgridProjectOnboardingAccessSetup {
+        let organization: LeadgridProjectOnboardingOrganizationSelection = organizationChoice == "create"
+            ? .init(mode: "create", organizationId: nil, name: companyName.trimmingCharacters(in: .whitespacesAndNewlines))
+            : .init(mode: "existing", organizationId: organizationChoice, name: nil)
+        let team: LeadgridProjectOnboardingTeamSelection
+        switch teamChoice {
+        case "none":
+            team = .init(mode: "none", id: nil, name: nil, colorHex: nil)
+        case "existing":
+            team = .init(mode: "existing", id: existingTeamId, name: nil, colorHex: nil)
+        default:
+            team = .init(
+                mode: "create",
+                id: nil,
+                name: teamName.trimmingCharacters(in: .whitespacesAndNewlines),
+                colorHex: "#A852FC"
+            )
+        }
+        return .init(
+            organization: organization,
+            administratorEmail: administratorEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            team: team,
+            invitations: invitations.map { invitation in
+                var normalized = invitation
+                normalized.email = invitation.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if teamChoice == "none" { normalized.teamRole = .none }
+                return normalized
+            }
+        )
+    }
+
+    private static func isValidEmail(_ value: String) -> Bool {
+        let email = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard email.count <= 200,
+              let at = email.firstIndex(of: "@"),
+              at != email.startIndex
+        else { return false }
+        let domain = email[email.index(after: at)...]
+        return domain.contains(".") && !domain.hasSuffix(".")
     }
 
     private func addProfile() {

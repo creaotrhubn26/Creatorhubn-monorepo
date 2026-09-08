@@ -220,6 +220,11 @@ export function registerLeadgridSalesTeamsRoutes(deps: SalesTeamsRoutesDeps): vo
     const orgId = await resolveOrgIdForUser(pool, session.userId);
     try {
       await pool.query(
+        `DELETE FROM leadgrid_project_sales_teams
+          WHERE organization_id::text = $1 AND sales_team_id = $2`,
+        [orgId, String(req.params.id ?? "")],
+      );
+      await pool.query(
         `DELETE FROM leadgrid_sales_teams WHERE organization_id = $1 AND id = $2`,
         [orgId, String(req.params.id ?? "")],
       );

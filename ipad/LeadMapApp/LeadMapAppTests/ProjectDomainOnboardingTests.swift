@@ -2,6 +2,54 @@ import XCTest
 @testable import LeadMapApp
 
 final class ProjectDomainOnboardingTests: XCTestCase {
+    func testInvitationHistoryDecodesAcceptedStatus() throws {
+        let data = Data(#"""
+        {
+          "id":"invite-accepted",
+          "email":"accepted@dentum.no",
+          "role":"member",
+          "invitedAt":"2026-09-08T12:00:00.000Z",
+          "expiresAt":"2026-09-15T12:00:00.000Z",
+          "acceptedAt":"2026-09-08T13:00:00.000Z",
+          "status":"accepted",
+          "emailStatus":"sent",
+          "salesTeamId":"dentum-salg",
+          "salesTeamRole":"member"
+        }
+        """#.utf8)
+
+        let invitation = try JSONDecoder().decode(
+            LeadgridProjectInvitationStatus.self,
+            from: data
+        )
+        XCTAssertEqual(invitation.status, "accepted")
+        XCTAssertEqual(invitation.acceptedAt, "2026-09-08T13:00:00.000Z")
+        XCTAssertEqual(invitation.salesTeamId, "dentum-salg")
+    }
+
+    func testAccessSetupEncodesTenantProjectAndTeamRolesWithoutLocalIdentifiers() throws {
+        let setup = LeadgridProjectOnboardingAccessSetup(
+            organization: .init(mode: "create", organizationId: nil, name: "Dentum"),
+            administratorEmail: "daniel@creatorhubn.com",
+            team: .init(mode: "create", id: nil, name: "Dentum salg", colorHex: "#A852FC"),
+            invitations: [.init(
+                email: "selger@dentum.no",
+                projectRole: .member,
+                teamRole: .member
+            )]
+        )
+        let data = try JSONEncoder().encode(setup)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(json["administrator_email"] as? String, "daniel@creatorhubn.com")
+        let organization = try XCTUnwrap(json["organization"] as? [String: Any])
+        XCTAssertEqual(organization["mode"] as? String, "create")
+        XCTAssertEqual(organization["name"] as? String, "Dentum")
+        let invitation = try XCTUnwrap((json["invitations"] as? [[String: Any]])?.first)
+        XCTAssertEqual(invitation["project_role"] as? String, "member")
+        XCTAssertEqual(invitation["team_role"] as? String, "member")
+        XCTAssertNil(invitation["id"])
+    }
+
     func testDentumPreviewDecodesCompleteDiscoveryProfileAndAllSkills() throws {
         let data = Data(#"""
         {
@@ -101,7 +149,27 @@ final class ProjectDomainOnboardingTests: XCTestCase {
           "profiles":[],
           "skills":[],
           "reused_project":true,
-          "replayed":false
+          "replayed":false,
+          "access":{
+            "organization":{"id":"11111111-1111-4111-8111-111111111111","name":"Dentum","reused":true},
+            "team":{"id":"dentum-salg","name":"Dentum salg","reused":false},
+            "administrator":{
+              "email":"daniel@creatorhubn.com",
+              "status":"active",
+              "organization_role":"admin",
+              "project_role":"owner",
+              "email_status":"not_required"
+            },
+            "invitations":[{
+              "id":"55555555-5555-4555-8555-555555555555",
+              "email":"selger@dentum.no",
+              "status":"invited",
+              "project_role":"member",
+              "team_role":"member",
+              "email_status":"sent"
+            }],
+            "discovery_access_verified":true
+          }
         }
         """#.utf8)
 
@@ -114,5 +182,9 @@ final class ProjectDomainOnboardingTests: XCTestCase {
         XCTAssertEqual(result.project.leadCount, 0)
         XCTAssertTrue(result.reusedProject)
         XCTAssertFalse(result.replayed)
+        XCTAssertEqual(result.access?.administrator.email, "daniel@creatorhubn.com")
+        XCTAssertEqual(result.access?.team?.name, "Dentum salg")
+        XCTAssertEqual(result.access?.invitations.first?.emailStatus, "sent")
+        XCTAssertEqual(result.access?.discoveryAccessVerified, true)
     }
 }

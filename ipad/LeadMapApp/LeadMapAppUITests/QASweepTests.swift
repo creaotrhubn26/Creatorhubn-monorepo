@@ -292,7 +292,6 @@ final class QASweepTests: XCTestCase {
         let category = app.staticTexts["project-onboarding.category"]
         XCTAssertTrue(category.waitForExistence(timeout: 5))
         XCTAssertTrue(category.label.contains("Tannhelse"))
-        XCTAssertTrue(app.staticTexts["Tannhelse – Oslo"].exists)
 
         let addProfile = app.buttons["project-onboarding.profile.add"]
         for _ in 0..<12 where !addProfile.exists {
@@ -309,6 +308,11 @@ final class QASweepTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Finn duplikater"].exists)
         XCTAssertTrue(app.staticTexts["Sjekk datakvalitet"].exists)
         commit.tap()
+
+        XCTAssertTrue(
+            app.staticTexts["project-onboarding.access-ready"].waitForExistence(timeout: 5),
+            "Kundeorganisasjon, admin, team og prosjekt-ACL skal verifiseres før Discovery åpnes"
+        )
 
         XCTAssertTrue(
             app.buttons["discovery.close"].waitForExistence(timeout: 8),

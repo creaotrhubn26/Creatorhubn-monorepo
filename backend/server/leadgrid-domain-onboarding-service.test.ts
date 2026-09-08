@@ -12,6 +12,7 @@ import type { BrandProfile } from "./role-room-website-analyzer.js";
 const organizationId = "11111111-1111-4111-8111-111111111111";
 const userId = "user-a";
 const previewId = "22222222-2222-4222-8222-222222222222";
+const customerOrganizationId = "44444444-4444-4444-8444-444444444444";
 
 function profile(overrides: Partial<BrandProfile>): BrandProfile {
   return {
@@ -121,6 +122,140 @@ describe("Leadgrid domain onboarding classification", () => {
 });
 
 describe("Leadgrid domain onboarding transaction", () => {
+  it("creates an isolated company, customer admin, project team and persisted invitation access", async () => {
+    const plan = buildProjectOnboardingPlan(
+      "https://dentum.no",
+      "dentum.no",
+      profile({ businessName: "Dentum", description: "tannklinikk Oslo" }),
+    );
+    let generatedProjectId = "";
+    let insertedProfile = false;
+    const query = vi.fn(async (sqlValue: string, params: unknown[] = []) => {
+      const sql = String(sqlValue);
+      if (sql.includes("FROM leadgrid_project_onboarding_previews")) {
+        return { rows: [{
+          id: previewId,
+          plan,
+          expires_at: "2099-01-01T00:00:00.000Z",
+          committed_at: null,
+          committed_organization_id: null,
+          committed_project_id: null,
+        }] };
+      }
+      if (sql.includes("FROM organizations") && sql.includes("customer_domain")) {
+        return { rows: [] };
+      }
+      if (sql.includes("INSERT INTO organizations")) {
+        return { rows: [{ id: customerOrganizationId, name: "Dentum" }], rowCount: 1 };
+      }
+      if (sql.includes("LEFT JOIN brand_kits bk")) return { rows: [] };
+      if (sql.includes("INSERT INTO leadgrid_projects")) {
+        generatedProjectId = String(params[0]);
+        return { rows: [], rowCount: 1 };
+      }
+      if (sql.includes("SELECT overrides FROM brand_kits")) return { rows: [] };
+      if (sql.includes("FROM leadgrid_discovery_profiles")) {
+        return insertedProfile ? { rows: [{
+          id: "33333333-3333-4333-8333-333333333333",
+          name: "Tannhelse – Oslo",
+          is_default: true,
+          version: 1,
+          brief: plan.recommended_profiles[0].brief,
+          status: "active",
+          source_config: { google_places: { enabled: false } },
+        }] } : { rows: [] };
+      }
+      if (sql.includes("INSERT INTO leadgrid_discovery_profiles")) {
+        insertedProfile = true;
+        return { rows: [], rowCount: 1 };
+      }
+      if (sql.includes("FROM leadgrid_sales_teams") && sql.includes("LOWER(name)")) {
+        return { rows: [] };
+      }
+      if (sql.includes("INSERT INTO leadgrid_sales_teams")) {
+        return { rows: [{ id: "dentum-team", name: "Dentum salg" }], rowCount: 1 };
+      }
+      if (sql.includes("SELECT id FROM users")) {
+        return String(params[0]) === "daniel@creatorhubn.com"
+          ? { rows: [{ id: "daniel-user" }] }
+          : { rows: [] };
+      }
+      if (sql.includes("FROM leadgrid_project_invitations") && sql.includes("LOWER(email)")) {
+        return { rows: [] };
+      }
+      if (sql.includes("INSERT INTO leadgrid_project_invitations")) {
+        return { rows: [{ id: "55555555-5555-4555-8555-555555555555" }], rowCount: 1 };
+      }
+      if (sql.includes("SELECT EXISTS") && sql.includes("leadgrid_project_members")) {
+        return { rows: [{ allowed: true }] };
+      }
+      if (sql.includes("SELECT p.id::text") && sql.includes("crm_customers")) {
+        return { rows: [{
+          id: generatedProjectId,
+          organization_id: customerOrganizationId,
+          name: "Dentum",
+          description: plan.project_description,
+          status: "active",
+          lead_count: 0,
+          competitor_count: 0,
+        }] };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    const release = vi.fn();
+    const pool = {
+      connect: vi.fn(async () => ({ query, release })),
+    } as unknown as Pool;
+
+    const result = await commitProjectOnboarding(pool, {
+      previewId,
+      organizationId,
+      userId,
+      accessSetup: {
+        organization: { mode: "create", name: "Dentum" },
+        administrator_email: "daniel@creatorhubn.com",
+        team: { mode: "create", name: "Dentum salg", color_hex: "#A852FC" },
+        invitations: [{
+          email: "selger@dentum.no",
+          project_role: "member",
+          team_role: "member",
+        }],
+      },
+    });
+
+    expect(result.project.organizationId).toBe(customerOrganizationId);
+    expect(result.access).toMatchObject({
+      organization: { id: customerOrganizationId, name: "Dentum", reused: false },
+      team: { id: "dentum-team", name: "Dentum salg", reused: false },
+      administrator: {
+        email: "daniel@creatorhubn.com",
+        status: "active",
+        organization_role: "admin",
+        project_role: "owner",
+      },
+      invitations: [{
+        email: "selger@dentum.no",
+        status: "invited",
+        project_role: "member",
+        team_role: "member",
+        email_status: "pending",
+      }],
+      discovery_access_verified: true,
+    });
+    expect(result.invitation_dispatches).toHaveLength(1);
+    expect(result.invitation_dispatches[0]).toMatchObject({
+      email: "selger@dentum.no",
+      organizationId: customerOrganizationId,
+      projectId: generatedProjectId,
+    });
+    const statements = query.mock.calls.map(([sql]) => String(sql));
+    expect(statements.some((sql) => sql.includes("INSERT INTO leadgrid_project_sales_teams"))).toBe(true);
+    expect(statements.some((sql) => sql.includes("INSERT INTO organization_members"))).toBe(true);
+    expect(statements.some((sql) => sql.includes("INSERT INTO leadgrid_project_members"))).toBe(true);
+    expect(statements.some((sql) => sql.includes("INSERT INTO crm_customers"))).toBe(false);
+    expect(release).toHaveBeenCalledOnce();
+  });
+
   it("creates project, brand kit and Discovery profile atomically without leads", async () => {
     const plan = buildProjectOnboardingPlan(
       "https://dentum.no",
@@ -149,6 +284,9 @@ describe("Leadgrid domain onboarding transaction", () => {
         };
       }
       if (sql.includes("LEFT JOIN brand_kits bk")) return { rows: [] };
+      if (sql.includes("FROM organizations WHERE id")) {
+        return { rows: [{ id: organizationId, name: "Creatorhub AS" }] };
+      }
       if (sql.includes("INSERT INTO leadgrid_projects")) {
         generatedProjectId = String(params[0]);
         return { rows: [], rowCount: 1 };
@@ -301,6 +439,109 @@ describe("Leadgrid domain onboarding transaction", () => {
     expect(release).toHaveBeenCalledOnce();
   });
 
+  it("reconstructs verified access on replay after a lost commit response", async () => {
+    const plan = buildProjectOnboardingPlan(
+      "https://dentum.no",
+      "dentum.no",
+      profile({ businessName: "Dentum", description: "tannklinikk Oslo" }),
+    );
+    const query = vi.fn(async (sqlValue: string, params: unknown[] = []) => {
+      const sql = String(sqlValue);
+      if (sql.includes("FROM leadgrid_project_onboarding_previews")) {
+        return { rows: [{
+          id: previewId,
+          plan,
+          expires_at: "2026-01-01T00:00:00.000Z",
+          committed_at: "2026-09-08T10:00:00.000Z",
+          committed_organization_id: customerOrganizationId,
+          committed_project_id: "dentum-existing",
+        }] };
+      }
+      if (sql.includes("SELECT p.id::text") && sql.includes("crm_customers")) {
+        return { rows: [{
+          id: "dentum-existing",
+          organization_id: customerOrganizationId,
+          name: "Dentum",
+          description: plan.project_description,
+          status: "active",
+          lead_count: 0,
+          competitor_count: 0,
+        }] };
+      }
+      if (sql.includes("FROM leadgrid_discovery_profiles")) {
+        return { rows: [{
+          id: "33333333-3333-4333-8333-333333333333",
+          name: "Tannhelse – Oslo",
+          is_default: true,
+          version: 1,
+          brief: plan.recommended_profiles[0].brief,
+          status: "active",
+          source_config: { google_places: { enabled: false } },
+        }] };
+      }
+      if (sql.includes("AS organization_name")) {
+        return { rows: [{
+          organization_name: "Dentum",
+          metadata: {
+            customer_admin_email: "daniel@creatorhubn.com",
+            sales_team_id: "dentum-salg",
+            onboarding_access_entries: [{
+              email: "selger@dentum.no",
+              project_role: "member",
+              team_role: "member",
+            }],
+          },
+        }] };
+      }
+      if (sql.includes("FROM leadgrid_project_sales_teams project_team")) {
+        return { rows: [{ id: "dentum-salg", name: "Dentum salg" }] };
+      }
+      if (sql.includes("FROM (SELECT $3::text AS email)")) {
+        return params[2] === "daniel@creatorhubn.com"
+          ? { rows: [{
+              invitation_id: null,
+              email_status: null,
+              accepted_at: null,
+              member_user_id: "daniel-user",
+            }] }
+          : { rows: [{
+              invitation_id: "55555555-5555-4555-8555-555555555555",
+              email_status: "sent",
+              accepted_at: null,
+              member_user_id: null,
+            }] };
+      }
+      if (sql.includes("SELECT EXISTS") && sql.includes("leadgrid_project_members")) {
+        return { rows: [{ allowed: true }] };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    const release = vi.fn();
+    const pool = {
+      connect: vi.fn(async () => ({ query, release })),
+    } as unknown as Pool;
+
+    const result = await commitProjectOnboarding(pool, {
+      previewId,
+      organizationId,
+      userId,
+    });
+
+    expect(result.replayed).toBe(true);
+    expect(result.invitation_dispatches).toEqual([]);
+    expect(result.access).toMatchObject({
+      organization: { id: customerOrganizationId, name: "Dentum" },
+      team: { id: "dentum-salg", name: "Dentum salg" },
+      administrator: { email: "daniel@creatorhubn.com", status: "active" },
+      invitations: [{ email: "selger@dentum.no", status: "invited", email_status: "sent" }],
+      discovery_access_verified: true,
+    });
+    expect(query.mock.calls.map(([sql]) => String(sql)).some((sql) =>
+      /^\s*(INSERT|UPDATE)\b/.test(sql),
+    )).toBe(false);
+    expect(release).toHaveBeenCalledOnce();
+  });
+
   it("rolls back every write when Discovery profile persistence fails", async () => {
     const plan = buildProjectOnboardingPlan(
       "https://dentum.no",
@@ -321,6 +562,9 @@ describe("Leadgrid domain onboarding transaction", () => {
         };
       }
       if (sql.includes("LEFT JOIN brand_kits bk")) return { rows: [] };
+      if (sql.includes("FROM organizations WHERE id")) {
+        return { rows: [{ id: organizationId, name: "Creatorhub AS" }] };
+      }
       if (sql.includes("SELECT overrides FROM brand_kits")) return { rows: [] };
       if (sql.includes("FROM leadgrid_discovery_profiles")) return { rows: [] };
       if (sql.includes("INSERT INTO leadgrid_discovery_profiles")) {
