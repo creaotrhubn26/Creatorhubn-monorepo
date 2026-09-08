@@ -8,7 +8,7 @@
  * Endepunkter:
  *   GET    /projects/:id/members              — liste m/ rolle + sist aktiv
  *   POST   /projects/:id/invitations          — invitér e-post + rolle
- *   GET    /projects/:id/invitations          — pending invites
+ *   GET    /projects/:id/invitations          — pending/accepted status
  *   DELETE /projects/:id/invitations/:invId   — kanseller invitasjon
  *   DELETE /projects/:id/members/:userId      — fjern medlem
  *   PATCH  /projects/:id/members/:userId      — endre rolle
@@ -89,7 +89,7 @@ function rowToMember(r: MemberRow) {
   };
 }
 
-function buildInviteEmail(args: {
+export function buildLeadgridProjectInviteEmail(args: {
   projectName: string;
   inviterName: string;
   role: string;
@@ -201,7 +201,7 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
     },
   );
 
-  // ─── GET /projects/:id/invitations (pending) ─────────────────────
+  // ─── GET /projects/:id/invitations (active history) ──────────────
   app.get(
     "/api/admin-room/lead-map/projects/:id/invitations",
     async (req: Request, res: Response) => {
@@ -214,21 +214,25 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
 
         const r = await pool.query<{
           id: string; email: string; role: string;
-          invited_at: string; expires_at: string;
+          invited_at: string; expires_at: string; accepted_at: string | null;
           email_status: string | null;
+          organization_role: string | null;
+          sales_team_id: string | null;
+          sales_team_role: string | null;
           inviter_name: string | null;
         }>(
           `SELECT pi.id::text, pi.email, pi.role,
-                  pi.invited_at::text, pi.expires_at::text,
-                  pi.email_status,
+                  pi.invited_at::text, pi.expires_at::text, pi.accepted_at::text,
+                  pi.email_status, pi.organization_role,
+                  pi.sales_team_id, pi.sales_team_role,
                   NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS inviter_name
              FROM leadgrid_project_invitations pi
              LEFT JOIN users u ON u.id = pi.invited_by
             WHERE pi.organization_id = $1::uuid
               AND pi.project_id = $2
-              AND pi.accepted_at IS NULL
-              AND pi.expires_at > NOW()
-            ORDER BY pi.invited_at DESC`,
+              AND (pi.accepted_at IS NOT NULL OR pi.expires_at > NOW())
+            ORDER BY pi.invited_at DESC
+            LIMIT 100`,
           [project.organizationId, projectId],
         );
         return res.json({
@@ -238,7 +242,12 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
             role: row.role,
             invitedAt: row.invited_at,
             expiresAt: row.expires_at,
+            acceptedAt: row.accepted_at,
+            status: row.accepted_at ? "accepted" : "pending",
             emailStatus: row.email_status,
+            organizationRole: row.organization_role,
+            salesTeamId: row.sales_team_id,
+            salesTeamRole: row.sales_team_role,
             inviterName: row.inviter_name,
           })),
         });
@@ -261,14 +270,44 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
         if (!(await callerOwnsProject(pool, session.userId, project))) {
           return res.status(403).json({ error: "kun_eier_kan_invitere" });
         }
-        const body = req.body as { email?: string; role?: string };
+        const body = req.body as {
+          email?: string;
+          role?: string;
+          sales_team_id?: string;
+          sales_team_role?: string;
+        };
         const email = body.email?.trim().toLowerCase();
         const role = body.role ?? "member";
+        const salesTeamId = body.sales_team_id?.trim() || null;
+        const salesTeamRole = body.sales_team_role ?? null;
         if (!email || !email.includes("@")) {
           return res.status(400).json({ error: "ugyldig_email" });
         }
         if (!["owner", "member", "viewer"].includes(role)) {
           return res.status(400).json({ error: "ugyldig_rolle" });
+        }
+        if ((salesTeamId === null) !== (salesTeamRole === null)) {
+          return res.status(400).json({ error: "team_og_teamrolle_kreves_sammen" });
+        }
+        if (salesTeamRole && !["leader", "member"].includes(salesTeamRole)) {
+          return res.status(400).json({ error: "ugyldig_teamrolle" });
+        }
+        if (salesTeamId) {
+          const linkedTeam = await pool.query(
+            `SELECT 1
+               FROM leadgrid_project_sales_teams project_team
+               JOIN leadgrid_sales_teams team
+                 ON team.organization_id = project_team.organization_id::text
+                AND team.id = project_team.sales_team_id
+              WHERE project_team.organization_id = $1::uuid
+                AND project_team.project_id = $2
+                AND project_team.sales_team_id = $3
+              LIMIT 1`,
+            [project.organizationId, projectId, salesTeamId],
+          );
+          if (linkedTeam.rows.length === 0) {
+            return res.status(400).json({ error: "team_ikke_koblet_til_prosjekt" });
+          }
         }
 
         // Sjekk om e-post allerede er medlem
@@ -295,18 +334,28 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
         const token = crypto.randomBytes(32).toString("base64url");
         const ins = await pool.query<{ id: string }>(
           `INSERT INTO leadgrid_project_invitations (
-             organization_id, project_id, email, role, token, invited_by, expires_at
+             organization_id, project_id, email, role, sales_team_id,
+             sales_team_role, token, invited_by, expires_at
            ) VALUES (
-             $1::uuid, $2, $3, $4, $5, $6, NOW() + INTERVAL '7 days'
+             $1::uuid, $2, $3, $4, $5, $6, $7, $8, NOW() + INTERVAL '7 days'
            )
            RETURNING id::text`,
-          [project.organizationId, projectId, email, role, token, session.userId],
+          [
+            project.organizationId,
+            projectId,
+            email,
+            role,
+            salesTeamId,
+            salesTeamRole,
+            token,
+            session.userId,
+          ],
         );
         const invitationId = ins.rows[0].id;
 
         // Send email
         const acceptUrl = `${leadgridPublicOrigin()}/lead-map/accept?token=${encodeURIComponent(token)}`;
-        const { subject, html, text } = buildInviteEmail({
+        const { subject, html, text } = buildLeadgridProjectInviteEmail({
           projectName: project.name,
           inviterName,
           role,
@@ -344,6 +393,7 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
           invitationId,
           emailSent: emailResult.sent,
           emailReason: emailResult.sent ? null : emailResult.reason,
+          emailStatus: emailResult.sent ? "sent" : (emailResult.reason ?? "failed"),
         });
       } catch (err) {
         return res.status(500).json({ error: "invite_failed", detail: "internal_error" });
@@ -548,9 +598,12 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
         const invRes = await client.query<{
           id: string; organization_id: string; project_id: string; email: string;
           role: string; expires_at: string; accepted_at: string | null;
+          organization_role: string | null; sales_team_id: string | null;
+          sales_team_role: string | null;
         }>(
           `SELECT pi.id::text, pi.organization_id::text, pi.project_id, pi.email, pi.role,
-                  pi.expires_at::text, pi.accepted_at::text
+                  pi.expires_at::text, pi.accepted_at::text,
+                  pi.organization_role, pi.sales_team_id, pi.sales_team_role
              FROM leadgrid_project_invitations pi
              JOIN leadgrid_projects p
                ON p.organization_id = pi.organization_id
@@ -639,14 +692,23 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
           return res.status(403).json({ error: "feil_bruker" });
         }
 
-        // Project membership is narrower than organization membership, but
-        // org membership supplies the baseline RBAC role used by Leadgrid's
-        // permission middleware. Never elevate a project owner to org admin.
+        // Normal project invites receive the narrow baseline role. Customer
+        // onboarding invites may explicitly designate an organization admin.
+        const organizationRole = inv.organization_role === "admin"
+          ? "admin"
+          : inv.organization_role === "viewer" || inv.role === "viewer"
+            ? "viewer"
+            : "member";
         await client.query(
           `INSERT INTO organization_members (organization_id, user_id, role)
-           VALUES ($1::uuid, $2, CASE WHEN $3 = 'viewer' THEN 'viewer' ELSE 'member' END)
-           ON CONFLICT (organization_id, user_id) DO NOTHING`,
-          [inv.organization_id, session.userId, inv.role],
+           VALUES ($1::uuid, $2, $3)
+           ON CONFLICT (organization_id, user_id) DO UPDATE SET
+             role = CASE
+               WHEN organization_members.role = 'admin' OR EXCLUDED.role = 'admin' THEN 'admin'
+               WHEN organization_members.role = 'viewer' AND EXCLUDED.role = 'member' THEN 'member'
+               ELSE organization_members.role
+             END`,
+          [inv.organization_id, session.userId, organizationRole],
         );
 
         const membership = await client.query<{ role: string }>(
@@ -661,6 +723,51 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
            RETURNING role`,
           [inv.organization_id, inv.project_id, session.userId, inv.role],
         );
+        if (inv.sales_team_id && inv.sales_team_role === "leader") {
+          await client.query(
+            `UPDATE leadgrid_sales_teams team
+                SET leader_user_id = $4::text,
+                    member_user_ids = COALESCE(member_user_ids, '[]'::jsonb) - $4::text,
+                    updated_at = NOW()
+              WHERE team.organization_id = $1
+                AND team.id = $2
+                AND EXISTS (
+                  SELECT 1 FROM leadgrid_project_sales_teams project_team
+                   WHERE project_team.organization_id = $1::uuid
+                     AND project_team.project_id = $3
+                     AND project_team.sales_team_id = team.id
+                )`,
+            [inv.organization_id, inv.sales_team_id, inv.project_id, session.userId],
+          );
+        } else if (inv.sales_team_id && inv.sales_team_role === "member") {
+          await client.query(
+            `UPDATE leadgrid_sales_teams team
+                SET member_user_ids = CASE
+                      WHEN COALESCE(member_user_ids, '[]'::jsonb) @> to_jsonb(ARRAY[$4]::text[])
+                        THEN COALESCE(member_user_ids, '[]'::jsonb)
+                      ELSE COALESCE(member_user_ids, '[]'::jsonb) || to_jsonb(ARRAY[$4]::text[])
+                    END,
+                    updated_at = NOW()
+              WHERE team.organization_id = $1
+                AND team.id = $2
+                AND EXISTS (
+                  SELECT 1 FROM leadgrid_project_sales_teams project_team
+                   WHERE project_team.organization_id = $1::uuid
+                     AND project_team.project_id = $3
+                     AND project_team.sales_team_id = team.id
+                )`,
+            [inv.organization_id, inv.sales_team_id, inv.project_id, session.userId],
+          );
+        }
+        if (organizationRole === "admin") {
+          await client.query(
+            `UPDATE organizations
+                SET owner_user_id = $2, contact_email = COALESCE(NULLIF(contact_email, ''), $3),
+                    updated_at = NOW()
+              WHERE id = $1::uuid`,
+            [inv.organization_id, session.userId, verifiedEmail],
+          );
+        }
         await client.query(
           `UPDATE leadgrid_project_invitations
               SET accepted_at = NOW(),
@@ -678,6 +785,9 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
           targetId: inv.project_id,
           projectId: inv.project_id,
           role: membership.rows[0]?.role ?? inv.role,
+          organizationRole,
+          salesTeamId: inv.sales_team_id,
+          salesTeamRole: inv.sales_team_role,
         });
       } catch (err) {
         if (client) await client.query("ROLLBACK").catch(() => undefined);

@@ -1625,32 +1625,21 @@ struct FunnelSegmentShape: Shape {
 
 struct InviteMemberSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var email: String = ""
-    @State private var role: Role = .seller
-    @State private var area: String = "Oslo Vest"
-    @State private var sendInvite: Bool = true
+    @State private var role: LeadgridProjectOnboardingProjectRole = .member
+    @State private var invitations: [LeadgridProjectInvitationStatus] = []
+    @State private var isSending = false
+    @State private var statusMessage: String?
+    @State private var errorMessage: String?
 
-    enum Role: String, CaseIterable, Hashable {
-        case admin = "Admin"
-        case manager = "Salgssjef"
-        case seller = "Selger"
-        case sdr = "SDR"
-        var icon: String {
-            switch self {
-            case .admin:   return "crown.fill"
-            case .manager: return "person.2.badge.gearshape.fill"
-            case .seller:  return "briefcase.fill"
-            case .sdr:     return "phone.fill"
-            }
-        }
-        var color: Color {
-            switch self {
-            case .admin:   return TBrand.red
-            case .manager: return TBrand.orange
-            case .seller:  return TBrand.purpleLight
-            case .sdr:     return TBrand.blue
-            }
-        }
+    private var normalizedEmail: String {
+        email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private var emailIsValid: Bool {
+        let pieces = normalizedEmail.split(separator: "@", omittingEmptySubsequences: false)
+        return pieces.count == 2 && pieces[0].isEmpty == false && pieces[1].contains(".")
     }
 
     var body: some View {
@@ -1659,16 +1648,23 @@ struct InviteMemberSheet: View {
                 VStack(spacing: 14) {
                     emailField
                     roleGrid
-                    areaPicker
-                    Toggle(isOn: $sendInvite) {
-                        Text("Send invitt-e-post umiddelbart")
+                    if let project = appState.activeLeadgridProject {
+                        Label("Tilgang gis til \(project.name)", systemImage: "folder.badge.person.crop")
                             .font(.appScaled(size: 12, weight: .semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(TBrand.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(11)
+                            .background(TBrand.card, in: RoundedRectangle(cornerRadius: 12))
                     }
-                    .tint(TBrand.purple)
-                    .padding(11)
-                    .background(TBrand.card, in: RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(TBrand.stroke, lineWidth: 1))
+                    if let statusMessage {
+                        Label(statusMessage, systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(TBrand.green)
+                    }
+                    if let errorMessage {
+                        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(TBrand.red)
+                    }
+                    invitationsSection
                     Color.clear.frame(height: 80)
                 }
                 .padding(20)
@@ -1681,16 +1677,19 @@ struct InviteMemberSheet: View {
                     Button("Avbryt") { dismiss() }.foregroundStyle(TBrand.purpleLight)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Send") { dismiss() }
+                    Button(isSending ? "Sender …" : "Send") {
+                        Task { await sendInvitation() }
+                    }
                         .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(TBrand.purpleLight)
-                        .disabled(email.isEmpty)
+                        .disabled(!emailIsValid || isSending || appState.activeLeadgridProject == nil)
                 }
             }
             .toolbarBackground(TBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
+        .task { await loadInvitations() }
     }
 
     private var emailField: some View {
@@ -1725,20 +1724,20 @@ struct InviteMemberSheet: View {
                 .foregroundStyle(TBrand.textSecondary)
             // Korte rolle-navn — 2 kolonner fungerer også på iPhone.
             LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 2, mac: 2, spacing: 8), spacing: 8) {
-                ForEach(Role.allCases, id: \.self) { r in
+                ForEach(LeadgridProjectOnboardingProjectRole.allCases) { r in
                     Button { role = r } label: {
                         HStack(spacing: 8) {
-                            Image(systemName: r.icon)
+                            Image(systemName: roleIcon(r))
                                 .font(.appScaled(size: 13, weight: .bold))
-                                .foregroundStyle(role == r ? .white : r.color)
-                            Text(r.rawValue)
+                                .foregroundStyle(role == r ? .white : roleColor(r))
+                            Text(r.title)
                                 .font(.appScaled(size: 12, weight: .bold))
                                 .foregroundStyle(.white)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .background(
-                            role == r ? AnyShapeStyle(r.color) : AnyShapeStyle(TBrand.card),
+                            role == r ? AnyShapeStyle(roleColor(r)) : AnyShapeStyle(TBrand.card),
                             in: RoundedRectangle(cornerRadius: 11)
                         )
                         .overlay(RoundedRectangle(cornerRadius: 11).stroke(role == r ? Color.clear : TBrand.stroke, lineWidth: 1))
@@ -1749,32 +1748,102 @@ struct InviteMemberSheet: View {
         }
     }
 
-    private var areaPicker: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text("Område")
-                .font(.appScaled(size: 12, weight: .semibold))
-                .foregroundStyle(TBrand.textSecondary)
-            Menu {
-                ForEach(["Oslo Vest", "Oslo Sentrum", "Lørenskog", "Asker / Bærum", "Sarpsborg", "Bergen", "Trondheim", "Stavanger"], id: \.self) { a in
-                    Button(a) { area = a }
+    @ViewBuilder
+    private var invitationsSection: some View {
+        if !invitations.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Sendte invitasjoner")
+                    .font(.appScaled(size: 12, weight: .semibold))
+                    .foregroundStyle(TBrand.textSecondary)
+                ForEach(invitations) { invitation in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(invitation.email)
+                                .font(.appScaled(size: 12, weight: .semibold))
+                                .foregroundStyle(.white)
+                            Text(invitation.role.title)
+                                .font(.caption2)
+                                .foregroundStyle(TBrand.textSecondary)
+                        }
+                        Spacer()
+                        Text(invitation.status == "accepted" ? "Akseptert" : (invitation.emailStatus == "sent" ? "Sendt" : "Venter"))
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(
+                                invitation.status == "accepted"
+                                    ? TBrand.green
+                                    : (invitation.emailStatus == "sent" ? TBrand.blue : TBrand.orange)
+                            )
+                    }
+                    .padding(10)
+                    .background(TBrand.card, in: RoundedRectangle(cornerRadius: 10))
                 }
-            } label: {
-                HStack {
-                    Image(systemName: "mappin.and.ellipse")
-                        .font(.appScaled(size: 12, weight: .semibold))
-                        .foregroundStyle(TBrand.purpleLight)
-                    Text(area)
-                        .font(.appScaled(size: 13, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Spacer()
-                    Image(systemName: "chevron.down")
-                        .font(.appScaled(size: 10, weight: .bold))
-                        .foregroundStyle(TBrand.textTertiary)
-                }
-                .padding(12)
-                .background(TBrand.card, in: RoundedRectangle(cornerRadius: 11))
-                .overlay(RoundedRectangle(cornerRadius: 11).stroke(TBrand.stroke, lineWidth: 1))
             }
         }
     }
+
+    private func roleIcon(_ role: LeadgridProjectOnboardingProjectRole) -> String {
+        switch role {
+        case .owner: "crown.fill"
+        case .member: "briefcase.fill"
+        case .viewer: "eye.fill"
+        }
+    }
+
+    private func roleColor(_ role: LeadgridProjectOnboardingProjectRole) -> Color {
+        switch role {
+        case .owner: TBrand.orange
+        case .member: TBrand.purpleLight
+        case .viewer: TBrand.blue
+        }
+    }
+
+    @MainActor
+    private func loadInvitations() async {
+        guard let api = appState.api,
+              let organizationId = appState.activeOrganizationId,
+              let projectId = appState.activeLeadgridProjectId
+        else { return }
+        do {
+            invitations = try await api.fetchLeadgridProjectInvitations(
+                projectId: projectId,
+                organizationId: organizationId
+            )
+        } catch {
+            errorMessage = "Invitasjonsstatus kunne ikke lastes."
+        }
+    }
+
+    @MainActor
+    private func sendInvitation() async {
+        guard emailIsValid,
+              let api = appState.api,
+              let organizationId = appState.activeOrganizationId,
+              let projectId = appState.activeLeadgridProjectId
+        else {
+            errorMessage = "Velg et prosjekt og skriv inn en gyldig e-postadresse."
+            return
+        }
+        isSending = true
+        errorMessage = nil
+        statusMessage = nil
+        defer { isSending = false }
+        do {
+            let sent = try await api.inviteLeadgridProjectMember(
+                projectId: projectId,
+                organizationId: organizationId,
+                email: normalizedEmail,
+                role: role,
+                salesTeamId: nil,
+                salesTeamRole: nil
+            )
+            statusMessage = sent.emailSent
+                ? "Invitasjonen er sendt."
+                : "Invitasjonen er lagret, men e-posten må sendes på nytt."
+            email = ""
+            await loadInvitations()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
 }
