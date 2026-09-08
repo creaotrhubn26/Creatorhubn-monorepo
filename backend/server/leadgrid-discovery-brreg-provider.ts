@@ -667,19 +667,30 @@ const QUERY_SYNONYMS: Record<string, string[]> = {
   regnskapsbyrå: ["regnskap", "bokføring", "revisjon"],
   renhold: ["rengjøring"],
   restaurant: ["restaurant", "servering", "kafe"],
+  tannklinikk: ["tannlege", "tannlegetjenester"],
   tannlege: ["tannhelsetjenester"],
 };
 
 function queryPhrases(query: string): string[] {
   const normalized = normalizeForSearch(query);
   const compact = normalized.replace(/\s+/g, "");
-  const aliases = Object.entries(QUERY_SYNONYMS).flatMap(([key, values]) => {
+  const matches = Object.entries(QUERY_SYNONYMS).flatMap(([key, values]) => {
     const normalizedKey = normalizeForSearch(key);
-    return normalized.includes(normalizedKey) ||
-      compact.includes(normalizedKey.replace(/\s+/g, ""))
-      ? values
+    const compactKey = normalizedKey.replace(/\s+/g, "");
+    const wordMatch = normalized.split(" ").includes(normalizedKey);
+    const compoundMatch =
+      compactKey.length >= 4 && compact.includes(compactKey);
+    return wordMatch || compoundMatch
+      ? [{ compactKeyLength: compactKey.length, values }]
       : [];
   });
+  const mostSpecificLength = Math.max(
+    0,
+    ...matches.map((match) => match.compactKeyLength),
+  );
+  const aliases = matches
+    .filter((match) => match.compactKeyLength === mostSpecificLength)
+    .flatMap((match) => match.values);
   return [normalized, ...aliases.map(normalizeForSearch)].filter(Boolean);
 }
 

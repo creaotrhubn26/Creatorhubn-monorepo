@@ -236,7 +236,7 @@ private var usesDomainOnboardingQAFixture: Bool {
 
 private var domainOnboardingQABrief: DiscoveryV2Brief {
     DiscoveryV2Brief(
-        industryQueries: ["tannklinikk", "tannlege"],
+        industryQueries: ["tannlege"],
         exclusionTerms: ["tannteknisk laboratorium", "tannlegeutdanning"],
         city: "Oslo",
         geo: nil,

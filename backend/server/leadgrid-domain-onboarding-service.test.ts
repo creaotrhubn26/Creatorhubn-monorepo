@@ -79,7 +79,7 @@ describe("Leadgrid domain onboarding classification", () => {
       approval_mode: "manual",
       auto_discover_enabled: false,
       brief: {
-        industry_queries: ["tannklinikk", "tannlege"],
+        industry_queries: ["tannlege"],
         city: "Oslo",
         target_count: 30,
         minimum_fit_score: 65,
@@ -345,10 +345,7 @@ describe("Leadgrid domain onboarding transaction", () => {
 
     expect(result.project.name).toBe("Dentum");
     expect(result.project.leadCount).toBe(0);
-    expect(result.profiles[0].brief.industry_queries).toEqual([
-      "tannklinikk",
-      "tannlege",
-    ]);
+    expect(result.profiles[0].brief.industry_queries).toEqual(["tannlege"]);
     expect(result.reused_project).toBe(false);
     const statements = query.mock.calls.map(([sql]) => String(sql));
     expect(statements).toEqual(expect.arrayContaining(["BEGIN", "COMMIT"]));

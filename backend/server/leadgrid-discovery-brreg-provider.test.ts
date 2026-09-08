@@ -86,6 +86,26 @@ describe("Discovery BRREG provider", () => {
                 level: 5,
                 name: "Drift av restauranter",
               },
+              {
+                code: "86.210",
+                level: 5,
+                name: "Allmennlegetjenester",
+              },
+              {
+                code: "86.230",
+                level: 5,
+                name: "Tannlegetjenester",
+              },
+              {
+                code: "86.950",
+                level: 5,
+                name: "Fysioterapi- og ergoterapitjenester",
+              },
+              {
+                code: "86.993",
+                level: 5,
+                name: "Andre helsetjenester ellers",
+              },
             ],
           },
         });
@@ -127,6 +147,22 @@ describe("Discovery BRREG provider", () => {
     expect(brregUrl.searchParams.get("sort")).toBe("organisasjonsnummer,ASC");
     expect(brregUrl.searchParams.get("konkurs")).toBe("false");
     expect(BRREG_NLOD_ATTRIBUTION.license).toBe("NLOD 2.0");
+
+    const dentalResult = await provider.search({
+      query: "tannklinikk",
+      city: "Oslo",
+      maxResults: 20,
+    });
+
+    expect(dentalResult.resolvedNaceCodes).toEqual(["86.230"]);
+    const dentalBrregUrl = fetchImpl.mock.calls
+      .map(([url]) => new URL(String(url)))
+      .find(
+        (url) =>
+          url.pathname.endsWith("/enheter") &&
+          url.searchParams.get("naeringskode") === "86.230",
+      );
+    expect(dentalBrregUrl).toBeDefined();
   });
 
   it("rotates deterministically from an absolute offset and wraps after the last page", async () => {
