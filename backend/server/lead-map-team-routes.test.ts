@@ -164,6 +164,79 @@ describe("Leadgrid project team routes", () => {
     expect(`${email.subject} ${email.text} ${email.html}`).not.toContain("theroleroom.com");
   });
 
+  it("lists both sent and accepted invitation status inside the project scope", async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("FROM leadgrid_projects p")) {
+        return { rows: [accessibleProject()] };
+      }
+      if (sql.includes("FROM leadgrid_project_invitations pi")) {
+        return {
+          rows: [
+            {
+              id: "invite-accepted",
+              email: "accepted@dentum.no",
+              role: "member",
+              invited_at: "2026-09-08T12:00:00.000Z",
+              expires_at: "2026-09-15T12:00:00.000Z",
+              accepted_at: "2026-09-08T13:00:00.000Z",
+              email_status: "sent",
+              organization_role: "member",
+              sales_team_id: "dentum-salg",
+              sales_team_role: "member",
+              inviter_name: "Daniel Qazi",
+            },
+            {
+              id: "invite-pending",
+              email: "pending@dentum.no",
+              role: "viewer",
+              invited_at: "2026-09-08T11:00:00.000Z",
+              expires_at: "2026-09-15T11:00:00.000Z",
+              accepted_at: null,
+              email_status: "sent",
+              organization_role: "viewer",
+              sales_team_id: null,
+              sales_team_role: null,
+              inviter_name: "Daniel Qazi",
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    const response = await makeHarness({ query } as unknown as Pool).call(
+      "GET",
+      "/api/admin-room/lead-map/projects/:id/invitations",
+      {
+        authorization: `Bearer ${token}`,
+        params: { id: projectId },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const body = response.body as {
+      invitations: Array<{ id: string; status: string; acceptedAt: string | null }>;
+    };
+    expect(body.invitations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "invite-accepted",
+        status: "accepted",
+        acceptedAt: "2026-09-08T13:00:00.000Z",
+      }),
+      expect.objectContaining({
+        id: "invite-pending",
+        status: "pending",
+        acceptedAt: null,
+      }),
+    ]));
+    const invitationQuery = query.mock.calls.find(([sql]) =>
+      sql.includes("FROM leadgrid_project_invitations pi"),
+    );
+    expect(invitationQuery?.[0]).toContain(
+      "pi.accepted_at IS NOT NULL OR pi.expires_at > NOW()",
+    );
+  });
+
   it("does not let a regular project member mutate the team", async () => {
     const query = vi.fn(async (sql: string) => {
       if (sql.includes("FROM leadgrid_projects p")) {
@@ -287,8 +360,66 @@ describe("Leadgrid project team routes", () => {
     )?.[1]).toEqual([organizationId, actorId, "viewer"]);
     expect(clientQuery.mock.calls.find(([sql]) =>
       sql.includes("INSERT INTO organization_members"),
-    )?.[0]).toContain("ON CONFLICT (organization_id, user_id) DO NOTHING");
+    )?.[0]).toContain("ON CONFLICT (organization_id, user_id) DO UPDATE");
     expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts customer onboarding access with organization admin and linked team roles", async () => {
+    const clientQuery = vi.fn(async (sql: string) => {
+      if (sql.includes("FROM users")) {
+        return { rows: [{ email: "admin@dentum.no" }] };
+      }
+      if (sql.includes("FROM leadgrid_project_invitations pi")) {
+        return { rows: [{
+          id: "invite-admin",
+          organization_id: organizationId,
+          project_id: projectId,
+          email: "admin@dentum.no",
+          role: "owner",
+          organization_role: "admin",
+          sales_team_id: "dentum-salg",
+          sales_team_role: "leader",
+          expires_at: "2099-01-01T00:00:00.000Z",
+          accepted_at: null,
+        }] };
+      }
+      if (sql.includes("INSERT INTO leadgrid_project_members")) {
+        return { rows: [{ role: "owner" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    const release = vi.fn();
+    const response = await makeHarness({
+      query: vi.fn(),
+      connect: vi.fn(async () => ({ query: clientQuery, release })),
+    } as unknown as Pool).call(
+      "POST",
+      "/api/lead-map/invitations/:token/accept",
+      {
+        authorization: `Bearer ${token}`,
+        params: { token: "customer-admin-token" },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      target: "project",
+      role: "owner",
+      organizationRole: "admin",
+      salesTeamId: "dentum-salg",
+      salesTeamRole: "leader",
+    });
+    expect(clientQuery.mock.calls.find(([sql]) =>
+      sql.includes("INSERT INTO organization_members"),
+    )?.[1]).toEqual([organizationId, actorId, "admin"]);
+    expect(clientQuery.mock.calls.some(([sql]) =>
+      sql.includes("UPDATE leadgrid_sales_teams team") && sql.includes("leader_user_id"),
+    )).toBe(true);
+    expect(clientQuery.mock.calls.some(([sql]) =>
+      sql.includes("UPDATE organizations") && sql.includes("owner_user_id"),
+    )).toBe(true);
+    expect(clientQuery.mock.calls.map(([sql]) => sql.trim())).toContain("COMMIT");
+    expect(release).toHaveBeenCalledOnce();
   });
 
   it("fails closed and rolls back when the verified DB email does not match", async () => {

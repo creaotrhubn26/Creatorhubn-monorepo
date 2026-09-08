@@ -17,3 +17,8 @@ Leadgrid 2.1
 • Academy og Leadbook viser nå bare ekte serverdata, med trygg tomtilstand og reell fremdrift.
 • Min profil bruker nå ekte kontodata overalt, med trygg redigering, feltspesifikke feil og korrekt «Mine leads»-statistikk.
 • Profilbilder lastes opp sikkert, vises konsekvent i header og kart, og ryddes fra lagring ved bytte eller sletting.
+• Opprett et komplett prosjekt og en redigerbar Discovery-profil ved å skrive inn kundens domene.
+• Super Admin kan finjustere og opprette flere Discovery-profiler før prosjektet åpnes direkte i Discovery.
+• Super Admin kan opprette eller velge kundebedrift, utpeke kundeadmin og opprette eller velge salgsteam i samme flyt.
+• Eier-, medlem- og lesertilgang kobles eksplisitt til riktig prosjekt, med synlig status for aktive, sendte og aksepterte invitasjoner.
+• Inviterte brukere får organisasjons-, prosjekt- og eventuell teamtilgang atomisk når invitasjonen godtas.
