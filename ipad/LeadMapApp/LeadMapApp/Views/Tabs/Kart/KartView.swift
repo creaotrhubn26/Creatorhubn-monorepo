@@ -2558,7 +2558,7 @@ struct KartView: View {
                     Annotation("Meg", coordinate: coord) {
                         if navModeActive {
                             NavAvatarPuck(initials: appState.initials,
-                                          email: appState.userEmail,
+                                          profileImageURL: appState.profileImageURL,
                                           vehicle: navVehicle,
                                           moving: KartLocationManager.shared.isMoving
                                               || navSTarget - navSDisplay > 1
@@ -2567,7 +2567,7 @@ struct KartView: View {
                                           // bilen peker alltid LANGS VEIEN.
                                           screenCourse: navTangent.map { $0 - navCamHeading })
                         } else {
-                            MeMapPin(initials: appState.initials, email: appState.userEmail)
+                            MeMapPin(initials: appState.initials, profileImageURL: appState.profileImageURL)
                                 .onTapGesture { zoomToMeAndOpenHUD(coord: coord) }
                         }
                     }
@@ -7193,7 +7193,7 @@ struct MapStyleSheet: View {
 /// heading-up-kameraet leser det som at man beveger seg langs ruta.
 fileprivate struct NavAvatarPuck: View {
     var initials: String
-    var email: String?
+    var profileImageURL: URL?
     var vehicle: KartView.NavVehicle
     var moving: Bool
     /// Kjøreretning i SKJERM-grader (kurs minus kamera-heading) — pilen
@@ -7202,13 +7202,6 @@ fileprivate struct NavAvatarPuck: View {
 
     private let purple = Color(red: 0.66, green: 0.32, blue: 0.99)
     private let purpleLight = Color(red: 0.75, green: 0.45, blue: 1.0)
-
-    /// Samme portrett-oppslag som MeMapPin: `portrait-<email-local>`-asset.
-    private var portraitAsset: String? {
-        guard let email, let local = email.split(separator: "@").first else { return nil }
-        let candidate = "portrait-\(local.lowercased())"
-        return UIImage(named: candidate) != nil ? candidate : nil
-    }
 
     var body: some View {
         ZStack {
@@ -7226,7 +7219,7 @@ fileprivate struct NavAvatarPuck: View {
             // troverdig — Daniels funn 2026-07-19); stillestående vises
             // profil-avataren som før.
             if vehicle == .walk {
-                WalkingAvatar(portraitAsset: portraitAsset, initials: initials)
+                WalkingAvatar(profileImageURL: profileImageURL, initials: initials)
                 // Kurs-pil for gange: peker dit du faktisk beveger deg.
                 if let c = screenCourse, moving {
                     Image(systemName: "location.north.fill")
@@ -7242,17 +7235,17 @@ fileprivate struct NavAvatarPuck: View {
                     .rotationEffect(.degrees(c))
                     .animation(.easeInOut(duration: 0.6), value: c)
                 // Profil-hodet flyter skjermfast over bilen (roteres ikke).
-                if let asset = portraitAsset {
-                    Image(asset)
-                        .resizable().scaledToFill()
-                        .frame(width: 26, height: 26)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(.white, lineWidth: 2))
-                        .shadow(color: .black.opacity(0.4), radius: 3, y: 1)
-                        .offset(y: -40)
-                }
+                LeadgridProfileAvatar(
+                    imageURL: profileImageURL,
+                    initials: initials,
+                    size: 26,
+                    tint: purpleLight
+                )
+                .overlay(Circle().stroke(.white, lineWidth: 2))
+                .shadow(color: .black.opacity(0.4), radius: 3, y: 1)
+                .offset(y: -40)
             } else {
-                WheeledVehicleAvatar(kind: vehicle, portraitAsset: portraitAsset, initials: initials)
+                WheeledVehicleAvatar(kind: vehicle, profileImageURL: profileImageURL, initials: initials)
             }
         }
         .frame(width: 92, height: 110)
@@ -7289,7 +7282,7 @@ fileprivate struct TopViewCarMarker: View {
 /// Leddelt gå-figur som faktisk går: bein og armer svinger i motfase via en
 /// kontinuerlig gå-syklus (TimelineView), med bob og profilbilde som hode.
 fileprivate struct WalkingAvatar: View {
-    var portraitAsset: String?
+    var profileImageURL: URL?
     var initials: String
 
     private let purple = Color(red: 0.66, green: 0.32, blue: 0.99)
@@ -7322,20 +7315,12 @@ fileprivate struct WalkingAvatar: View {
                 armShape(angle: -armAngle).offset(x: 12, y: -8)
 
                 // HODE = profilbilde
-                Group {
-                    if let asset = portraitAsset {
-                        SmartPortrait(assetName: asset)
-                            .frame(width: 34, height: 34)
-                            .clipShape(Circle())
-                    } else {
-                        Text(initials)
-                            .font(.appScaled(size: 14, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                            .frame(width: 34, height: 34)
-                            .background(LinearGradient(colors: [purpleLight, purple],
-                                                       startPoint: .topLeading, endPoint: .bottomTrailing), in: Circle())
-                    }
-                }
+                LeadgridProfileAvatar(
+                    imageURL: profileImageURL,
+                    initials: initials,
+                    size: 34,
+                    tint: purpleLight
+                )
                 .overlay(Circle().stroke(.white, lineWidth: 2.5))
                 .shadow(color: .black.opacity(0.35), radius: 3, y: 2)
                 .offset(y: -32)
@@ -7382,7 +7367,7 @@ fileprivate struct SpinningWheel: View {
 /// WalkingAvatar, men på hjul. Profil-badge viser hvem som kjører.
 fileprivate struct WheeledVehicleAvatar: View {
     var kind: KartView.NavVehicle   // scooter | car | bus
-    var portraitAsset: String?
+    var profileImageURL: URL?
     var initials: String
 
     private let purple = Color(red: 0.66, green: 0.32, blue: 0.99)
@@ -7408,14 +7393,12 @@ fileprivate struct WheeledVehicleAvatar: View {
                 }
 
                 // Profil-badge (hvem kjører)
-                Group {
-                    if let asset = portraitAsset {
-                        SmartPortrait(assetName: asset).frame(width: 24, height: 24).clipShape(Circle())
-                    } else {
-                        Text(initials).font(.appScaled(size: 9, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white).frame(width: 24, height: 24).background(purple, in: Circle())
-                    }
-                }
+                LeadgridProfileAvatar(
+                    imageURL: profileImageURL,
+                    initials: initials,
+                    size: 24,
+                    tint: purpleLight
+                )
                 .overlay(Circle().stroke(.white, lineWidth: 2))
                 .offset(x: 24, y: -22)
             }

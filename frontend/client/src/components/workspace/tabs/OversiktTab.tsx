@@ -9,7 +9,7 @@ import React, { useState, useEffect } from 'react';
 import { Box, Stack, Typography, Avatar, IconButton, Button, Chip, Menu, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Tooltip } from '@mui/material';
 import { useLocation } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
-import { EASEVERSE_APP_URL } from '@/lib/easeverse';
+import { easeVerseWorkspaceUrl } from '@/lib/easeverse';
 import AccessTime from '@mui/icons-material/AccessTime';
 import ChevronLeft from '@mui/icons-material/ChevronLeft';
 import ChevronRight from '@mui/icons-material/ChevronRight';
@@ -471,7 +471,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
             er ferdig. projectId gjør team-sjekk/-lenke prosjekt-bevisst. */}
         <GettingStartedChecklist projectId={projectId} profession={profession} />
         {wsCategory === 'music' && (
-          <WsCard sx={{ mb: 2, overflow: 'hidden', borderColor: ws.accentBorder, background: `linear-gradient(135deg, ${ws.accentSoft} 0%, ${ws.panel} 58%)` }}>
+          <WsCard ariaLabel="Musikkverktøy" sx={{ mb: 2, overflow: 'hidden', borderColor: ws.accentBorder, background: `linear-gradient(135deg, ${ws.accentSoft} 0%, ${ws.panel} 58%)` }}>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2.5} alignItems={{ xs: 'stretch', md: 'center' }}>
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Typography sx={{ fontSize: 10.5, color: ws.accent, fontWeight: 800, letterSpacing: 0.8, mb: 0.5 }}>{t('musicToolsEyebrow')}</Typography>
@@ -484,7 +484,13 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                 </Stack>
               </Box>
               <Stack spacing={1} sx={{ minWidth: { md: 220 } }}>
-                <Button component="a" href={EASEVERSE_APP_URL} target="_blank" rel="noopener noreferrer" variant="contained"
+                <Button component="a" href={easeVerseWorkspaceUrl({
+                    creatorhubProjectId: projectId,
+                    projectName: 'CreatorHub song',
+                    returnTo: typeof window !== 'undefined'
+                      ? `${window.location.origin}/workspace/${encodeURIComponent(projectId)}/sound-room`
+                      : undefined,
+                  })} target="_blank" rel="noopener noreferrer" variant="contained"
                   sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>
                   {t('openEaseVerseBtn')}
                 </Button>

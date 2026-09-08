@@ -65,7 +65,7 @@ struct MyRouteView: View {
         return Map(position: $camera, interactionModes: [.pan, .zoom]) {
             if let coord = KartLocationManager.shared.currentCoordinate {
                 Annotation("Meg", coordinate: coord) {
-                    MeMapPin(initials: appState.initials, email: appState.userEmail)
+                    MeMapPin(initials: appState.initials, profileImageURL: appState.profileImageURL)
                 }
             }
             ForEach(stops) { stop in

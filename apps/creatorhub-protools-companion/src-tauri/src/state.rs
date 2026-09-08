@@ -9,8 +9,6 @@ use crate::config::AppConfig;
 
 pub type SharedConfig = Arc<Mutex<AppConfig>>;
 
-/// Overvåker-kontroll. Når `watcher` settes til None droppes notify-watcheren,
-/// som dropper kanal-senderen → prosesserings-tasken avslutter rent.
 #[derive(Default)]
 pub struct WatcherCtl {
     pub watcher: Option<notify::RecommendedWatcher>,
@@ -23,15 +21,17 @@ struct ActivityPayload {
     message: String,
 }
 
-/// Sender en aktivitets-linje til frontend. Frontend stempler tidspunkt selv.
 pub fn emit_activity(app: &AppHandle, kind: &str, message: &str) {
     let _ = app.emit(
         "companion://activity",
-        ActivityPayload { kind: kind.to_string(), message: message.to_string() },
+        ActivityPayload {
+            kind: kind.to_string(),
+            message: message.to_string(),
+        },
     );
 }
 
-/// Øyeblikksbilde av de feltene prosessering trenger (unngår å holde lås over await).
+/// Øyeblikksbilde av feltene som brukes over await-grenser.
 #[derive(Clone)]
 pub struct Snapshot {
     pub api_base: String,
@@ -39,6 +39,10 @@ pub struct Snapshot {
     pub session_id: Option<String>,
     pub session_info_path: Option<String>,
     pub bounce_dir: Option<String>,
+    pub easeverse_track_id: Option<String>,
+    pub audio_room_id: Option<String>,
+    pub workspace_project_id: Option<String>,
+    pub easeverse_project_id: Option<String>,
 }
 
 pub fn snapshot(cfg: &SharedConfig) -> Snapshot {
@@ -49,5 +53,9 @@ pub fn snapshot(cfg: &SharedConfig) -> Snapshot {
         session_id: c.session_id.clone(),
         session_info_path: c.session_info_path.clone(),
         bounce_dir: c.bounce_dir.clone(),
+        easeverse_track_id: c.easeverse_track_id.clone(),
+        audio_room_id: c.audio_room_id.clone(),
+        workspace_project_id: c.workspace_project_id.clone(),
+        easeverse_project_id: c.easeverse_project_id.clone(),
     }
 }

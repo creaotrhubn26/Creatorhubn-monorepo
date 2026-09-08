@@ -1789,13 +1789,48 @@ actor APIClient {
         try await get("/api/admin-room/lead-map/me/profile")
     }
 
-    /// Patch én eller flere profil-felter.
-    func patchMyProfile(_ updates: [String: String?]) async throws -> MyProfileResponse {
-        var body: [String: Any] = [:]
-        for (k, v) in updates {
-            body[k] = v ?? NSNull()
-        }
-        return try await patchReturning("/api/admin-room/lead-map/me/profile", body: body)
+    /// Oppdaterer bare de server-tillatte profilfeltene. E-post er en
+    /// innloggingsidentitet og profilbilde håndteres av eget upload-endepunkt.
+    func patchMyProfile(_ update: ProfileUpdateRequest) async throws -> MyProfileResponse {
+        let payload = try Self._sharedEncoder.encode(update)
+        let data = try await _request(
+            "/api/admin-room/lead-map/me/profile",
+            method: "PATCH",
+            body: payload
+        )
+        return try Self._sharedDecoder.decode(MyProfileResponse.self, from: data)
+    }
+
+    /// Laster opp et ferdig nedskalert JPEG-bilde. Backend validerer både
+    /// MIME-type, faktisk filsignatur, størrelse og autentisert bruker.
+    func uploadMyProfileImage(jpegData: Data) async throws -> MyProfileResponse {
+        let boundary = "LeadgridProfile-\(UUID().uuidString)"
+        let newline = "\r\n"
+        var body = Data()
+        body.append("--\(boundary)\(newline)".data(using: .utf8)!)
+        body.append(
+            "Content-Disposition: form-data; name=\"image\"; filename=\"profile.jpg\"\(newline)"
+                .data(using: .utf8)!
+        )
+        body.append("Content-Type: image/jpeg\(newline)\(newline)".data(using: .utf8)!)
+        body.append(jpegData)
+        body.append("\(newline)--\(boundary)--\(newline)".data(using: .utf8)!)
+
+        let data = try await _request(
+            "/api/admin-room/lead-map/me/profile/image",
+            method: "POST",
+            body: body,
+            contentType: "multipart/form-data; boundary=\(boundary)"
+        )
+        return try Self._sharedDecoder.decode(MyProfileResponse.self, from: data)
+    }
+
+    func deleteMyProfileImage() async throws -> MyProfileResponse {
+        let data = try await _request(
+            "/api/admin-room/lead-map/me/profile/image",
+            method: "DELETE"
+        )
+        return try Self._sharedDecoder.decode(MyProfileResponse.self, from: data)
     }
 
     // MARK: - Pitch Deck Studio
@@ -2861,6 +2896,23 @@ actor APIClient {
         switch http.statusCode {
         case 200..<300:
             return
+        case 400, 413, 415, 422:
+            if let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if let fields = payload["fields"] as? [String: String], !fields.isEmpty {
+                    throw APIError.validation(fields)
+                }
+                switch payload["error"] as? String {
+                case "image_too_large":
+                    throw APIError.validation(["profile_image": "Bildet er for stort. Velg et bilde under 4 MB."])
+                case "unsupported_image_type":
+                    throw APIError.validation(["profile_image": "Velg et JPEG-, PNG- eller WebP-bilde."])
+                case "missing_image":
+                    throw APIError.validation(["profile_image": "Velg et bilde før du laster opp."])
+                default:
+                    break
+                }
+            }
+            throw APIError.statusCode(http.statusCode)
         case 401:
             throw APIError.unauthorized
         case 403:
@@ -4162,6 +4214,8 @@ enum APIError: Error, LocalizedError {
     case duplicateLead([String])
     /// Samme skjemasesjon ble gjenbrukt med et endret payload.
     case idempotencyConflict
+    /// Feltspesifikke 4xx-feil. Nøklene følger backend-kontrakten.
+    case validation([String: String])
     /// HTTP 429 — rate-limit. Bruker bør vente og prøve igjen.
     case tooManyRequests
 
@@ -4216,6 +4270,8 @@ enum APIError: Error, LocalizedError {
             return "Leaden finnes allerede i dette arbeidsområdet\(reason)."
         case .idempotencyConflict:
             return "Skjemaet ble endret etter første lagringsforsøk. Avbryt og åpne et nytt skjema før du lagrer igjen."
+        case .validation(let fields):
+            return fields["form"] ?? fields.values.first ?? "Kontroller feltene og prøv igjen."
         case .tooManyRequests:
             return "Du gjør for mange forespørsler — vent litt og prøv igjen"
         }
@@ -4231,7 +4287,7 @@ enum APIError: Error, LocalizedError {
         case .statusCode(let code), .serverError(let code, _):
             return code == 429 || code >= 500
         case .unauthorized, .forbidden, .invalidURL, .decodingFailure,
-             .duplicateLead, .idempotencyConflict:
+             .duplicateLead, .idempotencyConflict, .validation:
             return false
         }
     }
@@ -5657,33 +5713,37 @@ extension APIClient {
         contentType: String = "application/json",
         headers: [String: String] = [:]
     ) async throws -> Data {
-        // Fix (2026-07-02): `baseURL.appendingPathComponent(path)` percent-koder
-        // `?` og `&` i path (behandler hele strengen som én path-segment) — så
-        // "/routes/team-nearby?lat=..." ble til "/routes/team-nearby%3Flat=..."
-        // og Express parset det som `id="team-nearby?lat=..."` → UUID-cast-500.
-        // Nå bygger vi URL-en via string-konkatenering slik at query-delen
-        // beholdes intakt.
-        let baseString = baseURL.absoluteString.hasSuffix("/")
-            ? String(baseURL.absoluteString.dropLast())
-            : baseURL.absoluteString
-        let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
-        guard let url = URL(string: baseString + normalizedPath) else {
-            throw URLError(.badURL)
+        do {
+            // Fix (2026-07-02): `baseURL.appendingPathComponent(path)` percent-koder
+            // `?` og `&` i path (behandler hele strengen som én path-segment) — så
+            // "/routes/team-nearby?lat=..." ble til "/routes/team-nearby%3Flat=..."
+            // og Express parset det som `id="team-nearby?lat=..."` → UUID-cast-500.
+            // Nå bygger vi URL-en via string-konkatenering slik at query-delen
+            // beholdes intakt.
+            let baseString = baseURL.absoluteString.hasSuffix("/")
+                ? String(baseURL.absoluteString.dropLast())
+                : baseURL.absoluteString
+            let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
+            guard let url = URL(string: baseString + normalizedPath) else {
+                throw APIError.invalidURL
+            }
+            var req = URLRequest(url: url)
+            req.httpMethod = method
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            if let activeOrganizationId {
+                req.setValue(activeOrganizationId, forHTTPHeaderField: "X-Leadgrid-Organization-Id")
+            }
+            req.setValue(contentType, forHTTPHeaderField: "Content-Type")
+            for (name, value) in headers {
+                req.setValue(value, forHTTPHeaderField: name)
+            }
+            req.httpBody = body
+            let (data, response) = try await session.data(for: req)
+            try Self.validate(response, data: data)
+            return data
+        } catch {
+            throw Self.mapNetworkError(error)
         }
-        var req = URLRequest(url: url)
-        req.httpMethod = method
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        if let activeOrganizationId {
-            req.setValue(activeOrganizationId, forHTTPHeaderField: "X-Leadgrid-Organization-Id")
-        }
-        req.setValue(contentType, forHTTPHeaderField: "Content-Type")
-        for (name, value) in headers {
-            req.setValue(value, forHTTPHeaderField: name)
-        }
-        req.httpBody = body
-        let (data, response) = try await session.data(for: req)
-        try Self.validate(response, data: data)
-        return data
     }
 
     /// Rå Data-fetch for eksterne response-format (GeoJSON, PDF, blobs).

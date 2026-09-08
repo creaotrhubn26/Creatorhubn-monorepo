@@ -35,10 +35,12 @@ final class AppState {
     var currentUserId: String?
     var isAuthenticated: Bool { authToken != nil }
 
-    /// Vist navn i header-avatarer og «Min profil». Baseres på userEmail
-    /// (før login har vi ikke fullt navn tilgjengelig fra backend).
-    /// Trekker fornavn/etternavn fra e-postens local-part der mulig.
+    /// Vist navn i header, kart og profil. Serverprofilen er autoritativ;
+    /// e-postens local-part er kun fallback mens profilen lastes.
     var displayName: String {
+        if let fullName = profileStore.profile?.fullName, !fullName.isEmpty {
+            return fullName
+        }
         guard let email = userEmail, let local = email.split(separator: "@").first else {
             return "Gjest"
         }
@@ -46,6 +48,15 @@ final class AppState {
         return parts
             .map { $0.prefix(1).uppercased() + $0.dropFirst() }
             .joined(separator: " ")
+    }
+
+    /// Profilbilde fra backend. Avviser andre skjema enn HTTP(S) før UI laster.
+    var profileImageURL: URL? {
+        guard let raw = profileStore.profile?.profileImageUrl,
+              let url = URL(string: raw),
+              ["https", "http"].contains(url.scheme?.lowercased() ?? "")
+        else { return nil }
+        return url
     }
 
     /// 1-2 bokstavers initialer for avatar-badge. Faller tilbake til «?»
@@ -96,6 +107,9 @@ final class AppState {
     /// denne (i stedet for lokal @State) slik at `PondusScoreIntent` og
     /// `ActivatePondusIntent` kan matche mot live data.
     let pondusStore: PondusStore = PondusStore()
+
+    /// Én profilkilde for header, kart og redigeringsarket.
+    let profileStore = ProfileStore()
 
     /// Durable Discovery v2 state lives above every sheet/tab so a backend run
     /// survives dismissal, rotation, Split View and scene recreation.
@@ -968,6 +982,21 @@ func configureDiscovery() async {
                 self.permissions = ["leads.view", "leads.update", "visits.create"]
                 self.roleInOrg = "admin"
             }
+            if qaTour == "profile" {
+                self.roleInOrg = "salgskonsulent"
+                self.organizations = [OrganizationSummary(
+                    id: "qa-tour-organization",
+                    name: "Nordlys Salg AS",
+                    slug: "nordlys-salg",
+                    plan: "pro",
+                    orgType: "sales",
+                    logoUrl: nil,
+                    role: "salgskonsulent",
+                    memberCount: 8,
+                    projectCount: 2
+                )]
+                self.profileStore.seedForQA(email: "demo@leadgrid.no")
+            }
             if qaTour == "pondus-coach" {
                 let orgId = UUID(uuidString: "11111111-1111-4111-8111-111111111111")!
                 self.activeOrganizationId = orgId.uuidString.lowercased()
@@ -1012,6 +1041,10 @@ func configureDiscovery() async {
             self.api = APIClient(token: token, actorUserId: cachedActorUserId)
             await self.api?.setActiveOrganizationId(activeOrganizationId)
             await loadFromCache()
+            if let api = self.api {
+                profileStore.attach(api: api)
+                await profileStore.load(force: true)
+            }
             // Rolle + identitet FØRST — de gater UI (SuperAdmin-inngangen,
             // avatar-navn) og er ett billig kall. Lå sist i kjeden før →
             // super_admin så «Gjest/Salgssjef» til hele refreshen var
@@ -1322,6 +1355,10 @@ func configureDiscovery() async {
         self.currentUserId = nil
         self.api = APIClient(token: token)
         await self.api?.setActiveOrganizationId(activeOrganizationId)
+        if let api = self.api {
+            profileStore.attach(api: api)
+            await profileStore.load(force: true)
+        }
         self.sessionExpired = false
         // Last user-role FØR refreshAll så SuperAdminHub-section i
         // LeadgridHubView låses opp umiddelbart for super_admin. Uten
@@ -1353,6 +1390,10 @@ func configureDiscovery() async {
         self.sessionExpired = false
         Task {
             await self.api?.setActiveOrganizationId(activeOrganizationId)
+            if let api = self.api {
+                profileStore.attach(api: api)
+                await profileStore.load(force: true)
+            }
             await loadOrganizations()
             await loadOrgContext()
             await loadUserRole()
@@ -1382,6 +1423,7 @@ func configureDiscovery() async {
         self.userEmail = nil
         self.currentUserId = nil
         self.api = nil
+        self.profileStore.reset()
         self.leads = []
         self.competitors = []
         self.metrics = nil
