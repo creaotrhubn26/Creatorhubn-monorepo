@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const migration = readFileSync(
   new URL(
-    "../migrations/0560_leadgrid_domain_project_onboarding.sql",
+    "../migrations/0563_leadgrid_domain_project_onboarding.sql",
     import.meta.url,
   ),
   "utf8",
