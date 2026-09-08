@@ -1,0 +1,42 @@
+claim: >
+  Marketing Cockpits to skrivehandlinger (set-cta, publish-event) er de eneste
+  kallene som faktisk endrer The Role Rooms Facebook-side, og de var samtidig
+  de eneste som aldri kunne verifiseres: Graph-URL-en var hardkodet i tre
+  kallsteder, så uten ekte Meta-credentials fantes det ingen måte å kjøre dem
+  på. Enhetstester mocket fetch og beviste derfor bare at koden kaller noe.
+source_type: empirical
+source: "Lokal e2e mot levende stack (Vite 5001 → Express 3003 → Postgres 16) med META_GRAPH_BASE_URL mot lokal Graph-stand-in"
+authority_tier: 1
+vendor: Meta
+product: Meta Graph API
+version_scope: "v21.0"
+publication_date: "2026-09-08"
+evidence_summary: >
+  META_GRAPH_BASE er nå env-overstyrbar, og de tre kallstedene som hardkodet
+  https://graph.facebook.com/v21.0 bruker konstanten. Med basen pekt på en
+  lokal stand-in ble hele veien kjørt fra nettleserklikk: set-cta sendte
+  cta_type/cta_link og deretter website-feltet (legacy + moderne), og
+  publish-event sendte title/start_time/venue_name til
+  <ig-user>/upcoming_events. Unix-konverteringen ble verifisert eksakt
+  (1790848800 = 2026-10-01T10:00:00Z). Negativ kontroll: med stand-in-en
+  nede går suiten rød, så testene er ikke vakuøse.
+interpretation: >
+  En hardkodet ekstern base-URL er ikke bare duplikasjon — den gjør
+  skrive-veier utestbare, og en versjonsheving ville tatt lese-veien og latt
+  skrive-veiene stå igjen på v21.0.
+project_impact: >
+  backend/server/role-room-marketing-cockpit-routes.ts,
+  frontend/e2e/marketing-cockpit-e2e.spec.ts (15 tester).
+confidence: verified
+decision: >
+  Eksterne API-baser skal leses fra én konstant med env-override. Skrivehandlinger
+  mot tredjeparts-API krever e2e mot en kontrollerbar stand-in — mocket fetch
+  teller ikke som bevis for at riktig felt sendes.
+affected:
+  - backend/server/role-room-marketing-cockpit-routes.ts
+  - frontend/e2e/marketing-cockpit-e2e.spec.ts
+  - frontend/client/src/pages/admin-room/SocialConnectionsPanel.tsx
+lesson: >
+  «Panelet rendrer» er ikke «funksjonen virker». Det som endrer tilstand hos en
+  tredjepart må kunne kjøres ende-til-ende lokalt, ellers er det per definisjon
+  uverifisert i produksjon.

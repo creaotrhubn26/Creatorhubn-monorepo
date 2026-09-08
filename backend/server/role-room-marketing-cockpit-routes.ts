@@ -23,7 +23,12 @@ export interface SetupMarketingCockpitDeps {
   requireAdminOrDemoBypass: (req: Request, res: Response) => boolean;
 }
 
-const META_GRAPH_BASE = "https://graph.facebook.com/v21.0";
+// Basen er overstyrbar slik at skrive-veiene (set-cta, publish-event) kan
+// kjøres ende-til-ende mot en kontrollerbar Graph-server i test og lokal
+// e2e. Uten dette er de eneste kallene som FAKTISK endrer Facebook-siden
+// også de eneste vi aldri får verifisert. Tom/uSATT env => ekte Graph.
+const META_GRAPH_BASE =
+  process.env.META_GRAPH_BASE_URL?.trim() || "https://graph.facebook.com/v21.0";
 
 interface SectionOk<T> { ok: true; data: T; error?: undefined; }
 interface SectionErr { ok: false; data: null; error: string; status?: number; }
@@ -281,7 +286,7 @@ export function setupMarketingCockpitRoutes(deps: SetupMarketingCockpitDeps): vo
     const legacyParams = new URLSearchParams({ cta_type: ctaType, cta_link: ctaUrl, access_token: pageToken });
     let legacy: { ok: boolean; status: number; body: unknown };
     try {
-      const r = await fetch(`https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}`, {
+      const r = await fetch(`${META_GRAPH_BASE}/${encodeURIComponent(pageId)}`, {
         method: "POST", body: legacyParams,
       });
       legacy = { ok: r.ok, status: r.status, body: await r.json().catch(() => ({})) };
@@ -291,7 +296,7 @@ export function setupMarketingCockpitRoutes(deps: SetupMarketingCockpitDeps): vo
     let modern: { ok: boolean; status: number; body: unknown; field?: string } | null = null;
     if (modernField) {
       try {
-        const r = await fetch(`https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}`, {
+        const r = await fetch(`${META_GRAPH_BASE}/${encodeURIComponent(pageId)}`, {
           method: "POST",
           body: new URLSearchParams({ [modernField.name]: modernField.value, access_token: pageToken }),
         });
@@ -355,7 +360,7 @@ export function setupMarketingCockpitRoutes(deps: SetupMarketingCockpitDeps): vo
     if (description) form.set("description", description);
 
     try {
-      const r = await fetch(`https://graph.facebook.com/v21.0/${encodeURIComponent(igUserId)}/upcoming_events`, {
+      const r = await fetch(`${META_GRAPH_BASE}/${encodeURIComponent(igUserId)}/upcoming_events`, {
         method: "POST", body: form,
       });
       const responseBody = (await r.json().catch(() => ({}))) as Record<string, unknown>;

@@ -92,13 +92,18 @@ export function mapSocialConnections(
 }
 
 function PlatformRow({
-  icon, name, status, action, helper,
+  icon, name, status, action, helper, testKey,
 }: {
   icon: React.ReactElement;
   name: string;
   status: 'connected' | 'disconnected' | 'configured';
   action?: React.ReactElement;
   helper?: React.ReactElement;
+  /** Stabil nøkkel for e2e. Uten den må en test lese sammenslått tekst
+   *  fra hele kortet, og «Ikke tilkoblet» for LinkedIn ser da helt lik ut
+   *  som «Ikke tilkoblet» for Facebook — nettopp feilen radene finnes for
+   *  å fange. */
+  testKey: string;
 }) {
   const statusMeta = {
     connected: { color: 'success' as const, label: 'Tilkoblet' },
@@ -107,7 +112,7 @@ function PlatformRow({
   }[status];
 
   return (
-    <Stack direction="row" alignItems="center" spacing={1.5} sx={{
+    <Stack direction="row" alignItems="center" spacing={1.5} data-testid={`connection-${testKey}`} sx={{
       p: 1.5,
       background: adminTokens.bg.panel,
       borderRadius: 1,
@@ -122,7 +127,7 @@ function PlatformRow({
         </Typography>
         {helper && <Box sx={{ mt: 0.25 }}>{helper}</Box>}
       </Box>
-      <Chip label={statusMeta.label} size="small" sx={statusChipSx(statusMeta.color)} />
+      <Chip label={statusMeta.label} size="small" data-testid={`connection-${testKey}-status`} sx={statusChipSx(statusMeta.color)} />
       {action}
     </Stack>
   );
@@ -242,6 +247,7 @@ export default function SocialConnectionsPanel() {
           <PlatformRow
             icon={<FacebookIcon sx={{ color: '#60a5fa', fontSize: 18 }} />}
             name="Facebook Page"
+            testKey="facebook"
             status={status.facebook.configured ? 'configured' : 'disconnected'}
             helper={status.facebook.configured ? (
               <Typography variant="caption" sx={{ color: adminTokens.text.muted }}>
@@ -257,6 +263,7 @@ export default function SocialConnectionsPanel() {
           <PlatformRow
             icon={<InstagramIcon sx={{ color: '#ec4899', fontSize: 18 }} />}
             name="Instagram Business"
+            testKey="instagram"
             status={status.instagram.configured ? 'configured' : 'disconnected'}
             helper={status.instagram.configured ? (
               <Typography variant="caption" sx={{ color: adminTokens.text.muted }}>
@@ -272,6 +279,7 @@ export default function SocialConnectionsPanel() {
           <PlatformRow
             icon={<LinkedInIcon sx={{ color: '#0ea5e9', fontSize: 18 }} />}
             name="LinkedIn"
+            testKey="linkedin"
             status={status.linkedin.connected ? 'connected' : 'disconnected'}
             helper={
               <Typography variant="caption" sx={{ color: adminTokens.text.muted }}>
@@ -283,6 +291,7 @@ export default function SocialConnectionsPanel() {
           <PlatformRow
             icon={<MusicNoteIcon sx={{ color: '#f97316', fontSize: 18 }} />}
             name="TikTok Business"
+            testKey="tiktok"
             status={status.tiktok.connected ? 'connected' : 'disconnected'}
             helper={status.tiktok.connected ? (
               <Stack direction="row" spacing={1} alignItems="center">
