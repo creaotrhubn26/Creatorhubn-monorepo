@@ -63,6 +63,20 @@ function buildApp(options: { asyncSession?: boolean } = {}) {
       if (sql.includes("UPDATE projects SET")) {
         return { rows: [{ id: "public-project", user_id: "owner-user", title: "Oppdatert", project_type: "album", profession: "music_producer" }], rowCount: 1 };
       }
+      if (sql.includes("INSERT INTO projects")) {
+        return {
+          rows: [{
+            id: params[0],
+            user_id: params[1],
+            title: params[2],
+            name: params[3],
+            project_type: params[6],
+            profession: params[5],
+            _project_source: "public",
+          }],
+          rowCount: 1,
+        };
+      }
       if (sql.includes("DELETE FROM projects") && params[0] === "public-project") {
         return { rows: [{ id: "public-project" }], rowCount: 1 };
       }
@@ -113,6 +127,40 @@ function buildApp(options: { asyncSession?: boolean } = {}) {
 }
 
 describe("generic project access routes", () => {
+  it("creates workspace projects in the public store without requiring legacy schema access", async () => {
+    const { app, captured } = buildApp();
+    const response = await request(app)
+      .post("/api/projects")
+      .set("x-test-user", "owner-user")
+      .send({
+        name: "CreatorHub Sound Room E2E",
+        clientName: "CreatorHub Sound Room E2E",
+        eventDate: "2026-08-08",
+        location: "Oslo",
+        projectType: "music",
+        profession: "music_producer",
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual(expect.objectContaining({
+      title: "CreatorHub Sound Room E2E",
+      project_type: "music",
+      profession: "music_producer",
+      _project_source: "public",
+    }));
+    const insert = captured.find((call) => call.sql.includes("INSERT INTO projects"));
+    expect(insert?.sql).toContain("project_data");
+    expect(insert?.params).toEqual(expect.arrayContaining([
+      "owner-user",
+      "CreatorHub Sound Room E2E",
+      "music_producer",
+      "music",
+      "2026-08-08",
+    ]));
+    expect(captured.some((call) => call.sql.includes("legacy.users"))).toBe(false);
+    expect(captured.some((call) => call.sql.includes("INSERT INTO legacy.projects"))).toBe(false);
+  });
+
   it("lists both owned and active team projects without applying profession to shared projects", async () => {
     const { app, captured } = buildApp();
     const response = await request(app)
