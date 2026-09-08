@@ -332,8 +332,10 @@ test('single-project /workspace auto-redirects into the workspace without React 
 });
 
 test('music producer sees EaseVerse marketing and can start the Pro Tools Companion flow', async ({ page }) => {
+  test.setTimeout(240_000);
   const errors = await collectRuntimeErrors(page);
   let pairingPayload: Record<string, unknown> | null = null;
+  let delayedAudioShowcaseChunk = false;
   await primeAuthAndApi(page, [sampleProject('p1')]);
   const musicUser = { ...AUTH_USER, role: 'musicproducer', profession: 'musicproducer' };
   await page.addInitScript((user) => {
@@ -385,10 +387,16 @@ test('music producer sees EaseVerse marketing and can start the Pro Tools Compan
     pairingPayload = route.request().postDataJSON();
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: '246810', expiresInSeconds: 600 }) });
   });
+  await page.route(/\/src\/pages\/audio-showcase\.tsx(?:\?.*)?$/, async (route) => {
+    delayedAudioShowcaseChunk = true;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await route.continue();
+  });
 
-  await page.goto(`${ORIGIN}/workspace`, { waitUntil: 'domcontentloaded' });
-  await page.waitForURL('**/workspace/p1', { timeout: 30_000 });
-  await expect(page.getByText('EaseVerse + Pro Tools Companion', { exact: true })).toBeVisible({ timeout: 30_000 });
+  // Auto-redirecten har en egen test over. Start her på prosjektet slik at
+  // denne testen isolerer musikkflyten og Sound Room → lazy Audio Showcase.
+  await page.goto(`${ORIGIN}/workspace/p1`, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByText('EaseVerse + Pro Tools Companion', { exact: true })).toBeVisible({ timeout: 90_000 });
   const overviewHref = await page.getByRole('link', { name: 'Åpne EaseVerse' }).getAttribute('href');
   const overviewUrl = new URL(overviewHref!);
   expect(overviewUrl.origin).toBe('https://easeverse.netlify.app');
@@ -409,5 +417,12 @@ test('music producer sees EaseVerse marketing and can start the Pro Tools Compan
   expect(soundRoomUrl.searchParams.get('audioReviewProjectId')).toBe('room-1');
   expect(soundRoomUrl.searchParams.get('externalTrackId')).toBe('track-1');
   await expect(page.getByText('Shotlist', { exact: true })).toHaveCount(0);
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).not.toBeVisible();
+  await page.getByRole('button', { name: 'Åpne lydrommet' }).first().click();
+  await page.waitForURL('**/audio-review/room-1?ws=p1', { timeout: 60_000 });
+  await expect(page.getByText('Universal Showcase', { exact: true })).toBeVisible({ timeout: 120_000 });
+  expect(delayedAudioShowcaseChunk, 'Testen må faktisk forsinke den lazy-lastede lydrom-chunken').toBe(true);
   expect(errors, `Runtime errors in music Workspace flow:\n${errors.join('\n')}`).toEqual([]);
 });
