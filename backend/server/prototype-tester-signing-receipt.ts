@@ -187,6 +187,10 @@ export function buildPrototypeTesterSigningReceiptPdf(
     );
     metadataRow("Signeringsmetode", signatureMethodLabel(input.signatureMethod));
     metadataRow(
+      "Signaturnivå",
+      "Enkel elektronisk signatur (ikke BankID eller kvalifisert elektronisk signatur)",
+    );
+    metadataRow(
       "Signeringsfullmakt",
       input.snapshot.confirmedSigningAuthority === true ? "Bekreftet" : "Ikke registrert",
     );

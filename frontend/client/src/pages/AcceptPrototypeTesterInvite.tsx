@@ -670,7 +670,10 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
               <Typography variant="body2" sx={{ color: ws.textDim, mb: 2 }}>
                 Vi lagrer navn, e-post, tidspunkt, IP-adresse, brukeragent, full
                 dokumenttekst, versjoner og SHA-256-kontrollsum som
-                dokumentasjon.
+                dokumentasjon. Dette er en enkel elektronisk signatur med
+                e-postbekreftelse, ikke BankID eller en kvalifisert elektronisk
+                signatur. Ved å fullføre bekrefter du at aksepten er ment å være
+                bindende for de tre dokumentene som er merket «Bindende».
               </Typography>
               <FormControlLabel
                 disabled={!allAccepted}

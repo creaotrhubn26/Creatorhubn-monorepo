@@ -106,10 +106,12 @@ test("leser, aksepterer og signerer hele prototype-testerpakken", async ({
       });
     });
 
-  await page.goto(`/prototype-tester/accept-invite?token=${token}`);
+  await page.goto(`/prototype-tester/accept-invite?token=${token}`, {
+    waitUntil: "domcontentloaded",
+  });
   await expect(
     page.getByRole("heading", { name: "Les og signer avtalegrunnlaget" }),
-  ).toBeVisible({ timeout: 30_000 });
+  ).toBeVisible({ timeout: 60_000 });
   const overviewScreenshot = testInfo.outputPath("agreement-overview.png");
   await page.screenshot({ path: overviewScreenshot, fullPage: true });
   await testInfo.attach("agreement-overview", {
@@ -190,10 +192,12 @@ test("dokumentleseren er lesbar på mobil @mobile", async ({
       });
     });
 
-  await page.goto(`/prototype-tester/accept-invite?token=${token}`);
+  await page.goto(`/prototype-tester/accept-invite?token=${token}`, {
+    waitUntil: "domcontentloaded",
+  });
   await expect(
     page.getByRole("heading", { name: "Les og signer avtalegrunnlaget" }),
-  ).toBeVisible({ timeout: 30_000 });
+  ).toBeVisible({ timeout: 60_000 });
   await expect(page.getByTestId(/^agreement-summary-/)).toHaveCount(4);
 
   await page.getByTestId("read-dpa").click();

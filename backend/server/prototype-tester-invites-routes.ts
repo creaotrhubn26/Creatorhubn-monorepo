@@ -1212,7 +1212,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         });
       }
 
-      const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || (req as any).ip || null;
+      const ip = requestIp(req);
       let startsAt = activationRetry && inv.program_started_at
         ? new Date(inv.program_started_at)
         : new Date();
