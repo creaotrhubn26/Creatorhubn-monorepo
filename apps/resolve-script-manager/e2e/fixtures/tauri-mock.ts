@@ -49,6 +49,16 @@ export function installTauriMock(opts: MockOptions = {}) {
     run_health_check: { run_id: "mock", succeeded: true, events: [], exit_code: 0 },
   };
 
+  // Tauri API v2.11 flyttet unregisterListener til en egen global
+  // (__TAURI_EVENT_PLUGIN_INTERNALS__) — @tauri-apps/api/event.js sin
+  // _unlisten() kaller denne direkte (ikke via invoke). Uten denne krasjer
+  // React StrictMode sin mount→unmount→mount-dobbeltkjøring i dev når en
+  // komponent bruker listen()/unlisten() (Cannot read properties of
+  // undefined (reading 'unregisterListener')).
+  (globalThis as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+    unregisterListener: (_event: string, _id: number) => {},
+  };
+
   // Bruker globalThis så det fungerer på tvers av Tauri v1/v2 patterns
   (globalThis as any).__TAURI_INTERNALS__ = {
     invoke: async (cmd: string, _args?: unknown) => {
@@ -61,6 +71,10 @@ export function installTauriMock(opts: MockOptions = {}) {
 
   // localStorage for tests
   localStorage.setItem("trrpa.firstRunComplete", "skipped");
+  // Unngår Photoshop-onboarding-tour-modalen (full-screen, blokkerer alle
+  // klikk på Home) for tester som goto() en rå Home-skjerm i stedet for å
+  // bruke ?test=demo/?test=story-snarveiene som aldri render den.
+  localStorage.setItem("trrpa.photoshopTourCompleted", "1");
   localStorage.setItem(
     "trrpa.settings",
     JSON.stringify({ RR_BEARER_TOKEN: "test-token" }),

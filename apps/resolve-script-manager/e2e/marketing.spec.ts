@@ -17,6 +17,11 @@ async function setupRoutes(page: Page) {
   await page.route('**/api/post-agent/me', (route) =>
     route.fulfill({ json: { id: 'u1', email: 't@test.no', name: 'Test Bruker', role: 'producer', companyName: 'Testfirma' } }));
 
+  // Marketing er en à-la-carte-entitlement (hasModule('marketing')) — uten
+  // denne mocken forblir cachedModules tom og panelet viser «MODUL LÅST».
+  await page.route('**/api/post-agent/modules/entitlements', (route) =>
+    route.fulfill({ json: { modules: ['demo_studio', 'marketing'] } }));
+
   await page.route('**/api/post-agent/anthropic/messages', (route) => {
     const body = route.request().postDataJSON() as { system?: string; messages?: Array<{ content: unknown }> };
     const last = body.messages?.[body.messages.length - 1];

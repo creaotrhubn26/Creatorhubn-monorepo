@@ -355,6 +355,12 @@ export interface DemoProject {
   mode?: 'demo' | 'marketing';
   /** Marketing-brief (Marketing mode): persona, funnel-steg, kanal, rammeverk. */
   marketingBrief?: MarketingBrief;
+  /** Har AI Director faktisk generert scener for dette prosjektet (vs. bare
+   *  malens forhåndsutfylte placeholder-tekst)? Styrer AI Director sin
+   *  describe→discuss→refine-fase. Egen persistert flagg — IKKE utled dette
+   *  fra om scenene har narrasjon, malenes placeholder-tekst teller også som
+   *  "narrasjon" og gjorde tidligere Mål-feltet permanent utilgjengelig. */
+  generated?: boolean;
   scenes: DemoScene[];
   createdAt: string;
   updatedAt: string;
@@ -1348,6 +1354,11 @@ export function makeProject(url: string, demoType: DemoType = 'product_demo'): D
     render: defaultRenderOptions(),
     format: tpl.format,
     scriptMeta: { tone: tpl.tone, audience: 'General', language: 'Norsk', length: tpl.length },
+    // generated settes IKKE her (forblir undefined) — friske mal-prosjekter
+    // skal fortsatt falle tilbake til narrasjons-sjekken (se hasGenerated i
+    // DemoStudioShell.tsx), som riktig regner malens ferdige scener som
+    // «klar for Forfin-steget» (Verktøy/Klikk-capture skal være tilgjengelig
+    // med det samme, ikke bare etter en full AI-generering).
     scenes: flowForDemoType(demoType),
     createdAt: now,
     updatedAt: now,

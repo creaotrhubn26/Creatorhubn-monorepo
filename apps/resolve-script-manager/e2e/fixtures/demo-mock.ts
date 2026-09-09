@@ -38,6 +38,20 @@ export function installDemoMock() {
 
   const later = (fn: () => void) => setTimeout(fn, 30);
 
+  // Tauri API v2.11 flyttet unregisterListener til en egen global
+  // (__TAURI_EVENT_PLUGIN_INTERNALS__) — @tauri-apps/api/event.js sin
+  // _unlisten() kaller denne direkte (ikke via invoke). Uten denne krasjer
+  // React StrictMode sin mount→unmount→mount-dobbeltkjøring i dev (unmount-
+  // cleanup kaller unlisten → Cannot read properties of undefined), som
+  // ødelegger event-lytterne for resten av testen (klikk-capture, verify,
+  // auto-execute m.fl. henger da for alltid).
+  (window as unknown as { __TAURI_EVENT_PLUGIN_INTERNALS__: unknown }).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+    unregisterListener(event: string, id: number) {
+      const idx = listeners.findIndex((l) => l.event === event && l.id === id);
+      if (idx !== -1) listeners.splice(idx, 1);
+    },
+  };
+
   (window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {
     transformCallback(cb: (e: unknown) => void) { const id = ++idc; cbs.set(id, cb); return id; },
     convertFileSrc(p: string) { return `file://${p}`; },
@@ -50,10 +64,17 @@ export function installDemoMock() {
         case 'start_demo_capture': return null; // spec styrer steg via __demoEmit
         case 'demo_capture_done': return null;
         case 'demo_scan_dom': later(() => emit('demo-capture://dom', { url: args.url, title: 'Test', elements: SCAN_ELEMENTS, pageText: 'Test-side: Start free trial. Request a demo. Pricing.', branding: { brandName: 'TestMerke', brandColor: '#3366ff', logoUrl: 'https://example.test/logo.png', palette: ['#3366ff', '#ff6633'] } })); return null;
-        case 'demo_verify_action': later(() => emit('demo-capture://verify', { cancelled: false, selector: '#start', label: 'Start free trial' })); return null;
-        // Selector-bevisst: «broken/missing»-selektorer feiler → trigger self-healing.
-        case 'demo_auto_execute': { const found = !/broken|missing/.test(String(args.selector || '')); later(() => emit('demo-capture://auto', { ok: found, found, selector: args.selector })); return null; }
         case 'demo_screenshot': later(() => emit('demo-capture://shot', { ok: true, dataUrl: TINY_JPEG })); return null;
+        // «Session»-kommandosurfacet (Guided Recorder, G22) — dette ER de
+        // ekte kommandoene Kjør automatisk/Verifiser handling kaller (verifisert
+        // mot src-tauri/src/demo_capture.rs: demo_auto_execute/demo_verify_action
+        // finnes ikke i Rust-backenden, kun demo_session_exec/demo_session_verify).
+        case 'demo_session_open': later(() => emit('demo-capture://session-nav', {})); return 'opened';
+        // Selector-bevisst: «broken/missing»-selektorer feiler → trigger self-healing.
+        case 'demo_session_exec': { const found = !/broken|missing/.test(String(args.selector || '')); later(() => emit('demo-capture://auto', { ok: found, found, selector: args.selector })); return null; }
+        case 'demo_session_verify': later(() => emit('demo-capture://verify', { cancelled: false, selector: '#start', label: 'Start free trial' })); return null;
+        case 'demo_session_shot': later(() => emit('demo-capture://shot', { ok: true, dataUrl: TINY_JPEG })); return null;
+        case 'demo_session_close': return null;
         case 'execute_script': return { succeeded: true, run_id: 'mock', events: [], exit_code: 0 };
         case 'demo_fetch_site_context': return 'Tittel: Test\nKlikkbare elementer: Start free trial · Request a demo';
         case 'demo_write_text': return args.path;
@@ -81,5 +102,8 @@ export function installDemoMock() {
   } catch { /* ignore */ }
 
   localStorage.setItem('trrpa.firstRunComplete', 'skipped');
+  // Unngår Photoshop-onboarding-tour-modalen (full-screen, blokkerer alle
+  // klikk på Home) for tester som goto() en rå Home-skjerm.
+  localStorage.setItem('trrpa.photoshopTourCompleted', '1');
   localStorage.setItem('trrpa.settings', JSON.stringify({ RR_BEARER_TOKEN: 'test-token', RR_POST_AGENT_BASE_URL: 'https://example.test/api/post-agent' }));
 }

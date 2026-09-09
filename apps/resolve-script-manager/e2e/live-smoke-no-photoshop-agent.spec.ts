@@ -3,13 +3,13 @@
  * Verifiserer at appen boot'er, root renderes uten console-feil, og
  * at PhotoshopAgentDialog ikke lenger refereres (etter PR S-consolidering).
  *
- * Run: ENV `LIVE_SMOKE_URL=http://localhost:5180` npx playwright test
+ * Run: ENV `LIVE_SMOKE_URL=http://localhost:5001` npx playwright test
  *   e2e/live-smoke-no-photoshop-agent.spec.ts
  */
 
 import { test, expect } from "@playwright/test";
 
-const BASE = process.env.LIVE_SMOKE_URL ?? "http://localhost:5180";
+const BASE = process.env.LIVE_SMOKE_URL ?? "http://localhost:5001";
 
 test.describe("Live smoke etter PhotoshopAgentDialog-fjerning", () => {
   test.beforeEach(async ({ page }) => {
