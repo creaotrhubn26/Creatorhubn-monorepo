@@ -250,6 +250,74 @@ fn a_failing_embedder_leaves_the_database_untouched() {
     }
 }
 
+/// Fails after `ok_batches` successful calls, to prove a mid-run failure keeps
+/// the batches already committed.
+struct FlakyEmbedder {
+    ok_batches: usize,
+    calls: RefCell<usize>,
+}
+
+impl Embedder for FlakyEmbedder {
+    fn embed(&self, texts: &[String], kind: InputType) -> Result<Vec<Vec<f32>>> {
+        let mut calls = self.calls.borrow_mut();
+        *calls += 1;
+        if *calls > self.ok_batches {
+            bail!("Voyage svarte 429");
+        }
+        FakeEmbedder.embed(texts, kind)
+    }
+}
+
+fn fat_file(seed: usize) -> String {
+    // ~3 000 lines of ~45 chars: two files already pass the 120 000-token
+    // request ceiling, so the run has to split into several batches.
+    (0..3_000)
+        .map(|i| format!("const felt{seed}_{i} = 'noe innhold her nummer {i}';\n"))
+        .collect()
+}
+
+#[test]
+fn a_failed_batch_keeps_the_batches_already_committed() {
+    let dir = tempdir().unwrap();
+    let repo = init_repo(dir.path());
+    for i in 0..4 {
+        write(&repo, &format!("src/stor{i}.ts"), &fat_file(i));
+    }
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["commit", "-qm", "first"]);
+
+    let conn = db::open(&dir.path().join("index.db")).unwrap();
+
+    let flaky = FlakyEmbedder {
+        ok_batches: 1,
+        calls: RefCell::new(0),
+    };
+    assert!(index::run(&conn, &repo, &flaky).is_err());
+    assert!(
+        *flaky.calls.borrow() > 1,
+        "the corpus must span more than one batch for this test to mean anything"
+    );
+
+    let after_failure = count(&conn, "chunks");
+    assert!(after_failure > 0, "the first committed batch must survive");
+    assert_eq!(after_failure, count(&conn, "chunk_vec"));
+    let done = count(&conn, "path_state");
+    assert!(done > 0 && done < 4, "some paths done, not all: {done}");
+
+    // Rerunning picks up only what is still missing, and finishes.
+    let counting = CountingEmbedder::new();
+    let report = index::run(&conn, &repo, &counting).unwrap();
+    assert_eq!(report.files as i64, 4 - done, "only the unfinished paths");
+    assert_eq!(report.skipped as i64, done);
+    assert_eq!(count(&conn, "path_state"), 4);
+    assert_eq!(count(&conn, "chunks"), count(&conn, "chunk_vec"));
+
+    // And a third run has nothing left to do.
+    let idle = index::run(&conn, &repo, &FailingEmbedder).unwrap();
+    assert_eq!(idle.files, 0);
+    assert_eq!(idle.skipped, 4);
+}
+
 #[test]
 fn dry_run_counts_the_corpus_without_embedding() {
     let dir = tempdir().unwrap();
