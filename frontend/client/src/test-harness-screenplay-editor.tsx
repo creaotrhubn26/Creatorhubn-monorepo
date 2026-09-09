@@ -9,6 +9,7 @@ const longOpening = Array.from({ length: 120 }, (_, index) => `Action line ${ind
 
 function ScreenplayEditorHarness() {
   const [value, setValue] = useState(`${longOpening}\n\n`);
+  const [characters, setCharacters] = useState(['NORA', 'ANDREAS']);
 
   return (
     <ThemeProvider theme={theme}>
@@ -17,8 +18,23 @@ function ScreenplayEditorHarness() {
         <ScreenplayEditor
           value={value}
           onChange={setValue}
-          characters={['NORA', 'ANDREAS']}
+          manuscriptId="screenplay-e2e-manuscript"
+          cloudSaveState="saved"
+          cloudSaveLabel="Lagret 12:00:00"
+          characters={characters}
           locations={['NATURHISTORISK MUSEUM', 'DOVREFJELL']}
+          roles={[{
+            id: 'role-nora',
+            name: 'NORA',
+            description: 'Testrolle',
+            requirements: {},
+            status: 'draft',
+          }]}
+          onCharacterAdd={(name) => {
+            if (name === 'FAILME') return false;
+            setCharacters((current) => Array.from(new Set([...current, name.toUpperCase()])));
+            return true;
+          }}
         />
       </Box>
     </ThemeProvider>
