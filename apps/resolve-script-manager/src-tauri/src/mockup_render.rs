@@ -9,7 +9,7 @@
 use std::path::PathBuf;
 use std::process::Stdio;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
@@ -57,9 +57,9 @@ fn tsx_bin(root: &PathBuf) -> Result<PathBuf, String> {
 #[tauri::command]
 pub async fn mockup_render_video(
     app: AppHandle,
-    config: Value,        // MockupConfig (visual/audio/music/export)
-    clips: Vec<String>,   // absolutte stier til kilde-klipp, i rekkefølge
-    output_path: String,  // hvor sluttfila skal skrives (.mp4 / .mov)
+    config: Value,       // MockupConfig (visual/audio/music/export)
+    clips: Vec<String>,  // absolutte stier til kilde-klipp, i rekkefølge
+    output_path: String, // hvor sluttfila skal skrives (.mp4 / .mov)
     music_path: Option<String>,
     // Narration-lyd (TTS) per klipp, index-alignet med clips (None = ingen
     // voiceover for det klippet). Pipelinen mikser inn på klippets offset.
@@ -89,8 +89,11 @@ pub async fn mockup_render_video(
         .unwrap_or_else(|_| std::env::temp_dir());
     let _ = std::fs::create_dir_all(&job_dir);
     let job_file = job_dir.join(format!("mockup-job-{}.json", run_id));
-    std::fs::write(&job_file, serde_json::to_vec_pretty(&job).unwrap_or_default())
-        .map_err(|e| format!("Kunne ikke skrive jobb-config: {}", e))?;
+    std::fs::write(
+        &job_file,
+        serde_json::to_vec_pretty(&job).unwrap_or_default(),
+    )
+    .map_err(|e| format!("Kunne ikke skrive jobb-config: {}", e))?;
 
     let _ = app.emit(
         "script-event",

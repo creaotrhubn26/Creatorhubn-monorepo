@@ -50,6 +50,32 @@ interface SyncResult {
   durationSec: number;
 }
 
+interface NativeMulticamPreview {
+  wouldCreate: string;
+  resolveVersion: string | null;
+  clipCount: number;
+  existingInMediaPool: number;
+  wouldImport: string[];
+  appendToTimeline: boolean;
+  backupTimeline: boolean;
+  smartSwitch: boolean;
+  syncMode: string;
+  warnings: string[];
+}
+
+interface NativeMulticamResult {
+  created: { name: string | null; uniqueId: string | null };
+  resolveVersion: string | null;
+  clipCount: number;
+  importedCount: number;
+  syncMode: string;
+  appendedToTimeline: boolean;
+  backupTimelineName: string | null;
+  smartSwitchApplied: boolean;
+  smartSwitchError: string | null;
+  warnings: string[];
+}
+
 export function MulticamSyncStudio({ open, onClose, projectId, agentKind }: Props) {
   const [groups, setGroups] = useState<MulticamGroup[]>([]);
   const [activeGroup, setActiveGroup] = useState<MulticamGroup | null>(null);
@@ -61,6 +87,12 @@ export function MulticamSyncStudio({ open, onClose, projectId, agentKind }: Prop
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [extractingWaveform, setExtractingWaveform] = useState<string | null>(null);
+  const [creatingNative, setCreatingNative] = useState(false);
+  const [nativeResult, setNativeResult] = useState<NativeMulticamResult | null>(null);
+  const [resolveSyncMode, setResolveSyncMode] = useState<"audio" | "timecode">("audio");
+  const [splitAtGaps, setSplitAtGaps] = useState(true);
+  const [appendToTimeline, setAppendToTimeline] = useState(true);
+  const [smartSwitch, setSmartSwitch] = useState(false);
 
   useEffect(() => {
     if (!open || !projectId) return;
@@ -82,12 +114,14 @@ export function MulticamSyncStudio({ open, onClose, projectId, agentKind }: Prop
   const startNewGroup = () => {
     setActiveGroup(null);
     setClips([]);
+    setNativeResult(null);
     setGroupName(`Sync-gruppe ${groups.length + 1}`);
   };
 
   const openGroup = (group: MulticamGroup) => {
     setActiveGroup(group);
     setClips(group.clips || []);
+    setNativeResult(null);
     setGroupName(group.groupName);
   };
 
@@ -170,6 +204,78 @@ export function MulticamSyncStudio({ open, onClose, projectId, agentKind }: Prop
       setError((e as Error).message);
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleCreateNative = async () => {
+    if (clips.length < 2) {
+      setError("Minst 2 klipp er påkrevd for native multicam");
+      return;
+    }
+    setCreatingNative(true);
+    setNativeResult(null);
+    setError(null);
+    const params = {
+      clipPaths: clips.map(c => c.filePath),
+      manualOffsets: clips.map(effectiveOffset),
+      name: groupName.trim() || "Post Agent Multicam",
+      syncMode: resolveSyncMode,
+      splitAtGaps: resolveSyncMode === "audio" && splitAtGaps,
+      angleNameMode: "file",
+      multicamAudioMode: "source",
+      appendToTimeline,
+      backupTimeline: appendToTimeline,
+      smartSwitch: appendToTimeline && smartSwitch,
+    };
+
+    try {
+      const previewSummary = await executeScript("create_native_multicam", params, true);
+      const previewError = previewSummary.events.find(e => e.type === "error")?.message;
+      const preview = previewSummary.events.find(e => e.type === "result")?.value as
+        NativeMulticamPreview | undefined;
+      if (!previewSummary.succeeded || !preview) {
+        throw new Error(previewError || "Resolve kunne ikke lage en multicam-forhåndsvisning");
+      }
+
+      const importLine = preview.wouldImport.length > 0
+        ? `\n${preview.wouldImport.length} klipp importeres til Media Pool.`
+        : "\nAlle klipp finnes allerede i Media Pool.";
+      const timelineLine = preview.appendToTimeline
+        ? `\nKlippet settes inn på aktiv timeline etter at backup er laget.${preview.smartSwitch ? " Smart Switch kjøres." : ""}`
+        : "\nKlippet opprettes bare i Media Pool.";
+      const warningLine = preview.warnings.length > 0
+        ? `\n\nMerk: ${preview.warnings.join(" ")}`
+        : "";
+      const approved = window.confirm(
+        `Opprett «${preview.wouldCreate}» i Resolve ${preview.resolveVersion || "21.1"}?` +
+        `${importLine}${timelineLine}${warningLine}`,
+      );
+      if (!approved) return;
+
+      const runSummary = await executeScript("create_native_multicam", params, false);
+      const runError = runSummary.events.find(e => e.type === "error")?.message;
+      const result = runSummary.events.find(e => e.type === "result")?.value as
+        NativeMulticamResult | undefined;
+      if (!runSummary.succeeded || !result) {
+        throw new Error(runError || "Native multicam feilet");
+      }
+      setNativeResult(result);
+
+      if (activeGroup) {
+        try {
+          await multicamService.update(activeGroup.id, {
+            syncStatus: "ready",
+            syncMethod: `resolve-21.1-${result.syncMode}`,
+          });
+          await refresh();
+        } catch (persistError) {
+          setError(`Multicam ble opprettet i Resolve, men Role Room-status kunne ikke lagres: ${(persistError as Error).message}`);
+        }
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setCreatingNative(false);
     }
   };
 
@@ -411,6 +517,70 @@ export function MulticamSyncStudio({ open, onClose, projectId, agentKind }: Prop
             </button>
           </div>
 
+          <div style={{
+            marginBottom: 16, padding: 12, borderRadius: 6,
+            background: "rgba(110,63,199,0.08)",
+            border: "1px solid rgba(160,48,192,0.24)",
+            display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+          }}>
+            <div style={{ minWidth: 150 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700 }}>Resolve 21.1 native</div>
+              <div style={{ fontSize: 9.5, color: ROLE_ROOM_BRAND.textTertiary }}>
+                Preview · backup · allowlist
+              </div>
+            </div>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 6,
+                            fontSize: 10.5, color: ROLE_ROOM_BRAND.textSecondary }}>
+              Sync
+              <select value={resolveSyncMode}
+                      onChange={e => setResolveSyncMode(e.target.value as "audio" | "timecode")}
+                      style={{ background: "rgba(255,255,255,0.06)", color: ROLE_ROOM_BRAND.textPrimary,
+                               border: "1px solid rgba(160,48,192,0.30)", borderRadius: 3,
+                               padding: "5px 7px", fontSize: 10.5 }}>
+                <option value="audio">Audio</option>
+                <option value="timecode">Timecode</option>
+              </select>
+            </label>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 5,
+                            fontSize: 10.5, color: ROLE_ROOM_BRAND.textSecondary,
+                            opacity: resolveSyncMode === "audio" ? 1 : 0.45 }}>
+              <input type="checkbox" checked={splitAtGaps}
+                     disabled={resolveSyncMode !== "audio"}
+                     onChange={e => setSplitAtGaps(e.target.checked)} />
+              Splitt ved gaps
+            </label>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 5,
+                            fontSize: 10.5, color: ROLE_ROOM_BRAND.textSecondary }}>
+              <input type="checkbox" checked={appendToTimeline}
+                     onChange={e => {
+                       setAppendToTimeline(e.target.checked);
+                       if (!e.target.checked) setSmartSwitch(false);
+                     }} />
+              Sett inn på timeline
+            </label>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 5,
+                            fontSize: 10.5, color: ROLE_ROOM_BRAND.textSecondary,
+                            opacity: appendToTimeline ? 1 : 0.45 }}>
+              <input type="checkbox" checked={smartSwitch}
+                     disabled={!appendToTimeline}
+                     onChange={e => setSmartSwitch(e.target.checked)} />
+              Smart Switch
+            </label>
+            <button onClick={() => void handleCreateNative()}
+                    disabled={creatingNative || clips.length < 2}
+                    style={{
+                      marginLeft: "auto", background: ROLE_ROOM_BRAND.signatureGradient,
+                      border: 0, color: "#fff", padding: "7px 12px", fontSize: 11.5,
+                      fontWeight: 700, borderRadius: 3,
+                      cursor: creatingNative ? "wait" : clips.length < 2 ? "not-allowed" : "pointer",
+                      opacity: clips.length < 2 ? 0.4 : 1,
+                      display: "inline-flex", alignItems: "center", gap: 6,
+                    }}>
+              <VideocamIcon sx={{ fontSize: 14 }} />
+              {creatingNative ? "Oppretter …" : "Opprett i Resolve"}
+            </button>
+          </div>
+
           {clips.length === 0 && (
             <div style={{ textAlign: "center", padding: 80, fontSize: 12,
                             color: ROLE_ROOM_BRAND.textTertiary,
@@ -429,6 +599,26 @@ export function MulticamSyncStudio({ open, onClose, projectId, agentKind }: Prop
                         onManualOffsetChange={(v) => handleManualOffsetChange(clip.id, v)} />
             ))}
           </div>
+
+          {nativeResult && (
+            <div style={{
+              marginTop: 18, padding: 12, borderRadius: 6,
+              background: "rgba(74,212,138,0.10)",
+              border: "1px solid rgba(74,212,138,0.30)",
+              fontSize: 11, color: ROLE_ROOM_BRAND.textSecondary, lineHeight: 1.5,
+            }}>
+              <strong style={{ color: "#4ad48a" }}>Opprettet i Resolve:</strong>{" "}
+              {nativeResult.created.name || groupName} · {nativeResult.clipCount} klipp
+              {nativeResult.appendedToTimeline ? " · satt inn på timeline" : " · Media Pool"}
+              {nativeResult.smartSwitchApplied ? " · Smart Switch brukt" : ""}
+              {nativeResult.backupTimelineName ? ` · backup: ${nativeResult.backupTimelineName}` : ""}
+              {nativeResult.warnings.length > 0 && (
+                <div style={{ marginTop: 5, color: "#f0a500" }}>
+                  {nativeResult.warnings.join(" ")}
+                </div>
+              )}
+            </div>
+          )}
 
           {clips.length >= 2 && (
             <div style={{

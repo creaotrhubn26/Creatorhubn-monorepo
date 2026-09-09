@@ -1192,9 +1192,9 @@ export default function App() {
       {showWeddingWizard && (
         <GuidedWeddingWizard
           onClose={() => setShowWeddingWizard(false)}
-          onComplete={() => {
+          onComplete={(picksPath) => {
             setShowWeddingWizard(false);
-            // TODO: chain into ekte extract når alle steg er bygget
+            setCreativeEditorPath(picksPath);
           }}
         />
       )}

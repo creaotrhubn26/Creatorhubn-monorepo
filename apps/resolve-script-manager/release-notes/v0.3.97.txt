@@ -1,0 +1,25 @@
+## Resolve 21.1 og innebygd MCP
+
+- Post Agent oppdager og helsesjekker Resolve 21.1 sin lokale MCP-server, inkludert protokollversjon, serverversjon, tilgjengelige verktøy og om Resolve kan nås.
+- En ny Resolve Skills-katalog samler 12 arbeidsflyter for prosjektkontroll, timeline-QC, mediahelse, leveranse-QC, organisering, transkripsjon, multicam, lyd, farge, review notes, batch-render og klippnavn.
+- Det medfølgende Post Agent Resolve MCP-oppsettet gir Claude og andre MCP-klienter seks avgrensede verktøy for status, katalog, analyse, planlegging, godkjenning og rollback.
+- Skriveoperasjoner går gjennom en lokal sikkerhetsgateway med eksplisitt plan, låst Resolve-prosjekt/timeline, bekreftelsestoken, etterkontroll og sporbar rollback. Rå Python-kjøring eksponeres ikke.
+
+## Wedding Editor
+
+- Wedding Editor er nå én samlet arbeidsflyt fra kilder og kameraer via analyse, plan og godkjenning til timeline-bygging, QC og kreativ finpuss.
+- Preflight kontrollerer Resolve-tilkobling, media, picks, leveranser, prosjektinnstillinger, ekstern lyd, multicam-behov og backupmanifest før skriving tillates.
+- Multicam Studio kan opprette native Resolve-multicam fra valgte Media Pool-klipp og beholder eksisterende media urørt.
+- Bryllupspanelet og installasjonen er oppdatert for den nye Resolve 21.1-integrasjonen.
+
+## Music Video Agent v2
+
+- Music Video Agent analyserer sangstruktur og BPM, lager beat-grid og tilbyr sjangerstyrte look-pakker.
+- Agenten lager tre tydelig forskjellige forslag: Performance Cut, Narrative Cut og en energisk 9:16 Social Cut.
+- Før bygging vises coverage, storyboard og teknisk plan. Etter godkjenning opprettes timelines, klipp plasseres på beats, look og Fairlight-lyd brukes, og resultatet QC-kontrolleres.
+- Prosjektbytte, offline media og mangelfull coverage stopper skriveoperasjoner. Hele builden kan rulles tilbake kontrollert.
+
+## Kvalitet og dokumentasjon
+
+- Nye automatiserte tester dekker Resolve MCP-kontrakten, sikker plan/apply/rollback, Wedding Editor og Music Video Agent i både TypeScript, Python og Rust.
+- En versjonert oppgaveliste dokumenterer videre arbeid for MCP-sikkerhet, evalueringssett, flere Resolve-skills og produksjonsherding.
