@@ -16,11 +16,13 @@ create index if not exists ordbank_form on ordbank_fullform(form);
 /// Kolonner som leses: LOPENR, LEMMA_ID, OPPSLAG, TAG.
 pub fn load(conn: &Connection, fullform_tsv: &Path) -> Result<usize> {
     conn.execute_batch(SCHEMA)?;
-    conn.execute("delete from ordbank_fullform", [])?;
 
     let file = std::fs::File::open(fullform_tsv)?;
     let reader = BufReader::new(file);
     let tx = conn.unchecked_transaction()?;
+    // Tømmingen må ligge inne i transaksjonen: ellers står tabellen tom om en
+    // ødelagt linje avbryter innlastingen.
+    tx.execute("delete from ordbank_fullform", [])?;
     let mut stmt =
         tx.prepare("insert into ordbank_fullform(form, lemma_id, tag) values (?1, ?2, ?3)")?;
 

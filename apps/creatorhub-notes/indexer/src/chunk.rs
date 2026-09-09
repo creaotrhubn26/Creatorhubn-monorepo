@@ -30,16 +30,12 @@ fn fn_regex() -> &'static Regex {
     })
 }
 
-/// Navnet på siste funksjon/klasse som starter på eller før `line_idx` (0-indeksert).
-fn nearest_name(lines: &[&str], line_idx: usize) -> Option<String> {
-    let re = fn_regex();
-    for i in (0..=line_idx.min(lines.len().saturating_sub(1))).rev() {
-        if let Some(caps) = re.captures(lines[i]) {
-            for group in ["rust", "js", "jsconst", "py", "swift", "class"] {
-                if let Some(m) = caps.name(group) {
-                    return Some(m.as_str().to_string());
-                }
-            }
+/// Funksjons- eller klassenavnet linja eventuelt erklærer.
+fn name_in_line(line: &str) -> Option<String> {
+    let caps = fn_regex().captures(line)?;
+    for group in ["rust", "js", "jsconst", "py", "swift", "class"] {
+        if let Some(m) = caps.name(group) {
+            return Some(m.as_str().to_string());
         }
     }
     None
@@ -57,9 +53,19 @@ pub fn split(path: &str, content: &str) -> Vec<Chunk> {
     let stride = WINDOW - OVERLAP;
     let mut out = Vec::new();
     let mut start = 0usize;
+    // Siste navn sett så langt, båret videre mellom vinduer. Uten dette ville
+    // hvert vindu skanne tilbake til linje 0 — kvadratisk på store filer.
+    let mut name: Option<String> = None;
+    let mut scanned = 0usize;
     loop {
+        while scanned <= start && scanned < lines.len() {
+            if let Some(found) = name_in_line(lines[scanned]) {
+                name = Some(found);
+            }
+            scanned += 1;
+        }
         let end = (start + WINDOW).min(lines.len());
-        let header = match nearest_name(&lines, start) {
+        let header = match &name {
             Some(name) => format!("// {path} :: {name}"),
             None => format!("// {path}"),
         };
