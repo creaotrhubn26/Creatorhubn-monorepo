@@ -78,6 +78,13 @@ jobs:
               exit 1
             fi
             release_id=$(jq -r '.id' <<<"$release_json")
+            # En rerun bygger hele matrisen på nytt. Fjern kun assets fra den
+            # validerte draften, så tauri-action aldri kolliderer med delbygg.
+            gh api "repos/$GITHUB_REPOSITORY/releases/$release_id/assets?per_page=100" \
+              --jq '.[].id' | while read -r asset_id; do
+                [[ -n "$asset_id" ]] && gh api --method DELETE \
+                  "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+              done
           else
             notes_file=$(mktemp)
             cat > "$notes_file" <<NOTES
@@ -232,9 +239,14 @@ jobs:
           releaseAssetNamePattern: 'CreatorHub-ProTools-Companion_[version]_[arch]_signed-notarized[ext]'
           args: ${{ matrix.args }}
 
-      - name: Verify macOS signature and notarization ticket
+      - name: Notarize DMG container and verify macOS release
         if: matrix.family == 'macos'
         working-directory: apps/creatorhub-protools-companion
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
@@ -249,9 +261,41 @@ jobs:
           dmg_path=$(find "$bundle_root" -type f -name '*.dmg' -print | head -n 1)
           codesign --verify --deep --strict --verbose=2 "$app_path"
           xcrun stapler validate "$app_path"
+          # Tauri notariserer og stapler appen før DMG-en opprettes. Send også
+          # den ferdige, signerte DMG-containeren til Apple og staple billetten.
+          xcrun notarytool submit "$dmg_path" \
+            --key "$APPLE_API_KEY_PATH" \
+            --key-id "$APPLE_API_KEY" \
+            --issuer "$APPLE_API_ISSUER" \
+            --wait
+          xcrun stapler staple "$dmg_path"
           xcrun stapler validate "$dmg_path"
+          codesign --verify --verbose=2 "$dmg_path"
           spctl --assess --type execute --verbose=2 "$app_path"
           spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg_path"
+
+          if [[ "${{ matrix.target }}" == aarch64-* ]]; then
+            release_arch="aarch64"
+          else
+            release_arch="x64"
+          fi
+          asset_name="CreatorHub-ProTools-Companion_${RELEASE_VERSION}_${release_arch}_signed-notarized.dmg"
+          release_asset="$RUNNER_TEMP/$asset_name"
+          cp "$dmg_path" "$release_asset"
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" \
+            --jq ".[] | select(.name == \"$asset_name\") | .id" | while read -r asset_id; do
+              [[ -n "$asset_id" ]] && gh api --method DELETE \
+                "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+            done
+          upload_response=$(curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            --header "Content-Type: application/octet-stream" \
+            --data-binary "@$release_asset" \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$asset_name")
+          jq -e --arg name "$asset_name" '.name == $name and .state == "uploaded"' \
+            <<<"$upload_response" >/dev/null
 
       - name: Build and upload Windows installers
         if: matrix.family == 'windows'
@@ -304,6 +348,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
+      RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
       RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
     steps:
       - name: Download draft assets
@@ -311,7 +356,24 @@ jobs:
         run: |
           set -euo pipefail
           mkdir artifacts
-          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir artifacts
+          asset_rows=$(mktemp)
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" \
+            --jq '.[] | [.id, .name] | @tsv' > "$asset_rows"
+          if [[ ! -s "$asset_rows" ]]; then
+            echo "::error::Draft release contains no assets"
+            exit 1
+          fi
+          while IFS=$'\t' read -r asset_id asset_name; do
+            if [[ "$asset_name" == */* || "$asset_name" == *\\* ]]; then
+              echo "::error::Unsafe release asset name: $asset_name"
+              exit 1
+            fi
+            curl --fail-with-body --location --silent --show-error \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header "Accept: application/octet-stream" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" \
+              --output "artifacts/$asset_name"
+          done < "$asset_rows"
 
       - name: Require every supported installer
         shell: bash
@@ -329,7 +391,7 @@ jobs:
             fi
           }
           require_one '*aarch64*signed-notarized*.dmg' 'Apple Silicon DMG'
-          require_one '*x86_64*signed-notarized*.dmg' 'Intel DMG'
+          require_one '*x64*signed-notarized*.dmg' 'Intel DMG'
           require_one '*unsigned*.msi' 'Windows MSI'
           require_one '*unsigned*.exe' 'Windows EXE'
 
@@ -341,13 +403,25 @@ jobs:
             cd artifacts
             sha256sum * | sort -k2 > SHA256SUMS.txt
           )
-          gh release upload "$RELEASE_TAG" artifacts/SHA256SUMS.txt \
-            --repo "$GITHUB_REPOSITORY" --clobber
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" \
+            --jq '.[] | select(.name == "SHA256SUMS.txt") | .id' | while read -r asset_id; do
+              [[ -n "$asset_id" ]] && gh api --method DELETE \
+                "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+            done
+          upload_response=$(curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            --header "Content-Type: application/octet-stream" \
+            --data-binary '@artifacts/SHA256SUMS.txt' \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=SHA256SUMS.txt")
+          jq -e '.name == "SHA256SUMS.txt" and .state == "uploaded"' \
+            <<<"$upload_response" >/dev/null
 
       - name: Publish verified release
         shell: bash
         run: |
           set -euo pipefail
-          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
-          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
-            --json isDraft,tagName,url,assets
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+            -F draft=false \
+            --jq '{draft,tag_name,html_url,assets:[.assets[].name]}'
