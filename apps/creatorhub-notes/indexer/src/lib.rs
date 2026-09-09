@@ -12,3 +12,5 @@ pub fn register_vec_extension() {
         )));
     });
 }
+
+pub mod db;
