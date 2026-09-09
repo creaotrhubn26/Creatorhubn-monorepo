@@ -226,6 +226,11 @@ describe("prototype tester invitation delivery", () => {
         String(sql).includes("s.plan_id = 'solo_pro'"),
       ),
     ).toBe(true);
+    expect(
+      query.mock.calls.some(([sql]) =>
+        String(sql).includes("r.id::text = p.invite_request_id::text"),
+      ),
+    ).toBe(true);
   });
 
   it("sends approval invitations through the centralized provider and records the journey", async () => {

@@ -941,7 +941,8 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
                      AND s.status IN ('active', 'trial')
                 ) AS solo_pro_active
            FROM prototype_tester_invites p
-           LEFT JOIN invite_requests r ON r.id = p.invite_request_id
+           LEFT JOIN invite_requests r
+             ON r.id::text = p.invite_request_id::text
           ORDER BY p.created_at DESC
           LIMIT 200`,
       );
