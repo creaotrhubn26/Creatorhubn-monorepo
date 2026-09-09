@@ -15,7 +15,9 @@ export interface AdminEmailDesignerPreset {
 
 type EmailComponent = EmailTemplate['components'][number];
 
-const LOGO_SRC = '/creatorhub-wordmark-light.png';
+// Same public asset as the CreatorHub landing page. The absolute URL also
+// survives when a designer template is rendered outside creatorhubn.com.
+const LOGO_SRC = 'https://creatorhubn.com/creatorhub-wordmark-light.png';
 
 const baseGlobalStyles: EmailTemplate['globalStyles'] = {
   backgroundColor: '#f6f1ea',

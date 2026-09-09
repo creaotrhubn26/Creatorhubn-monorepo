@@ -31,6 +31,23 @@ function buildApp(query: ReturnType<typeof vi.fn>) {
 }
 
 describe("prototype tester agreement acceptance validation", () => {
+  it("rejects an oversized legal signature before database side effects", async () => {
+    const query = vi.fn();
+    const response = await request(buildApp(query))
+      .post("/api/prototype-tester-invites/token/accept")
+      .send({
+        ndaName: "A".repeat(201),
+        acceptedProgramTerms: true,
+        acceptedAgreements,
+        agreementVersions,
+        confirmedSigningAuthority: true,
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("200 tegn");
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it("refuses activation until every document and signing authority are accepted", async () => {
     const query = vi.fn().mockResolvedValue({ rows: [], rowCount: 0 });
     const response = await request(buildApp(query))

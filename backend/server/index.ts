@@ -15,6 +15,11 @@ import {
   invalidateSession,
   persistSession,
 } from "./persistent-session-store.js";
+import {
+  CREATORHUB_LANDING_WORDMARK_URL,
+  creatorHubEmailLogoDimensions,
+  normalizeCreatorHubEmailLogoUrl,
+} from "./creatorhub-email-branding.js";
 
 import express from "express";
 import helmet from "helmet";
@@ -16640,7 +16645,7 @@ const CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY: CreatorHubPlatformBrandingI
     domain: "creatorhubn.com",
     supportEmail: "hello@creatorhubn.com",
     docsUrl: "https://creatorhubn.com",
-    emailLogoUrl: "https://creatorhubn.com/creatorhub-logo-amber.svg",
+    emailLogoUrl: CREATORHUB_LANDING_WORDMARK_URL,
   };
 
 const CREATORHUB_PLATFORM_DEFAULT_EMAIL_THEME: CreatorHubPlatformEmailTheme = {
@@ -16883,6 +16888,8 @@ function normalizeCreatorHubPlatformBrandingSettings(
       ([key, value]) => readString(themeRecord[key]) === value,
     );
 
+  const configuredEmailLogoUrl =
+    readString(identityRecord.emailLogoUrl) || readString(record.emailLogoUrl);
   const identity = {
     ...CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY,
     appName:
@@ -16905,10 +16912,7 @@ function normalizeCreatorHubPlatformBrandingSettings(
       readString(identityRecord.docsUrl) ||
       readString(record.docsUrl) ||
       CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY.docsUrl,
-    emailLogoUrl:
-      readString(identityRecord.emailLogoUrl) ||
-      readString(record.emailLogoUrl) ||
-      CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY.emailLogoUrl,
+    emailLogoUrl: normalizeCreatorHubEmailLogoUrl(configuredEmailLogoUrl),
   };
 
   return {
@@ -29632,12 +29636,14 @@ async function renderCreatorHubPlatformEmail(input: {
           ctaLabel,
         )}</a>`
       : "";
-  const logoHtml = normalizeMailConfigValue(settings.identity.emailLogoUrl)
-    ? `<img src="${escapeRoleRoomEmailHtml(
-        normalizeMailConfigValue(settings.identity.emailLogoUrl),
-      )}" alt="${escapeRoleRoomEmailHtml(
+  const emailLogoUrl = normalizeMailConfigValue(settings.identity.emailLogoUrl);
+  const logoDimensions = emailLogoUrl
+    ? creatorHubEmailLogoDimensions(emailLogoUrl)
+    : null;
+  const logoHtml = emailLogoUrl && logoDimensions
+    ? `<img src="${escapeRoleRoomEmailHtml(emailLogoUrl)}" alt="${escapeRoleRoomEmailHtml(
         settings.identity.appName,
-      )}" width="42" height="42" style="display:block;width:42px;height:42px;border:0" />`
+      )}" width="${logoDimensions.width}" height="${logoDimensions.height}" style="${logoDimensions.style}" />`
     : "";
   const categoryLabel =
     input.templateId.startsWith("creatorhub_access_request_") ||
