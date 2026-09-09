@@ -13,9 +13,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release-tag (f.eks. protools-companion-v0.1.2)'
+        description: 'Release-tag (f.eks. protools-companion-v0.1.3)'
         required: true
-        default: 'protools-companion-v0.1.2'
+        default: 'protools-companion-v0.1.3'
 
 permissions:
   contents: write

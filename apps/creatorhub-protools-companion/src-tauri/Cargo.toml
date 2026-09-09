@@ -1,6 +1,6 @@
 [package]
 name = "creatorhub-protools-companion"
-version = "0.1.2"
+version = "0.1.3"
 description = "Creatorhub Pro Tools Companion — native agent som synker Pro Tools-markører og bounces til EaseVerse / Sound Room"
 authors = ["CreatorHub Norge"]
 edition = "2021"
