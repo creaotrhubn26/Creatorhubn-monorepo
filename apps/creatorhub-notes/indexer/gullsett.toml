@@ -22,8 +22,8 @@ question = "eiendomsoppslag på iPad"
 expect = "ipad/LeadMapApp/LeadMapApp/Core/KartverketService.swift"
 
 [[question]]
-question = "tidskode for synkronisering av klapper"
-expect = "ipad/ActionClapper/ActionClapper/Core/TimecodeEngine.swift"
+question = "rett opp skjeve bilder automatisk"
+expect = "ipad/CaptureApp/CaptureApp/Core/Capture/AutoStraightenFilter.swift"
 
 [[question]]
 question = "last opp store filer i biter til serveren"
