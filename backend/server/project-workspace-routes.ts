@@ -25,7 +25,7 @@ import fs from "node:fs";
 import path from "node:path";
 import multer from "multer";
 import { canAccessProject, canEditProject } from "./project-team-routes";
-import { requireTeamAccess } from "./team-access";
+import { hasActiveTeamAccess, requireTeamAccess } from "./team-access";
 import { resolveCrewRoles } from "../../frontend/shared/crew-roles.ts";
 import { CANONICAL_PROFESSIONS, normalizeProfession as normalizeCanonProfession, isWorkspaceCategory as isWsCategory } from "../../frontend/shared/profession-types.ts";
 import { idempotencyMiddleware } from "./_shared-idempotency";
@@ -2741,8 +2741,6 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   // bro-tabellen på den. Krever at brukeren eier track-en.
   app.post("/api/projects/:projectId/audio-room/link-easeverse", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
-    // EaseVerse-kobling synker collaborators inn → team-/Enterprise-gated.
-    if (!(await requireTeamAccess(pool, uid, res))) return;
     try {
       const pid = req.params.projectId;
       const trackId = String(req.body?.trackId || "");
@@ -2758,12 +2756,14 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         track,
       });
       const arId = linkedRoom.audioRoomId;
-      // Auto-synk band-roster fra EaseVerse-collaborators → review-medlemmer m/ invite-token (samme som audio-showcase sync-collaborators).
+      // Selve eierens EaseVerse/Sound Room/Companion-kobling er tilgjengelig
+      // uten Enterprise. Bare import av flere collaborators er en teamfunksjon.
+      const canSyncBandRoster = await hasActiveTeamAccess(pool, uid);
       let bandSynced = 0;
       try {
         const raw = track.collaborators;
         const collabs: string[] = Array.isArray(raw) ? raw : (() => { try { return JSON.parse(raw || "[]"); } catch { return []; } })();
-        if (collabs.length) {
+        if (canSyncBandRoster && collabs.length) {
           const existing = await pool.query(`SELECT name FROM audio_review_members WHERE project_id=$1::uuid`, [arId]).catch(() => ({ rows: [] }));
           const have = new Set(existing.rows.map((r: any) => String(r.name || "").trim().toLowerCase()));
           const PALETTE = ["#FF6B35", "#9b59b6", "#3fa7d6", "#e0a955", "#5fb88a", "#e0606a", "#8aa0b6"];
@@ -2781,7 +2781,13 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
           }
         }
       } catch { /* roster-synk er best-effort */ }
-      res.json({ audioRoomId: arId, linked: true, bandSynced, reusedWorkspaceRoom: linkedRoom.reusedWorkspaceRoom });
+      res.json({
+        audioRoomId: arId,
+        linked: true,
+        bandSynced,
+        bandSyncAvailable: canSyncBandRoster,
+        reusedWorkspaceRoom: linkedRoom.reusedWorkspaceRoom,
+      });
     } catch (e) { console.error("POST link-easeverse", e); res.status(500).json({ error: "failed" }); }
   });
 
