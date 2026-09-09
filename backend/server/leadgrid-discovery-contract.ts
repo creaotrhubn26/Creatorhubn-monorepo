@@ -83,8 +83,10 @@ export const discoveryGeoSchema = z
 
 export const discoveryBriefSchema = z
   .object({
-    industry_queries: z.array(nonEmpty(120)).min(1).max(8),
+    industry_queries: z.array(nonEmpty(120)).max(8).default([]),
+    organization_name_queries: z.array(nonEmpty(120)).max(8).default([]),
     exclusion_terms: z.array(nonEmpty(80)).max(30).default([]),
+    country_code: z.literal("NO").nullable().optional(),
     city: nonEmpty(120).nullable().optional(),
     geo: discoveryGeoSchema.nullable().optional(),
     territory_code: z
@@ -139,6 +141,22 @@ export const discoveryBriefSchema = z
   })
   .strict()
   .superRefine((brief, ctx) => {
+    const queryCount =
+      brief.industry_queries.length + brief.organization_name_queries.length;
+    if (queryCount === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["industry_queries"],
+        message: "Legg til minst ett bransje- eller organisasjonsnavn-søk.",
+      });
+    }
+    if (queryCount > 8) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["organization_name_queries"],
+        message: "En profil kan ha maksimalt åtte søk totalt.",
+      });
+    }
     const hasMunicipalities =
       brief.municipality_numbers.length > 0 ||
       brief.municipality_names.length > 0;
@@ -152,14 +170,15 @@ export const discoveryBriefSchema = z
         message: "En profil kan avgrenses til maksimalt 30 kommuner.",
       });
     }
-    if (!brief.geo && !brief.city && !hasMunicipalities) {
+    if (!brief.geo && !brief.city && !hasMunicipalities && !brief.country_code) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["geo"],
-        message: "Velg et kartområde, en by eller minst én kommune.",
+        message: "Velg hele Norge, et kartområde, en by eller minst én kommune.",
       });
     }
     const areaSelectors = [
+      Boolean(brief.country_code),
       Boolean(brief.geo),
       Boolean(brief.city),
       hasMunicipalities,
@@ -169,7 +188,7 @@ export const discoveryBriefSchema = z
         code: z.ZodIssueCode.custom,
         path: [hasMunicipalities ? "municipality_numbers" : "geo"],
         message:
-          "Kommunevalg, by og kartområde er alternative geografiske avgrensninger.",
+          "Hele Norge, kommunevalg, by og kartområde er alternative geografiske avgrensninger.",
       });
     }
     if (brief.enrichment_count > brief.target_count) {
@@ -336,7 +355,11 @@ export const discoveryCandidateQuerySchema = z.object({
 
 export interface DiscoverySearchPlan {
   version: 2;
-  queries: Array<{ text_query: string; hard_geo_filter: boolean }>;
+  queries: Array<{
+    text_query: string;
+    query_mode: "industry" | "organization_name";
+    hard_geo_filter: boolean;
+  }>;
   source: "brreg_open_data";
   requested_candidates: number;
   enrichment_candidates: number;
@@ -345,6 +368,7 @@ export interface DiscoverySearchPlan {
   maximum_geocodes: 120;
   area:
     | NonNullable<DiscoveryBrief["geo"]>
+    | { country_code: "NO" }
     | { city: string }
     | {
         municipality_numbers: string[];
@@ -394,15 +418,24 @@ export function discoveryHash(value: unknown): string {
 export function buildDiscoverySearchPlan(
   brief: DiscoveryBrief,
 ): DiscoverySearchPlan {
-  const queries = brief.industry_queries.map((industry) => ({
-    text_query: industry,
-    hard_geo_filter:
-      Boolean(brief.geo) ||
-      brief.municipality_numbers.length > 0 ||
-      brief.municipality_names.length > 0,
-  }));
+  const hardGeoFilter =
+    Boolean(brief.geo) ||
+    brief.municipality_numbers.length > 0 ||
+    brief.municipality_names.length > 0;
+  const queries: DiscoverySearchPlan["queries"] = [
+    ...brief.industry_queries.map((industry) => ({
+      text_query: industry,
+      query_mode: "industry" as const,
+      hard_geo_filter: hardGeoFilter,
+    })),
+    ...brief.organization_name_queries.map((organizationName) => ({
+      text_query: organizationName,
+      query_mode: "organization_name" as const,
+      hard_geo_filter: hardGeoFilter,
+    })),
+  ];
   const warnings: DiscoverySearchPlan["warnings"] = [];
-  if (brief.industry_queries.length > 1) {
+  if (queries.length > 1) {
     warnings.push({
       code: "multi_query_budget",
       message:
@@ -435,7 +468,10 @@ export function buildDiscoverySearchPlan(
           municipality_numbers: brief.municipality_numbers,
           municipality_names: brief.municipality_names,
         }
-      : (brief.geo ?? { city: brief.city as string });
+      : brief.geo ??
+        (brief.city
+          ? { city: brief.city }
+          : { country_code: brief.country_code as "NO" });
   return {
     version: 2,
     queries,
@@ -443,7 +479,7 @@ export function buildDiscoverySearchPlan(
     requested_candidates: brief.target_count,
     enrichment_candidates: brief.enrichment_count,
     // The preview reports the hard page ceiling, never a best-case estimate.
-    estimated_search_pages: 3 * brief.industry_queries.length,
+    estimated_search_pages: 3 * queries.length,
     maximum_external_requests: 200,
     maximum_geocodes: 120,
     area,

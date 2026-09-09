@@ -1992,13 +1992,20 @@ describe("Leadgrid Discovery service", () => {
     const executionProfileId = "77777777-7777-4777-8777-777777777777";
     const multiQueryBrief = {
       ...brief,
-      industry_queries: ["regnskapsfører", "revisjonsfirma"],
+      industry_queries: ["69.201"],
+      organization_name_queries: ["casting"],
+      country_code: "NO",
+      city: null,
       website_quality: { minimum_score: 65 },
     };
-    const normalizedMultiQueryBrief = previewDiscovery(multiQueryBrief).brief;
-    const queryFingerprints = normalizedMultiQueryBrief.industry_queries.map(
-      (queryText) =>
-        discoverySourceQueryFingerprint(normalizedMultiQueryBrief, queryText),
+    const multiQueryPreview = previewDiscovery(multiQueryBrief);
+    const normalizedMultiQueryBrief = multiQueryPreview.brief;
+    const queryFingerprints = multiQueryPreview.plan.queries.map((query) =>
+      discoverySourceQueryFingerprint(
+        normalizedMultiQueryBrief,
+        query.text_query,
+        query.query_mode,
+      ),
     );
     const sourceCursorStart = {
       [queryFingerprints[0]]: 120,
@@ -2154,10 +2161,12 @@ describe("Leadgrid Discovery service", () => {
     expect(textOf(cursorWrite?.[0])).not.toContain(
       "profile.source_cursor_map ->> expected.key",
     );
+    expect(searchRegistry.mock.calls.map(([input]) => input.queryMode)).toEqual([
+      "industry",
+      "organization_name",
+    ]);
     expect(
-      searchRegistry.mock.calls.every(
-        ([input]) => input.queryMode === "industry",
-      ),
+      searchRegistry.mock.calls.every(([input]) => input.countryCode === "NO"),
     ).toBe(true);
     expect(result).toMatchObject({
       run_id: RUN_ID,

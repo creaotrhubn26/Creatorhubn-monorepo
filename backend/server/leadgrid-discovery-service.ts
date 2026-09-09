@@ -568,13 +568,15 @@ function sourceOffsetCursor(value: unknown, fallback = 0): number {
 export function discoverySourceQueryFingerprint(
   brief: DiscoveryBrief,
   queryText: string,
+  queryMode: DiscoverySearchPlan["queries"][number]["query_mode"] = "industry",
 ): string {
   return discoveryHash({
     version: 1,
     source: "brreg_open_data",
-    query_mode: "industry",
+    query_mode: queryMode,
     query: queryText,
     area: {
+      country_code: brief.country_code ?? null,
       city: brief.city ?? null,
       geo: brief.geo ?? null,
       municipality_numbers: brief.municipality_numbers,
@@ -604,6 +606,7 @@ function sourceCursorMapForPlan(
       const fingerprint = discoverySourceQueryFingerprint(
         brief,
         query.text_query,
+        query.query_mode,
       );
       return [fingerprint, sourceOffsetCursor(stored[fingerprint])];
     }),
@@ -3365,6 +3368,7 @@ function executionCheckpoint(
         const fingerprint = discoverySourceQueryFingerprint(
           brief,
           query.text_query,
+          query.query_mode,
         );
         const record = objectValue(value);
         return [
@@ -3645,7 +3649,10 @@ function scorePersistedCandidate(
       companyStatus === "bankrupt"
         ? companyStatus
         : null,
-    industryQueries: brief.industry_queries,
+    industryQueries: [
+      ...brief.industry_queries,
+      ...brief.organization_name_queries,
+    ],
     idealCustomer: brief.ideal_customer ?? null,
     exclusionTerms: brief.exclusion_terms,
     minimumFitScore: brief.minimum_fit_score,
@@ -4460,6 +4467,7 @@ export async function executeDiscoveryRun(
       const queryFingerprint = discoverySourceQueryFingerprint(
         brief,
         query.text_query,
+        query.query_mode,
       );
       // The immutable run checkpoint owns the start offset. Retries always use
       // this same value until the query is durably marked completed.
@@ -4471,7 +4479,8 @@ export async function executeDiscoveryRun(
         result = await withExecutionSignal(
           searchRegistry({
             query: query.text_query,
-            queryMode: "industry",
+            queryMode: query.query_mode,
+            countryCode: brief.country_code ?? null,
             maxResults: Math.min(queryBudget, 60),
             sourceOffset: queryStartOffset,
             city: brief.city ?? null,

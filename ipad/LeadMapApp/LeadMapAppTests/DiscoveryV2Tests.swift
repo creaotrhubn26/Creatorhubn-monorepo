@@ -339,6 +339,47 @@ final class DiscoveryV2Tests: XCTestCase {
         XCTAssertEqual(plan.territoryCode, "vest")
     }
 
+    func testNationalOrganizationNameProfileRoundTripsAndDecodesPlanMode() throws {
+        var brief = DiscoveryV2Brief(
+            industryQueries: [],
+            organizationNameQueries: ["casting"],
+            exclusionTerms: ["støperi"],
+            countryCode: "NO",
+            city: nil,
+            geo: nil,
+            targetCount: 40,
+            enrichmentCount: 20,
+            minimumFitScore: 70,
+            idealCustomer: "Norsk castingbyrå",
+            goal: "Finne castingmiljøer"
+        )
+
+        XCTAssertNil(brief.validationMessage)
+        XCTAssertEqual(brief.areaSummary, "Hele Norge")
+        brief.city = "Oslo"
+        XCTAssertEqual(
+            brief.validationMessage,
+            "Hele Norge, kommuneutvalg, by og kart-radius kan ikke kombineres."
+        )
+        brief.city = nil
+
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(brief.normalized))
+                as? [String: Any]
+        )
+        XCTAssertEqual(object["industry_queries"] as? [String], [])
+        XCTAssertEqual(object["organization_name_queries"] as? [String], ["casting"])
+        XCTAssertEqual(object["country_code"] as? String, "NO")
+
+        let planData = Data(#"{"version":2,"queries":[{"text_query":"casting","query_mode":"organization_name","hard_geo_filter":false}],"source":"brreg_open_data","requested_candidates":40,"enrichment_candidates":20,"estimated_search_pages":3,"area":{"country_code":"NO"},"territory_code":null,"warnings":[]}"#.utf8)
+        let plan = try JSONDecoder().decode(DiscoveryV2SearchPlan.self, from: planData)
+        XCTAssertEqual(plan.queries.first?.queryMode, .organizationName)
+        guard case .country(let countryCode) = plan.area else {
+            return XCTFail("Forventet nasjonalt område")
+        }
+        XCTAssertEqual(countryCode, "NO")
+    }
+
     func testMunicipalityTextCodecSupportsOfficialNameAndNumberPairs() {
         let parsed = DiscoveryV2MunicipalityTextCodec.values(from: """
         Bærum | 3201
@@ -363,7 +404,7 @@ final class DiscoveryV2Tests: XCTestCase {
         brief.municipalityNames = ["Oslo"]
         XCTAssertEqual(
             brief.validationMessage,
-            "Kommuneutvalg kan ikke kombineres med by eller kart-radius.")
+            "Hele Norge, kommuneutvalg, by og kart-radius kan ikke kombineres.")
 
         brief.geo = nil
         brief.employeeCount = .init(minimum: 50, maximum: 5)

@@ -553,9 +553,20 @@ private struct OnboardingDiscoveryProfileEditor: View {
                 if canEdit {
                     TextField("Profilnavn", text: $profile.name)
                         .accessibilityIdentifier("project-onboarding.profile.\(profileIndex).name")
-                    TextField("Kundetyper, kommaseparert", text: stringList(\.industryQueries))
+                    TextField("Bransjer eller NACE-koder, kommaseparert", text: stringList(\.industryQueries))
+                    TextField("Organisasjonsnavn-søk, kommaseparert", text: stringList(\.organizationNameQueries))
                     TextField("Eksklusjoner, kommaseparert", text: stringList(\.exclusionTerms))
-                    TextField("By eller område", text: optionalText(\.city))
+
+                    Picker("Geografi", selection: areaMode) {
+                        Text("Hele Norge").tag(OnboardingAreaMode.nationwide)
+                        Text("By eller område").tag(OnboardingAreaMode.local)
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("project-onboarding.profile.\(profileIndex).area-mode")
+                    if areaMode.wrappedValue == .local {
+                        TextField("By eller område", text: cityText)
+                            .accessibilityIdentifier("project-onboarding.profile.\(profileIndex).city")
+                    }
 
                     Stepper("Kandidater: \(profile.brief.targetCount)", value: $profile.brief.targetCount, in: 1...60)
                     Stepper("Nettsidevurderinger: \(profile.brief.enrichmentCount)", value: $profile.brief.enrichmentCount, in: 1...profile.brief.targetCount)
@@ -602,7 +613,7 @@ private struct OnboardingDiscoveryProfileEditor: View {
                         Button("Fjern profil", role: .destructive, action: onDelete)
                     }
                 } else {
-                    LabeledContent("Kundetyper", value: profile.brief.industryQueries.joined(separator: ", "))
+                    LabeledContent("Søk", value: querySummary)
                     LabeledContent("Område", value: profile.brief.areaSummary)
                     LabeledContent("Kandidater", value: String(profile.brief.targetCount))
                     LabeledContent("Minste fit-score", value: String(profile.brief.minimumFitScore))
@@ -621,8 +632,10 @@ private struct OnboardingDiscoveryProfileEditor: View {
         } label: {
             HStack {
                 VStack(alignment: .leading) {
-                    Text(profile.name).fontWeight(.semibold)
-                    Text(profile.brief.industryQueries.joined(separator: ", "))
+                    Text(profile.name)
+                        .fontWeight(.semibold)
+                        .accessibilityIdentifier("project-onboarding.profile.\(profileIndex).title")
+                    Text(querySummary)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -651,6 +664,12 @@ private struct OnboardingDiscoveryProfileEditor: View {
         )
     }
 
+    private var querySummary: String {
+        let industries = profile.brief.industryQueries
+        let organizationNames = profile.brief.organizationNameQueries.map { "navn: \($0)" }
+        return (industries + organizationNames).joined(separator: ", ")
+    }
+
     private func optionalText(
         _ keyPath: WritableKeyPath<DiscoveryV2Brief, String?>
     ) -> Binding<String> {
@@ -659,6 +678,43 @@ private struct OnboardingDiscoveryProfileEditor: View {
             set: { value in
                 let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
                 profile.brief[keyPath: keyPath] = trimmed.isEmpty ? nil : trimmed
+            }
+        )
+    }
+
+    private var areaMode: Binding<OnboardingAreaMode> {
+        Binding(
+            get: { profile.brief.countryCode == "NO" ? .nationwide : .local },
+            set: { mode in
+                switch mode {
+                case .nationwide:
+                    profile.brief.countryCode = "NO"
+                    profile.brief.city = nil
+                    profile.brief.geo = nil
+                    profile.brief.municipalityNumbers = []
+                    profile.brief.municipalityNames = []
+                case .local:
+                    profile.brief.countryCode = nil
+                    if profile.brief.city == nil,
+                       profile.brief.geo == nil,
+                       profile.brief.municipalityNumbers.isEmpty,
+                       profile.brief.municipalityNames.isEmpty {
+                        profile.brief.city = "Oslo"
+                    }
+                }
+            }
+        )
+    }
+
+    private var cityText: Binding<String> {
+        Binding(
+            get: { profile.brief.city ?? "" },
+            set: { value in
+                profile.brief.countryCode = nil
+                profile.brief.city = value.isEmpty ? nil : value
+                profile.brief.geo = nil
+                profile.brief.municipalityNumbers = []
+                profile.brief.municipalityNames = []
             }
         )
     }
@@ -705,6 +761,11 @@ private struct OnboardingDiscoveryProfileEditor: View {
             set: { profile.brief.commercialSignals.registeredInVatRegister = $0.boolValue }
         )
     }
+}
+
+private enum OnboardingAreaMode: String {
+    case nationwide
+    case local
 }
 
 private enum OnboardingTriState: String, CaseIterable, Identifiable {

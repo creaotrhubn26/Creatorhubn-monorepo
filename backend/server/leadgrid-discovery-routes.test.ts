@@ -705,9 +705,11 @@ describe("Leadgrid Discovery HTTP contract", () => {
           places_details_enabled: false,
           brief: {
             industry_queries: ["regnskapsbyrå"],
+            organization_name_queries: [],
             exclusion_terms: [],
-            city: "Norge",
+            city: null,
             geo: null,
+            country_code: "NO",
             territory_code: null,
             municipality_numbers: [],
             municipality_names: [],

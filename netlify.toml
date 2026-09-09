@@ -235,11 +235,10 @@
   to = "/theroleroom.html"
   status = 200
 
-# Rot: server den BYGDE index.html (SPA-entry) — ikke theroleroom-root.html.
-# theroleroom-root.html (public/) er IKKE Vite-prosessert og peker på dev-kilden
-# `/src/main.tsx` → laster ikke i prod → blank side. Netlify serverer derfor
-# eksplisitt den bygde index.html. Appen setter SEO-meta klient-side
-# (host-bevisst).
+# Rot: normal fallback er den BYGDE index.html (SPA-entry). The Role Room-hostet
+# rutes før dette av host-routes Edge Function til role-room-index.html, som
+# genereres fra samme Vite-bygg med korrekte server-side metadata og samme
+# hashede app-assets. public/theroleroom-root.html brukes ikke som app-entry.
 [[redirects]]
   from = "/"
   to = "/index.html"

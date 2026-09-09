@@ -322,6 +322,62 @@ final class QASweepTests: XCTestCase {
         app.terminate()
     }
 
+    func testSuperAdminRoleRoomOnboardingCoversAllCustomerTypes() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["QA_TOUR"] = "domain-onboarding"
+        app.launchEnvironment["QA_TAB"] = "0"
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["Nytt kundeprosjekt"].waitForExistence(timeout: 12))
+        let domain = app.textFields["project-onboarding.domain"]
+        XCTAssertTrue(domain.waitForExistence(timeout: 3))
+        domain.tap()
+        domain.typeText("theroleroom.com")
+        app.buttons["project-onboarding.analyze"].tap()
+
+        let category = app.staticTexts["project-onboarding.category"]
+        XCTAssertTrue(category.waitForExistence(timeout: 5))
+        XCTAssertTrue(category.label.contains("Film, TV, casting og talent"))
+        let projectName = app.staticTexts["project-onboarding.project-name"]
+        XCTAssertTrue(projectName.waitForExistence(timeout: 3))
+        XCTAssertTrue(projectName.label.contains("The Role Room"))
+
+        let expectedProfiles = [
+            "Film- og TV-produksjon – Norge",
+            "Reklame- og innholdsbyråer – Norge",
+            "Casting- og talentmiljøer – Norge",
+            "Film- og medieutdanning – Norge",
+            "Dansestudioer og danseskoler – Norge",
+            "Skuespillere og talenter – Norge",
+        ]
+        for (profileIndex, profileName) in expectedProfiles.enumerated() {
+            let profileTitle = app.staticTexts[
+                "project-onboarding.profile.\(profileIndex).title"
+            ]
+            for _ in 0..<12 where !profileTitle.exists {
+                app.swipeUp()
+            }
+            XCTAssertTrue(profileTitle.exists, "Mangler Discovery-profilen \(profileName)")
+            XCTAssertEqual(profileTitle.label, profileName)
+        }
+
+        let commit = app.buttons["project-onboarding.commit"]
+        for _ in 0..<12 where !commit.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(commit.isHittable)
+        commit.tap()
+
+        XCTAssertTrue(
+            app.staticTexts["project-onboarding.access-ready"].waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(
+            app.buttons["discovery.close"].waitForExistence(timeout: 8),
+            "The Role Room-prosjektet skal åpnes direkte i Discovery"
+        )
+        app.terminate()
+    }
+
     func testLeadgridAgentProposalRequiresConfirmationBeforeExecution() throws {
         #if !targetEnvironment(macCatalyst)
         XCUIDevice.shared.orientation = .landscapeLeft

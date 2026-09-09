@@ -91,33 +91,118 @@ describe("Leadgrid domain onboarding classification", () => {
     );
   });
 
-  it.each([
-    {
-      domain: "creatorhubn.com",
-      brand: profile({
+  it("derives a complete editable profile for creatorhubn.com", () => {
+    const plan = buildProjectOnboardingPlan(
+      "https://creatorhubn.com",
+      "creatorhubn.com",
+      profile({
         businessName: "CreatorHub Norge",
         tagline: "Plattform for skapere, team og Academy",
       }),
-      category: "Kreative tjenester",
-      queries: ["fotograf", "videoproduksjon", "produksjonsselskap"],
-    },
-    {
-      domain: "theroleroom.com",
-      brand: profile({
-        businessName: "The Role Room",
-        description: "Castingflyt for produsenter og casting directors.",
-      }),
-      category: "Film, TV og casting",
-      queries: ["produksjonsselskap", "castingbyrå", "reklamebyrå"],
-    },
-  ])("derives a complete editable profile for $domain", ({ domain, brand, category, queries }) => {
-    const plan = buildProjectOnboardingPlan(`https://${domain}`, domain, brand);
-    expect(plan.category).toBe(category);
-    expect(plan.recommended_profiles[0].brief.industry_queries).toEqual(queries);
+    );
+    expect(plan.category).toBe("Kreative tjenester");
+    expect(plan.recommended_profiles[0].brief.industry_queries).toEqual([
+      "fotograf",
+      "videoproduksjon",
+      "produksjonsselskap",
+    ]);
     expect(plan.recommended_profiles[0].brief.ideal_customer).toBeTruthy();
     expect(plan.recommended_profiles[0].brief.goal).toBeTruthy();
     expect(plan.recommended_profiles[0].brief.city).toBeTruthy();
     expect(plan.recommended_profiles[0].approval_mode).toBe("manual");
+  });
+
+  it("repairs misleading static metadata and creates six precise national profiles for The Role Room", () => {
+    const plan = buildProjectOnboardingPlan(
+      "https://theroleroom.com",
+      "theroleroom.com",
+      profile({
+        url: "https://theroleroom.com",
+        businessName: "CreatorHub Norge",
+        tagline: "Plattform for skapere, team og Academy",
+        description: "CreatorHub samler prosjektstyring og community.",
+        logoUrl: "https://creatorhubn.com/creatorhub-wordmark-light.png",
+      }),
+    );
+
+    expect(plan).toMatchObject({
+      project_name: "The Role Room",
+      category: "Film, TV, casting og talent",
+      category_confidence: "high",
+      brand_profile: {
+        businessName: "The Role Room",
+        logoUrl: "https://theroleroom.com/TheRoleRoom_App_Logo.png",
+        industry: "film_tv_and_content_production",
+      },
+    });
+    expect(plan.project_description).toContain("film, TV og innholdsproduksjon");
+    expect(plan.recommended_profiles).toHaveLength(6);
+    expect(plan.recommended_profiles.map((item) => item.name)).toEqual([
+      "Film- og TV-produksjon – Norge",
+      "Reklame- og innholdsbyråer – Norge",
+      "Casting- og talentmiljøer – Norge",
+      "Film- og medieutdanning – Norge",
+      "Dansestudioer og danseskoler – Norge",
+      "Skuespillere og talenter – Norge",
+    ]);
+    expect(plan.recommended_profiles.filter((item) => item.is_default)).toHaveLength(1);
+    expect(
+      plan.recommended_profiles.every(
+        (item) =>
+          item.brief.country_code === "NO" &&
+          item.brief.city == null &&
+          item.approval_mode === "manual" &&
+          item.auto_discover_enabled === false,
+      ),
+    ).toBe(true);
+    expect(plan.recommended_profiles[0].brief.industry_queries).toEqual([
+      "59.110",
+      "59.120",
+      "60.200",
+    ]);
+    expect(plan.recommended_profiles[2].brief).toMatchObject({
+      industry_queries: [],
+      organization_name_queries: ["casting"],
+      minimum_fit_score: 70,
+    });
+    expect(plan.recommended_profiles[2].brief.industry_queries).not.toContain(
+      "78.100",
+    );
+    expect(plan.recommended_profiles[2].brief.exclusion_terms).toContain("støping");
+    expect(plan.recommended_profiles[3].brief).toMatchObject({
+      industry_queries: [],
+      organization_name_queries: [
+        "filmskule",
+        "universitet",
+        "høgskole",
+        "høyskole",
+        "fagskole",
+      ],
+      target_count: 50,
+      minimum_fit_score: 70,
+      commercial_signals: {
+        registered_in_business_register: null,
+      },
+    });
+    expect(plan.recommended_profiles[4].brief).toMatchObject({
+      industry_queries: [],
+      organization_name_queries: [
+        "dansestudio",
+        "danseskole",
+        "ballettskole",
+        "dance studio",
+      ],
+      commercial_signals: {
+        registered_in_business_register: null,
+      },
+    });
+    expect(plan.recommended_profiles[5].brief).toMatchObject({
+      industry_queries: [],
+      organization_name_queries: ["skuespiller", "actor"],
+      commercial_signals: {
+        registered_in_business_register: null,
+      },
+    });
   });
 });
 

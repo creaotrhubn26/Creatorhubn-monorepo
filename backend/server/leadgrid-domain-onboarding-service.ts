@@ -356,6 +356,253 @@ function fallbackCategory(profile: BrandProfile): CategoryRule {
   };
 }
 
+function roleRoomBrief(input: {
+  industryQueries?: string[];
+  organizationNameQueries?: string[];
+  exclusions: string[];
+  idealCustomer: string;
+  goal: string;
+  targetCount?: number;
+  minimumFitScore?: number;
+  requireBusinessRegistration?: boolean | null;
+}): DiscoveryBrief {
+  return discoveryBriefSchema.parse({
+    industry_queries: input.industryQueries ?? [],
+    organization_name_queries: input.organizationNameQueries ?? [],
+    exclusion_terms: input.exclusions,
+    country_code: "NO",
+    city: null,
+    geo: null,
+    territory_code: null,
+    municipality_numbers: [],
+    municipality_names: [],
+    target_count: input.targetCount ?? 60,
+    enrichment_count: Math.min(30, input.targetCount ?? 60),
+    minimum_fit_score: input.minimumFitScore ?? 65,
+    ideal_customer: input.idealCustomer,
+    goal: input.goal,
+    organization_forms: [],
+    employee_count: null,
+    organization_structure: "any",
+    website_requirement: "any",
+    website_quality: { minimum_score: null },
+    commercial_signals: {
+      registered_in_vat_register: null,
+      registered_in_business_register:
+        input.requireBusinessRegistration === undefined
+          ? true
+          : input.requireBusinessRegistration,
+    },
+  });
+}
+
+function roleRoomProfilePlan(
+  name: string,
+  brief: DiscoveryBrief,
+  isDefault = false,
+): ProjectOnboardingProfilePlan {
+  return {
+    name,
+    is_default: isDefault,
+    status: "active",
+    brief,
+    approval_mode: "manual",
+    places_details_enabled: false,
+    auto_discover_enabled: false,
+    schedule_cron: "0 6 * * *",
+    schedule_timezone: "Europe/Oslo",
+  };
+}
+
+function buildRoleRoomOnboardingPlan(
+  websiteUrl: string,
+  profile: BrandProfile,
+): ProjectOnboardingPlan {
+  const brandProfile: BrandProfile = {
+    ...profile,
+    url: websiteUrl,
+    businessName: "The Role Room",
+    tagline: "Fra første studentproduksjon til ferdig film.",
+    description:
+      "Produksjonsflate for film, TV og innholdsproduksjon med casting, talentportal, crew og produksjonsplan i ett rom.",
+    toneOfVoice: "professional",
+    usps: [
+      "Casting, crew og produksjonsplan i samme arbeidsflyt",
+      "Fra undervisning og studentproduksjon til profesjonell film",
+      "Strukturert samarbeid mellom produksjon, team og talent",
+    ],
+    primaryCTA: "Utforsk The Role Room",
+    colors: {
+      primary: "#A855F7",
+      secondary: "#C4B5FD",
+      accent: "#C084FC",
+      background: "#0A0118",
+      text: "#F5F3FF",
+    },
+    fonts: { heading: "Roboto", body: "Roboto" },
+    logoUrl: "https://theroleroom.com/TheRoleRoom_App_Logo.png",
+    faviconUrl: "https://theroleroom.com/TheRoleRoom_App_Logo.png",
+    productCategories: [
+      "Produksjonsplanlegging",
+      "Casting og talentportal",
+      "Crew og samarbeid",
+      "Film- og medieutdanning",
+      "Dans og koreografi",
+    ],
+    hasShop: false,
+    industry: "film_tv_and_content_production",
+    targetAudience:
+      "Produksjonsselskaper, castingmiljøer, reklame- og innholdsbyråer, film- og medieutdanning, dansestudioer og skuespillertalenter i Norge.",
+  };
+  return {
+    version: 1,
+    website_url: websiteUrl,
+    website_domain: "theroleroom.com",
+    project_name: "The Role Room",
+    project_description: brandProfile.description,
+    category: "Film, TV, casting og talent",
+    category_confidence: "high",
+    classification_reasons: [
+      "Domenet er verifisert som The Role Room.",
+      "Nettsiden beskriver produksjonsflyt for film, TV, innhold og utdanning.",
+      "Målgruppene er delt i egne profiler for presis og etterprøvbar Discovery.",
+    ],
+    brand_profile: brandProfile,
+    recommended_profiles: [
+      roleRoomProfilePlan(
+        "Film- og TV-produksjon – Norge",
+        roleRoomBrief({
+          industryQueries: ["59.110", "59.120", "60.200"],
+          exclusions: ["kino", "filmklubb"],
+          idealCustomer:
+            "Norsk film-, TV- eller postproduksjon som koordinerer roller, crew, opptaksdager, dokumentasjon og leveranser.",
+          goal:
+            "Finne produksjonsselskaper som kan samle casting og produksjonsstyring i The Role Room.",
+        }),
+        true,
+      ),
+      roleRoomProfilePlan(
+        "Reklame- og innholdsbyråer – Norge",
+        roleRoomBrief({
+          industryQueries: ["73.110", "74.200"],
+          exclusions: ["avis", "trykkeri", "fotobutikk", "hobbyklubb"],
+          idealCustomer:
+            "Norsk reklame-, innholds- eller fotoproduksjonsmiljø som bruker talent og crew i kundeproduksjoner.",
+          goal:
+            "Finne byråer og innholdsprodusenter med gjentakende behov for casting, team og produksjonsplan.",
+        }),
+      ),
+      roleRoomProfilePlan(
+        "Casting- og talentmiljøer – Norge",
+        roleRoomBrief({
+          organizationNameQueries: ["casting"],
+          exclusions: [
+            "reboa",
+            "støperi",
+            "støping",
+            "industriproduksjon",
+            "designvirksomhet",
+            "arbeidstakerorganisasjon",
+          ],
+          idealCustomer:
+            "Norsk casting-, skuespiller-, modell- eller talentbyrå som administrerer profiler, samtykker, forespørsler og self-tapes.",
+          goal:
+            "Finne spesialiserte casting- og talentmiljøer uten å blande inn generelle bemanningsbyråer.",
+          targetCount: 40,
+          minimumFitScore: 70,
+        }),
+      ),
+      roleRoomProfilePlan(
+        "Film- og medieutdanning – Norge",
+        roleRoomBrief({
+          organizationNameQueries: [
+            "filmskule",
+            "universitet",
+            "høgskole",
+            "høyskole",
+            "fagskole",
+          ],
+          exclusions: [
+            "grunnskole",
+            "barnehage",
+            "sykehus",
+            "forlag",
+            "eiendom",
+            "holding",
+            "student",
+            "tjenestemann",
+            "borettslag",
+            "bolig",
+            "fond",
+            "linjeforening",
+            "seniorgruppe",
+            "econa",
+            "ntl",
+          ],
+          idealCustomer:
+            "Norsk universitet, høyskole, fagskole eller filmskole med praktiske film-, TV- eller medieproduksjoner for studenter.",
+          goal:
+            "Finne utdanningsmiljøer som trenger en sammenhengende produksjonsflate fra klasserom til ferdig film.",
+          targetCount: 50,
+          minimumFitScore: 70,
+          requireBusinessRegistration: null,
+        }),
+      ),
+      roleRoomProfilePlan(
+        "Dansestudioer og danseskoler – Norge",
+        roleRoomBrief({
+          organizationNameQueries: [
+            "dansestudio",
+            "danseskole",
+            "ballettskole",
+            "dance studio",
+          ],
+          exclusions: [
+            "dancewear",
+            "dansetøy",
+            "butikk",
+            "eiendom",
+            "holding",
+            "transport",
+            "import",
+          ],
+          idealCustomer:
+            "Norsk dansestudio, danseskole eller ballettskole som organiserer elever, ensembler, prøver, opptak og forestillinger.",
+          goal:
+            "Finne dansestudioer som kan samle talentprofiler, prøver, koreografi og produksjonsplan i The Role Room.",
+          targetCount: 50,
+          minimumFitScore: 70,
+          requireBusinessRegistration: null,
+        }),
+      ),
+      roleRoomProfilePlan(
+        "Skuespillere og talenter – Norge",
+        roleRoomBrief({
+          organizationNameQueries: ["skuespiller", "actor"],
+          exclusions: [
+            "forbund",
+            "forening",
+            "undervisning",
+            "kurs",
+            "eiendom",
+            "holding",
+            "rekruttering",
+            "renhold",
+          ],
+          idealCustomer:
+            "Norsk skuespiller, statist eller audiovisuelt talent med registrert virksomhet og behov for profil, self-tapes, samtykker og castingforespørsler.",
+          goal:
+            "Finne skuespillere og talenter som kan onboardes til The Role Room Talents.",
+          targetCount: 60,
+          minimumFitScore: 70,
+          requireBusinessRegistration: null,
+        }),
+      ),
+    ],
+    skills: LEADGRID_ONBOARDING_SKILLS,
+  };
+}
+
 export function normalizeProjectOnboardingWebsite(rawValue: string): {
   websiteUrl: string;
   websiteDomain: string;
@@ -385,6 +632,9 @@ export function buildProjectOnboardingPlan(
   websiteDomain: string,
   profile: BrandProfile,
 ): ProjectOnboardingPlan {
+  if (websiteDomain === "theroleroom.com") {
+    return buildRoleRoomOnboardingPlan(websiteUrl, profile);
+  }
   const corpus = normalizedSearchText(
     [
       websiteDomain,
@@ -408,7 +658,9 @@ export function buildProjectOnboardingPlan(
   const name = projectName(profile, websiteDomain);
   const brief = discoveryBriefSchema.parse({
     industry_queries: rule.customerTypes,
+    organization_name_queries: [],
     exclusion_terms: rule.exclusions,
+    country_code: null,
     city,
     geo: null,
     territory_code: null,

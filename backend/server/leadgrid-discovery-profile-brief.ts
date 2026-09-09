@@ -60,9 +60,16 @@ export function canonicalDiscoveryProfileBrief(
     typeof storedBrief.city === "string" && storedBrief.city.trim()
       ? storedBrief.city.trim()
       : null;
-  const city = hasMunicipalities
-    ? null
-    : (storedCity ?? row.city_filters[0] ?? (geo ? null : "Norge"));
+  const city =
+    hasMunicipalities || geo
+      ? null
+      : (storedCity ?? row.city_filters[0] ?? null);
+  const countryCode =
+    !hasMunicipalities && !geo && !city && storedBrief.country_code === "NO"
+      ? "NO"
+      : !hasMunicipalities && !geo && !city
+        ? "NO"
+        : null;
   const minimumFitScore =
     typeof storedBrief.minimum_fit_score === "number"
       ? storedBrief.minimum_fit_score
@@ -136,7 +143,12 @@ export function canonicalDiscoveryProfileBrief(
 
   return discoveryBriefSchema.parse({
     industry_queries: row.target_customer_types,
+    organization_name_queries: strings(
+      storedBrief.organization_name_queries,
+      120,
+    ),
     exclusion_terms: strings(storedBrief.exclusion_terms, 80),
+    country_code: countryCode,
     city,
     geo,
     territory_code: territoryCode,

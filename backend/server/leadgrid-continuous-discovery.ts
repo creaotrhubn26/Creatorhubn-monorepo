@@ -169,7 +169,10 @@ function buildBrief(
         : fallbackLegacyQuery
           ? [fallbackLegacyQuery]
           : [];
-  if (industryQueries.length === 0) return null;
+  const organizationNameQueries = opts.industryQueryOverride?.trim()
+    ? []
+    : cleanStrings(stored.organization_name_queries);
+  if (industryQueries.length + organizationNameQueries.length === 0) return null;
 
   const cities =
     cleanStrings(source.city_filters).length > 0
@@ -230,11 +233,15 @@ function buildBrief(
     ? cityOverride
     : hasStoredMunicipalities || selectedGeo
       ? null
-      : cities[0] || storedCity || "Norge";
+      : cities[0] || storedCity || null;
+  const countryCode =
+    !city && !selectedGeo && !hasStoredMunicipalities ? "NO" : null;
   const parsed = discoveryBriefSchema.safeParse({
     ...stored,
     industry_queries: industryQueries,
+    organization_name_queries: organizationNameQueries,
     exclusion_terms: cleanStrings(stored.exclusion_terms, 30),
+    country_code: countryCode,
     city,
     geo: selectedGeo,
     municipality_numbers: municipalityNumbers,
@@ -250,6 +257,7 @@ function buildBrief(
 }
 
 function discoveryAreaLabel(brief: DiscoveryBrief): string {
+  if (brief.country_code === "NO") return "Hele Norge";
   if (brief.city) return brief.city;
   if (brief.municipality_names.length > 0) {
     return brief.municipality_names.join(", ");

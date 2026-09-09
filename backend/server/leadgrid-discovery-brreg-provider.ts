@@ -93,6 +93,7 @@ export interface DiscoveryRegistryGeoArea {
 export interface DiscoveryRegistrySearchInput {
   query: string;
   queryMode?: "industry" | "organization_name";
+  countryCode?: "NO" | null;
   maxResults?: number;
   /**
    * Compatibility input for callers that still address a whole BRREG page.
@@ -303,6 +304,7 @@ type JsonRecord = Record<string, unknown>;
 interface NormalizedInput {
   query: string;
   queryMode: "industry" | "organization_name";
+  countryCode: "NO" | null;
   maxResults: number;
   sourceOffset: number;
   city: string | null;
@@ -529,7 +531,12 @@ function normalizeInput(input: DiscoveryRegistrySearchInput): NormalizedInput {
   }
   const hasMunicipalities =
     municipalityNumbers.length > 0 || municipalityNames.length > 0;
+  const countryCode = input.countryCode ?? null;
+  if (countryCode !== null && countryCode !== "NO") {
+    throw new DiscoveryRegistryError("invalid_input");
+  }
   const areaSelectorCount = [
+    Boolean(countryCode),
     Boolean(city),
     Boolean(geo),
     hasMunicipalities,
@@ -570,6 +577,7 @@ function normalizeInput(input: DiscoveryRegistrySearchInput): NormalizedInput {
   return {
     query,
     queryMode: input.queryMode ?? "industry",
+    countryCode,
     maxResults: Math.min(requestedMax, MAX_RESULTS),
     sourceOffset,
     city,
@@ -652,11 +660,23 @@ function normalizeForSearch(value: string): string {
     .trim();
 }
 
+function matchesOrganizationNameQuery(name: string, query: string): boolean {
+  const nameTokens = normalizeForSearch(name).split(" ").filter(Boolean);
+  const queryTokens = normalizeForSearch(query).split(" ").filter(Boolean);
+  if (queryTokens.length === 0 || queryTokens.length > nameTokens.length) {
+    return false;
+  }
+  return nameTokens.some((_, start) =>
+    queryTokens.every((queryToken, offset) =>
+      nameTokens[start + offset]?.startsWith(queryToken),
+    ),
+  );
+}
+
 const QUERY_SYNONYMS: Record<string, string[]> = {
   advokat: ["juridiske tjenester", "advokatvirksomhet"],
   bilverksted: ["reparasjon av motorvogner", "vedlikehold av motorvogner"],
   bygg: ["bygging", "oppføring", "entreprenør"],
-  castingbyrå: ["rekruttering", "formidling av arbeidskraft"],
   eiendomsmegler: ["eiendomsmegling"],
   fotograf: ["fotografvirksomhet"],
   frisør: ["frisering", "skjønnhetspleie"],
@@ -967,6 +987,15 @@ function matchesHardCompanyFilters(
   candidate: DiscoveryRegistryCandidate,
   input: NormalizedInput,
 ): boolean {
+  if (
+    input.queryMode === "organization_name" &&
+    !matchesOrganizationNameQuery(candidate.name, input.query)
+  ) {
+    // BRREG's `navn` parameter is fuzzy and may, for example, return
+    // "camping" for "casting". Verify organization-name intent against the
+    // registered name before exposing the row as a lead candidate.
+    return false;
+  }
   if (
     input.organizationForms.length > 0 &&
     (!candidate.organizationFormCode ||

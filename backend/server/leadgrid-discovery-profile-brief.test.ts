@@ -35,4 +35,34 @@ describe("canonical Discovery profile brief", () => {
     expect(brief).not.toHaveProperty("migrated_from");
     expect(brief).not.toHaveProperty("migration_audit");
   });
+
+  it("preserves organization-name queries and an explicit national scope", () => {
+    const brief = canonicalDiscoveryProfileBrief({
+      target_customer_types: [],
+      city_filters: [],
+      geography_lat: null,
+      geography_lng: null,
+      geography_radius_km: 25,
+      company_size_min: null,
+      company_size_max: null,
+      max_candidates_per_run: 40,
+      enrichment_count: 20,
+      brief: {
+        organization_name_queries: ["casting"],
+        country_code: "NO",
+        exclusion_terms: ["støperi"],
+        minimum_fit_score: 70,
+      },
+    });
+
+    expect(discoveryBriefSchema.parse(brief)).toEqual(brief);
+    expect(brief).toMatchObject({
+      industry_queries: [],
+      organization_name_queries: ["casting"],
+      country_code: "NO",
+      city: null,
+      geo: null,
+      minimum_fit_score: 70,
+    });
+  });
 });
