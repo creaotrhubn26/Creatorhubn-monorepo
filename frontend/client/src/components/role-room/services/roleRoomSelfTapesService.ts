@@ -12,6 +12,7 @@
  */
 
 import authSessionService from './authSessionService';
+import type { Role } from '../models/casting';
 
 export type SelftapeTakeStatus = 'uploading' | 'processing' | 'ready' | 'failed';
 export type SelftapeProjectStatus = 'active' | 'submitted' | 'archived';
@@ -169,6 +170,19 @@ export interface SelftapeSubmissionEvent {
 }
 
 const BASE = '/api/role-room/talents/selftapes';
+
+/**
+ * Self-tapes er knyttet til kanoniske `casting_roles`-rader. Manus-parseren
+ * kan i tillegg lage lokale rolleforslag uten projectId; de finnes ikke i
+ * databasen og skal derfor ikke sendes til casting-role-endepunktet.
+ */
+export function canQueryCastingRoleSelftapes(
+  role: Pick<Role, 'projectId' | 'project_id'>,
+  projectId: string,
+): boolean {
+  const persistedProjectId = String(role.projectId ?? role.project_id ?? '').trim();
+  return Boolean(projectId) && persistedProjectId === projectId;
+}
 
 function buildUrl(path: string, params?: Record<string, string | undefined>): string {
   let url = `${BASE}${path}`;

@@ -56,6 +56,7 @@ import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 import SelfTapePreviewModal from './selftape/SelfTapePreviewModal';
 import {
   availabilityChipStyle,
+  canQueryCastingRoleSelftapes,
   listCastingRoleSelftapes,
   selftapeAvailability,
   type CastingRoleSelftape,
@@ -590,6 +591,7 @@ function KanbanPanelInner({
         const results = await Promise.all(
           roles.map(async (r) => {
             try {
+              if (!canQueryCastingRoleSelftapes(r, project.id)) return [] as CastingRoleSelftape[];
               const { selftapes } = await listCastingRoleSelftapes(r.id);
               return selftapes;
             } catch {
