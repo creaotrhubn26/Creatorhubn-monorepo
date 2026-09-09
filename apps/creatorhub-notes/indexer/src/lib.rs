@@ -20,4 +20,5 @@ pub mod embed;
 pub mod eval;
 pub mod gitsrc;
 pub mod index;
+pub mod ordbank;
 pub mod search;
