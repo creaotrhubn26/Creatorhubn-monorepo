@@ -36,11 +36,11 @@ pub fn run(conn: &Connection, repo: &Path, embedder: &dyn Embedder) -> Result<In
         None => gitsrc::list_files(repo)?,
     };
 
+    // Phase 1: read + chunk, no writes yet, so a failed embed leaves the db untouched.
     let mut texts: Vec<String> = Vec::new();
     let mut rows: Vec<(String, usize, usize, String)> = Vec::new();
 
     for path in &paths {
-        purge_path(conn, path)?;
         let Some(content) = gitsrc::read_if_indexable(repo, path) else {
             continue; // slettet eller for stor
         };
@@ -50,9 +50,25 @@ pub fn run(conn: &Connection, repo: &Path, embedder: &dyn Embedder) -> Result<In
         }
     }
 
-    if !texts.is_empty() {
-        let vectors = embedder.embed(&texts, InputType::Document)?;
+    if !paths.is_empty() {
+        let vectors = if texts.is_empty() {
+            Vec::new()
+        } else {
+            embedder.embed(&texts, InputType::Document)?
+        };
+        if rows.len() != vectors.len() {
+            anyhow::bail!(
+                "embedder returned {} vectors for {} chunks",
+                vectors.len(),
+                rows.len()
+            );
+        }
+
+        // Phase 2: purge + insert atomically now that the embed call has succeeded.
         let tx = conn.unchecked_transaction()?;
+        for path in &paths {
+            purge_path(&tx, path)?;
+        }
         for (row, vector) in rows.iter().zip(vectors.iter()) {
             tx.execute(
                 "insert into chunks(source, path, start_line, end_line, text) \
