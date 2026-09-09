@@ -18,3 +18,4 @@ pub mod db;
 pub mod embed;
 pub mod gitsrc;
 pub mod index;
+pub mod search;
