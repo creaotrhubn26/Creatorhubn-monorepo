@@ -14,7 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 rusqlite = { version = "0.32", features = ["bundled"] }
-sqlite-vec = "0.1.10-alpha.4"
+sqlite-vec = "0.1.9"
 zerocopy = "0.7"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
@@ -27,13 +27,3 @@ toml = "0.8"
 
 [dev-dependencies]
 tempfile = "3"
-
-# ponytail: crates.io's published sqlite-vec 0.1.10-alpha.4 tarball omits
-# sqlite-vec-diskann.c, which sqlite-vec.c #includes — the crate cannot
-# compile as published (confirmed: same file missing straight from
-# static.crates.io, not a local cache issue). This patches in a local copy
-# of the exact same pinned version with that one file added back from the
-# matching upstream git tag. Drop this patch (and vendor/) once upstream
-# republishes a working 0.1.10-alpha.4 or later.
-[patch.crates-io]
-sqlite-vec = { path = "vendor/sqlite-vec-0.1.10-alpha.4" }
