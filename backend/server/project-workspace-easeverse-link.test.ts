@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { linkEaseVerseTrackToWorkspaceRoom } from "./project-workspace-routes";
 
@@ -11,6 +12,17 @@ const track = {
 };
 
 describe("Workspace EaseVerse room linking", () => {
+  it("keeps the owner link outside the Enterprise gate and gates only roster import", () => {
+    const source = fs.readFileSync(new URL("./project-workspace-routes.ts", import.meta.url), "utf8");
+    const route = source.slice(
+      source.indexOf('app.post("/api/projects/:projectId/audio-room/link-easeverse"'),
+      source.indexOf("// Band-roster for det koblede lydrommet"),
+    );
+    expect(route).not.toContain("requireTeamAccess(pool, uid, res)");
+    expect(route).toContain("const canSyncBandRoster = await hasActiveTeamAccess(pool, uid)");
+    expect(route).toContain("canSyncBandRoster && collabs.length");
+  });
+
   it("adopts the existing unlinked Sound Room and keeps its Companion history", async () => {
     const query = vi.fn(async (sqlValue: unknown) => {
       const sql = String(sqlValue);
