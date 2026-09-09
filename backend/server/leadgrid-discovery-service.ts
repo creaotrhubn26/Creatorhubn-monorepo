@@ -348,6 +348,10 @@ export interface DiscoveryWebsiteQualityDto {
   http_status: number | null;
   redirect_count: number;
   signals: DiscoveryWebsiteQualityAssessment["signals"];
+  qualification: {
+    requested_terms: string[];
+    matched_terms: string[];
+  };
 }
 
 export interface DiscoveryCandidateDto {
@@ -369,6 +373,7 @@ export interface DiscoveryCandidateDto {
   organization_form: string | null;
   organization_form_code: string | null;
   organization_structure: "independent" | "chain" | "unknown";
+  subject_kind: "organization" | "person";
   entity_kind: DiscoveryEntityKind;
   entity_kind_confidence: DiscoveryClassificationConfidence;
   entity_kind_evidence: string[];
@@ -568,13 +573,15 @@ function sourceOffsetCursor(value: unknown, fallback = 0): number {
 export function discoverySourceQueryFingerprint(
   brief: DiscoveryBrief,
   queryText: string,
+  queryMode: DiscoverySearchPlan["queries"][number]["query_mode"] = "industry",
 ): string {
   return discoveryHash({
     version: 1,
     source: "brreg_open_data",
-    query_mode: "industry",
+    query_mode: queryMode,
     query: queryText,
     area: {
+      country_code: brief.country_code ?? null,
       city: brief.city ?? null,
       geo: brief.geo ?? null,
       municipality_numbers: brief.municipality_numbers,
@@ -585,6 +592,8 @@ export function discoverySourceQueryFingerprint(
     organization_structure: brief.organization_structure,
     website_requirement: brief.website_requirement,
     website_quality: brief.website_quality,
+    qualification_terms: brief.qualification_terms,
+    qualification_requirement: brief.qualification_requirement,
     commercial_signals: brief.commercial_signals,
     exclusion_terms: brief.exclusion_terms,
     minimum_fit_score: brief.minimum_fit_score,
@@ -604,6 +613,7 @@ function sourceCursorMapForPlan(
       const fingerprint = discoverySourceQueryFingerprint(
         brief,
         query.text_query,
+        query.query_mode,
       );
       return [fingerprint, sourceOffsetCursor(stored[fingerprint])];
     }),
@@ -1392,6 +1402,7 @@ interface CandidateListRow {
   organization_form: string | null;
   organization_form_code: string | null;
   organization_structure: string | null;
+  subject_kind: string | null;
   entity_kind: string | null;
   entity_kind_confidence: string | null;
   entity_kind_evidence: unknown[] | null;
@@ -1584,6 +1595,7 @@ function toCandidateDto(
     organization_form: row.organization_form,
     organization_form_code: row.organization_form_code,
     organization_structure: organizationStructure,
+    subject_kind: row.subject_kind === "person" ? "person" : "organization",
     entity_kind: candidateEntityKind(row.entity_kind),
     entity_kind_confidence: candidateEntityConfidence(
       row.entity_kind_confidence,
@@ -1742,6 +1754,8 @@ export async function listDiscoveryCandidates(
             observation.raw_data->>'organization_form' AS organization_form,
             observation.raw_data->>'organization_form_code' AS organization_form_code,
             observation.raw_data->>'organization_structure' AS organization_structure,
+            COALESCE(r.brief_snapshot->>'subject_kind', 'organization')
+              AS subject_kind,
             c.entity_kind,
             c.entity_kind_confidence,
             c.entity_kind_evidence,
@@ -2350,6 +2364,66 @@ async function attachClinicPractitioners(
   };
 }
 
+async function attachTalentProspect(
+  client: PoolClient,
+  input: {
+    project: LeadgridAccessibleProject;
+    userId: string;
+    candidateId: string;
+    leadId: string;
+    name: string;
+    organizationNumber: string;
+  },
+): Promise<void> {
+  await client.query(
+    `INSERT INTO leadgrid_customer_contacts (
+       organization_id, project_id, customer_id, name, role,
+       organization_number, source, source_candidate_id,
+       relationship_confidence, relationship_evidence, confirmed_by,
+       subject_kind, privacy_status, consent_status, privacy_review_due_at
+     ) VALUES (
+       $1::uuid, $2, $3::uuid, $4, 'Skuespiller / talent',
+       $5, 'discovery', $6::uuid,
+       'high', '["explicit_person_profile_approval","brreg_public_business_identity"]'::jsonb,
+       $7, 'talent', 'notice_required', 'not_requested',
+       NOW() + INTERVAL '90 days'
+     )
+     ON CONFLICT (
+       organization_id, project_id, customer_id, source_candidate_id
+     ) WHERE source_candidate_id IS NOT NULL
+     DO UPDATE SET
+       name = EXCLUDED.name,
+       role = EXCLUDED.role,
+       organization_number = EXCLUDED.organization_number,
+       subject_kind = 'talent',
+       privacy_status = CASE
+         WHEN leadgrid_customer_contacts.privacy_status IN ('opted_out', 'expired')
+           THEN leadgrid_customer_contacts.privacy_status
+         ELSE 'notice_required'
+       END,
+       consent_status = CASE
+         WHEN leadgrid_customer_contacts.consent_status IN ('received', 'withdrawn')
+           THEN leadgrid_customer_contacts.consent_status
+         ELSE 'not_requested'
+       END,
+       privacy_review_due_at = COALESCE(
+         leadgrid_customer_contacts.privacy_review_due_at,
+         EXCLUDED.privacy_review_due_at
+       ),
+       confirmed_by = EXCLUDED.confirmed_by,
+       updated_at = NOW()`,
+    [
+      input.project.organizationId,
+      input.project.id,
+      input.leadId,
+      input.name,
+      input.organizationNumber,
+      input.candidateId,
+      input.userId,
+    ],
+  );
+}
+
 export async function decideDiscoveryCandidate(
   pool: Pool,
   input: {
@@ -2590,6 +2664,8 @@ export async function decideDiscoveryCandidate(
         ? new Date().toISOString()
         : null;
       const briefSnapshot = objectValue(candidate.brief_snapshot);
+      const subjectKind =
+        briefSnapshot.subject_kind === "person" ? "person" : "organization";
       const territoryCode = nullableText(briefSnapshot.territory_code);
       const municipalityNumbers = Array.isArray(
         briefSnapshot.municipality_numbers,
@@ -2619,6 +2695,18 @@ export async function decideDiscoveryCandidate(
           municipality_numbers: municipalityNumbers,
           municipality_names: municipalityNames,
           source: "brreg_open_data",
+          subject_kind: subjectKind,
+          privacy:
+            subjectKind === "person"
+              ? {
+                  source: "brreg_open_data",
+                  purpose: "b2b_prospecting",
+                  role_room_talent_profile_created: false,
+                  consent_status: "not_requested",
+                  notice_status: "required_before_outreach",
+                  review_after_days: 90,
+                }
+              : null,
           observation,
           source_hits: Array.isArray(candidate.source_hits)
             ? candidate.source_hits
@@ -2831,6 +2919,18 @@ export async function decideDiscoveryCandidate(
             JSON.stringify(promotionMetadata),
           ],
         );
+      }
+
+      if (subjectKind === "person" && leadId) {
+        await attachTalentProspect(client, {
+          project: input.project,
+          userId,
+          candidateId,
+          leadId,
+          name: candidate.name,
+          organizationNumber: promotionEnrichment.organizationNumber,
+        });
+        groupedContactCount = Math.max(groupedContactCount, 1);
       }
 
       if (confirmedGooglePlaceId) {
@@ -3365,6 +3465,7 @@ function executionCheckpoint(
         const fingerprint = discoverySourceQueryFingerprint(
           brief,
           query.text_query,
+          query.query_mode,
         );
         const record = objectValue(value);
         return [
@@ -3536,6 +3637,11 @@ function websiteQualityAssessment(
       : null;
   if (status === "assessed" && score === null) return null;
   const signals = objectValue(assessment.signals);
+  const qualification = objectValue(assessment.qualification);
+  const stringArray = (value: unknown): string[] =>
+    Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string")
+      : [];
   const signal = (key: string): boolean | null =>
     typeof signals[key] === "boolean" ? (signals[key] as boolean) : null;
   return {
@@ -3557,6 +3663,10 @@ function websiteQualityAssessment(
       contact_path: signal("contact_path"),
       call_to_action: signal("call_to_action"),
     },
+    qualification: {
+      requestedTerms: stringArray(qualification.requestedTerms),
+      matchedTerms: stringArray(qualification.matchedTerms),
+    },
   };
 }
 
@@ -3573,6 +3683,10 @@ function websiteQualityDto(value: unknown): DiscoveryWebsiteQualityDto | null {
         http_status: assessment.httpStatus,
         redirect_count: assessment.redirectCount,
         signals: assessment.signals,
+        qualification: {
+          requested_terms: assessment.qualification?.requestedTerms ?? [],
+          matched_terms: assessment.qualification?.matchedTerms ?? [],
+        },
       }
     : null;
 }
@@ -3645,7 +3759,10 @@ function scorePersistedCandidate(
       companyStatus === "bankrupt"
         ? companyStatus
         : null,
-    industryQueries: brief.industry_queries,
+    industryQueries: [
+      ...brief.industry_queries,
+      ...brief.organization_name_queries,
+    ],
     idealCustomer: brief.ideal_customer ?? null,
     exclusionTerms: brief.exclusion_terms,
     minimumFitScore: brief.minimum_fit_score,
@@ -3671,6 +3788,8 @@ function scorePersistedCandidate(
     websiteRequirement: brief.website_requirement,
     minimumWebsiteQualityScore: brief.website_quality.minimum_score,
     websiteQuality: websiteQualityAssessment(raw.website_quality),
+    qualificationTerms: brief.qualification_terms,
+    qualificationRequirement: brief.qualification_requirement,
     registeredInVatRegister:
       typeof raw.registered_in_vat_register === "boolean"
         ? raw.registered_in_vat_register
@@ -4460,6 +4579,7 @@ export async function executeDiscoveryRun(
       const queryFingerprint = discoverySourceQueryFingerprint(
         brief,
         query.text_query,
+        query.query_mode,
       );
       // The immutable run checkpoint owns the start offset. Retries always use
       // this same value until the query is durably marked completed.
@@ -4471,7 +4591,8 @@ export async function executeDiscoveryRun(
         result = await withExecutionSignal(
           searchRegistry({
             query: query.text_query,
-            queryMode: "industry",
+            queryMode: query.query_mode,
+            countryCode: brief.country_code ?? null,
             maxResults: Math.min(queryBudget, 60),
             sourceOffset: queryStartOffset,
             city: brief.city ?? null,
@@ -4492,6 +4613,7 @@ export async function executeDiscoveryRun(
             organizationStructure: brief.organization_structure,
             websiteRequirement: brief.website_requirement,
             minimumWebsiteQualityScore: brief.website_quality.minimum_score,
+            qualificationTerms: brief.qualification_terms,
             websiteAssessmentLimit: Math.max(
               0,
               brief.enrichment_count - websiteAssessmentCandidatesUsed,

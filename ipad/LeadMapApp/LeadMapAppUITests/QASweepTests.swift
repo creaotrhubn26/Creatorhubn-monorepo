@@ -322,6 +322,62 @@ final class QASweepTests: XCTestCase {
         app.terminate()
     }
 
+    func testSuperAdminRoleRoomOnboardingCoversAllCustomerTypes() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["QA_TOUR"] = "domain-onboarding"
+        app.launchEnvironment["QA_TAB"] = "0"
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["Nytt kundeprosjekt"].waitForExistence(timeout: 12))
+        let domain = app.textFields["project-onboarding.domain"]
+        XCTAssertTrue(domain.waitForExistence(timeout: 3))
+        domain.tap()
+        domain.typeText("theroleroom.com")
+        app.buttons["project-onboarding.analyze"].tap()
+
+        let category = app.staticTexts["project-onboarding.category"]
+        XCTAssertTrue(category.waitForExistence(timeout: 5))
+        XCTAssertTrue(category.label.contains("Film, TV, casting og talent"))
+        let projectName = app.staticTexts["project-onboarding.project-name"]
+        XCTAssertTrue(projectName.waitForExistence(timeout: 3))
+        XCTAssertTrue(projectName.label.contains("The Role Room"))
+
+        let expectedProfiles = [
+            "Film- og TV-produksjon – Norge",
+            "Reklame- og innholdsbyråer – Norge",
+            "Casting- og talentmiljøer – Norge",
+            "Film- og medieutdanning – Norge",
+            "Dansestudioer og danseskoler – Norge",
+            "Skuespillere og talenter – Norge",
+        ]
+        for (profileIndex, profileName) in expectedProfiles.enumerated() {
+            let profileTitle = app.staticTexts[
+                "project-onboarding.profile.\(profileIndex).title"
+            ]
+            for _ in 0..<12 where !profileTitle.exists {
+                app.swipeUp()
+            }
+            XCTAssertTrue(profileTitle.exists, "Mangler Discovery-profilen \(profileName)")
+            XCTAssertEqual(profileTitle.label, profileName)
+        }
+
+        let commit = app.buttons["project-onboarding.commit"]
+        for _ in 0..<12 where !commit.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(commit.isHittable)
+        commit.tap()
+
+        XCTAssertTrue(
+            app.staticTexts["project-onboarding.access-ready"].waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(
+            app.buttons["discovery.close"].waitForExistence(timeout: 8),
+            "The Role Room-prosjektet skal åpnes direkte i Discovery"
+        )
+        app.terminate()
+    }
+
     func testLeadgridAgentProposalRequiresConfirmationBeforeExecution() throws {
         #if !targetEnvironment(macCatalyst)
         XCUIDevice.shared.orientation = .landscapeLeft
@@ -428,6 +484,55 @@ final class QASweepTests: XCTestCase {
         let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let leads = payload?["leads"] as? [[String: Any]] ?? []
         XCTAssertEqual(leads.filter { ($0["name"] as? String) == uniqueName }.count, 1)
+        app.terminate()
+    }
+
+    /// Verifiserer den virkelige native kjeden etter at shell-harnessen har
+    /// opprettet/gjenbrukt The Role Room via staging-API og PostgreSQL.
+    func testStagingRoleRoomProjectOpensAllDiscoveryProfiles() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let stagingURL = environment["LEADGRID_STAGING_BASE_URL"],
+              let token = environment["LEADGRID_STAGING_BEARER_TOKEN"],
+              let organizationID = environment["LEADGRID_STAGING_ORG_ID"],
+              let projectID = environment["LEADGRID_STAGING_ROLE_ROOM_PROJECT_ID"],
+              !stagingURL.isEmpty,
+              !token.isEmpty,
+              !organizationID.isEmpty,
+              !projectID.isEmpty
+        else {
+            throw XCTSkip("Krever verifisert The Role Room staging-prosjekt")
+        }
+        guard let baseURL = URL(string: stagingURL),
+              baseURL.scheme == "https",
+              baseURL.host != "creatorhub-backend-rtbl.onrender.com"
+        else {
+            XCTFail("Role Room-E2E nekter ugyldig eller produksjons-URL")
+            return
+        }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["QA_BEARER_TOKEN"] = token
+        app.launchEnvironment["LEADGRID_API_BASE_URL"] = stagingURL
+        app.launchEnvironment["QA_ORGANIZATION_ID"] = organizationID
+        app.launchEnvironment["QA_PROJECT_ID"] = projectID
+        app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "12" : "11"
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["staging-environment-badge"].waitForExistence(timeout: 12))
+        XCTAssertTrue(app.navigationBars["Verktøy"].waitForExistence(timeout: 15))
+        let discovery = app.buttons["Profiler, kandidater og markedsinnsikt"]
+        XCTAssertTrue(discovery.waitForExistence(timeout: 10))
+        discovery.tap()
+
+        XCTAssertTrue(app.buttons["discovery.close"].waitForExistence(timeout: 12))
+        XCTAssertTrue(
+            app.staticTexts["The Role Room"].waitForExistence(timeout: 12),
+            "Det autoritative staging-prosjektet skal være aktivt i Discovery"
+        )
+        let profileCount = app.staticTexts["discovery.profile.count"]
+        XCTAssertTrue(profileCount.waitForExistence(timeout: 12))
+        XCTAssertEqual(profileCount.label, "6 profiler")
+        XCTAssertTrue(app.buttons["discovery.campaign.start"].exists)
         app.terminate()
     }
 

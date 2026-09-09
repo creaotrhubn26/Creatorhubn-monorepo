@@ -1533,6 +1533,23 @@ func configureDiscovery() async {
             self.projectsLoadState = .loaded
             projectsLoaded = true
 
+            #if DEBUG
+            // Ekte staging-UI-tester kan feste appen til prosjektet som nettopp
+            // ble verifisert via API, uten å være avhengig av UserDefaults eller
+            // sorteringsrekkefølgen til andre staging-prosjekter.
+            if let requestedProjectID = ProcessInfo.processInfo.environment["QA_PROJECT_ID"],
+               requestedProjectID != activeProjectId,
+               newProjects.contains(where: { $0.id == requestedProjectID }) {
+                activeProjectId = requestedProjectID
+                _ = try? await leadsTask
+                _ = try? await competitorsTask
+                _ = try? await metricsTask
+                _ = try? await calendarTask
+                _ = try? await remindersTask
+                return
+            }
+            #endif
+
             // FIX 2: Hvis activeProjectId peker på et prosjekt som ikke
             // lenger er i lista (arkivert/slettet/byttet bruker), auto-
             // clear og fallback til første aktive. Dette tilbakestiller

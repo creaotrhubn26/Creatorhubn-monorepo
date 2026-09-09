@@ -10,7 +10,7 @@ import {
 } from "./leadgrid-discovery-contract.js";
 
 describe("Discovery wire contract", () => {
-  it("requires explicit geography and preserves valid zero coordinates", () => {
+  it("requires explicit search scope and preserves valid zero coordinates", () => {
     expect(
       discoveryBriefSchema.safeParse({
         industry_queries: ["regnskapsbyrå"],
@@ -20,6 +20,18 @@ describe("Discovery wire contract", () => {
     expect(
       discoveryBriefSchema.safeParse({
         industry_queries: ["regnskapsbyrå"],
+      }).success,
+    ).toBe(false);
+    expect(
+      discoveryBriefSchema.safeParse({
+        industry_queries: ["59.110"],
+        country_code: "NO",
+      }).success,
+    ).toBe(true);
+    expect(
+      discoveryBriefSchema.safeParse({
+        industry_queries: ["59.110"],
+        country_code: "SE",
       }).success,
     ).toBe(false);
   });
@@ -185,7 +197,43 @@ describe("Discovery wire contract", () => {
       "revisjon",
     ]);
     expect(plan.queries.every((query) => query.hard_geo_filter)).toBe(true);
+    expect(plan.queries.every((query) => query.query_mode === "industry")).toBe(
+      true,
+    );
     expect(plan.estimated_search_pages).toBe(6);
+  });
+
+  it("keeps national organization-name searches separate from NACE searches", () => {
+    const brief = discoveryBriefSchema.parse({
+      industry_queries: ["59.110"],
+      organization_name_queries: ["casting"],
+      country_code: "NO",
+      target_count: 40,
+      enrichment_count: 20,
+    });
+    const plan = buildDiscoverySearchPlan(brief);
+
+    expect(plan.area).toEqual({ country_code: "NO" });
+    expect(plan.queries).toEqual([
+      {
+        text_query: "59.110",
+        query_mode: "industry",
+        hard_geo_filter: false,
+      },
+      {
+        text_query: "casting",
+        query_mode: "organization_name",
+        hard_geo_filter: false,
+      },
+    ]);
+    expect(plan.estimated_search_pages).toBe(6);
+    expect(
+      discoveryBriefSchema.safeParse({
+        industry_queries: [],
+        organization_name_queries: ["casting"],
+        country_code: "NO",
+      }).success,
+    ).toBe(true);
   });
 
   it("hashes equivalent objects identically", () => {

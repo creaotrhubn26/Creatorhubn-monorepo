@@ -51,6 +51,8 @@ export const LEADGRID_ONBOARDING_SKILLS = [
 ] as const;
 
 export interface ProjectOnboardingProfilePlan {
+  template_key?: string;
+  template_version?: number;
   name: string;
   is_default: boolean;
   status: "active";
@@ -74,6 +76,13 @@ export interface ProjectOnboardingPlan {
   brand_profile: BrandProfile;
   recommended_profiles: ProjectOnboardingProfilePlan[];
   skills: typeof LEADGRID_ONBOARDING_SKILLS;
+}
+
+export interface ProjectOnboardingBrandOverrides {
+  project_name?: string;
+  project_description?: string;
+  category?: string;
+  target_audience?: string;
 }
 
 export type ProjectOnboardingProjectRole = "owner" | "member" | "viewer";
@@ -144,6 +153,8 @@ export interface ProjectOnboardingResult {
     brief: DiscoveryBrief;
     places_details_enabled: boolean;
     status: "active" | "paused";
+    template_key?: string | null;
+    template_version?: number | null;
   }>;
   skills: typeof LEADGRID_ONBOARDING_SKILLS;
   reused_project: boolean;
@@ -356,6 +367,302 @@ function fallbackCategory(profile: BrandProfile): CategoryRule {
   };
 }
 
+function roleRoomBrief(input: {
+  industryQueries?: string[];
+  organizationNameQueries?: string[];
+  exclusions: string[];
+  idealCustomer: string;
+  goal: string;
+  targetCount?: number;
+  minimumFitScore?: number;
+  requireBusinessRegistration?: boolean | null;
+  subjectKind?: "organization" | "person";
+  qualificationTerms?: string[];
+  qualificationRequirement?: "preferred" | "required";
+}): DiscoveryBrief {
+  return discoveryBriefSchema.parse({
+    industry_queries: input.industryQueries ?? [],
+    organization_name_queries: input.organizationNameQueries ?? [],
+    exclusion_terms: input.exclusions,
+    country_code: "NO",
+    city: null,
+    geo: null,
+    territory_code: null,
+    municipality_numbers: [],
+    municipality_names: [],
+    target_count: input.targetCount ?? 60,
+    enrichment_count: Math.min(30, input.targetCount ?? 60),
+    minimum_fit_score: input.minimumFitScore ?? 65,
+    ideal_customer: input.idealCustomer,
+    goal: input.goal,
+    organization_forms: [],
+    employee_count: null,
+    organization_structure: "any",
+    website_requirement: "any",
+    website_quality: { minimum_score: null },
+    subject_kind: input.subjectKind ?? "organization",
+    qualification_terms: input.qualificationTerms ?? [],
+    qualification_requirement: input.qualificationRequirement ?? "preferred",
+    commercial_signals: {
+      registered_in_vat_register: null,
+      registered_in_business_register:
+        input.requireBusinessRegistration === undefined
+          ? true
+          : input.requireBusinessRegistration,
+    },
+  });
+}
+
+function roleRoomProfilePlan(
+  templateKey: string,
+  name: string,
+  brief: DiscoveryBrief,
+  isDefault = false,
+): ProjectOnboardingProfilePlan {
+  return {
+    template_key: templateKey,
+    template_version: 1,
+    name,
+    is_default: isDefault,
+    status: "active",
+    brief,
+    approval_mode: "manual",
+    places_details_enabled: false,
+    auto_discover_enabled: false,
+    schedule_cron: "0 6 * * *",
+    schedule_timezone: "Europe/Oslo",
+  };
+}
+
+function buildRoleRoomOnboardingPlan(
+  websiteUrl: string,
+  profile: BrandProfile,
+): ProjectOnboardingPlan {
+  const brandProfile: BrandProfile = {
+    ...profile,
+    url: websiteUrl,
+    businessName: "The Role Room",
+    tagline: "Fra første studentproduksjon til ferdig film.",
+    description:
+      "Produksjonsflate for film, TV og innholdsproduksjon med casting, talentportal, crew og produksjonsplan i ett rom.",
+    toneOfVoice: "professional",
+    usps: [
+      "Casting, crew og produksjonsplan i samme arbeidsflyt",
+      "Fra undervisning og studentproduksjon til profesjonell film",
+      "Strukturert samarbeid mellom produksjon, team og talent",
+    ],
+    primaryCTA: "Utforsk The Role Room",
+    colors: {
+      primary: "#A855F7",
+      secondary: "#C4B5FD",
+      accent: "#C084FC",
+      background: "#0A0118",
+      text: "#F5F3FF",
+    },
+    fonts: { heading: "Roboto", body: "Roboto" },
+    logoUrl: "https://theroleroom.com/TheRoleRoom_App_Logo.png",
+    faviconUrl: "https://theroleroom.com/TheRoleRoom_App_Logo.png",
+    productCategories: [
+      "Produksjonsplanlegging",
+      "Casting og talentportal",
+      "Crew og samarbeid",
+      "Film- og medieutdanning",
+      "Dans og koreografi",
+    ],
+    hasShop: false,
+    industry: "film_tv_and_content_production",
+    targetAudience:
+      "Produksjonsselskaper, castingmiljøer, reklame- og innholdsbyråer, film- og medieutdanning, dansestudioer og skuespillertalenter i Norge.",
+  };
+  return {
+    version: 1,
+    website_url: websiteUrl,
+    website_domain: "theroleroom.com",
+    project_name: "The Role Room",
+    project_description: brandProfile.description,
+    category: "Film, TV, casting og talent",
+    category_confidence: "high",
+    classification_reasons: [
+      "Domenet er verifisert som The Role Room.",
+      "Nettsiden beskriver produksjonsflyt for film, TV, innhold og utdanning.",
+      "Målgruppene er delt i egne profiler for presis og etterprøvbar Discovery.",
+    ],
+    brand_profile: brandProfile,
+    recommended_profiles: [
+      roleRoomProfilePlan(
+        "role_room.production",
+        "Film- og TV-produksjon – Norge",
+        roleRoomBrief({
+          industryQueries: ["59.110", "59.120", "60.200"],
+          exclusions: ["kino", "filmklubb"],
+          idealCustomer:
+            "Norsk film-, TV- eller postproduksjon som koordinerer roller, crew, opptaksdager, dokumentasjon og leveranser.",
+          goal:
+            "Finne produksjonsselskaper som kan samle casting og produksjonsstyring i The Role Room.",
+          qualificationTerms: [
+            "filmproduksjon",
+            "tv-produksjon",
+            "postproduksjon",
+            "produksjonsselskap",
+          ],
+        }),
+        true,
+      ),
+      roleRoomProfilePlan(
+        "role_room.agencies",
+        "Reklame- og innholdsbyråer – Norge",
+        roleRoomBrief({
+          industryQueries: ["73.110", "74.200"],
+          exclusions: ["avis", "trykkeri", "fotobutikk", "hobbyklubb"],
+          idealCustomer:
+            "Norsk reklame-, innholds- eller fotoproduksjonsmiljø som bruker talent og crew i kundeproduksjoner.",
+          goal:
+            "Finne byråer og innholdsprodusenter med gjentakende behov for casting, team og produksjonsplan.",
+          qualificationTerms: ["reklame", "innholdsproduksjon", "film", "casting"],
+          qualificationRequirement: "required",
+        }),
+      ),
+      roleRoomProfilePlan(
+        "role_room.casting",
+        "Casting- og talentmiljøer – Norge",
+        roleRoomBrief({
+          organizationNameQueries: ["casting"],
+          exclusions: [
+            "reboa",
+            "støperi",
+            "støping",
+            "sand casting",
+            "metall",
+            "metallstøping",
+            "industriproduksjon",
+            "designvirksomhet",
+            "arbeidstakerorganisasjon",
+          ],
+          idealCustomer:
+            "Norsk casting-, skuespiller-, modell- eller talentbyrå som administrerer profiler, samtykker, forespørsler og self-tapes.",
+          goal:
+            "Finne spesialiserte casting- og talentmiljøer uten å blande inn generelle bemanningsbyråer.",
+          targetCount: 40,
+          minimumFitScore: 70,
+          qualificationTerms: [
+            "casting",
+            "skuespiller",
+            "talent",
+            "self-tape",
+            "film",
+            "tv",
+          ],
+          qualificationRequirement: "required",
+        }),
+      ),
+      roleRoomProfilePlan(
+        "role_room.education",
+        "Film- og medieutdanning – Norge",
+        roleRoomBrief({
+          organizationNameQueries: [
+            "filmskule",
+            "universitet",
+            "høgskole",
+            "høyskole",
+            "fagskole",
+          ],
+          exclusions: [
+            "grunnskole",
+            "barnehage",
+            "sykehus",
+            "forlag",
+            "eiendom",
+            "holding",
+            "student",
+            "tjenestemann",
+            "borettslag",
+            "bolig",
+            "fond",
+            "linjeforening",
+            "seniorgruppe",
+            "econa",
+            "ntl",
+          ],
+          idealCustomer:
+            "Norsk universitet, høyskole, fagskole eller filmskole med praktiske film-, TV- eller medieproduksjoner for studenter.",
+          goal:
+            "Finne utdanningsmiljøer som trenger en sammenhengende produksjonsflate fra klasserom til ferdig film.",
+          targetCount: 50,
+          minimumFitScore: 70,
+          requireBusinessRegistration: null,
+          qualificationTerms: [
+            "film",
+            "medieproduksjon",
+            "scenekunst",
+            "skuespill",
+            "tv-produksjon",
+            "audiovisuell",
+          ],
+          qualificationRequirement: "required",
+        }),
+      ),
+      roleRoomProfilePlan(
+        "role_room.dance",
+        "Dansestudioer og danseskoler – Norge",
+        roleRoomBrief({
+          organizationNameQueries: [
+            "dansestudio",
+            "danseskole",
+            "ballettskole",
+            "dance studio",
+          ],
+          exclusions: [
+            "dancewear",
+            "dansetøy",
+            "butikk",
+            "eiendom",
+            "holding",
+            "transport",
+            "import",
+          ],
+          idealCustomer:
+            "Norsk dansestudio, danseskole eller ballettskole som organiserer elever, ensembler, prøver, opptak og forestillinger.",
+          goal:
+            "Finne dansestudioer som kan samle talentprofiler, prøver, koreografi og produksjonsplan i The Role Room.",
+          targetCount: 50,
+          minimumFitScore: 70,
+          requireBusinessRegistration: null,
+          qualificationTerms: ["dans", "dance", "ballett", "koreografi"],
+          qualificationRequirement: "required",
+        }),
+      ),
+      roleRoomProfilePlan(
+        "role_room.talents",
+        "Skuespillere og talenter – Norge",
+        roleRoomBrief({
+          organizationNameQueries: ["skuespiller", "actor"],
+          exclusions: [
+            "forbund",
+            "forening",
+            "undervisning",
+            "kurs",
+            "eiendom",
+            "holding",
+            "rekruttering",
+            "renhold",
+          ],
+          idealCustomer:
+            "Norsk skuespiller, statist eller audiovisuelt talent med registrert virksomhet og behov for profil, self-tapes, samtykker og castingforespørsler.",
+          goal:
+            "Finne skuespillere og talenter som kan onboardes til The Role Room Talents.",
+          targetCount: 60,
+          minimumFitScore: 70,
+          requireBusinessRegistration: null,
+          subjectKind: "person",
+          qualificationTerms: ["skuespiller", "actor", "talent", "film", "scene"],
+          qualificationRequirement: "required",
+        }),
+      ),
+    ],
+    skills: LEADGRID_ONBOARDING_SKILLS,
+  };
+}
+
 export function normalizeProjectOnboardingWebsite(rawValue: string): {
   websiteUrl: string;
   websiteDomain: string;
@@ -385,6 +692,9 @@ export function buildProjectOnboardingPlan(
   websiteDomain: string,
   profile: BrandProfile,
 ): ProjectOnboardingPlan {
+  if (websiteDomain === "theroleroom.com") {
+    return buildRoleRoomOnboardingPlan(websiteUrl, profile);
+  }
   const corpus = normalizedSearchText(
     [
       websiteDomain,
@@ -408,7 +718,9 @@ export function buildProjectOnboardingPlan(
   const name = projectName(profile, websiteDomain);
   const brief = discoveryBriefSchema.parse({
     industry_queries: rule.customerTypes,
+    organization_name_queries: [],
     exclusion_terms: rule.exclusions,
+    country_code: null,
     city,
     geo: null,
     territory_code: null,
@@ -523,6 +835,11 @@ function profilePersistenceValues(brief: DiscoveryBrief) {
   }
   return {
     targetCustomerTypes: brief.industry_queries,
+    organizationNameQueries: brief.organization_name_queries,
+    countryCode: brief.country_code ?? null,
+    subjectKind: brief.subject_kind,
+    qualificationTerms: brief.qualification_terms,
+    qualificationRequirement: brief.qualification_requirement,
     cityFilters: brief.city ? [brief.city] : brief.municipality_names,
     latitude: brief.geo?.latitude ?? null,
     longitude: brief.geo?.longitude ?? null,
@@ -559,19 +876,62 @@ function brandFieldConfidence(profile: BrandProfile, overrides: Record<string, u
   );
 }
 
+function planWithBrandOverrides(
+  plan: ProjectOnboardingPlan,
+  overrides: ProjectOnboardingBrandOverrides | undefined,
+): ProjectOnboardingPlan {
+  if (!overrides) return plan;
+  const projectName = overrides.project_name ?? plan.project_name;
+  const projectDescription =
+    overrides.project_description ?? plan.project_description;
+  const category = overrides.category ?? plan.category;
+  const targetAudience =
+    overrides.target_audience ?? plan.brand_profile.targetAudience;
+  return {
+    ...plan,
+    project_name: projectName,
+    project_description: projectDescription,
+    category,
+    brand_profile: {
+      ...plan.brand_profile,
+      businessName: projectName,
+      description: projectDescription,
+      targetAudience,
+    },
+  };
+}
+
 async function persistBrandProfile(
   client: Queryable,
   args: {
     projectId: string;
     userId: string;
     plan: ProjectOnboardingPlan;
+    brandOverrides?: ProjectOnboardingBrandOverrides;
   },
 ): Promise<void> {
   const existing = await client.query<{ overrides: Record<string, unknown> }>(
     `SELECT overrides FROM brand_kits WHERE project_id = $1 LIMIT 1`,
     [args.projectId],
   );
-  const overrides = existing.rows[0]?.overrides ?? {};
+  const userOverrides: Record<string, unknown> = {
+    ...(args.brandOverrides?.project_name
+      ? { businessName: args.brandOverrides.project_name }
+      : {}),
+    ...(args.brandOverrides?.project_description !== undefined
+      ? { description: args.brandOverrides.project_description }
+      : {}),
+    ...(args.brandOverrides?.category
+      ? { industry: args.brandOverrides.category }
+      : {}),
+    ...(args.brandOverrides?.target_audience !== undefined
+      ? { targetAudience: args.brandOverrides.target_audience }
+      : {}),
+  };
+  const overrides = {
+    ...(existing.rows[0]?.overrides ?? {}),
+    ...userOverrides,
+  };
   await client.query(
     `INSERT INTO brand_kits (
        project_id, workspace_owner_user_id, source_url, brand_profile,
@@ -580,6 +940,7 @@ async function persistBrandProfile(
      ON CONFLICT (project_id) DO UPDATE SET
        source_url = EXCLUDED.source_url,
        brand_profile = EXCLUDED.brand_profile,
+       overrides = EXCLUDED.overrides,
        field_confidence = EXCLUDED.field_confidence,
        last_scanned_at = NOW(),
        updated_at = NOW()`,
@@ -653,8 +1014,11 @@ async function loadActiveProfiles(
     brief: DiscoveryBrief;
     status: "active" | "paused";
     source_config: Record<string, unknown>;
+    template_key: string | null;
+    template_version: number | null;
   }>(
-    `SELECT id::text, name, is_default, version, brief, status, source_config
+    `SELECT id::text, name, is_default, version, brief, status, source_config,
+            template_key, template_version
        FROM leadgrid_discovery_profiles
       WHERE organization_id = $1::uuid
         AND project_id = $2
@@ -677,6 +1041,8 @@ async function loadActiveProfiles(
       places_details_enabled:
         googlePlaces.enabled === true && googlePlaces.mode === "transient_details_only",
       status: row.status,
+      template_key: row.template_key,
+      template_version: row.template_version,
     };
   });
 }
@@ -691,30 +1057,84 @@ async function ensureRecommendedProfiles(
   },
 ): Promise<void> {
   const current = await loadActiveProfiles(client, args.organizationId, args.projectId);
-  if (current.length > 0) return;
+  if (current.length > 0 && args.plans.every((plan) => !plan.template_key)) return;
+  const hasDefault = current.some((profile) => profile.is_default);
   for (const [index, plan] of args.plans.entries()) {
     const brief = discoveryBriefSchema.parse(plan.brief);
     const values = profilePersistenceValues(brief);
+    const normalizedName = plan.name.trim().toLocaleLowerCase("nb-NO");
+    const existing = current.find(
+      (profile) =>
+        (plan.template_key && profile.template_key === plan.template_key) ||
+        profile.name.trim().toLocaleLowerCase("nb-NO") === normalizedName,
+    );
+    if (existing) {
+      // Adopt a legacy name match into the stable template set and refresh only
+      // queryable mirrors from its own brief. User-edited targeting remains the
+      // authority and is never replaced by a newer product recommendation.
+      await client.query(
+        `UPDATE leadgrid_discovery_profiles
+            SET template_key = COALESCE(template_key, $4),
+                template_version = CASE
+                  WHEN $4::text IS NULL THEN template_version
+                  ELSE COALESCE(template_version, $5)
+                END,
+                organization_name_queries = ARRAY(
+                  SELECT jsonb_array_elements_text(
+                    COALESCE(brief->'organization_name_queries', '[]'::jsonb)
+                  )
+                ),
+                country_code = CASE WHEN brief->>'country_code' = 'NO' THEN 'NO' END,
+                subject_kind = CASE WHEN brief->>'subject_kind' = 'person'
+                  THEN 'person' ELSE 'organization' END,
+                qualification_terms = ARRAY(
+                  SELECT jsonb_array_elements_text(
+                    COALESCE(brief->'qualification_terms', '[]'::jsonb)
+                  )
+                ),
+                qualification_requirement = CASE
+                  WHEN brief->>'qualification_requirement' = 'required'
+                    THEN 'required' ELSE 'preferred' END,
+                updated_at = NOW()
+          WHERE organization_id = $1::uuid
+            AND project_id = $2
+            AND id = $3::uuid`,
+        [
+          args.organizationId,
+          args.projectId,
+          existing.id,
+          plan.template_key ?? null,
+          plan.template_version ?? 1,
+        ],
+      );
+      continue;
+    }
     await client.query(
       `INSERT INTO leadgrid_discovery_profiles (
-         organization_id, project_id, name, is_default, status,
+         organization_id, project_id, template_key, template_version,
+         name, is_default, status,
          target_customer_types, city_filters, geography_lat,
          geography_lng, geography_radius_km, company_size_min,
          company_size_max, brief, desired_signals, exclusion_rules,
          source_config, approval_mode, approval_rules,
          max_candidates_per_run, enrichment_count, auto_discover_enabled,
-         schedule_cron, schedule_timezone, created_by, updated_by
+         schedule_cron, schedule_timezone, created_by, updated_by,
+         organization_name_queries, country_code, subject_kind,
+         qualification_terms, qualification_requirement
        ) VALUES (
-         $1::uuid, $2, $3, $4, 'active', $5::text[], $6::text[],
-         $7::numeric, $8::numeric, $9, $10, $11, $12::jsonb,
-         $13::jsonb, $14::jsonb, $15::jsonb, 'manual', '{}'::jsonb,
-         $16, $17, FALSE, $18, $19, $20, $20
+         $1::uuid, $2, $3, $4, $5, $6, 'active', $7::text[], $8::text[],
+         $9::numeric, $10::numeric, $11, $12, $13, $14::jsonb,
+         $15::jsonb, $16::jsonb, $17::jsonb, 'manual', '{}'::jsonb,
+         $18, $19, FALSE, $20, $21, $22, $22,
+         $23::text[], $24, $25, $26::text[], $27
        )`,
       [
         args.organizationId,
         args.projectId,
+        plan.template_key ?? null,
+        plan.template_key ? (plan.template_version ?? 1) : null,
         plan.name,
-        index === 0,
+        !hasDefault && (plan.is_default || index === 0),
         values.targetCustomerTypes,
         values.cityFilters,
         values.latitude,
@@ -731,6 +1151,11 @@ async function ensureRecommendedProfiles(
         plan.schedule_cron,
         plan.schedule_timezone,
         args.userId,
+        values.organizationNameQueries,
+        values.countryCode,
+        values.subjectKind,
+        values.qualificationTerms,
+        values.qualificationRequirement,
       ],
     );
   }
@@ -1264,6 +1689,7 @@ export async function commitProjectOnboarding(
     organizationId: string;
     userId: string;
     editedProfiles?: ProjectOnboardingProfilePlan[];
+    brandOverrides?: ProjectOnboardingBrandOverrides;
     accessSetup?: ProjectOnboardingAccessSetup;
   },
 ): Promise<ProjectOnboardingServiceResult> {
@@ -1321,7 +1747,10 @@ export async function commitProjectOnboarding(
         invitation_dispatches: [],
       };
     }
-    const storedPlan = preview.plan;
+    const storedPlan = planWithBrandOverrides(
+      preview.plan,
+      args.brandOverrides,
+    );
     const plans = (args.editedProfiles ?? storedPlan.recommended_profiles).map((item) => ({
       ...item,
       status: "active" as const,
@@ -1338,9 +1767,13 @@ export async function commitProjectOnboarding(
     if (plans.filter((item) => item.is_default).length > 1) {
       throw new Error("project_onboarding_profiles_invalid");
     }
+    const requestedDefaultIndex = plans.findIndex((item) => item.is_default);
+    const effectiveDefaultIndex = requestedDefaultIndex >= 0
+      ? requestedDefaultIndex
+      : 0;
     plans.forEach((item, index) => {
       item.name = safeText(item.name, 120);
-      item.is_default = index === 0;
+      item.is_default = index === effectiveDefaultIndex;
     });
 
     await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
@@ -1430,7 +1863,10 @@ export async function commitProjectOnboarding(
     } else {
       await client.query(
         `UPDATE leadgrid_projects
-            SET industry = COALESCE(NULLIF(industry, ''), $3),
+            SET name = CASE WHEN $5::boolean THEN $6 ELSE name END,
+                description = CASE WHEN $7::boolean THEN NULLIF($8, '') ELSE description END,
+                industry = CASE WHEN $9::boolean
+                  THEN $3 ELSE COALESCE(NULLIF(industry, ''), $3) END,
                 metadata = COALESCE(metadata, '{}'::jsonb) || $4::jsonb,
                 updated_at = NOW()
           WHERE organization_id = $1::uuid AND id = $2`,
@@ -1444,6 +1880,11 @@ export async function commitProjectOnboarding(
             website_url: storedPlan.website_url,
             category: storedPlan.category,
           }),
+          args.brandOverrides?.project_name !== undefined,
+          storedPlan.project_name,
+          args.brandOverrides?.project_description !== undefined,
+          storedPlan.project_description,
+          args.brandOverrides?.category !== undefined,
         ],
       );
     }
@@ -1460,6 +1901,7 @@ export async function commitProjectOnboarding(
       projectId,
       userId: args.userId,
       plan: storedPlan,
+      brandOverrides: args.brandOverrides,
     });
     await ensureRecommendedProfiles(client, {
       organizationId: targetOrganizationId,

@@ -2,6 +2,7 @@ Leadgrid 2.1 gjør veien fra domene til kvalifiserte leads enklere:
 
 • Opprett eller gjenbruk et kundeprosjekt ved å skrive inn domenet.
 • Discovery foreslår bransje, kundetyper, geografi og eksklusjoner, med profiler som Super Admin kan finjustere.
+• The Role Room får egne nasjonale profiler for produksjon, byråer, casting, utdanning, dans og skuespillere/talenter.
 • Tannklinikker behandles som salgskontoer, mens trygt identifiserte tannlegeforetak på samme adresse legges til som kontakter.
 • Kandidater må fortsatt godkjennes før de blir leads, og alle funn holdes adskilt per organisasjon og prosjekt.
 • Lead-detaljen viser Discovery-kontakter, og duplikat- og BRREG-flyten fortsetter sømløst etter godkjenning.

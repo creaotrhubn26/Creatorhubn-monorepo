@@ -20,6 +20,13 @@ struct LeadgridProjectOnboardingSkill: Codable, Hashable, Sendable, Identifiable
 }
 
 struct LeadgridProjectOnboardingPreview: Codable, Hashable, Sendable {
+    struct BrandProfile: Codable, Hashable, Sendable {
+        var targetAudience: String
+
+        enum CodingKeys: String, CodingKey {
+            case targetAudience = "targetAudience"
+        }
+    }
     var id: String
     var websiteURL: String
     var websiteDomain: String
@@ -32,6 +39,7 @@ struct LeadgridProjectOnboardingPreview: Codable, Hashable, Sendable {
     var skills: [LeadgridProjectOnboardingSkill]
     var expiresAt: String
     var canManageMultipleProfiles: Bool
+    var brandProfile: BrandProfile? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, category, skills
@@ -44,6 +52,7 @@ struct LeadgridProjectOnboardingPreview: Codable, Hashable, Sendable {
         case recommendedProfiles = "recommended_profiles"
         case expiresAt = "expires_at"
         case canManageMultipleProfiles = "can_manage_multiple_profiles"
+        case brandProfile = "brand_profile"
     }
 }
 
@@ -130,6 +139,20 @@ struct LeadgridProjectOnboardingAccessSetup: Codable, Hashable, Sendable {
     enum CodingKeys: String, CodingKey {
         case organization, team, invitations
         case administratorEmail = "administrator_email"
+    }
+}
+
+struct LeadgridProjectOnboardingBrandOverrides: Codable, Hashable, Sendable {
+    var projectName: String
+    var projectDescription: String
+    var category: String
+    var targetAudience: String
+
+    enum CodingKeys: String, CodingKey {
+        case projectName = "project_name"
+        case projectDescription = "project_description"
+        case category
+        case targetAudience = "target_audience"
     }
 }
 
@@ -288,6 +311,142 @@ private var domainOnboardingQAPreview: LeadgridProjectOnboardingPreview {
     )
 }
 
+private func roleRoomOnboardingQABrief(
+    industryQueries: [String] = [],
+    organizationNameQueries: [String] = [],
+    exclusions: [String] = [],
+    targetCount: Int = 60,
+    minimumFitScore: Int = 65,
+    requireBusinessRegistration: Bool? = true
+) -> DiscoveryV2Brief {
+    DiscoveryV2Brief(
+        industryQueries: industryQueries,
+        organizationNameQueries: organizationNameQueries,
+        exclusionTerms: exclusions,
+        countryCode: "NO",
+        city: nil,
+        geo: nil,
+        targetCount: targetCount,
+        enrichmentCount: min(30, targetCount),
+        minimumFitScore: minimumFitScore,
+        idealCustomer: "Norsk virksomhet med praktisk behov for casting og produksjonsflyt.",
+        goal: "Finne presise kandidater for The Role Room.",
+        commercialSignals: .init(
+            registeredInVatRegister: nil,
+            registeredInBusinessRegister: requireBusinessRegistration
+        )
+    )
+}
+
+private var roleRoomOnboardingQAWriteProfiles: [DiscoveryV2ProfileWrite] {
+    [
+        .init(
+            name: "Film- og TV-produksjon – Norge",
+            isDefault: true,
+            expectedVersion: nil,
+            brief: roleRoomOnboardingQABrief(
+                industryQueries: ["59.110", "59.120", "60.200"],
+                exclusions: ["kino", "filmklubb"]
+            ),
+            placesDetailsEnabled: false,
+            status: .active
+        ),
+        .init(
+            name: "Reklame- og innholdsbyråer – Norge",
+            isDefault: false,
+            expectedVersion: nil,
+            brief: roleRoomOnboardingQABrief(
+                industryQueries: ["73.110", "74.200"],
+                exclusions: ["avis", "trykkeri", "fotobutikk", "hobbyklubb"]
+            ),
+            placesDetailsEnabled: false,
+            status: .active
+        ),
+        .init(
+            name: "Casting- og talentmiljøer – Norge",
+            isDefault: false,
+            expectedVersion: nil,
+            brief: roleRoomOnboardingQABrief(
+                organizationNameQueries: ["casting"],
+                exclusions: ["støping", "designvirksomhet"],
+                targetCount: 40,
+                minimumFitScore: 70
+            ),
+            placesDetailsEnabled: false,
+            status: .active
+        ),
+        .init(
+            name: "Film- og medieutdanning – Norge",
+            isDefault: false,
+            expectedVersion: nil,
+            brief: roleRoomOnboardingQABrief(
+                organizationNameQueries: [
+                    "filmskule", "universitet", "høgskole", "høyskole", "fagskole",
+                ],
+                exclusions: [
+                    "grunnskole", "barnehage", "sykehus", "forlag", "eiendom", "holding",
+                ],
+                targetCount: 50,
+                minimumFitScore: 70,
+                requireBusinessRegistration: nil
+            ),
+            placesDetailsEnabled: false,
+            status: .active
+        ),
+        .init(
+            name: "Dansestudioer og danseskoler – Norge",
+            isDefault: false,
+            expectedVersion: nil,
+            brief: roleRoomOnboardingQABrief(
+                organizationNameQueries: [
+                    "dansestudio", "danseskole", "ballettskole", "dance studio",
+                ],
+                exclusions: [
+                    "dancewear", "dansetøy", "butikk", "eiendom", "holding", "transport", "import",
+                ],
+                targetCount: 50,
+                minimumFitScore: 70,
+                requireBusinessRegistration: nil
+            ),
+            placesDetailsEnabled: false,
+            status: .active
+        ),
+        .init(
+            name: "Skuespillere og talenter – Norge",
+            isDefault: false,
+            expectedVersion: nil,
+            brief: roleRoomOnboardingQABrief(
+                organizationNameQueries: ["skuespiller", "actor"],
+                exclusions: [
+                    "forbund", "forening", "undervisning", "kurs", "eiendom", "holding", "rekruttering", "renhold",
+                ],
+                targetCount: 60,
+                minimumFitScore: 70,
+                requireBusinessRegistration: nil
+            ),
+            placesDetailsEnabled: false,
+            status: .active
+        ),
+    ]
+}
+
+private var roleRoomOnboardingQAPreview: LeadgridProjectOnboardingPreview {
+    LeadgridProjectOnboardingPreview(
+        id: "33333333-3333-4333-8333-333333333333",
+        websiteURL: "https://theroleroom.com",
+        websiteDomain: "theroleroom.com",
+        projectName: "The Role Room",
+        projectDescription: "Produksjonsflate for film, TV og innholdsproduksjon.",
+        category: "Film, TV, casting og talent",
+        categoryConfidence: "high",
+        classificationReasons: ["Domenet er verifisert som The Role Room."],
+        recommendedProfiles: roleRoomOnboardingQAWriteProfiles,
+        skills: domainOnboardingQASkills,
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        canManageMultipleProfiles: true
+    )
+}
+
 private func domainOnboardingQAResult(
     profiles: [DiscoveryV2ProfileWrite]?
 ) -> LeadgridProjectOnboardingResult {
@@ -324,6 +483,54 @@ private func domainOnboardingQAResult(
                 reused: false
             ),
             team: .init(id: "dentum-salg", name: "Dentum salg", reused: false),
+            administrator: .init(
+                email: "superadmin@leadgrid.no",
+                status: "active",
+                organizationRole: "admin",
+                projectRole: "owner",
+                emailStatus: "not_required"
+            ),
+            invitations: [],
+            discoveryAccessVerified: true
+        )
+    )
+}
+
+private func roleRoomOnboardingQAResult(
+    profiles: [DiscoveryV2ProfileWrite]
+) -> LeadgridProjectOnboardingResult {
+    LeadgridProjectOnboardingResult(
+        project: ProjectListItem(
+            id: "qa-role-room-project",
+            organizationId: "44444444-4444-4444-8444-444444444444",
+            name: "The Role Room",
+            description: "Produksjonsflate for film, TV og innholdsproduksjon.",
+            status: "active",
+            hasBrandKit: true,
+            leadCount: 0,
+            competitorCount: 0
+        ),
+        profiles: profiles.enumerated().map { index, write in
+            DiscoveryV2Profile(
+                id: "qa-role-room-profile-\(index + 1)",
+                name: write.name,
+                isDefault: index == 0,
+                version: 1,
+                brief: write.brief,
+                placesDetailsEnabled: write.placesDetailsEnabled,
+                status: .active
+            )
+        },
+        skills: domainOnboardingQASkills,
+        reusedProject: false,
+        replayed: false,
+        access: LeadgridProjectOnboardingAccessResult(
+            organization: .init(
+                id: "44444444-4444-4444-8444-444444444444",
+                name: "The Role Room",
+                reused: false
+            ),
+            team: .init(id: "role-room-salg", name: "The Role Room salg", reused: false),
             administrator: .init(
                 email: "superadmin@leadgrid.no",
                 status: "active",
@@ -430,7 +637,11 @@ extension APIClient {
         organizationId: String
     ) async throws -> LeadgridProjectOnboardingPreview {
         #if DEBUG
-        if usesDomainOnboardingQAFixture { return domainOnboardingQAPreview }
+        if usesDomainOnboardingQAFixture {
+            return websiteURL.lowercased().contains("theroleroom.com")
+                ? roleRoomOnboardingQAPreview
+                : domainOnboardingQAPreview
+        }
         #endif
         struct Body: Encodable {
             var organizationId: String
@@ -460,10 +671,22 @@ extension APIClient {
         previewId: String,
         organizationId: String,
         profiles: [DiscoveryV2ProfileWrite]? = nil,
-        accessSetup: LeadgridProjectOnboardingAccessSetup? = nil
+        accessSetup: LeadgridProjectOnboardingAccessSetup? = nil,
+        brandOverrides: LeadgridProjectOnboardingBrandOverrides? = nil
     ) async throws -> LeadgridProjectOnboardingResult {
         #if DEBUG
         if usesDomainOnboardingQAFixture {
+            if previewId == roleRoomOnboardingQAPreview.id {
+                guard let profiles,
+                      profiles.map(\.name) == roleRoomOnboardingQAWriteProfiles.map(\.name),
+                      accessSetup?.organization.mode == "create",
+                      accessSetup?.administratorEmail == "superadmin@leadgrid.no",
+                      accessSetup?.team.mode == "create"
+                else {
+                    throw URLError(.badServerResponse)
+                }
+                return roleRoomOnboardingQAResult(profiles: profiles)
+            }
             guard let profiles,
                   profiles.count == 2,
                   profiles[0].name == "Tannhelse – Oslo",
@@ -482,12 +705,14 @@ extension APIClient {
             var previewId: String
             var profiles: [DiscoveryV2ProfileWrite]?
             var accessSetup: LeadgridProjectOnboardingAccessSetup?
+            var brandOverrides: LeadgridProjectOnboardingBrandOverrides?
 
             enum CodingKeys: String, CodingKey {
                 case profiles
                 case organizationId = "organization_id"
                 case previewId = "preview_id"
                 case accessSetup = "access_setup"
+                case brandOverrides = "brand_overrides"
             }
         }
         let data = try await executeRaw(
@@ -497,7 +722,8 @@ extension APIClient {
                 organizationId: organizationId,
                 previewId: previewId,
                 profiles: profiles,
-                accessSetup: accessSetup
+                accessSetup: accessSetup,
+                brandOverrides: brandOverrides
             )),
             organizationId: organizationId
         )

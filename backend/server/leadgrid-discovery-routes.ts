@@ -236,7 +236,14 @@ interface ProfileRow {
   name: string;
   is_default: boolean;
   status: "active" | "paused" | "archived";
+  template_key: string | null;
+  template_version: number | null;
   target_customer_types: string[];
+  organization_name_queries: string[];
+  country_code: string | null;
+  subject_kind: string;
+  qualification_terms: string[];
+  qualification_requirement: string;
   city_filters: string[];
   geography_lat: string | number | null;
   geography_lng: string | number | null;
@@ -270,7 +277,9 @@ interface ProfileScheduleRow {
 
 const PROFILE_COLUMNS = `
   id::text, organization_id::text, project_id, name, is_default, status,
-  target_customer_types, city_filters, geography_lat::text,
+  template_key, template_version,
+  target_customer_types, organization_name_queries, country_code, subject_kind,
+  qualification_terms, qualification_requirement, city_filters, geography_lat::text,
   geography_lng::text, geography_radius_km, company_size_min, company_size_max,
   brief, desired_signals, source_config, approval_mode, max_candidates_per_run,
   enrichment_count,
@@ -303,6 +312,8 @@ function profileDto(row: ProfileRow) {
     name: row.name,
     is_default: row.is_default,
     status: row.status,
+    template_key: row.template_key,
+    template_version: row.template_version,
     brief: canonicalBrief,
     // Rules-based approval is deliberately not part of the public contract.
     // Existing rows are rendered fail-closed until a real rules engine ships.
@@ -602,6 +613,11 @@ function profileValues(brief: z.infer<typeof discoveryBriefSchema>) {
   }
   return {
     targetCustomerTypes: brief.industry_queries,
+    organizationNameQueries: brief.organization_name_queries,
+    countryCode: brief.country_code ?? null,
+    subjectKind: brief.subject_kind,
+    qualificationTerms: brief.qualification_terms,
+    qualificationRequirement: brief.qualification_requirement,
     cityFilters: brief.city ? [brief.city] : brief.municipality_names,
     latitude: brief.geo?.latitude ?? null,
     longitude: brief.geo?.longitude ?? null,
@@ -1201,11 +1217,14 @@ export function registerLeadgridDiscoveryRoutes({
                source_config, approval_mode, approval_rules,
                max_candidates_per_run, enrichment_count, auto_discover_enabled,
                schedule_cron, schedule_timezone, next_run_at, created_by, updated_by
+               , organization_name_queries, country_code, subject_kind,
+               qualification_terms, qualification_requirement
              ) VALUES (
                $1::uuid, $2, $3, $4, $5, $6::text[], $7::text[],
                $8::numeric, $9::numeric, $10, $11, $12, $13::jsonb,
                $14::jsonb, $15::jsonb, $16::jsonb, $17, $18::jsonb,
-               $19, $20, $21, $22, $23, $24::timestamptz, $25, $25
+               $19, $20, $21, $22, $23, $24::timestamptz, $25, $25,
+               $26::text[], $27, $28, $29::text[], $30
              ) RETURNING ${PROFILE_COLUMNS}`,
             [
               context.project.organizationId,
@@ -1239,6 +1258,11 @@ export function registerLeadgridDiscoveryRoutes({
               profile.schedule_timezone,
               nextRunAt,
               context.userId,
+              values.organizationNameQueries,
+              values.countryCode,
+              values.subjectKind,
+              values.qualificationTerms,
+              values.qualificationRequirement,
             ],
           );
           if (!inserted.rows[0]) {
@@ -1321,11 +1345,14 @@ export function registerLeadgridDiscoveryRoutes({
              source_config, approval_mode, approval_rules,
              max_candidates_per_run, enrichment_count, auto_discover_enabled,
              schedule_cron, schedule_timezone, next_run_at, created_by, updated_by
+             , organization_name_queries, country_code, subject_kind,
+             qualification_terms, qualification_requirement
            ) VALUES (
              $1::uuid, $2, $3, $4, $5, $6::text[], $7::text[],
              $8::numeric, $9::numeric, $10, $11, $12, $13::jsonb,
              $14::jsonb, $15::jsonb, $16::jsonb, $17, $18::jsonb,
-             $19, $20, $21, $22, $23, $24::timestamptz, $25, $25
+             $19, $20, $21, $22, $23, $24::timestamptz, $25, $25,
+             $26::text[], $27, $28, $29::text[], $30
            ) RETURNING ${PROFILE_COLUMNS}`,
           [
             context.project.organizationId,
@@ -1359,6 +1386,11 @@ export function registerLeadgridDiscoveryRoutes({
             body.schedule_timezone,
             nextRunAt?.toISOString() ?? null,
             context.userId,
+            values.organizationNameQueries,
+            values.countryCode,
+            values.subjectKind,
+            values.qualificationTerms,
+            values.qualificationRequirement,
           ],
         );
         return result.rows[0];
@@ -1513,6 +1545,18 @@ export function registerLeadgridDiscoveryRoutes({
           set("company_size_min", values.companySizeMin);
           set("company_size_max", values.companySizeMax);
           set("brief", JSON.stringify(body.brief), "::jsonb");
+          set(
+            "organization_name_queries",
+            values.organizationNameQueries,
+            "::text[]",
+          );
+          set("country_code", values.countryCode);
+          set("subject_kind", values.subjectKind);
+          set("qualification_terms", values.qualificationTerms, "::text[]");
+          set(
+            "qualification_requirement",
+            values.qualificationRequirement,
+          );
           set(
             "desired_signals",
             JSON.stringify(values.desiredSignals),

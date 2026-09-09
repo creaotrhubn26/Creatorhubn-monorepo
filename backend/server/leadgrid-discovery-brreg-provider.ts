@@ -93,6 +93,7 @@ export interface DiscoveryRegistryGeoArea {
 export interface DiscoveryRegistrySearchInput {
   query: string;
   queryMode?: "industry" | "organization_name";
+  countryCode?: "NO" | null;
   maxResults?: number;
   /**
    * Compatibility input for callers that still address a whole BRREG page.
@@ -112,6 +113,7 @@ export interface DiscoveryRegistrySearchInput {
   websiteRequirement?: "any" | "present" | "missing";
   minimumWebsiteQualityScore?: number | null;
   websiteAssessmentLimit?: number;
+  qualificationTerms?: string[];
   registeredInVatRegister?: boolean | null;
   registeredInBusinessRegister?: boolean | null;
   signal?: AbortSignal;
@@ -159,6 +161,10 @@ export interface DiscoveryWebsiteQualityAssessment {
     viewport: boolean | null;
     contact_path: boolean | null;
     call_to_action: boolean | null;
+  };
+  qualification?: {
+    requestedTerms: string[];
+    matchedTerms: string[];
   };
 }
 
@@ -303,6 +309,7 @@ type JsonRecord = Record<string, unknown>;
 interface NormalizedInput {
   query: string;
   queryMode: "industry" | "organization_name";
+  countryCode: "NO" | null;
   maxResults: number;
   sourceOffset: number;
   city: string | null;
@@ -316,6 +323,7 @@ interface NormalizedInput {
   websiteRequirement: "any" | "present" | "missing";
   minimumWebsiteQualityScore: number | null;
   websiteAssessmentLimit: number;
+  qualificationTerms: string[];
   registeredInVatRegister: boolean | null;
   registeredInBusinessRegister: boolean | null;
   signal?: AbortSignal;
@@ -510,6 +518,24 @@ function normalizeInput(input: DiscoveryRegistrySearchInput): NormalizedInput {
   ) {
     throw new DiscoveryRegistryError("invalid_input");
   }
+  if (
+    input.qualificationTerms !== undefined &&
+    (!Array.isArray(input.qualificationTerms) ||
+      input.qualificationTerms.length > 30)
+  ) {
+    throw new DiscoveryRegistryError("invalid_input");
+  }
+  const qualificationTerms = [
+    ...new Map(
+      (input.qualificationTerms ?? []).map((entry) => {
+        const normalized = text(entry);
+        if (!normalized || normalized.length > 80) {
+          throw new DiscoveryRegistryError("invalid_input");
+        }
+        return [normalizeForSearch(normalized), normalized] as const;
+      }),
+    ).values(),
+  ];
   const city = input.city == null ? null : text(input.city);
   if (input.city != null && !city) {
     throw new DiscoveryRegistryError("invalid_input");
@@ -529,7 +555,12 @@ function normalizeInput(input: DiscoveryRegistrySearchInput): NormalizedInput {
   }
   const hasMunicipalities =
     municipalityNumbers.length > 0 || municipalityNames.length > 0;
+  const countryCode = input.countryCode ?? null;
+  if (countryCode !== null && countryCode !== "NO") {
+    throw new DiscoveryRegistryError("invalid_input");
+  }
   const areaSelectorCount = [
+    Boolean(countryCode),
     Boolean(city),
     Boolean(geo),
     hasMunicipalities,
@@ -570,6 +601,7 @@ function normalizeInput(input: DiscoveryRegistrySearchInput): NormalizedInput {
   return {
     query,
     queryMode: input.queryMode ?? "industry",
+    countryCode,
     maxResults: Math.min(requestedMax, MAX_RESULTS),
     sourceOffset,
     city,
@@ -586,6 +618,7 @@ function normalizeInput(input: DiscoveryRegistrySearchInput): NormalizedInput {
       requestedWebsiteAssessmentLimit,
       Math.min(requestedMax, MAX_RESULTS),
     ),
+    qualificationTerms,
     registeredInVatRegister,
     registeredInBusinessRegister,
     signal: input.signal,
@@ -652,11 +685,23 @@ function normalizeForSearch(value: string): string {
     .trim();
 }
 
+function matchesOrganizationNameQuery(name: string, query: string): boolean {
+  const nameTokens = normalizeForSearch(name).split(" ").filter(Boolean);
+  const queryTokens = normalizeForSearch(query).split(" ").filter(Boolean);
+  if (queryTokens.length === 0 || queryTokens.length > nameTokens.length) {
+    return false;
+  }
+  return nameTokens.some((_, start) =>
+    queryTokens.every((queryToken, offset) =>
+      nameTokens[start + offset]?.startsWith(queryToken),
+    ),
+  );
+}
+
 const QUERY_SYNONYMS: Record<string, string[]> = {
   advokat: ["juridiske tjenester", "advokatvirksomhet"],
   bilverksted: ["reparasjon av motorvogner", "vedlikehold av motorvogner"],
   bygg: ["bygging", "oppføring", "entreprenør"],
-  castingbyrå: ["rekruttering", "formidling av arbeidskraft"],
   eiendomsmegler: ["eiendomsmegling"],
   fotograf: ["fotografvirksomhet"],
   frisør: ["frisering", "skjønnhetspleie"],
@@ -968,6 +1013,15 @@ function matchesHardCompanyFilters(
   input: NormalizedInput,
 ): boolean {
   if (
+    input.queryMode === "organization_name" &&
+    !matchesOrganizationNameQuery(candidate.name, input.query)
+  ) {
+    // BRREG's `navn` parameter is fuzzy and may, for example, return
+    // "camping" for "casting". Verify organization-name intent against the
+    // registered name before exposing the row as a lead candidate.
+    return false;
+  }
+  if (
     input.organizationForms.length > 0 &&
     (!candidate.organizationFormCode ||
       !input.organizationForms.includes(
@@ -1172,6 +1226,7 @@ function unknownWebsiteAssessment(
   website: string | null,
   fetchedAt: string,
   reason: Exclude<DiscoveryWebsiteQualityAssessment["reason"], "assessed">,
+  qualificationTerms: string[] = [],
 ): DiscoveryWebsiteQualityAssessment {
   return {
     status: "unknown",
@@ -1183,6 +1238,10 @@ function unknownWebsiteAssessment(
     redirectCount: 0,
     reason,
     signals: emptyWebsiteSignals(),
+    qualification: {
+      requestedTerms: qualificationTerms,
+      matchedTerms: [],
+    },
   };
 }
 
@@ -1234,6 +1293,26 @@ function websiteHtmlSignals(
         html,
       ),
   };
+}
+
+function matchedWebsiteQualificationTerms(
+  html: string,
+  requestedTerms: string[],
+): string[] {
+  if (requestedTerms.length === 0) return [];
+  const visibleText = normalizeForSearch(
+    html
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&(?:nbsp|amp|quot|apos|lt|gt);/gi, " "),
+  );
+  const boundedVisibleText = ` ${visibleText} `;
+  return requestedTerms.filter((term) => {
+    const normalizedTerm = normalizeForSearch(term);
+    return normalizedTerm.length > 0 &&
+      boundedVisibleText.includes(` ${normalizedTerm} `);
+  });
 }
 
 async function boundedResponseText(response: Response): Promise<string | null> {
@@ -1334,6 +1413,7 @@ export function createDiscoveryRegistryProvider(
     website: string | null,
     signal: AbortSignal | undefined,
     evidenceSourceUri: string,
+    qualificationTerms: string[],
   ): Promise<DiscoveryWebsiteQualityAssessment> {
     const fetchedAt = now().toISOString();
     if (!website) {
@@ -1341,13 +1421,22 @@ export function createDiscoveryRegistryProvider(
         evidenceSourceUri,
         fetchedAt,
         "no_registered_url",
+        qualificationTerms,
       );
     }
     const initial = normalizedWebsiteUrl(website);
     if (!initial) {
-      return unknownWebsiteAssessment(website, fetchedAt, "invalid_url");
+      return unknownWebsiteAssessment(
+        website,
+        fetchedAt,
+        "invalid_url",
+        qualificationTerms,
+      );
     }
-    const cacheKey = initial.toString();
+    const cacheKey = `${initial.toString()}|qualification:${qualificationTerms
+      .map(normalizeForSearch)
+      .sort()
+      .join("|")}`;
     const cached = websiteCache.get(cacheKey);
     if (cached && cached.expiresAt > now().getTime()) return cached.assessment;
     if (cached) websiteCache.delete(cacheKey);
@@ -1391,6 +1480,7 @@ export function createDiscoveryRegistryProvider(
               initial.toString(),
               fetchedAt,
               "request_failed",
+              qualificationTerms,
             ),
             finalUrl: fetched.finalUrl,
             httpStatus: response.status,
@@ -1412,6 +1502,7 @@ export function createDiscoveryRegistryProvider(
               initial.toString(),
               fetchedAt,
               "unsupported_content_type",
+              qualificationTerms,
             ),
             finalUrl: fetched.finalUrl,
             httpStatus: response.status,
@@ -1433,6 +1524,7 @@ export function createDiscoveryRegistryProvider(
             fetched.finalUrl,
             fetchedAt,
             "response_too_large",
+            qualificationTerms,
           ),
           now().getTime(),
         );
@@ -1463,6 +1555,13 @@ export function createDiscoveryRegistryProvider(
           redirectCount: fetched.redirectCount,
           reason: "assessed",
           signals,
+          qualification: {
+            requestedTerms: qualificationTerms,
+            matchedTerms: matchedWebsiteQualificationTerms(
+              body,
+              qualificationTerms,
+            ),
+          },
         },
         now().getTime(),
       );
@@ -1480,7 +1579,12 @@ export function createDiscoveryRegistryProvider(
           : "request_failed";
       return cacheWebsiteAssessment(
         cacheKey,
-        unknownWebsiteAssessment(initial.toString(), fetchedAt, reason),
+        unknownWebsiteAssessment(
+          initial.toString(),
+          fetchedAt,
+          reason,
+          qualificationTerms,
+        ),
         now().getTime(),
       );
     }
@@ -2247,7 +2351,11 @@ export function createDiscoveryRegistryProvider(
           limitReason = "external_request_limit";
       }
 
-      if (input.minimumWebsiteQualityScore !== null && candidates.length > 0) {
+      if (
+        (input.minimumWebsiteQualityScore !== null ||
+          input.qualificationTerms.length > 0) &&
+        candidates.length > 0
+      ) {
         let websiteRequestLimitReached =
           limitReason === "external_request_limit";
         const selectedCandidates = candidates.slice(
@@ -2263,6 +2371,7 @@ export function createDiscoveryRegistryProvider(
               candidate.website ?? candidate.sourceUri,
               now().toISOString(),
               "not_selected_for_assessment",
+              input.qualificationTerms,
             ),
           }));
         const assessed = await mapConcurrent(
@@ -2276,6 +2385,7 @@ export function createDiscoveryRegistryProvider(
                   candidate.website ?? candidate.sourceUri,
                   now().toISOString(),
                   "external_request_limit",
+                  input.qualificationTerms,
                 ),
               };
             }
@@ -2286,6 +2396,7 @@ export function createDiscoveryRegistryProvider(
                   candidate.website,
                   input.signal,
                   candidate.sourceUri,
+                  input.qualificationTerms,
                 ),
               };
             } catch (error) {
@@ -2300,6 +2411,7 @@ export function createDiscoveryRegistryProvider(
                     candidate.website ?? candidate.sourceUri,
                     now().toISOString(),
                     "external_request_limit",
+                    input.qualificationTerms,
                   ),
                 };
               }

@@ -15,6 +15,7 @@ import {
   DiscoveryGovernanceError,
   lockAutoDiscoveryProfileGovernance,
 } from "./leadgrid-discovery-governance.js";
+import { canonicalDiscoveryProfileBrief } from "./leadgrid-discovery-profile-brief.js";
 
 interface Deps {
   app: Express;
@@ -86,6 +87,11 @@ interface LegacyConfigRow {
 interface DefaultProfileRow {
   id: string;
   target_customer_types: string[];
+  organization_name_queries: string[];
+  country_code: string | null;
+  subject_kind: string;
+  qualification_terms: string[];
+  qualification_requirement: string;
   city_filters: string[];
   geography_lat: string | number | null;
   geography_lng: string | number | null;
@@ -96,6 +102,9 @@ interface DefaultProfileRow {
   last_run_at: Date | string | null;
   next_run_at: Date | string | null;
   version: number;
+  company_size_min: number | null;
+  company_size_max: number | null;
+  brief: Record<string, unknown> | null;
 }
 
 function sendError(
@@ -246,11 +255,14 @@ export function registerLeadgridDiscoveryConfigRoutes({
           [project.id, project.organizationId],
         ),
         pool.query<DefaultProfileRow>(
-          `SELECT id::text, target_customer_types, city_filters,
+          `SELECT id::text, target_customer_types, organization_name_queries,
+                  country_code, subject_kind, qualification_terms,
+                  qualification_requirement, city_filters,
                   geography_lat::text, geography_lng::text,
                   geography_radius_km, max_candidates_per_run,
                   enrichment_count, auto_discover_enabled,
-                  last_run_at, next_run_at, version
+                  last_run_at, next_run_at, version,
+                  company_size_min, company_size_max, brief
              FROM leadgrid_discovery_profiles
             WHERE organization_id = $1::uuid
               AND project_id = $2
@@ -267,8 +279,14 @@ export function registerLeadgridDiscoveryConfigRoutes({
         res.json({ config: null, project_id: project.id });
         return;
       }
-      const industryQueries = profile?.target_customer_types?.length
-        ? profile.target_customer_types
+      const canonicalBrief = profile
+        ? canonicalDiscoveryProfileBrief(profile)
+        : null;
+      const canonicalHasSearch = canonicalBrief !== null &&
+        canonicalBrief.industry_queries.length +
+          canonicalBrief.organization_name_queries.length > 0;
+      const industryQueries = canonicalHasSearch
+        ? canonicalBrief.industry_queries
         : legacy?.industry_queries?.length
           ? legacy.industry_queries
           : legacy?.industry_query
@@ -277,20 +295,42 @@ export function registerLeadgridDiscoveryConfigRoutes({
       res.json({
         config: {
           project_id: project.id,
-          industry_query: industryQueries[0] ?? legacy?.industry_query ?? null,
+          industry_query: industryQueries[0] ?? null,
           industry_queries: industryQueries,
-          city_filter: profile?.city_filters ?? legacy?.city_filter ?? [],
+          organization_name_queries:
+            canonicalBrief?.organization_name_queries ?? [],
+          country_code: canonicalBrief?.country_code ?? null,
+          subject_kind: canonicalBrief?.subject_kind ?? "organization",
+          qualification_terms: canonicalBrief?.qualification_terms ?? [],
+          qualification_requirement:
+            canonicalBrief?.qualification_requirement ?? "preferred",
+          city_filter: canonicalBrief
+            ? canonicalBrief.city
+              ? [canonicalBrief.city]
+              : canonicalBrief.municipality_names
+            : profile?.city_filters ?? legacy?.city_filter ?? [],
           geography_lat: numberOrNull(
-            profile?.geography_lat ?? legacy?.geography_lat,
+            canonicalBrief?.geo?.latitude ??
+              profile?.geography_lat ??
+              legacy?.geography_lat,
           ),
           geography_lng: numberOrNull(
-            profile?.geography_lng ?? legacy?.geography_lng,
+            canonicalBrief?.geo?.longitude ??
+              profile?.geography_lng ??
+              legacy?.geography_lng,
           ),
           geography_radius_km:
-            profile?.geography_radius_km ?? legacy?.geography_radius_km ?? 10,
+            canonicalBrief?.geo?.radius_km ??
+            profile?.geography_radius_km ??
+            legacy?.geography_radius_km ??
+            10,
           count_per_run:
-            profile?.max_candidates_per_run ?? legacy?.count_per_run ?? 10,
+            canonicalBrief?.target_count ??
+            profile?.max_candidates_per_run ??
+            legacy?.count_per_run ??
+            10,
           enrichment_count:
+            canonicalBrief?.enrichment_count ??
             profile?.enrichment_count ??
             Math.min(10, legacy?.count_per_run ?? 10),
           auto_discover_enabled:

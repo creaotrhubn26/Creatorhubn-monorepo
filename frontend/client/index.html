@@ -119,12 +119,11 @@
       // so the single index.html can be shared
       // across both domains), rewrite the title, canonical, and
       // Open Graph tags in-place before the React app mounts. Google's
-      // crawler executes JS and will index the updated tags; social
-      // sharing crawlers that do not execute JS fall back to the
-      // generic CreatorHub tags, which is acceptable since theroleroom
-      // landings are served separately via /theroleroom.html on direct
-      // navigation. This script runs synchronously in the <head> so
-      // the final tags are in the DOM before any scrapers look.
+      // crawler executes JS and will index the updated tags. The production
+      // build also creates and host-routes a Role Room-specific HTML shell,
+      // so clients that do not execute JavaScript receive the same metadata.
+      // This script remains as a synchronous defence-in-depth override for
+      // any path that reaches the shared shell.
       (function () {
         var host = (location.hostname || '').toLowerCase();
         if (!/^(www\.)?theroleroom\.com$/.test(host)) return;

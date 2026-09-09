@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   cleanupExpiredDiscoveryPlaceConfirmations,
   registerLeadgridRetentionCron,
+  suppressDueTalentProspects,
 } from "./leadgrid-retention-cron.js";
 
 interface ConfirmationFixture {
@@ -18,6 +19,13 @@ interface ConfirmationFixture {
 const migration = readFileSync(
   new URL(
     "../migrations/0556_leadgrid_discovery_place_confirmation_retention.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const talentPrivacyMigration = readFileSync(
+  new URL(
+    "../migrations/0566_leadgrid_discovery_profile_templates_and_talent_privacy.sql",
     import.meta.url,
   ),
   "utf8",
@@ -242,5 +250,53 @@ describe("Leadgrid Discovery Place confirmation retention", () => {
     expect(privacyPage).not.toContain(
       "Vi lagrer ikke Places-innholdet; bare valgt Place ID lagres",
     );
+  });
+});
+
+describe("Leadgrid public-data talent prospect retention", () => {
+  it("suppresses due talent prospects in tenant-scoped bounded batches", async () => {
+    const cutoff = new Date("2026-12-08T10:00:00.000Z");
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rowCount: 2 })
+      .mockResolvedValueOnce({ rowCount: 0 });
+
+    const result = await suppressDueTalentProspects(
+      { query } as unknown as Pick<Pool, "query">,
+      { batchSize: 2, maxBatches: 5, now: cutoff },
+    );
+
+    expect(result).toEqual({ suppressed: 2, batches: 2, limitReached: false });
+    const sql = String(query.mock.calls[0][0]);
+    expect(sql).toContain("contact.subject_kind = 'talent'");
+    expect(sql).toContain("contact.privacy_review_due_at <= $2::timestamptz");
+    expect(sql).toContain("contact.consent_status <> 'received'");
+    expect(sql).toContain("FOR UPDATE OF contact SKIP LOCKED");
+    expect(sql).toContain("customer.organization_id = due.organization_id");
+    expect(sql).toContain("customer.project_id = due.project_id");
+    expect(sql).toContain("'status', 'expired'");
+    expect(query.mock.calls[0][1]).toEqual([2, cutoff.toISOString()]);
+  });
+
+  it("ships template identity, query mirrors and privacy lifecycle constraints", () => {
+    expect(talentPrivacyMigration).toContain("template_key VARCHAR(120)");
+    expect(talentPrivacyMigration).toContain(
+      "ux_leadgrid_discovery_profiles_template",
+    );
+    expect(talentPrivacyMigration).toContain(
+      "organization_name_queries TEXT[] NOT NULL",
+    );
+    expect(talentPrivacyMigration).toContain("subject_kind VARCHAR(16)");
+    expect(talentPrivacyMigration).toContain("qualification_terms TEXT[]");
+    expect(talentPrivacyMigration).toContain("privacy_review_due_at TIMESTAMPTZ");
+    expect(talentPrivacyMigration).toContain(
+      "leadgrid_sync_talent_contact_opt_out",
+    );
+    expect(talentPrivacyMigration).toContain("THEN 'expired'");
+    expect(talentPrivacyMigration).toContain("COMMIT;");
+    expect(backendReadme).toContain("never creates or activates a");
+    expect(backendReadme).toContain("within 90 days");
+    expect(privacyPage).toContain("Godkjenningen oppretter ikke en talentkonto");
+    expect(privacyPage).toContain("innen 90 dager");
   });
 });

@@ -76,9 +76,25 @@ struct DiscoveryV2WebsiteQualityFilter: Codable, Hashable, Sendable {
     }
 }
 
+enum DiscoveryV2SubjectKind: String, Codable, CaseIterable, Sendable {
+    case organization
+    case person
+
+    var title: String { self == .person ? "Person / talent" : "Virksomhet" }
+}
+
+enum DiscoveryV2QualificationRequirement: String, Codable, CaseIterable, Sendable {
+    case preferred
+    case required
+
+    var title: String { self == .required ? "Må bekreftes" : "Gir høyere score" }
+}
+
 struct DiscoveryV2Brief: Codable, Hashable, Sendable {
     var industryQueries: [String]
+    var organizationNameQueries: [String] = []
     var exclusionTerms: [String]
+    var countryCode: String? = nil
     var city: String?
     var geo: DiscoveryV2Geo?
     var targetCount: Int
@@ -94,13 +110,18 @@ struct DiscoveryV2Brief: Codable, Hashable, Sendable {
     var organizationStructure: DiscoveryV2OrganizationStructure = .any
     var websiteRequirement: DiscoveryV2WebsiteRequirement = .any
     var websiteQuality: DiscoveryV2WebsiteQualityFilter = .init(minimumScore: nil)
+    var subjectKind: DiscoveryV2SubjectKind = .organization
+    var qualificationTerms: [String] = []
+    var qualificationRequirement: DiscoveryV2QualificationRequirement = .preferred
     var commercialSignals: DiscoveryV2CommercialSignals = .init(
         registeredInVatRegister: nil,
         registeredInBusinessRegister: nil)
 
     enum CodingKeys: String, CodingKey {
         case industryQueries = "industry_queries"
+        case organizationNameQueries = "organization_name_queries"
         case exclusionTerms = "exclusion_terms"
+        case countryCode = "country_code"
         case city, geo
         case targetCount = "target_count"
         case enrichmentCount = "enrichment_count"
@@ -115,6 +136,9 @@ struct DiscoveryV2Brief: Codable, Hashable, Sendable {
         case organizationStructure = "organization_structure"
         case websiteRequirement = "website_requirement"
         case websiteQuality = "website_quality"
+        case subjectKind = "subject_kind"
+        case qualificationTerms = "qualification_terms"
+        case qualificationRequirement = "qualification_requirement"
         case commercialSignals = "commercial_signals"
     }
 
@@ -137,9 +161,16 @@ struct DiscoveryV2Brief: Codable, Hashable, Sendable {
         value.industryQueries = industryQueries
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+        value.organizationNameQueries = organizationNameQueries
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
         value.exclusionTerms = exclusionTerms
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+        value.qualificationTerms = qualificationTerms
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .uniqued()
         value.organizationForms = organizationForms
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }
             .filter { !$0.isEmpty }
@@ -153,6 +184,7 @@ struct DiscoveryV2Brief: Codable, Hashable, Sendable {
             .filter { !$0.isEmpty }
             .uniqued()
         value.city = Self.nilIfBlank(city)
+        value.countryCode = countryCode == "NO" ? "NO" : nil
         value.idealCustomer = Self.nilIfBlank(idealCustomer)
         value.goal = Self.nilIfBlank(goal)
         value.territoryCode = Self.nilIfBlank(territoryCode)?.lowercased()
@@ -194,15 +226,62 @@ struct DiscoveryV2Brief: Codable, Hashable, Sendable {
 
     var validationMessage: String? {
         let value = normalized
-        if value.industryQueries.isEmpty { return "Skriv minst én kundetype." }
-        if value.industryQueries.count > 8 { return "Du kan søke etter opptil åtte kundetyper." }
+        let queryCount = value.industryQueries.count + value.organizationNameQueries.count
+        if queryCount == 0 { return "Skriv minst én kundetype eller ett organisasjonsnavn-søk." }
+        if queryCount > 8 { return "Du kan ha opptil åtte søk i samme profil." }
+        if value.industryQueries.contains(where: { $0.count > 120 })
+            || value.organizationNameQueries.contains(where: { $0.count > 120 }) {
+            return "Hvert kundetype- og organisasjonsnavn-søk kan være opptil 120 tegn."
+        }
+        if value.exclusionTerms.count > 30 {
+            return "Du kan ha opptil 30 ekskluderinger i samme profil."
+        }
+        if value.exclusionTerms.contains(where: { $0.count > 80 }) {
+            return "Hver ekskludering kan være opptil 80 tegn."
+        }
+        if value.qualificationTerms.count > 30 {
+            return "Du kan ha opptil 30 kvalifiseringstema i samme profil."
+        }
+        if value.qualificationTerms.contains(where: { $0.count > 80 }) {
+            return "Hvert kvalifiseringstema kan være opptil 80 tegn."
+        }
+        if value.organizationForms.count > 20 {
+            return "Du kan ha opptil 20 organisasjonsformer i samme profil."
+        }
+        if value.organizationForms.contains(where: {
+            $0.range(of: #"^[A-Z0-9]{2,8}$"#, options: .regularExpression) == nil
+        }) {
+            return "Organisasjonsform må være en gyldig kode fra Brønnøysundregistrene."
+        }
+        if value.municipalityNumbers.count + value.municipalityNames.count > 30 {
+            return "Du kan avgrense en profil til opptil 30 kommuner."
+        }
+        if value.municipalityNames.contains(where: { $0.count > 120 }) {
+            return "Hvert kommunenavn kan være opptil 120 tegn."
+        }
+        if let city = value.city, city.count > 120 {
+            return "Bynavnet kan være opptil 120 tegn."
+        }
+        if let idealCustomer = value.idealCustomer, idealCustomer.count > 1_500 {
+            return "Beskrivelsen av idealkunden kan være opptil 1500 tegn."
+        }
+        if let goal = value.goal, goal.count > 500 {
+            return "Målet kan være opptil 500 tegn."
+        }
         let hasMunicipalities = !value.municipalityNumbers.isEmpty
             || !value.municipalityNames.isEmpty
-        if value.geo == nil && value.city == nil && !hasMunicipalities {
-            return "Velg kartområdet, skriv en by eller velg minst én kommune."
+        let hasNationwideScope = value.countryCode == "NO"
+        let areaSelectorCount = [
+            hasNationwideScope,
+            value.geo != nil,
+            value.city != nil,
+            hasMunicipalities,
+        ].filter { $0 }.count
+        if areaSelectorCount == 0 {
+            return "Velg hele Norge, kartområdet, en by eller minst én kommune."
         }
-        if hasMunicipalities && (value.geo != nil || value.city != nil) {
-            return "Kommuneutvalg kan ikke kombineres med by eller kart-radius."
+        if areaSelectorCount > 1 {
+            return "Hele Norge, kommuneutvalg, by og kart-radius kan ikke kombineres."
         }
         if value.municipalityNumbers.contains(where: { $0.range(of: #"^\d{4}$"#, options: .regularExpression) == nil }) {
             return "Kommunenummer må bestå av fire siffer."
@@ -285,7 +364,12 @@ extension DiscoveryV2Brief {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         industryQueries = try container.decode([String].self, forKey: .industryQueries)
+        organizationNameQueries = try container.decodeIfPresent(
+            [String].self,
+            forKey: .organizationNameQueries
+        ) ?? []
         exclusionTerms = try container.decodeIfPresent([String].self, forKey: .exclusionTerms) ?? []
+        countryCode = try container.decodeIfPresent(String.self, forKey: .countryCode)
         city = try container.decodeIfPresent(String.self, forKey: .city)
         geo = try container.decodeIfPresent(DiscoveryV2Geo.self, forKey: .geo)
         targetCount = try container.decode(Int.self, forKey: .targetCount)
@@ -324,6 +408,18 @@ extension DiscoveryV2Brief {
             DiscoveryV2WebsiteQualityFilter.self,
             forKey: .websiteQuality
         ) ?? .init(minimumScore: nil)
+        subjectKind = try container.decodeIfPresent(
+            DiscoveryV2SubjectKind.self,
+            forKey: .subjectKind
+        ) ?? .organization
+        qualificationTerms = try container.decodeIfPresent(
+            [String].self,
+            forKey: .qualificationTerms
+        ) ?? []
+        qualificationRequirement = try container.decodeIfPresent(
+            DiscoveryV2QualificationRequirement.self,
+            forKey: .qualificationRequirement
+        ) ?? .preferred
         commercialSignals = try container.decodeIfPresent(
             DiscoveryV2CommercialSignals.self,
             forKey: .commercialSignals
@@ -335,6 +431,7 @@ extension DiscoveryV2Brief {
 
 extension DiscoveryV2Brief {
     var areaSummary: String {
+        if normalized.countryCode == "NO" { return "Hele Norge" }
         if !normalized.municipalityNames.isEmpty {
             return normalized.municipalityNames.joined(separator: " + ")
         }
@@ -533,14 +630,31 @@ struct DiscoveryV2DataSource: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
+enum DiscoveryV2QueryMode: String, Codable, Hashable, Sendable {
+    case industry
+    case organizationName = "organization_name"
+}
+
 struct DiscoveryV2PlanQuery: Codable, Hashable, Sendable, Identifiable {
     var textQuery: String
+    var queryMode: DiscoveryV2QueryMode = .industry
     var hardGeoFilter: Bool
-    var id: String { textQuery }
+    var id: String { "\(queryMode.rawValue):\(textQuery)" }
 
     enum CodingKeys: String, CodingKey {
         case textQuery = "text_query"
+        case queryMode = "query_mode"
         case hardGeoFilter = "hard_geo_filter"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        textQuery = try container.decode(String.self, forKey: .textQuery)
+        queryMode = try container.decodeIfPresent(
+            DiscoveryV2QueryMode.self,
+            forKey: .queryMode
+        ) ?? .industry
+        hardGeoFilter = try container.decode(Bool.self, forKey: .hardGeoFilter)
     }
 }
 
@@ -561,18 +675,27 @@ struct DiscoveryV2MunicipalityArea: Codable, Hashable, Sendable {
 }
 
 enum DiscoveryV2PlanArea: Codable, Hashable, Sendable {
+    case country(String)
     case geo(DiscoveryV2Geo)
     case city(String)
     case municipalities(DiscoveryV2MunicipalityArea)
 
     private enum Keys: String, CodingKey {
         case latitude, longitude, radiusKm = "radius_km", city
+        case countryCode = "country_code"
         case municipalityNumbers = "municipality_numbers"
         case municipalityNames = "municipality_names"
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: Keys.self)
+        if let countryCode = try container.decodeIfPresent(
+            String.self,
+            forKey: .countryCode
+        ) {
+            self = .country(countryCode)
+            return
+        }
         if let city = try container.decodeIfPresent(String.self, forKey: .city) {
             self = .city(city)
             return
@@ -601,6 +724,8 @@ enum DiscoveryV2PlanArea: Codable, Hashable, Sendable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: Keys.self)
         switch self {
+        case .country(let countryCode):
+            try container.encode(countryCode, forKey: .countryCode)
         case .city(let city):
             try container.encode(city, forKey: .city)
         case .municipalities(let area):
@@ -1212,6 +1337,42 @@ struct DiscoveryV2WebsiteQualitySignals: Codable, Hashable, Sendable {
     }
 }
 
+struct DiscoveryV2WebsiteQualification: Codable, Hashable, Sendable {
+    var requestedTerms: [String]
+    var matchedTerms: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case requestedTerms = "requested_terms"
+        case matchedTerms = "matched_terms"
+    }
+}
+
+struct DiscoveryV2ContentQualification: Codable, Hashable, Sendable {
+    var requirement: DiscoveryV2QualificationRequirement
+    var requestedTerms: [String]
+    var matchedTerms: [String]
+    var outcome: String
+
+    enum CodingKeys: String, CodingKey {
+        case requirement, outcome
+        case requestedTerms = "requested_terms"
+        case matchedTerms = "matched_terms"
+    }
+
+    var presentation: String {
+        switch outcome {
+        case "passed":
+            return "Bekreftet innhold: \(matchedTerms.joined(separator: ", "))"
+        case "excluded":
+            return "Påkrevd innhold ble ikke funnet på nettstedet"
+        case "weak_match":
+            return "Ingen tydelig innholdsmatch – vurder manuelt"
+        default:
+            return "Innholdskvalifisering er ukjent – vurder manuelt"
+        }
+    }
+}
+
 struct DiscoveryV2WebsiteQualityEvidence: Codable, Hashable, Sendable {
     var sourceUri: String?
     var finalUrl: String?
@@ -1245,9 +1406,10 @@ struct DiscoveryV2WebsiteQualityAssessment: Codable, Hashable, Sendable {
     var httpStatus: Int?
     var redirectCount: Int?
     var signals: DiscoveryV2WebsiteQualitySignals?
+    var qualification: DiscoveryV2WebsiteQualification?
 
     enum CodingKeys: String, CodingKey {
-        case status, score, outcome, reason, evidence, signals
+        case status, score, outcome, reason, evidence, signals, qualification
         case minimumScore = "minimum_score"
         case sourceUri = "source_uri"
         case finalUrl = "final_url"
@@ -1281,9 +1443,11 @@ struct DiscoveryV2WebsiteQualityAssessment: Codable, Hashable, Sendable {
 
 struct DiscoveryV2ScoreExplanation: Codable, Hashable, Sendable {
     var websiteQuality: DiscoveryV2WebsiteQualityAssessment?
+    var contentQualification: DiscoveryV2ContentQualification?
 
     enum CodingKeys: String, CodingKey {
         case websiteQuality = "website_quality"
+        case contentQualification = "content_qualification"
     }
 }
 
@@ -1349,6 +1513,7 @@ struct DiscoveryV2Candidate: Codable, Hashable, Sendable, Identifiable {
     var organizationForm: String?
     var organizationFormCode: String?
     var organizationStructure: String?
+    var subjectKind: DiscoveryV2SubjectKind?
     var entityKind: DiscoveryV2EntityKind?
     var entityKindConfidence: String?
     var entityKindEvidence: [String]?
@@ -1386,6 +1551,7 @@ struct DiscoveryV2Candidate: Codable, Hashable, Sendable, Identifiable {
         case organizationForm = "organization_form"
         case organizationFormCode = "organization_form_code"
         case organizationStructure = "organization_structure"
+        case subjectKind = "subject_kind"
         case entityKind = "entity_kind"
         case entityKindConfidence = "entity_kind_confidence"
         case entityKindEvidence = "entity_kind_evidence"
@@ -1471,6 +1637,8 @@ struct DiscoveryV2Profile: Codable, Hashable, Sendable, Identifiable {
     var brief: DiscoveryV2Brief
     var placesDetailsEnabled: Bool?
     var status: DiscoveryV2ProfileStatus? = nil
+    var templateKey: String? = nil
+    var templateVersion: Int? = nil
 
     /// Cached profiles written by older clients have no status. Treat those
     /// as active locally; the authoritative list is reloaded before start.
@@ -1480,6 +1648,8 @@ struct DiscoveryV2Profile: Codable, Hashable, Sendable, Identifiable {
         case id, name, version, brief, status
         case isDefault = "is_default"
         case placesDetailsEnabled = "places_details_enabled"
+        case templateKey = "template_key"
+        case templateVersion = "template_version"
     }
 }
 
@@ -1490,12 +1660,16 @@ struct DiscoveryV2ProfileWrite: Codable, Hashable, Sendable {
     var brief: DiscoveryV2Brief
     var placesDetailsEnabled: Bool
     var status: DiscoveryV2ProfileStatus? = nil
+    var templateKey: String? = nil
+    var templateVersion: Int? = nil
 
     enum CodingKeys: String, CodingKey {
         case name, brief, status
         case isDefault = "is_default"
         case expectedVersion = "expected_version"
         case placesDetailsEnabled = "places_details_enabled"
+        case templateKey = "template_key"
+        case templateVersion = "template_version"
     }
 }
 

@@ -91,33 +91,138 @@ describe("Leadgrid domain onboarding classification", () => {
     );
   });
 
-  it.each([
-    {
-      domain: "creatorhubn.com",
-      brand: profile({
+  it("derives a complete editable profile for creatorhubn.com", () => {
+    const plan = buildProjectOnboardingPlan(
+      "https://creatorhubn.com",
+      "creatorhubn.com",
+      profile({
         businessName: "CreatorHub Norge",
         tagline: "Plattform for skapere, team og Academy",
       }),
-      category: "Kreative tjenester",
-      queries: ["fotograf", "videoproduksjon", "produksjonsselskap"],
-    },
-    {
-      domain: "theroleroom.com",
-      brand: profile({
-        businessName: "The Role Room",
-        description: "Castingflyt for produsenter og casting directors.",
-      }),
-      category: "Film, TV og casting",
-      queries: ["produksjonsselskap", "castingbyrå", "reklamebyrå"],
-    },
-  ])("derives a complete editable profile for $domain", ({ domain, brand, category, queries }) => {
-    const plan = buildProjectOnboardingPlan(`https://${domain}`, domain, brand);
-    expect(plan.category).toBe(category);
-    expect(plan.recommended_profiles[0].brief.industry_queries).toEqual(queries);
+    );
+    expect(plan.category).toBe("Kreative tjenester");
+    expect(plan.recommended_profiles[0].brief.industry_queries).toEqual([
+      "fotograf",
+      "videoproduksjon",
+      "produksjonsselskap",
+    ]);
     expect(plan.recommended_profiles[0].brief.ideal_customer).toBeTruthy();
     expect(plan.recommended_profiles[0].brief.goal).toBeTruthy();
     expect(plan.recommended_profiles[0].brief.city).toBeTruthy();
     expect(plan.recommended_profiles[0].approval_mode).toBe("manual");
+  });
+
+  it("repairs misleading static metadata and creates six precise national profiles for The Role Room", () => {
+    const plan = buildProjectOnboardingPlan(
+      "https://theroleroom.com",
+      "theroleroom.com",
+      profile({
+        url: "https://theroleroom.com",
+        businessName: "CreatorHub Norge",
+        tagline: "Plattform for skapere, team og Academy",
+        description: "CreatorHub samler prosjektstyring og community.",
+        logoUrl: "https://creatorhubn.com/creatorhub-wordmark-light.png",
+      }),
+    );
+
+    expect(plan).toMatchObject({
+      project_name: "The Role Room",
+      category: "Film, TV, casting og talent",
+      category_confidence: "high",
+      brand_profile: {
+        businessName: "The Role Room",
+        logoUrl: "https://theroleroom.com/TheRoleRoom_App_Logo.png",
+        industry: "film_tv_and_content_production",
+      },
+    });
+    expect(plan.project_description).toContain("film, TV og innholdsproduksjon");
+    expect(plan.recommended_profiles).toHaveLength(6);
+    expect(plan.recommended_profiles.map((item) => item.template_key)).toEqual([
+      "role_room.production",
+      "role_room.agencies",
+      "role_room.casting",
+      "role_room.education",
+      "role_room.dance",
+      "role_room.talents",
+    ]);
+    expect(
+      plan.recommended_profiles.every((item) => item.template_version === 1),
+    ).toBe(true);
+    expect(plan.recommended_profiles.map((item) => item.name)).toEqual([
+      "Film- og TV-produksjon – Norge",
+      "Reklame- og innholdsbyråer – Norge",
+      "Casting- og talentmiljøer – Norge",
+      "Film- og medieutdanning – Norge",
+      "Dansestudioer og danseskoler – Norge",
+      "Skuespillere og talenter – Norge",
+    ]);
+    expect(plan.recommended_profiles.filter((item) => item.is_default)).toHaveLength(1);
+    expect(
+      plan.recommended_profiles.every(
+        (item) =>
+          item.brief.country_code === "NO" &&
+          item.brief.city == null &&
+          item.approval_mode === "manual" &&
+          item.auto_discover_enabled === false,
+      ),
+    ).toBe(true);
+    expect(plan.recommended_profiles[0].brief.industry_queries).toEqual([
+      "59.110",
+      "59.120",
+      "60.200",
+    ]);
+    expect(plan.recommended_profiles[2].brief).toMatchObject({
+      industry_queries: [],
+      organization_name_queries: ["casting"],
+      qualification_requirement: "required",
+      minimum_fit_score: 70,
+    });
+    expect(plan.recommended_profiles[2].brief.industry_queries).not.toContain(
+      "78.100",
+    );
+    expect(plan.recommended_profiles[2].brief.exclusion_terms).toContain("støping");
+    expect(plan.recommended_profiles[3].brief).toMatchObject({
+      industry_queries: [],
+      organization_name_queries: [
+        "filmskule",
+        "universitet",
+        "høgskole",
+        "høyskole",
+        "fagskole",
+      ],
+      target_count: 50,
+      minimum_fit_score: 70,
+      qualification_requirement: "required",
+      qualification_terms: expect.arrayContaining([
+        "film",
+        "medieproduksjon",
+        "scenekunst",
+      ]),
+      commercial_signals: {
+        registered_in_business_register: null,
+      },
+    });
+    expect(plan.recommended_profiles[4].brief).toMatchObject({
+      industry_queries: [],
+      organization_name_queries: [
+        "dansestudio",
+        "danseskole",
+        "ballettskole",
+        "dance studio",
+      ],
+      commercial_signals: {
+        registered_in_business_register: null,
+      },
+    });
+    expect(plan.recommended_profiles[5].brief).toMatchObject({
+      industry_queries: [],
+      organization_name_queries: ["skuespiller", "actor"],
+      subject_kind: "person",
+      qualification_requirement: "required",
+      commercial_signals: {
+        registered_in_business_register: null,
+      },
+    });
   });
 });
 
@@ -294,7 +399,7 @@ describe("Leadgrid domain onboarding transaction", () => {
       if (sql.includes("SELECT overrides FROM brand_kits")) return { rows: [] };
       if (sql.includes("INSERT INTO leadgrid_discovery_profiles")) {
         insertedProfile = true;
-        insertedSourceConfig = JSON.parse(String(params[14]));
+        insertedSourceConfig = JSON.parse(String(params[16]));
         return { rows: [], rowCount: 1 };
       }
       if (sql.includes("FROM leadgrid_discovery_profiles")) {
@@ -360,6 +465,119 @@ describe("Leadgrid domain onboarding transaction", () => {
     });
     expect(result.profiles[0].places_details_enabled).toBe(true);
     expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("reconciles missing Role Room templates without replacing an edited legacy brief", async () => {
+    const plan = buildProjectOnboardingPlan(
+      "https://theroleroom.com",
+      "theroleroom.com",
+      profile({ businessName: "The Role Room" }),
+    );
+    const projectId = "role-room-project";
+    const editedLegacyBrief = {
+      ...plan.recommended_profiles[0].brief,
+      target_count: 17,
+      enrichment_count: 17,
+      ideal_customer: "Brukerens egen avgrensning skal bestå.",
+    };
+    const profiles: Array<Record<string, unknown>> = [{
+      id: "33333333-3333-4333-8333-333333333333",
+      name: plan.recommended_profiles[0].name,
+      is_default: true,
+      version: 7,
+      brief: editedLegacyBrief,
+      status: "active",
+      source_config: { google_places: { enabled: false } },
+      template_key: null,
+      template_version: null,
+    }];
+    const query = vi.fn(async (sqlValue: string, params: unknown[] = []) => {
+      const sql = String(sqlValue);
+      if (sql.includes("FROM leadgrid_project_onboarding_previews")) {
+        return { rows: [{
+          id: previewId,
+          plan,
+          expires_at: "2099-01-01T00:00:00.000Z",
+          committed_at: null,
+          committed_organization_id: null,
+          committed_project_id: null,
+        }] };
+      }
+      if (sql.includes("FROM organizations WHERE id")) {
+        return { rows: [{ id: organizationId, name: "Creatorhub AS" }] };
+      }
+      if (sql.includes("LEFT JOIN brand_kits bk")) {
+        return { rows: [{ id: projectId }] };
+      }
+      if (sql.includes("SELECT overrides FROM brand_kits")) return { rows: [] };
+      if (
+        sql.includes("UPDATE leadgrid_discovery_profiles") &&
+        sql.includes("template_key = COALESCE")
+      ) {
+        profiles[0].template_key = params[3];
+        profiles[0].template_version = params[4];
+        return { rows: [], rowCount: 1 };
+      }
+      if (sql.includes("INSERT INTO leadgrid_discovery_profiles")) {
+        profiles.push({
+          id: `profile-${profiles.length + 1}`,
+          name: params[4],
+          is_default: params[5],
+          version: 1,
+          brief: JSON.parse(String(params[13])),
+          status: "active",
+          source_config: JSON.parse(String(params[16])),
+          template_key: params[2],
+          template_version: params[3],
+        });
+        return { rows: [], rowCount: 1 };
+      }
+      if (sql.includes("FROM leadgrid_discovery_profiles")) {
+        return { rows: profiles };
+      }
+      if (sql.includes("SELECT p.id::text") && sql.includes("crm_customers")) {
+        return { rows: [{
+          id: projectId,
+          organization_id: organizationId,
+          name: "The Role Room",
+          description: plan.project_description,
+          status: "active",
+          lead_count: 0,
+          competitor_count: 0,
+        }] };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    const release = vi.fn();
+    const pool = {
+      connect: vi.fn(async () => ({ query, release })),
+    } as unknown as Pool;
+
+    const result = await commitProjectOnboarding(pool, {
+      previewId,
+      organizationId,
+      userId,
+    });
+
+    expect(result.reused_project).toBe(true);
+    expect(result.profiles).toHaveLength(6);
+    expect(result.profiles.map((item) => item.template_key)).toEqual(
+      expect.arrayContaining(plan.recommended_profiles.map((item) => item.template_key)),
+    );
+    expect(result.profiles[0].brief).toMatchObject({
+      target_count: 17,
+      enrichment_count: 17,
+      ideal_customer: "Brukerens egen avgrensning skal bestå.",
+    });
+    const templateAdoption = query.mock.calls.find(([sql]) =>
+      String(sql).includes("template_key = COALESCE"),
+    );
+    expect(String(templateAdoption?.[0])).not.toContain("brief =");
+    expect(
+      query.mock.calls.filter(([sql]) =>
+        String(sql).includes("INSERT INTO leadgrid_discovery_profiles"),
+      ),
+    ).toHaveLength(5);
   });
 
   it("replays a committed preview without performing another write", async () => {

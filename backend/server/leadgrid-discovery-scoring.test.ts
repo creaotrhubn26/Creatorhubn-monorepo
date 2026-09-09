@@ -250,4 +250,113 @@ describe("Discovery scoring", () => {
       },
     });
   });
+
+  it("requires semantic website evidence when a qualification is declared required", () => {
+    const score = scoreDiscoveryCandidate({
+      ...base,
+      qualificationTerms: ["casting", "skuespiller", "self-tape"],
+      qualificationRequirement: "required",
+      websiteQuality: {
+        status: "assessed",
+        score: 85,
+        fetchedAt: "2026-09-09T10:00:00.000Z",
+        sourceUri: "https://industrial-casting.example",
+        finalUrl: "https://industrial-casting.example/",
+        httpStatus: 200,
+        redirectCount: 0,
+        reason: "assessed",
+        signals: {
+          https: true,
+          reachable: true,
+          title: true,
+          meta_description: true,
+          viewport: true,
+          contact_path: false,
+          call_to_action: false,
+        },
+        qualification: {
+          requestedTerms: ["casting", "skuespiller", "self-tape"],
+          matchedTerms: [],
+        },
+      },
+    });
+
+    expect(score.excluded).toBe(true);
+    expect(score.explanation).toMatchObject({
+      filter_mismatches: expect.arrayContaining(["content_qualification"]),
+      content_qualification: {
+        requirement: "required",
+        outcome: "excluded",
+        matched_terms: [],
+      },
+    });
+  });
+
+  it("keeps unavailable qualification evidence unknown and explains positive matches", () => {
+    const unknown = scoreDiscoveryCandidate({
+      ...base,
+      qualificationTerms: ["film", "medieproduksjon"],
+      qualificationRequirement: "required",
+      websiteQuality: {
+        status: "unknown",
+        score: null,
+        fetchedAt: "2026-09-09T10:00:00.000Z",
+        sourceUri: "https://filmskole.example",
+        finalUrl: null,
+        httpStatus: null,
+        redirectCount: 0,
+        reason: "request_failed",
+        signals: {
+          https: null,
+          reachable: null,
+          title: null,
+          meta_description: null,
+          viewport: null,
+          contact_path: null,
+          call_to_action: null,
+        },
+      },
+    });
+    expect(unknown.excluded).toBe(false);
+    expect(unknown.explanation).toMatchObject({
+      unknown_filter_evidence: expect.arrayContaining(["content_qualification"]),
+      content_qualification: { outcome: "unknown" },
+    });
+
+    const matched = scoreDiscoveryCandidate({
+      ...base,
+      qualificationTerms: ["film", "medieproduksjon"],
+      qualificationRequirement: "required",
+      websiteQuality: {
+        status: "assessed",
+        score: 80,
+        fetchedAt: "2026-09-09T10:00:00.000Z",
+        sourceUri: "https://filmskole.example",
+        finalUrl: "https://filmskole.example/",
+        httpStatus: 200,
+        redirectCount: 0,
+        reason: "assessed",
+        signals: {
+          https: true,
+          reachable: true,
+          title: true,
+          meta_description: true,
+          viewport: true,
+          contact_path: false,
+          call_to_action: false,
+        },
+        qualification: {
+          requestedTerms: ["film", "medieproduksjon"],
+          matchedTerms: ["film", "medieproduksjon"],
+        },
+      },
+    });
+    expect(matched.excluded).toBe(false);
+    expect(matched.explanation).toMatchObject({
+      content_qualification: {
+        outcome: "passed",
+        matched_terms: ["film", "medieproduksjon"],
+      },
+    });
+  });
 });

@@ -147,11 +147,11 @@ struct DiscoveryProfileManagerView: View {
                     Text("Kjøringer og leads beholdes. Bare den lagrede søkeprofilen arkiveres.")
                 }
         .confirmationDialog(
-            "Start prioritert kampanje?",
+            "Kjør alle aktive profiler?",
             isPresented: $showingCampaignStartConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Start Oslo → Vest → Øst/nord → Sør") {
+            Button("Start \(campaignProfiles.count) profiler") {
                 let profiles = campaignProfiles
                 Task {
                     await coordinator.startCampaign(
@@ -161,7 +161,7 @@ struct DiscoveryProfileManagerView: View {
             }
             Button("Avbryt", role: .cancel) {}
         } message: {
-            Text("Profilene kjøres én om gangen på serveren. Kampanjen fortsetter selv om du lukker appen.")
+            Text("Profilene kjøres én om gangen på serveren. Samme virksomhet slås sammen på tvers av profilene og beholder alle profiltreff.")
         }
         .confirmationDialog(
             "Avbryt hele kampanjen?",
@@ -200,42 +200,16 @@ struct DiscoveryProfileManagerView: View {
                 .padding(.vertical, 4)
                 .background(LeadgridDiscoveryTheme.accent.opacity(0.18), in: Capsule())
                 .accessibilityLabel("\(coordinator.profiles.count) profiler")
+                .accessibilityIdentifier("discovery.profile.count")
         }
     }
 
     private var campaignProfiles: [DiscoveryV2Profile] {
-        coordinator.orderedProfiles(
-            for: .osloRegionClinicPilot,
-            copying: coordinator.brief)
-    }
-
-    private var campaignConflictNames: [String] {
-        DiscoveryV2ProfilePreset.osloRegionClinicPilot
-            .drafts(copying: coordinator.brief)
-            .filter {
-                DiscoveryRunCoordinator.conflictingProfile(
-                    for: $0,
-                    in: coordinator.profiles) != nil
-            }
-            .map(\.name)
-    }
-
-    private var campaignPausedNames: [String] {
-        campaignPausedProfiles.map(\.name)
-    }
-
-    private var campaignPausedProfiles: [DiscoveryV2Profile] {
-        DiscoveryV2ProfilePreset.osloRegionClinicPilot
-            .drafts(copying: coordinator.brief)
-            .compactMap {
-                DiscoveryRunCoordinator.pausedMatchingProfile(
-                    for: $0,
-                    in: coordinator.profiles)
-            }
+        DiscoveryRunCoordinator.campaignProfiles(from: coordinator.profiles)
     }
 
     private var campaignName: String {
-        "\(coordinator.projectName ?? "Kundeprosjekt") – klinikkpilot Oslo og omegn"
+        "\(coordinator.projectName ?? "Kundeprosjekt") – alle aktive profiler"
     }
 
     private var historicalCampaigns: [DiscoveryV2CampaignRun] {
@@ -249,7 +223,7 @@ struct DiscoveryProfileManagerView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Kampanjekjøring")
                         .font(.headline)
-                    Text("Kjør Oslo → Vest → Øst/nord → Sør som én prosjektavgrenset serverjobb.")
+                    Text("Kjør alle aktive profiler som én prosjektavgrenset serverjobb.")
                         .font(.caption)
                         .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
                 }
@@ -266,7 +240,7 @@ struct DiscoveryProfileManagerView: View {
                 .font(.caption)
                 .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
 
-            if campaignProfiles.count == 4 {
+            if !campaignProfiles.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         ForEach(campaignProfiles.indices, id: \.self) { index in
@@ -281,35 +255,9 @@ struct DiscoveryProfileManagerView: View {
                     .padding(.vertical, 1)
                 }
                 .accessibilityElement(children: .combine)
-            } else if !campaignConflictNames.isEmpty {
-                Label(
-                    "Konflikt i territorium: \(campaignConflictNames.joined(separator: ", ")). Profilen har en annen kundetype, ICP eller andre filtre og må oppdateres eller arkiveres først.",
-                    systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(LeadgridDiscoveryTheme.warning)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else if !campaignPausedNames.isEmpty {
-                VStack(alignment: .leading, spacing: 7) {
-                    Label(
-                        "Pauset profil: \(campaignPausedNames.joined(separator: ", ")). Aktiver før kampanjen startes.",
-                        systemImage: "pause.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(LeadgridDiscoveryTheme.warning)
-                        .fixedSize(horizontal: false, vertical: true)
-                    ForEach(campaignPausedProfiles) { profile in
-                        Button {
-                            Task { await coordinator.activateProfile(profile) }
-                        } label: {
-                            Label("Aktiver \(profile.name)", systemImage: "play.circle")
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .disabled(coordinator.isBusy)
-                    }
-                }
             } else {
                 Label(
-                    "Opprett eller fullfør de fire territoriumprofilene før kampanjen kan startes.",
+                    "Aktiver minst én Discovery-profil før kampanjen kan startes.",
                     systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(LeadgridDiscoveryTheme.warning)
@@ -318,13 +266,13 @@ struct DiscoveryProfileManagerView: View {
             Button {
                 showingCampaignStartConfirmation = true
             } label: {
-                Label("Start prioritert kampanje", systemImage: "play.circle.fill")
+                Label("Kjør alle aktive profiler", systemImage: "play.circle.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .tint(LeadgridDiscoveryTheme.accent)
             .disabled(
-                campaignProfiles.count != 4
+                campaignProfiles.isEmpty
                     || coordinator.activeCampaign != nil
                     || coordinator.isCampaignBusy)
             .accessibilityIdentifier("discovery.campaign.start")

@@ -8,6 +8,7 @@
  *   - webhook_delivery_queue (exhausted) > 30 dager → DELETE
  *   - lead_territory_events > 180 dager → DELETE
  *   - utløpte Google Places-attesteringer → bounded DELETE
+ *   - ubehandlede talentprospects etter 90 dager → bounded do-not-contact
  *
  * Trigger: GitHub Actions (workflow: leadgrid-retention-cleanup.yml)
  *          @ 03:00 UTC daglig (1 time før intelligence-rescore for
@@ -33,6 +34,8 @@ const WEBHOOK_QUEUE_EXHAUSTED_DAYS = 30;
 const TERRITORY_EVENTS_DAYS = 180;
 export const DISCOVERY_PLACE_CONFIRMATION_BATCH_SIZE = 500;
 export const DISCOVERY_PLACE_CONFIRMATION_MAX_BATCHES = 20;
+export const TALENT_PROSPECT_PRIVACY_BATCH_SIZE = 500;
+export const TALENT_PROSPECT_PRIVACY_MAX_BATCHES = 20;
 
 interface PlaceConfirmationCleanupOptions {
   batchSize?: number;
@@ -44,6 +47,103 @@ export interface PlaceConfirmationCleanupResult {
   deleted: number;
   batches: number;
   limitReached: boolean;
+}
+
+export interface TalentProspectPrivacyResult {
+  suppressed: number;
+  batches: number;
+  limitReached: boolean;
+}
+
+export async function suppressDueTalentProspects(
+  pool: Pick<Pool, "query">,
+  options: PlaceConfirmationCleanupOptions = {},
+): Promise<TalentProspectPrivacyResult> {
+  const batchSize = boundedPositiveInteger(
+    options.batchSize,
+    TALENT_PROSPECT_PRIVACY_BATCH_SIZE,
+    5_000,
+  );
+  const maxBatches = boundedPositiveInteger(
+    options.maxBatches,
+    TALENT_PROSPECT_PRIVACY_MAX_BATCHES,
+    100,
+  );
+  const cutoff = options.now ?? new Date();
+  let suppressed = 0;
+  let batches = 0;
+  while (batches < maxBatches) {
+    const result = await pool.query(
+      `WITH due AS MATERIALIZED (
+         SELECT contact.id,
+                contact.organization_id,
+                contact.project_id,
+                contact.customer_id
+           FROM leadgrid_customer_contacts contact
+           JOIN crm_customers customer
+             ON customer.id = contact.customer_id
+            AND customer.organization_id = contact.organization_id
+            AND customer.project_id = contact.project_id
+          WHERE contact.subject_kind = 'talent'
+            AND contact.privacy_status IN ('notice_required', 'notice_sent')
+            AND contact.consent_status <> 'received'
+            AND contact.privacy_review_due_at <= $2::timestamptz
+            AND customer.archived_at IS NULL
+            AND customer.lead_status <> 'do_not_contact'
+          ORDER BY contact.privacy_review_due_at, contact.id
+          LIMIT $1
+          FOR UPDATE OF contact SKIP LOCKED
+       )
+       UPDATE crm_customers customer
+          SET lead_status = 'do_not_contact',
+              import_raw_data = (
+                CASE WHEN jsonb_typeof(customer.import_raw_data) = 'object'
+                  THEN customer.import_raw_data ELSE '{}'::jsonb END
+              ) || jsonb_build_object(
+                'talent_privacy_retention',
+                jsonb_build_object(
+                  'status', 'expired',
+                  'suppressed_at', NOW(),
+                  'reason', 'privacy_review_deadline_elapsed'
+                )
+              ),
+              updated_at = NOW()
+         FROM due
+        WHERE customer.id = due.customer_id
+          AND customer.organization_id = due.organization_id
+          AND customer.project_id = due.project_id`,
+      [batchSize, cutoff.toISOString()],
+    );
+    const count = result.rowCount ?? 0;
+    suppressed += count;
+    batches += 1;
+    if (count < batchSize) {
+      return { suppressed, batches, limitReached: false };
+    }
+  }
+  const remaining = await pool.query(
+    `SELECT EXISTS (
+       SELECT 1
+         FROM leadgrid_customer_contacts contact
+         JOIN crm_customers customer
+           ON customer.id = contact.customer_id
+          AND customer.organization_id = contact.organization_id
+          AND customer.project_id = contact.project_id
+        WHERE contact.subject_kind = 'talent'
+          AND contact.privacy_status IN ('notice_required', 'notice_sent')
+          AND contact.consent_status <> 'received'
+          AND contact.privacy_review_due_at <= $1::timestamptz
+          AND customer.archived_at IS NULL
+          AND customer.lead_status <> 'do_not_contact'
+        LIMIT 1
+     ) AS has_remaining`,
+    [cutoff.toISOString()],
+  );
+  return {
+    suppressed,
+    batches,
+    limitReached: remaining.rows[0]?.has_remaining === true,
+  };
 }
 
 function boundedPositiveInteger(
@@ -166,6 +266,8 @@ export function registerLeadgridRetentionCron(deps: Deps): void {
       const stats: Record<string, number | boolean> = {};
       let placeConfirmationCleanupFailed = false;
       let placeConfirmationCleanupBacklog = false;
+      let talentPrivacyCleanupFailed = false;
+      let talentPrivacyCleanupBacklog = false;
       try {
         // 1. lead_scores_history
         try {
@@ -252,19 +354,39 @@ export function registerLeadgridRetentionCron(deps: Deps): void {
           placeConfirmationCleanupFailed = true;
         }
 
+        // 7. A public-data person prospect is not a consented Role Room talent.
+        // Suppress outreach after the review window unless a user has already
+        // handled the notice/opt-out state.
+        try {
+          const cleanup = await suppressDueTalentProspects(pool);
+          stats.talent_prospects_suppressed = cleanup.suppressed;
+          stats.talent_privacy_batches = cleanup.batches;
+          stats.talent_privacy_limit_reached = cleanup.limitReached;
+          talentPrivacyCleanupBacklog = cleanup.limitReached;
+        } catch (err) {
+          console.warn("[retention-cron] talent-personvern feilet:", err);
+          captureLeadgridError("retention-cron-talent-privacy", err, { stats });
+          stats.talent_prospects_suppressed = -1;
+          talentPrivacyCleanupFailed = true;
+        }
+
         const durationMs = Date.now() - start;
-        if (placeConfirmationCleanupFailed) {
+        if (placeConfirmationCleanupFailed || talentPrivacyCleanupFailed) {
           res.status(500).json({
-            error: "place_confirmation_retention_failed",
+            error: talentPrivacyCleanupFailed
+              ? "talent_privacy_retention_failed"
+              : "place_confirmation_retention_failed",
             stats,
             duration_ms: durationMs,
           });
           return;
         }
-        if (placeConfirmationCleanupBacklog) {
+        if (placeConfirmationCleanupBacklog || talentPrivacyCleanupBacklog) {
           res.status(503).json({
             ok: false,
-            error: "place_confirmation_retention_backlog",
+            error: talentPrivacyCleanupBacklog
+              ? "talent_privacy_retention_backlog"
+              : "place_confirmation_retention_backlog",
             stats,
             duration_ms: durationMs,
           });
