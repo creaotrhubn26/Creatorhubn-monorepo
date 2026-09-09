@@ -19,6 +19,7 @@ const acceptanceBody = {
     letter_of_intent: "1.0",
   },
   confirmedSigningAuthority: true,
+  verificationCode: "123456",
 };
 
 describe("prototype tester account activation recovery", () => {
@@ -66,6 +67,9 @@ describe("prototype tester account activation recovery", () => {
               agreement_digest: params[5],
               program_started_at: params[6],
               program_ends_at: params[7],
+              signature_method: "email_otp_typed_name",
+              email_verified_at: params[8],
+              signing_receipt_id: "99999999-9999-4999-8999-999999999999",
             };
             return { rows: [persistedRow], rowCount: 1 };
           }
@@ -90,6 +94,10 @@ describe("prototype tester account activation recovery", () => {
       reason: null,
       messageId: "retry-activation-email-id",
     });
+    const verifySigningCode = vi.fn().mockResolvedValue({
+      ok: true,
+      verifiedAt: "2026-09-09T12:00:00.000Z",
+    });
     const app = express();
     app.use(express.json());
     setupPrototypeTesterInvitesRoutes({
@@ -100,6 +108,7 @@ describe("prototype tester account activation recovery", () => {
       requireAdminSession: () => true,
       provisionTesterAccount,
       sendAccessActivatedEmail,
+      verifySigningCode,
     });
 
     const firstAttempt = await request(app)
@@ -125,6 +134,7 @@ describe("prototype tester account activation recovery", () => {
     expect(persistedRow.agreement_digest).toBe(originalDigest);
     expect(persistedRow.accepted_at).toBe(originalAcceptedAt);
     expect(provisionTesterAccount).toHaveBeenCalledTimes(2);
+    expect(verifySigningCode).toHaveBeenCalledOnce();
     expect(
       query.mock.calls.filter(([sql]) =>
         String(sql).includes("SET status = 'accepted'"),
