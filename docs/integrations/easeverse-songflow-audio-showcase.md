@@ -1,7 +1,7 @@
 # Integrasjon: EaseVerse ⇄ Workspace/Sound Room ⇄ Pro Tools Companion
 
 > Implementert arkitektur og driftsrunbook for den samlede musikkprodusentflyten.
-> Sist oppdatert: 2026-09-07.
+> Sist oppdatert: 2026-09-09.
 
 ## 1. Mål
 
@@ -27,6 +27,7 @@ Den kanoniske flyten er:
 | Robust synk | ✅ | CreatorHub bruker persistent outbox med event-ID, leveringsstatus, feilårsak, eksponentiell retry og manuell retry fra Sound Room. |
 | Realtime-sikkerhet | ✅ | Web-klienten henter en tilfeldig 30-sekunders engangsticket før WebSocket-oppkobling; OAuth-token legges ikke i URL-en. |
 | Legacy EaseVerse-paring | ✅ | Gamle Clerk-/lokale Companion-kort er fjernet fra aktiv EaseVerse-UI. Paring administreres i Workspace/Sound Room. |
+| Desktop-distribusjon | 🟡 | macOS DMG-er er Developer ID-signert/notarisert. Windows x64-pipelinen krever gyldig Authenticode før publisering; offentlig v0.1.2 er fortsatt usignert mens Azure Public Trust-validering fullføres. |
 
 ## 3. Systemkart og ansvar
 
@@ -121,6 +122,7 @@ Før produksjonsrelease skal følgende passere:
 | CreatorHub web | `npm run build` | Passerer |
 | Companion Rust | `cargo test` | Alle passerer |
 | Companion webview | `npm run typecheck && npm run build` | Passerer |
+| Companion Windows | native Windows build → Artifact Signing → install/start/uninstall-smoke | App-EXE, NSIS EXE og MSI har samme gyldige publisher; installert app starter |
 | EaseVerse | `npm run typecheck && npm test` | Alle passerer |
 | EaseVerse Netlify | `npm run netlify:build` | Genererte funksjoner/ruter inkluderer nye API-er |
 | OAuth E2E | CreatorHub login → HttpOnly cookie → integration handoff → prosjekt | Passerer uten token i localStorage |
@@ -140,6 +142,19 @@ Før produksjonsrelease skal følgende passere:
 
 - `EASEVERSE_API_URL=https://easeverse.netlify.app`
 - `EASEVERSE_API_KEY` – samme verdi som EaseVerse `EXTERNAL_API_KEY`
+
+### Pro Tools Companion / GitHub Actions
+
+- GitHub OIDC kobles til en Microsoft Entra-app med federert credential for
+  `repo:creaotrhubn26/Creatorhubn-monorepo:environment:protools-companion-release`.
+- Environmentet tillater release-tagger og `main` for manuell rerun; workflowen
+  validerer og sjekker alltid ut den eksplisitte immutable release-taggen.
+- Azure Artifact Signing bruker en ferdig identitetsvalidert Public Trust-profil.
+- Repository secrets: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`.
+- Repository variables: `AZURE_ARTIFACT_SIGNING_ENDPOINT`,
+  `AZURE_ARTIFACT_SIGNING_ACCOUNT`, `AZURE_ARTIFACT_SIGNING_PROFILE`.
+- Release-pipelinen signerer app-EXE-en før bundling, signerer deretter EXE/MSI og
+  avviser releasen dersom Authenticode eller RFC3161-tidsstempelet ikke er gyldig.
 
 Logg aldri verdiene, og eksponer dem ikke gjennom `EXPO_PUBLIC_*` eller frontend-bundlen.
 

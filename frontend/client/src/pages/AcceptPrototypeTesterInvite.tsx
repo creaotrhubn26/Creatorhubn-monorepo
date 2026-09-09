@@ -168,8 +168,14 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
     useState<PrototypeTesterAgreementKey | null>(null);
   const [confirmedAuthority, setConfirmedAuthority] = useState(false);
   const [signerName, setSignerName] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
+  const [sendingCode, setSendingCode] = useState(false);
+  const [maskedEmail, setMaskedEmail] = useState("");
+  const [codeExpiresAt, setCodeExpiresAt] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [receiptEmailSent, setReceiptEmailSent] = useState(false);
 
   useEffect(() => {
     if (!token) {
@@ -241,6 +247,29 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
     setActiveDocumentKey(null);
   };
 
+  const handleSendVerificationCode = async () => {
+    setSendingCode(true);
+    setError(null);
+    try {
+      const result = await apiRequest(
+        `/api/prototype-tester-invites/${encodeURIComponent(token)}/signing-code`,
+        { method: "POST" },
+      );
+      setCodeSent(true);
+      setMaskedEmail(String(result?.maskedEmail || invite?.email || ""));
+      setCodeExpiresAt(result?.expiresAt ? String(result.expiresAt) : null);
+      setVerificationCode("");
+    } catch (cause: unknown) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Kunne ikke sende bekreftelseskoden.",
+      );
+    } finally {
+      setSendingCode(false);
+    }
+  };
+
   const handleAccept = async () => {
     if (!allAccepted) {
       setError("Du må lese og godta alle fire dokumentene.");
@@ -254,6 +283,10 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
       setError("Skriv fullt navn.");
       return;
     }
+    if (!activationRetry && !/^\d{6}$/.test(verificationCode)) {
+      setError("Skriv inn den sekssifrede koden fra e-posten.");
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -261,7 +294,7 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
       const agreementVersions = Object.fromEntries(
         agreements.map((document) => [document.key, document.version]),
       );
-      await apiRequest(
+      const result = await apiRequest(
         `/api/prototype-tester-invites/${encodeURIComponent(token)}/accept`,
         {
           method: "POST",
@@ -272,9 +305,11 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
             acceptedAgreements: accepted,
             agreementVersions,
             confirmedSigningAuthority: true,
+            verificationCode,
           },
         },
       );
+      setReceiptEmailSent(Boolean(result?.receiptEmailDelivery?.sent));
       trackEvent(
         activationRetry
           ? "prototype_tester_activation_retried"
@@ -344,6 +379,10 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
             <Typography sx={{ color: ws.textDim, mt: 1 }}>
               CreatorHub-tilgangen er aktivert. Du sendes til innlogging og
               deretter videre til dashbordet.
+            </Typography>
+            <Typography variant="body2" sx={{ color: ws.textDim, mt: 1.5 }}>
+              En etterprøvbar PDF-kvittering ligger i Mine avtaler
+              {receiptEmailSent ? " og lenken er sendt til e-posten din." : "."}
             </Typography>
           </CardContent>
         </Card>
@@ -574,6 +613,7 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
                       disabled={!hasBeenRead}
                       control={
                         <Checkbox
+                          disabled={!hasBeenRead}
                           checked={hasBeenAccepted}
                           data-testid={`accept-${document.key}`}
                           onChange={(event) =>
@@ -630,13 +670,17 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
               <Typography variant="body2" sx={{ color: ws.textDim, mb: 2 }}>
                 Vi lagrer navn, e-post, tidspunkt, IP-adresse, brukeragent, full
                 dokumenttekst, versjoner og SHA-256-kontrollsum som
-                dokumentasjon.
+                dokumentasjon. Dette er en enkel elektronisk signatur med
+                e-postbekreftelse, ikke BankID eller en kvalifisert elektronisk
+                signatur. Ved å fullføre bekrefter du at aksepten er ment å være
+                bindende for de tre dokumentene som er merket «Bindende».
               </Typography>
               <FormControlLabel
                 disabled={!allAccepted}
                 sx={{ alignItems: "flex-start", mb: 1 }}
                 control={
                   <Checkbox
+                    disabled={!allAccepted}
                     checked={confirmedAuthority}
                     data-testid="confirm-signing-authority"
                     onChange={(event) =>
@@ -664,6 +708,74 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
                 inputProps={{ "data-testid": "agreement-signer-name" }}
                 sx={{ mt: 1 }}
               />
+              {!activationRetry && (
+                <Box
+                  sx={{
+                    mt: 2,
+                    p: 2,
+                    borderRadius: `${ws.radiusSm}px`,
+                    bgcolor: ws.bg,
+                    border: `1px solid ${codeSent ? ws.accentBorder : ws.border}`,
+                  }}
+                >
+                  <Typography variant="subtitle2" fontWeight={800}>
+                    Bekreft den inviterte e-postadressen
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: ws.textDim, mt: 0.5 }}>
+                    Vi sender en engangskode til {maskedEmail || invite.email}.
+                    Koden må oppgis sammen med navnet for å signere.
+                  </Typography>
+                  <Stack
+                    direction={{ xs: "column", sm: "row" }}
+                    spacing={1.25}
+                    alignItems={{ sm: "flex-start" }}
+                    sx={{ mt: 1.5 }}
+                  >
+                    <Button
+                      variant={codeSent ? "outlined" : "contained"}
+                      disabled={!allAccepted || sendingCode}
+                      onClick={handleSendVerificationCode}
+                      data-testid="send-signing-code"
+                      sx={!codeSent ? {
+                        bgcolor: ws.accent,
+                        color: ws.accentContrast,
+                        fontWeight: 800,
+                      } : undefined}
+                    >
+                      {sendingCode
+                        ? "Sender…"
+                        : codeSent
+                          ? "Send ny kode"
+                          : "Send bekreftelseskode"}
+                    </Button>
+                    <TextField
+                      label="Sekssifret kode"
+                      value={verificationCode}
+                      disabled={!codeSent}
+                      onChange={(event) =>
+                        setVerificationCode(
+                          event.target.value.replace(/\D/g, "").slice(0, 6),
+                        )
+                      }
+                      inputProps={{
+                        inputMode: "numeric",
+                        autoComplete: "one-time-code",
+                        maxLength: 6,
+                        "data-testid": "signing-verification-code",
+                        "aria-label": "Sekssifret bekreftelseskode",
+                      }}
+                      helperText={
+                        codeSent
+                          ? `Koden er gyldig i 10 minutter${
+                              codeExpiresAt ? ` (til ${new Date(codeExpiresAt).toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" })})` : ""
+                            }.`
+                          : "Be om en kode for å fortsette"
+                      }
+                      sx={{ flex: 1, minWidth: { sm: 240 } }}
+                    />
+                  </Stack>
+                </Box>
+              )}
               {error && (
                 <Alert severity="error" sx={{ mt: 2 }}>
                   {error}
@@ -677,7 +789,8 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
                   submitting ||
                   !allAccepted ||
                   !confirmedAuthority ||
-                  signerName.trim().length < 2
+                  signerName.trim().length < 2 ||
+                  (!activationRetry && !/^\d{6}$/.test(verificationCode))
                 }
                 sx={{
                   mt: 2,
