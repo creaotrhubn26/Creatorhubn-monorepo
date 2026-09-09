@@ -86,7 +86,7 @@ pub fn run(
     let parsed: QuestionFile = toml::from_str(&std::fs::read_to_string(file)?)?;
     let mut hits = Vec::with_capacity(parsed.question.len());
     for q in &parsed.question {
-        hits.push(search::query(conn, embedder, &q.question, k)?);
+        hits.push(search::query_paths(conn, embedder, &q.question, k)?);
     }
     Ok(score(&parsed.question, &hits, k))
 }
@@ -124,9 +124,9 @@ mod tests {
             vec![hit("backend/server/nope.ts"), hit("backend/server/also-nope.ts")],
         ];
         let report = score(&questions, &hits, 5);
-        assert_eq!(report.results[0].1, true);
+        assert!(report.results[0].1);
         assert_eq!(report.results[0].2, Some(2), "rank is 1-indexed");
-        assert_eq!(report.results[1].1, false);
+        assert!(!report.results[1].1);
         assert_eq!(report.results[1].2, None);
         assert!((report.recall() - 0.5).abs() < 1e-9);
         assert!(!report.passed(), "0.5 recall is below the 0.80 threshold");
