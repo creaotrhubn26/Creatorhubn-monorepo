@@ -1,4 +1,5 @@
 import express from "express";
+import fs from "node:fs";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 import { setupAudioShowcaseRoutes } from "./audio-showcase-routes.js";
@@ -8,6 +9,18 @@ const VERSION_ID = "00000000-0000-4000-8000-000000000002";
 const BOUNCE_ID = "00000000-0000-4000-8000-000000000003";
 
 describe("Audio Showcase Pro Tools playback URL", () => {
+  it("sends the persisted OAuth token for protected playback and download only", () => {
+    const source = fs.readFileSync(
+      new URL("../../frontend/client/src/pages/audio-showcase.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(source).toContain("fetchParams: companionAudioFetchParams(effectiveSrc)");
+    expect(source).toContain("fetch(url, companionAudioFetchParams(url))");
+    expect(source).toContain("/^\\/api\\/protools\\/bounces\\/");
+    expect(source).toContain("headers: { Authorization: `Bearer ${token}` }");
+    expect(source).toContain("if (!isProtectedCompanionAudio(url)) return { credentials: 'omit' }");
+  });
+
   it("replaces a private R2 object URL with the authenticated same-origin stream", async () => {
     const query = vi.fn(async (sqlValue: unknown) => {
       const sql = String(sqlValue);
