@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
 
@@ -50,6 +50,40 @@ describe("Pro Tools Companion EaseVerse bridge", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.enqueue.mockResolvedValue({ configured: true, synced: true, status: 200, storage: "postgres", eventId: "file-1:markers", revision: 1, queued: false });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("reports notarized macOS builds and both Authenticode-signed Windows installer formats", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify([{
+      tag_name: "protools-companion-v0.1.3",
+      draft: false,
+      assets: [
+        { name: "CreatorHub-ProTools-Companion_0.1.3_aarch64_signed-notarized.dmg", browser_download_url: "https://downloads.test/mac-arm.dmg", size: 10 },
+        { name: "CreatorHub-ProTools-Companion_0.1.3_x64_signed-notarized.dmg", browser_download_url: "https://downloads.test/mac-intel.dmg", size: 11 },
+        { name: "CreatorHub-ProTools-Companion_0.1.3_x64_signed.msi", browser_download_url: "https://downloads.test/windows.msi", size: 12 },
+        { name: "CreatorHub-ProTools-Companion_0.1.3_x64_signed.exe", browser_download_url: "https://downloads.test/windows.exe", size: 13 },
+      ],
+    }]), { status: 200, headers: { "content-type": "application/json" } })));
+    const app = express();
+    setupProToolsCompanionRoutes({
+      app,
+      pool: createPool(),
+      requireUserSession: vi.fn(() => null),
+    });
+
+    const response = await request(app).get("/api/protools/companion/release");
+
+    expect(response.status).toBe(200);
+    expect(response.body.version).toBe("0.1.3");
+    expect(response.body.downloads).toEqual([
+      expect.objectContaining({ os: "macOS", arch: "Apple Silicon", format: "DMG", signed: true }),
+      expect.objectContaining({ os: "macOS", arch: "Intel", format: "DMG", signed: true }),
+      expect.objectContaining({ os: "Windows", arch: "x64", format: "MSI", signed: true }),
+      expect.objectContaining({ os: "Windows", arch: "x64", format: "EXE", signed: true }),
+    ]);
   });
 
   it("stores markers in Sound Room and mirrors the same snapshot to EaseVerse", async () => {

@@ -36,11 +36,36 @@ describe("prototype tester agreement bundle", () => {
 
   it("covers the GDPR article 28 processor-contract subjects", () => {
     const dpa = documents.find((document) => document.key === "dpa");
+    expect(dpa?.version).toBe("1.1");
     expect(dpa?.content).toContain("Behandlingsansvarlig");
     expect(dpa?.content).toContain("Databehandler");
     expect(dpa?.content).toContain("UNDERDATABEHANDLERE");
-    expect(dpa?.content).toContain("SLETTING, RETUR OG REVISJON");
+    expect(dpa?.content).toContain("14 kalenderdager");
+    expect(dpa?.content).toContain("fullt ansvar overfor Kunden");
+    expect(dpa?.content).toContain("REGISTRERTES RETTIGHETER");
+    expect(dpa?.content).toContain("artikkel 32–36");
+    expect(dpa?.content).toContain("SLETTING, RETUR OG BEKREFTELSE");
+    expect(dpa?.content).toContain("skriftlig bekrefte gjennomført sletting");
+    expect(dpa?.content).toContain("DOKUMENTASJON, REVISJON OG TILSYN");
+    expect(dpa?.content).toContain("VEDLEGG B — MINIMUMSTILTAK FOR SIKKERHET");
+    expect(dpa?.content).toContain("VEDLEGG C — GODKJENTE UNDERDATABEHANDLERE");
+    expect(dpa?.content.toLowerCase()).toContain("enkel elektronisk signatur");
     expect(dpa?.content).toContain("artikkel 28");
+  });
+
+  it("keeps the accepted DPA 1.0 text stable for existing invitations", () => {
+    const legacyDpa = buildPrototypeTesterAgreementBundle(
+      {
+        testerName: "Ada Lovelace",
+        testerEmail: "ada@example.com",
+        testerCompany: "Analytical Engines AS",
+      },
+      { dpa: "1.0" },
+    ).find((document) => document.key === "dpa");
+
+    expect(legacyDpa?.version).toBe("1.0");
+    expect(legacyDpa?.content).toContain("SLETTING, RETUR OG REVISJON");
+    expect(legacyDpa?.content).not.toContain("VEDLEGG C — GODKJENTE UNDERDATABEHANDLERE");
   });
 
   it("makes the letter of intent explicitly non-binding", () => {

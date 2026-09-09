@@ -1,11 +1,10 @@
 name: Pro Tools Companion Release
 
-# Bygger den native Pro Tools Companion-appen for macOS (Apple Silicon + Intel)
-# og Windows, og laster installerene opp til GitHub-release-en. Trigges av en
-# tag `protools-companion-v*` eller manuelt (workflow_dispatch).
+# Publiserer én kontrollert desktop-release med:
+# - signert og Apple-notarisert macOS DMG for Apple Silicon og Intel
+# - native Windows x64 MSI + NSIS EXE, Authenticode-signert med Azure Artifact Signing
 #
-# Backendens /api/protools/companion/release auto-oppdager assetene fra release-en,
-# så nye plattformer dukker opp i Sound Room-dialogen automatisk.
+# Releasen holdes som draft til alle fire installerne er bygget og verifisert.
 
 on:
   push:
@@ -14,36 +13,145 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release-tag (f.eks. protools-companion-v0.1.1)'
+        description: 'Release-tag (f.eks. protools-companion-v0.1.2)'
         required: true
-        default: 'protools-companion-v0.1.1'
+        default: 'protools-companion-v0.1.2'
 
 permissions:
   contents: write
 
+concurrency:
+  group: protools-companion-release-${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+  cancel-in-progress: false
+
 jobs:
+  prepare:
+    name: Validate version and create draft
+    runs-on: ubuntu-latest
+    outputs:
+      commit_sha: ${{ steps.release.outputs.commit_sha }}
+      release_id: ${{ steps.release.outputs.release_id }}
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # workflow_dispatch leser den korrigerte workflowen fra main, men
+          # validerer og bygger alltid den immutable release-taggen.
+          ref: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+
+      - name: Validate tag and prepare draft release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$REQUESTED_TAG"
+          tag_pattern='^protools-companion-v([0-9]+\.[0-9]+\.[0-9]+)$'
+          if [[ "$tag" =~ $tag_pattern ]]; then
+            version="${BASH_REMATCH[1]}"
+          else
+            echo "::error::Ugyldig release-tag: $tag"
+            exit 1
+          fi
+          package_version=$(node -p "require('./apps/creatorhub-protools-companion/package.json').version")
+          tauri_version=$(node -p "require('./apps/creatorhub-protools-companion/src-tauri/tauri.conf.json').version")
+          cargo_version=$(awk '
+            /^\[package\]$/ { in_package=1; next }
+            /^\[/ { in_package=0 }
+            in_package && /^version = / { gsub(/[\" ]/, "", $3); print $3; exit }
+          ' apps/creatorhub-protools-companion/src-tauri/Cargo.toml)
+          if [[ "$version" != "$package_version" ]]; then
+            echo "::error::Tag ($version), package.json ($package_version), tauri.conf.json ($tauri_version) og Cargo.toml ($cargo_version) må være identiske"
+            exit 1
+          elif [[ "$version" != "$tauri_version" ]]; then
+            echo "::error::Tag ($version), package.json ($package_version), tauri.conf.json ($tauri_version) og Cargo.toml ($cargo_version) må være identiske"
+            exit 1
+          elif [[ "$version" != "$cargo_version" ]]; then
+            echo "::error::Tag ($version), package.json ($package_version), tauri.conf.json ($tauri_version) og Cargo.toml ($cargo_version) må være identiske"
+            exit 1
+          fi
+
+          commit_sha=$(git rev-parse HEAD)
+          # GitHubs /releases/tags/:tag-endepunkt utelater draft-releaser. List
+          # releases eksplisitt slik at en trygg rerun kan gjenbruke draften.
+          release_json=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$tag\")" | head -n 1)
+          if [[ -n "$release_json" ]]; then
+            if [[ "$(jq -r '.draft' <<<"$release_json")" != "true" ]]; then
+              echo "::error::Release $tag er allerede publisert og blir ikke overskrevet"
+              exit 1
+            fi
+            release_id=$(jq -r '.id' <<<"$release_json")
+            # En rerun bygger hele matrisen på nytt. Fjern kun assets fra den
+            # validerte draften, så tauri-action aldri kolliderer med delbygg.
+            gh api "repos/$GITHUB_REPOSITORY/releases/$release_id/assets?per_page=100" \
+              --jq '.[].id' | while read -r asset_id; do
+                [[ -n "$asset_id" ]] && gh api --method DELETE \
+                  "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+              done
+          else
+            notes_file=$(mktemp)
+            cat > "$notes_file" <<NOTES
+          Native CreatorHub Pro Tools Companion ${version} kobler Pro Tools til Sound Room og EaseVerse:
+
+          - synker markører og sesjonsmetadata fra «Export Session Info as Text»
+          - laster nye bounces inn som review-versjoner i Sound Room
+          - **macOS:** Developer ID-signert og Apple-notarisert for Apple Silicon og Intel
+          - **Windows x64:** Authenticode-signert EXE-installer og MSI for administrert utrulling
+
+          Alle installere verifiseres mot plattformens tillitskjede før releasen publiseres. SHA256SUMS.txt følger med for uavhengig integritetskontroll.
+          NOTES
+            release_json=$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
+              -f tag_name="$tag" \
+              -f target_commitish="$commit_sha" \
+              -f name="CreatorHub Pro Tools Companion ${version}" \
+              -F draft=true \
+              -F prerelease=false \
+              --raw-field body="$(<"$notes_file")")
+            rm -f "$notes_file"
+            release_id=$(jq -r '.id' <<<"$release_json")
+          fi
+
+          {
+            echo "commit_sha=$commit_sha"
+            echo "release_id=$release_id"
+            echo "tag=$tag"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
+
   build:
+    name: Build ${{ matrix.label }}
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-14        # Apple Silicon
+          - platform: macos-14
+            label: macOS Apple Silicon
             target: aarch64-apple-darwin
             args: '--target aarch64-apple-darwin'
-          - platform: macos-13        # Intel
+            family: macos
+          - platform: macos-14
+            label: macOS Intel
             target: x86_64-apple-darwin
             args: '--target x86_64-apple-darwin'
-          - platform: windows-latest  # Windows x64
-            target: ''
-            args: ''
+            family: macos
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: apps/creatorhub-protools-companion/package-lock.json
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -55,22 +163,491 @@ jobs:
         with:
           workspaces: apps/creatorhub-protools-companion/src-tauri
 
-      - name: Install frontend deps
+      - name: Install locked frontend dependencies
         working-directory: apps/creatorhub-protools-companion
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
-      - name: Build & publish (tauri-action)
-        uses: tauri-apps/tauri-action@v0
+      - name: Typecheck frontend
+        working-directory: apps/creatorhub-protools-companion
+        run: npm run typecheck
+
+      - name: Test native core
+        working-directory: apps/creatorhub-protools-companion/src-tauri
+        run: cargo test --locked
+
+      - name: Import Apple Developer ID certificate
+        if: matrix.family == 'macos'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$APPLE_CERTIFICATE" || -z "$APPLE_CERTIFICATE_PASSWORD" || -z "$APPLE_SIGNING_IDENTITY" ]]; then
+            echo "::error::Apple Developer ID signing secrets mangler"
+            exit 1
+          fi
+          keychain_path="$RUNNER_TEMP/protools-companion.keychain-db"
+          keychain_password=$(uuidgen)
+          certificate_path="$RUNNER_TEMP/protools-companion.p12"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$keychain_path"
+          # security expects the existing keychains as separate arguments.
+          # shellcheck disable=SC2046
+          security list-keychain -d user -s "$keychain_path" $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$keychain_password" "$keychain_path"
+          security find-identity -v -p codesigning "$keychain_path"
+          rm -f "$certificate_path"
+          echo "COMPANION_KEYCHAIN_PATH=$keychain_path" >> "$GITHUB_ENV"
+
+      - name: Prepare App Store Connect notarization key
+        if: matrix.family == 'macos'
+        env:
+          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$APP_STORE_CONNECT_API_KEY_CONTENT" || -z "$APP_STORE_CONNECT_API_KEY_ID" || -z "$APP_STORE_CONNECT_API_ISSUER_ID" ]]; then
+            echo "::error::App Store Connect API secrets for notarization mangler"
+            exit 1
+          fi
+          api_key_path="$RUNNER_TEMP/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY_CONTENT" | base64 --decode > "$api_key_path"
+          chmod 600 "$api_key_path"
+          {
+            echo "APPLE_API_KEY_PATH=$api_key_path"
+            echo "APPLE_API_KEY=$APP_STORE_CONNECT_API_KEY_ID"
+            echo "APPLE_API_ISSUER=$APP_STORE_CONNECT_API_ISSUER_ID"
+          } >> "$GITHUB_ENV"
+
+      - name: Build, sign, notarize and upload macOS bundles
+        if: matrix.family == 'macos'
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         with:
           projectPath: apps/creatorhub-protools-companion
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
-          releaseName: 'Pro Tools Companion __VERSION__'
-          releaseBody: |
-            Native Pro Tools Companion — synker markører («Export Session Info as Text») og bounces inn i koblet EaseVerse / Sound Room.
-
-            Usignert bygg: macOS → høyreklikk appen → **Åpne**. Windows → «Mer info» → «Kjør likevel».
-          releaseDraft: false
-          prerelease: false
+          releaseId: ${{ needs.prepare.outputs.release_id }}
+          tagName: ${{ needs.prepare.outputs.tag }}
+          releaseDraft: true
+          uploadUpdaterJson: false
+          retryAttempts: 2
+          releaseAssetNamePattern: 'CreatorHub-ProTools-Companion_[version]_[arch]_signed-notarized[ext]'
           args: ${{ matrix.args }}
+
+      - name: Notarize DMG container and verify macOS release
+        if: matrix.family == 'macos'
+        working-directory: apps/creatorhub-protools-companion
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle_root="src-tauri/target/${{ matrix.target }}/release/bundle"
+          app_count=$(find "$bundle_root" -type d -name '*.app' -prune -print | wc -l | tr -d ' ')
+          dmg_count=$(find "$bundle_root" -type f -name '*.dmg' -print | wc -l | tr -d ' ')
+          if [[ "$app_count" != "1" || "$dmg_count" != "1" ]]; then
+            echo "::error::Forventet nøyaktig én .app og én .dmg; fant $app_count og $dmg_count"
+            exit 1
+          fi
+          app_path=$(find "$bundle_root" -type d -name '*.app' -prune -print | head -n 1)
+          dmg_path=$(find "$bundle_root" -type f -name '*.dmg' -print | head -n 1)
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          xcrun stapler validate "$app_path"
+          # Tauri notariserer og stapler appen før DMG-en opprettes. Send også
+          # den ferdige, signerte DMG-containeren til Apple og staple billetten.
+          xcrun notarytool submit "$dmg_path" \
+            --key "$APPLE_API_KEY_PATH" \
+            --key-id "$APPLE_API_KEY" \
+            --issuer "$APPLE_API_ISSUER" \
+            --wait
+          xcrun stapler staple "$dmg_path"
+          xcrun stapler validate "$dmg_path"
+          codesign --verify --verbose=2 "$dmg_path"
+          spctl --assess --type execute --verbose=2 "$app_path"
+          spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg_path"
+
+          if [[ "$TARGET" == aarch64-* ]]; then
+            release_arch="aarch64"
+          else
+            release_arch="x64"
+          fi
+          asset_name="CreatorHub-ProTools-Companion_${RELEASE_VERSION}_${release_arch}_signed-notarized.dmg"
+          release_asset="$RUNNER_TEMP/$asset_name"
+          cp "$dmg_path" "$release_asset"
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" \
+            --jq ".[] | select(.name == \"$asset_name\") | .id" | while read -r asset_id; do
+              [[ -n "$asset_id" ]] && gh api --method DELETE \
+                "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+            done
+          upload_response=$(curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            --header "Content-Type: application/octet-stream" \
+            --data-binary "@$release_asset" \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$asset_name")
+          jq -e --arg name "$asset_name" '.name == $name and .state == "uploaded"' \
+            <<<"$upload_response" >/dev/null
+
+      - name: Remove temporary Apple signing material
+        if: always() && matrix.family == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${APPLE_API_KEY_PATH:-}" ]]; then
+            rm -f "$APPLE_API_KEY_PATH"
+          fi
+          if [[ -n "${COMPANION_KEYCHAIN_PATH:-}" && -f "$COMPANION_KEYCHAIN_PATH" ]]; then
+            security delete-keychain "$COMPANION_KEYCHAIN_PATH"
+          fi
+
+  build-windows:
+    name: Build, sign and smoke-test Windows x64
+    needs: prepare
+    runs-on: windows-2025
+    environment: protools-companion-release
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/creatorhub-protools-companion/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/creatorhub-protools-companion/src-tauri
+
+      - name: Install locked frontend dependencies
+        working-directory: apps/creatorhub-protools-companion
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck frontend
+        working-directory: apps/creatorhub-protools-companion
+        run: npm run typecheck
+
+      - name: Test native core
+        working-directory: apps/creatorhub-protools-companion/src-tauri
+        run: cargo test --locked
+
+      - name: Validate Azure Artifact Signing configuration
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARTIFACT_SIGNING_ENDPOINT: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          ARTIFACT_SIGNING_ACCOUNT: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          ARTIFACT_SIGNING_PROFILE: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $required = @{
+            AZURE_CLIENT_ID = $env:AZURE_CLIENT_ID
+            AZURE_TENANT_ID = $env:AZURE_TENANT_ID
+            AZURE_SUBSCRIPTION_ID = $env:AZURE_SUBSCRIPTION_ID
+            AZURE_ARTIFACT_SIGNING_ENDPOINT = $env:ARTIFACT_SIGNING_ENDPOINT
+            AZURE_ARTIFACT_SIGNING_ACCOUNT = $env:ARTIFACT_SIGNING_ACCOUNT
+            AZURE_ARTIFACT_SIGNING_PROFILE = $env:ARTIFACT_SIGNING_PROFILE
+          }
+          $missing = @($required.Keys | Where-Object { [string]::IsNullOrWhiteSpace($required[$_]) })
+          if ($missing.Count -gt 0) {
+            throw "Missing required Windows signing configuration: $($missing -join ', ')"
+          }
+          if (-not [Uri]::IsWellFormedUriString($env:ARTIFACT_SIGNING_ENDPOINT, [UriKind]::Absolute)) {
+            throw 'AZURE_ARTIFACT_SIGNING_ENDPOINT must be an absolute URI'
+          }
+
+      - name: Build Windows application without installers
+        working-directory: apps/creatorhub-protools-companion
+        run: npm run tauri -- build --no-bundle
+
+      - name: Verify unsigned Windows application input
+        working-directory: apps/creatorhub-protools-companion
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $app = Resolve-Path 'src-tauri/target/release/creatorhub-protools-companion.exe'
+          if ((Get-Item $app).Length -le 0) { throw "Empty application binary: $app" }
+          $signature = Get-AuthenticodeSignature -FilePath $app
+          if ($signature.Status -ne 'NotSigned') {
+            throw "Expected an unsigned pre-signing binary, got $($signature.Status): $app"
+          }
+
+      - name: Sign in to Azure with GitHub OIDC
+        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Authenticode-sign Windows application
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
+        with:
+          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+          files: ${{ github.workspace }}\apps\creatorhub-protools-companion\src-tauri\target\release\creatorhub-protools-companion.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: CreatorHub Pro Tools Companion
+          description-url: https://www.creatorhubn.com
+
+      - name: Bundle Windows MSI and NSIS installers
+        working-directory: apps/creatorhub-protools-companion
+        run: npm run tauri -- bundle --bundles msi nsis --ci
+
+      - name: Authenticode-sign Windows installers
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
+        with:
+          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\apps\creatorhub-protools-companion\src-tauri\target\release\bundle
+          files-folder-filter: '*.exe,*.msi'
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: CreatorHub Pro Tools Companion
+          description-url: https://www.creatorhubn.com
+
+      - name: Smoke-test Windows installers and installed application
+        working-directory: apps/creatorhub-protools-companion
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundleRoot = Resolve-Path 'src-tauri/target/release/bundle'
+          $msi = @(Get-ChildItem -Path $bundleRoot -Recurse -File -Filter '*.msi')
+          $nsis = @(Get-ChildItem -Path $bundleRoot -Recurse -File -Filter '*-setup.exe')
+          if ($msi.Count -ne 1 -or $nsis.Count -ne 1) {
+            throw "Expected exactly one MSI and one NSIS setup EXE; found $($msi.Count) and $($nsis.Count)"
+          }
+
+          $msiExtract = Join-Path $env:RUNNER_TEMP 'companion-msi-extract'
+          New-Item -ItemType Directory -Path $msiExtract -Force | Out-Null
+          $msiLog = Join-Path $env:RUNNER_TEMP 'companion-msi-extract.log'
+          $msiArgs = @('/a', "`"$($msi[0].FullName)`"", '/qn', '/norestart', "TARGETDIR=`"$msiExtract`"", "/L*v", "`"$msiLog`"")
+          $msiProcess = Start-Process msiexec.exe -ArgumentList $msiArgs -Wait -PassThru
+          if ($msiProcess.ExitCode -ne 0) {
+            Get-Content $msiLog -Tail 120 -ErrorAction SilentlyContinue
+            throw "MSI administrative extraction failed with exit code $($msiProcess.ExitCode)"
+          }
+          $extractedApps = @(Get-ChildItem -Path $msiExtract -Recurse -File -Filter 'creatorhub-protools-companion.exe')
+          if ($extractedApps.Count -ne 1) {
+            throw "Expected one Companion executable in extracted MSI; found $($extractedApps.Count)"
+          }
+          if ((Get-AuthenticodeSignature $extractedApps[0].FullName).Status -ne 'Valid') {
+            throw 'The Companion executable embedded in the MSI is not Authenticode-valid'
+          }
+
+          $installProcess = Start-Process $nsis[0].FullName -ArgumentList '/S' -Wait -PassThru
+          if ($installProcess.ExitCode -ne 0) {
+            throw "NSIS silent installation failed with exit code $($installProcess.ExitCode)"
+          }
+          $uninstallRoots = @(
+            'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+            'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+            'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+          )
+          $entry = Get-ItemProperty -Path $uninstallRoots -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -eq 'Creatorhub Pro Tools Companion' } |
+            Select-Object -First 1
+          if ($null -eq $entry) { throw 'Installed Companion was not registered in Windows uninstall metadata' }
+          $installLocation = ([string]$entry.InstallLocation).Trim().Trim('"')
+          if ([string]::IsNullOrWhiteSpace($installLocation) -or -not (Test-Path $installLocation)) {
+            throw "Invalid installed Companion location: $installLocation"
+          }
+          $installedApps = @(Get-ChildItem -Path $installLocation -File -Filter '*.exe' |
+            Where-Object { $_.Name -ne 'uninstall.exe' })
+          if ($installedApps.Count -ne 1) {
+            throw "Expected one installed Companion executable; found $($installedApps.Count) in $installLocation"
+          }
+          if ((Get-AuthenticodeSignature $installedApps[0].FullName).Status -ne 'Valid') {
+            throw 'Installed Companion executable is not Authenticode-valid'
+          }
+          $appProcess = Start-Process $installedApps[0].FullName -PassThru
+          Start-Sleep -Seconds 8
+          if ($appProcess.HasExited) {
+            throw "Installed Companion exited during launch smoke with code $($appProcess.ExitCode)"
+          }
+          Stop-Process -Id $appProcess.Id -Force
+          $appProcess.WaitForExit()
+
+          $uninstallPath = ([string]$entry.UninstallString).Trim().Trim('"')
+          if ([string]::IsNullOrWhiteSpace($uninstallPath) -or -not (Test-Path $uninstallPath)) {
+            throw "Invalid Companion uninstaller path: $uninstallPath"
+          }
+          $uninstallProcess = Start-Process $uninstallPath -ArgumentList '/S' -Wait -PassThru
+          if ($uninstallProcess.ExitCode -ne 0) {
+            throw "NSIS silent uninstall failed with exit code $($uninstallProcess.ExitCode)"
+          }
+          Start-Sleep -Seconds 3
+          if (Test-Path $installedApps[0].FullName) {
+            throw 'Companion executable still exists after silent uninstall'
+          }
+
+      - name: Verify and upload signed Windows release
+        working-directory: apps/creatorhub-protools-companion
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundleRoot = 'src-tauri/target/release/bundle'
+          $app = Resolve-Path 'src-tauri/target/release/creatorhub-protools-companion.exe'
+          $msi = @(Get-ChildItem -Path $bundleRoot -Recurse -File -Filter '*.msi')
+          $exe = @(Get-ChildItem -Path $bundleRoot -Recurse -File -Filter '*-setup.exe')
+          if ($msi.Count -ne 1 -or $exe.Count -ne 1) {
+            throw "Expected exactly one MSI and one NSIS setup EXE; found $($msi.Count) and $($exe.Count)"
+          }
+          $signedFiles = @((Get-Item $app), $msi[0], $exe[0])
+          $subjects = @()
+          foreach ($file in $signedFiles) {
+            if ($file.Length -le 0) { throw "Empty signed file: $($file.FullName)" }
+            $signature = Get-AuthenticodeSignature -FilePath $file.FullName
+            if ($signature.Status -ne 'Valid') {
+              throw "Invalid Authenticode signature ($($signature.Status)): $($file.FullName)"
+            }
+            if ($null -eq $signature.SignerCertificate -or $null -eq $signature.TimeStamperCertificate) {
+              throw "Signer or RFC3161 timestamp certificate missing: $($file.FullName)"
+            }
+            $subjects += $signature.SignerCertificate.Subject
+            Write-Host "$($file.Name): $($file.Length) bytes, Authenticode=Valid, Publisher=$($signature.SignerCertificate.Subject)"
+          }
+          if (@($subjects | Select-Object -Unique).Count -ne 1) {
+            throw "Application and installers were not signed by the same publisher: $($subjects -join '; ')"
+          }
+
+          $releaseAssets = @(
+            @{ Path = $exe[0].FullName; Name = "CreatorHub-ProTools-Companion_$($env:RELEASE_VERSION)_x64_signed.exe" },
+            @{ Path = $msi[0].FullName; Name = "CreatorHub-ProTools-Companion_$($env:RELEASE_VERSION)_x64_signed.msi" }
+          )
+          $existingAssets = @(gh api "repos/$env:GITHUB_REPOSITORY/releases/$env:RELEASE_ID/assets?per_page=100" | ConvertFrom-Json)
+          foreach ($asset in $releaseAssets) {
+            foreach ($existing in @($existingAssets | Where-Object { $_.name -eq $asset.Name })) {
+              gh api --method DELETE "repos/$env:GITHUB_REPOSITORY/releases/assets/$($existing.id)"
+              if ($LASTEXITCODE -ne 0) { throw "Failed deleting existing release asset $($asset.Name)" }
+            }
+            $encodedName = [Uri]::EscapeDataString($asset.Name)
+            $uploadUrl = "https://uploads.github.com/repos/$env:GITHUB_REPOSITORY/releases/$env:RELEASE_ID/assets?name=$encodedName"
+            $response = Invoke-RestMethod -Method Post -Uri $uploadUrl -InFile $asset.Path -ContentType 'application/octet-stream' -Headers @{
+              Authorization = "Bearer $env:GH_TOKEN"
+              Accept = 'application/vnd.github+json'
+              'X-GitHub-Api-Version' = '2022-11-28'
+            }
+            if ($response.name -ne $asset.Name -or $response.state -ne 'uploaded') {
+              throw "Release upload did not complete for $($asset.Name)"
+            }
+          }
+
+  publish:
+    name: Verify assets and publish release
+    needs: [prepare, build, build-windows]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - name: Download draft assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir artifacts
+          asset_rows=$(mktemp)
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" \
+            --jq '.[] | [.id, .name] | @tsv' > "$asset_rows"
+          if [[ ! -s "$asset_rows" ]]; then
+            echo "::error::Draft release contains no assets"
+            exit 1
+          fi
+          while IFS=$'\t' read -r asset_id asset_name; do
+            if [[ "$asset_name" == */* || "$asset_name" == *\\* ]]; then
+              echo "::error::Unsafe release asset name: $asset_name"
+              exit 1
+            fi
+            curl --fail-with-body --location --silent --show-error \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header "Accept: application/octet-stream" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" \
+              --output "artifacts/$asset_name"
+          done < "$asset_rows"
+
+      - name: Require every supported installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          require_one() {
+            local pattern="$1"
+            local label="$2"
+            local count
+            count=$(find artifacts -maxdepth 1 -type f -name "$pattern" | wc -l | tr -d ' ')
+            if [[ "$count" != "1" ]]; then
+              echo "::error::Forventet én $label ($pattern), fant $count"
+              find artifacts -maxdepth 1 -type f -print
+              exit 1
+            fi
+          }
+          require_one '*aarch64*signed-notarized*.dmg' 'Apple Silicon DMG'
+          require_one '*x64*signed-notarized*.dmg' 'Intel DMG'
+          require_one '*x64_signed.msi' 'Authenticode-signert Windows MSI'
+          require_one '*x64_signed.exe' 'Authenticode-signert Windows EXE'
+
+      - name: Generate and upload checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd artifacts
+            sha256sum ./* | sed 's# \./# #' | sort -k2 > SHA256SUMS.txt
+          )
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" \
+            --jq '.[] | select(.name == "SHA256SUMS.txt") | .id' | while read -r asset_id; do
+              [[ -n "$asset_id" ]] && gh api --method DELETE \
+                "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+            done
+          upload_response=$(curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            --header "Content-Type: application/octet-stream" \
+            --data-binary '@artifacts/SHA256SUMS.txt' \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=SHA256SUMS.txt")
+          jq -e '.name == "SHA256SUMS.txt" and .state == "uploaded"' \
+            <<<"$upload_response" >/dev/null
+
+      - name: Publish verified release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+            -F draft=false \
+            --jq '{draft,tag_name,html_url,assets:[.assets[].name]}'

@@ -106,8 +106,9 @@ function buildBasicSeedProject(): CastingProject {
  * when isStandalone=true and the backend is unavailable.
  *
  * Sprint A.7: Når URL inneholder ?seed=basic seedes ett minimalt demo-prosjekt
- * så `selectFirstProject` i e2e-specs har en `<li>` å klikke på. Holder hele
- * test-harness uavhengig av backend.
+ * så `selectFirstProject` i e2e-specs har en `<li>` å klikke på. Varianten
+ * ?seed=story-writer legger også inn ett tomt manuskript for tester av
+ * manuskriptfanene. Holder hele test-harness uavhengig av backend.
  */
 function SessionSeeder({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -155,7 +156,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
         ? 'roleRoom_workspaceState_content_producer'
         : 'roleRoom_workspaceState_production_team';
 
-      if (seedFlag === 'basic' || seedFlag === 'demo') {
+      if (seedFlag === 'basic' || seedFlag === 'demo' || seedFlag === 'story-writer') {
         try {
           const seedProject = buildBasicSeedProject();
           await castingService.saveProject(seedProject);
@@ -173,6 +174,29 @@ function SessionSeeder({ children }: { children: ReactNode }) {
             },
             { userId: 'e2e-test-user' },
           );
+
+          if (seedFlag === 'story-writer') {
+            const now = new Date().toISOString();
+            await settingsService.setSetting(
+              'virtualStudio_manuscripts',
+              [{
+                id: 'e2e-story-writer-manuscript',
+                projectId: seedProject.id,
+                title: 'E2E Story Writer',
+                subtitle: '',
+                author: 'E2E Tester',
+                version: '1.0',
+                format: 'fountain',
+                content: '',
+                pageCount: 0,
+                wordCount: 0,
+                status: 'draft',
+                createdAt: now,
+                updatedAt: now,
+              }],
+              { userId: 'e2e-test-user', projectId: seedProject.id },
+            );
+          }
         } catch (err) {
           console.warn('[test-harness] Failed to seed basic project:', err);
         }

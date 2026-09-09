@@ -119,6 +119,8 @@ interface CreatorHubEmailTemplateRow {
     | 'creatorhub_subscription_cancelled'
     | 'creatorhub_access_request_received'
     | 'creatorhub_prototype_tester_invite'
+    | 'creatorhub_prototype_tester_signing_code'
+    | 'creatorhub_prototype_tester_signature_receipt'
     | 'creatorhub_access_request_approved'
     | 'creatorhub_access_request_rejected'
     | 'creatorhub_tester_access_activated';
@@ -344,7 +346,7 @@ const defaultCreatorHubEmailSettings: CreatorHubEmailSettings = {
     domain: 'creatorhubn.com',
     supportEmail: 'hello@creatorhubn.com',
     docsUrl: 'https://creatorhubn.com',
-    emailLogoUrl: '/creatorhub-wordmark-light.png',
+    emailLogoUrl: 'https://creatorhubn.com/creatorhub-wordmark-light.png',
   },
   email: {
     fromEmail: 'billing@creatorhubn.com',
@@ -449,6 +451,29 @@ const defaultCreatorHubEmailSettings: CreatorHubEmailSettings = {
           'Den personlige lenken utløper om {{inviteExpiresDays}} dager. Svar på denne e-posten hvis du trenger hjelp.',
       },
       {
+        id: 'creatorhub_prototype_tester_signing_code',
+        name: 'Bekreftelseskode for signering',
+        description: 'Sendes når en prototype-tester bekrefter den inviterte e-postadressen før signering.',
+        subject: 'Bekreft signeringen i CreatorHub',
+        title: 'Din bekreftelseskode',
+        body:
+          '<p>Hei {{recipientName}},</p><p>Bruk denne koden for å bekrefte e-postadressen din og signere prototype-testeravtalene:</p><p style="font-size:30px;font-weight:800;letter-spacing:0.2em"><strong>{{signingCode}}</strong></p><p>Koden er gyldig i <strong>{{codeExpiresMinutes}} minutter</strong> og kan bare brukes én gang.</p>',
+        footerNote:
+          'Hvis du ikke ba om koden, kan du ignorere e-posten. Ikke videresend koden til andre.',
+      },
+      {
+        id: 'creatorhub_prototype_tester_signature_receipt',
+        name: 'Kvittering for prototype-signering',
+        description: 'Sendes etter fullført signering og viser hvor den etterprøvbare PDF-kvitteringen finnes.',
+        subject: 'Kvittering for signerte CreatorHub-avtaler',
+        title: 'Avtalene dine er signert',
+        body:
+          '<p>Hei {{recipientName}},</p><p>Vi har registrert signeringen av programvilkårene, NDA-en, databehandleravtalen og intensjonsavtalen.</p><p>Kvitterings-ID: <strong>{{receiptId}}</strong></p><p>Du kan laste ned en etterprøvbar PDF-kvittering fra <strong>Mine avtaler</strong>.</p>',
+        ctaLabel: 'Åpne Mine avtaler',
+        footerNote:
+          'Integritetskontroll (SHA-256): {{agreementDigest}}. Oppbevar denne e-posten som dokumentasjon.',
+      },
+      {
         id: 'creatorhub_access_request_approved',
         name: 'Tilgangsforespørsel godkjent',
         description: 'Sendes når en prototype-tester er godkjent og skal lese og signere hele avtalegrunnlaget.',
@@ -494,6 +519,8 @@ function getCreatorHubTemplateSenderKind(
     case 'creatorhub_account_activated':
     case 'creatorhub_access_request_received':
     case 'creatorhub_prototype_tester_invite':
+    case 'creatorhub_prototype_tester_signing_code':
+    case 'creatorhub_prototype_tester_signature_receipt':
     case 'creatorhub_access_request_approved':
     case 'creatorhub_access_request_rejected':
     case 'creatorhub_tester_access_activated':

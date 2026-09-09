@@ -5,6 +5,7 @@
     "build",
     "dist",
     "**/*.test.ts",
+    "**/*.test.tsx",
     "unused",
     "client/src/components/unused/**/*",
     "server/**/*"

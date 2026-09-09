@@ -5,6 +5,7 @@
  *   1. Verifisere at klient eier e-posten FØR registrering i client-portal
  *   2. Step-up auth ved sensitive operasjoner (passord-endring, slett konto)
  *   3. Login-2FA hvis brukeren har valgt e-post som 2. faktor
+ *   4. Bekrefte invitert e-post før prototype-testeravtaler signeres
  *
  * Modell:
  *   - Bcrypt-hashes koden i DB (aldri lagre klartekst)
@@ -18,6 +19,7 @@
  *   - "password_change"           — step-up når innlogget bruker endrer pwd
  *   - "login_2fa_email"           — hvis bruker har valgt e-post som 2FA
  *   - "account_delete"            — step-up ved sletting
+ *   - "prototype_tester_sign"     — kontroll av invitert e-post før signering
  */
 
 import bcrypt from "bcrypt";
@@ -26,6 +28,7 @@ import nodemailer from "nodemailer";
 import type { Pool } from "pg";
 
 const CODE_TTL_MINUTES = 10;
+const CODE_RESEND_COOLDOWN_SECONDS = 60;
 const MAX_ATTEMPTS = 5;
 const CODE_LENGTH = 6;
 
@@ -36,7 +39,8 @@ export type VerificationPurpose =
   | "account_delete"
   // Step-up auth ved reveal av vault-secrets (fallback hvis bruker
   // ikke har TOTP aktivert).
-  | "vault_reveal";
+  | "vault_reveal"
+  | "prototype_tester_sign";
 
 let schemaReady = false;
 
@@ -90,6 +94,7 @@ function purposeSubject(purpose: VerificationPurpose): string {
     case "login_2fa_email": return "Innloggingskode — Creatorhub";
     case "account_delete": return "Bekreftelseskode — slett konto";
     case "vault_reveal": return "Bekreftelseskode — vis vault-passord";
+    case "prototype_tester_sign": return "Bekreft signeringen i CreatorHub";
   }
 }
 
@@ -100,6 +105,7 @@ function purposeHumanLabel(purpose: VerificationPurpose): string {
     case "login_2fa_email": return "for å logge inn";
     case "account_delete": return "for å bekrefte sletting av kontoen";
     case "vault_reveal": return "for å se et passord fra vault-en";
+    case "prototype_tester_sign": return "for å signere prototype-testeravtalene";
   }
 }
 
@@ -117,12 +123,26 @@ export interface SendCodeResult {
    *  prod (sjekk NODE_ENV).
    */
   devCode?: string;
-  reason?: "email_not_configured" | "send_failed" | "invalid_email";
+  reason?: "email_not_configured" | "send_failed" | "invalid_email" | "rate_limited";
+  retryAfterSeconds?: number;
 }
+
+export interface VerificationCodeDeliveryInput {
+  email: string;
+  purpose: VerificationPurpose;
+  code: string;
+  expiresAt: string;
+  expiresMinutes: number;
+}
+
+export type VerificationCodeDelivery = (
+  input: VerificationCodeDeliveryInput,
+) => Promise<{ sent: boolean }>;
 
 export async function sendVerificationCode(
   pool: Pool,
   input: SendCodeInput,
+  deliver?: VerificationCodeDelivery,
 ): Promise<SendCodeResult> {
   await ensureSchema(pool);
   const email = input.email.trim().toLowerCase();
@@ -143,6 +163,28 @@ export async function sendVerificationCode(
       `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
       [`email-verification:${email}:${input.purpose}`],
     );
+    const recent = await client.query(
+      `SELECT expires_at,
+              GREATEST(1, CEIL(EXTRACT(EPOCH FROM
+                (created_at + ($3 || ' seconds')::interval - NOW())
+              )))::int AS retry_after_seconds
+         FROM email_verification_codes
+        WHERE LOWER(email) = $1
+          AND purpose = $2
+          AND created_at > NOW() - ($3 || ' seconds')::interval
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [email, input.purpose, String(CODE_RESEND_COOLDOWN_SECONDS)],
+    );
+    if (recent.rows.length > 0) {
+      await client.query("COMMIT");
+      return {
+        ok: false,
+        expiresAt: new Date(recent.rows[0].expires_at).toISOString(),
+        reason: "rate_limited",
+        retryAfterSeconds: Number(recent.rows[0].retry_after_seconds) || 1,
+      };
+    }
     await client.query(
       `UPDATE email_verification_codes
           SET used_at = NOW()
@@ -160,6 +202,32 @@ export async function sendVerificationCode(
     throw error;
   } finally {
     client.release();
+  }
+
+  if (deliver) {
+    try {
+      const delivery = await deliver({
+        email,
+        purpose: input.purpose,
+        code,
+        expiresAt: expiresAt.toISOString(),
+        expiresMinutes: CODE_TTL_MINUTES,
+      });
+      if (delivery.sent) {
+        return { ok: true, expiresAt: expiresAt.toISOString() };
+      }
+    } catch (error) {
+      console.error("[email-verification] custom delivery failed", error);
+    }
+    await pool.query(
+      `UPDATE email_verification_codes
+          SET used_at = COALESCE(used_at, NOW())
+        WHERE LOWER(email) = $1
+          AND purpose = $2
+          AND used_at IS NULL`,
+      [email, input.purpose],
+    ).catch(() => undefined);
+    return { ok: false, expiresAt: expiresAt.toISOString(), reason: "send_failed" };
   }
 
   // Send e-post
@@ -224,6 +292,7 @@ export interface VerifyCodeResult {
   ok: boolean;
   reason?: "not_found" | "expired" | "used" | "wrong_code" | "max_attempts";
   attemptsRemaining?: number;
+  verifiedAt?: string;
 }
 
 export async function verifyCode(
@@ -261,11 +330,17 @@ export async function verifyCode(
   // Bcrypt-compare for å være timing-attack-resistent
   const match = await bcrypt.compare(code, row.code_hash);
   if (!match) {
-    const newAttempts = (row.attempts ?? 0) + 1;
-    await pool.query(
-      `UPDATE email_verification_codes SET attempts = $2 WHERE id = $1`,
-      [row.id, newAttempts],
+    const attemptUpdate = await pool.query(
+      `UPDATE email_verification_codes
+          SET attempts = attempts + 1,
+              used_at = CASE WHEN attempts + 1 >= $2 THEN NOW() ELSE used_at END
+        WHERE id = $1
+          AND used_at IS NULL
+      RETURNING attempts`,
+      [row.id, MAX_ATTEMPTS],
     );
+    if (!attemptUpdate.rows.length) return { ok: false, reason: "used" };
+    const newAttempts = Number(attemptUpdate.rows[0].attempts) || MAX_ATTEMPTS;
     return {
       ok: false,
       reason: newAttempts >= MAX_ATTEMPTS ? "max_attempts" : "wrong_code",
@@ -274,8 +349,16 @@ export async function verifyCode(
   }
 
   // Match — marker som brukt
-  await pool.query(`UPDATE email_verification_codes SET used_at = NOW() WHERE id = $1`, [row.id]);
-  return { ok: true };
+  const used = await pool.query(
+    `UPDATE email_verification_codes
+        SET used_at = NOW()
+      WHERE id = $1
+        AND used_at IS NULL
+    RETURNING used_at`,
+    [row.id],
+  );
+  if (!used.rows.length) return { ok: false, reason: "used" };
+  return { ok: true, verifiedAt: new Date(used.rows[0].used_at).toISOString() };
 }
 
 /** Sjekk om brukeren har en verifisert kode innenfor de siste N minutter

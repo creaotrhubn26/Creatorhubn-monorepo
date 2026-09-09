@@ -41,13 +41,47 @@ import {
   FormatAlignCenter,
   FormatAlignLeft,
   TextFields,
+  Keyboard as KeyboardIcon,
+  History as HistoryIcon,
+  AddCircleOutline as AddCircleOutlineIcon,
   Fullscreen as FullscreenIcon,
   FullscreenExit as FullscreenExitIcon,
 } from '@mui/icons-material';
-import settingsService from '../services/settingsService';
+import settingsService, { getCurrentUserId } from '../services/settingsService';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
+import ScreenplayRecoveryDialog from './screenplay/ScreenplayRecoveryDialog';
+import ScreenplayShortcutSettingsDialog from './screenplay/ScreenplayShortcutSettingsDialog';
 import type { Candidate, Role } from '../models/casting';
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
+import {
+  SCREENPLAY_MENU_RULES,
+  SCREENPLAY_SHORTCUT_COMMANDS,
+  detectScreenplayPlatform,
+  formatLineAsScreenplayElement,
+  getNextScreenplayElement,
+  getScreenplayElementRule,
+  getScreenplayParagraphSeparator,
+  screenplayElementFromShortcutKey,
+  screenplayElementShortcutLabel,
+  screenplayShortcutFromEvent,
+  screenplayShortcutLabel,
+  sanitizeScreenplayShortcutOverrides,
+  type ScreenplayElement,
+  type ScreenplayShortcutOverrides,
+} from './screenplay/screenplayElementShortcuts';
+import {
+  addScreenplayRecoveryPoint,
+  initializeScreenplayRecovery,
+  persistScreenplayRecovery,
+  type ScreenplayRecoveryPoint,
+  type ScreenplayRecoveryStore,
+} from './screenplay/screenplayRecovery';
+import {
+  buildCharacterSmartTypeSuggestions,
+  normalizeSmartTypeName,
+  rankCharacterSmartTypeSuggestions,
+  type ScreenplayCharacterSuggestion,
+} from './screenplay/screenplaySmartType';
 
 // 7-Tier Responsive Hook
 type ScreenTier = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '4k';
@@ -113,21 +147,7 @@ const getResponsiveValues = (tier: ScreenTier) => {
 };
 
 // Fountain element types
-type FountainElement = 
-  | 'scene_heading'
-  | 'action'
-  | 'character'
-  | 'dialogue'
-  | 'parenthetical'
-  | 'transition'
-  | 'centered'
-  | 'title_page'
-  | 'section'
-  | 'synopsis'
-  | 'note'
-  | 'boneyard'
-  | 'page_break'
-  | 'dual_dialogue';
+type FountainElement = ScreenplayElement;
 
 interface ParsedLine {
   type: FountainElement;
@@ -140,12 +160,15 @@ interface ParsedLine {
 interface ScreenplayEditorProps {
   value: string;
   onChange: (value: string) => void;
+  manuscriptId?: string;
+  cloudSaveState?: 'saved' | 'unsaved' | 'saving' | 'error';
+  cloudSaveLabel?: string;
   characters?: string[];
   locations?: string[];
   roles?: Role[];
   candidates?: Candidate[];
-  onCharacterAdd?: (name: string) => void;
-  onLocationAdd?: (name: string) => void;
+  onCharacterAdd?: (name: string) => void | boolean | Promise<void | boolean>;
+  onLocationAdd?: (name: string) => void | boolean | Promise<void | boolean>;
   onCharacterProfileOpen?: (payload: { characterName: string; role: Role | null; candidate: Candidate | null }) => void;
   readOnly?: boolean;
   showLineNumbers?: boolean;
@@ -162,15 +185,18 @@ const SCENE_HEADING_PATTERN = /^(INT|EXT|EST|INT\.?\/EXT|I\/E)[\.\s]/i;
 const FORCED_SCENE_HEADING_PATTERN = /^\./;
 const CHARACTER_PATTERN = /^[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'\.]*(\s*\(.*\))?$/;
 const FORCED_CHARACTER_PATTERN = /^@/;
+const DUAL_CHARACTER_PATTERN = /^[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'\.]*(\s*\(.*\))?\s*\^$/;
 const TRANSITION_PATTERN = /^[A-Z\s]+:$/;
 const FORCED_TRANSITION_PATTERN = /^>/;
+const SHOT_PATTERN = /^(?:SHOT|ANGLE ON|CLOSE ON|CLOSE-UP|INSERT|POV|WIDE SHOT|ESTABLISHING SHOT)(?:\s.*)?[:.]?$/i;
 const CENTERED_PATTERN = /^>.*<$/;
 const PARENTHETICAL_PATTERN = /^\(.*\)$/;
 const SECTION_PATTERN = /^#+\s/;
 const SYNOPSIS_PATTERN = /^=(?!=)/;
 const PAGE_BREAK_PATTERN = /^={3,}$/;
-const NOTE_PATTERN = /\[\[.*?\]\]/g;
+const NOTE_PATTERN = /^\[\[.*\]\]$/;
 const BONEYARD_PATTERN = /\/\*[\s\S]*?\*\//g;
+const SCREENPLAY_SHORTCUT_SETTINGS_NAMESPACE = 'virtualStudio_screenplayShortcuts_v1';
 
 // ── Autocomplete data ─────────────────────────────────────────────────────────
 /** INT./EXT. prefix options shown when the user starts a new scene heading line. */
@@ -196,13 +222,84 @@ const COMMON_TRANSITIONS = [
 const isScenePrefixPartial = (partial: string) =>
   partial.length > 0 && SCENE_PREFIXES.some(p => p.startsWith(partial));
 
+type CaretViewportPosition = { top: number; left: number; height: number };
+
+/**
+ * Textarea exposes selection offsets, but not a caret rectangle. Mirror the
+ * rendered text with the same typography and subtract the textarea scroll so
+ * menus stay attached to the actual caret in long manuscripts.
+ */
+const getTextareaCaretViewportPosition = (
+  textarea: HTMLTextAreaElement,
+  position: number,
+): CaretViewportPosition => {
+  const textareaRect = textarea.getBoundingClientRect();
+  const computed = window.getComputedStyle(textarea);
+  const mirror = document.createElement('div');
+  const marker = document.createElement('span');
+  const copiedProperties = [
+    'boxSizing',
+    'borderTopWidth',
+    'borderRightWidth',
+    'borderBottomWidth',
+    'borderLeftWidth',
+    'paddingTop',
+    'paddingRight',
+    'paddingBottom',
+    'paddingLeft',
+    'fontFamily',
+    'fontSize',
+    'fontStyle',
+    'fontWeight',
+    'letterSpacing',
+    'lineHeight',
+    'textAlign',
+    'textIndent',
+    'textTransform',
+    'tabSize',
+    'wordSpacing',
+  ] as const;
+
+  mirror.style.position = 'fixed';
+  mirror.style.visibility = 'hidden';
+  mirror.style.pointerEvents = 'none';
+  mirror.style.overflow = 'hidden';
+  mirror.style.whiteSpace = 'pre-wrap';
+  mirror.style.overflowWrap = 'break-word';
+  mirror.style.wordBreak = 'break-word';
+  mirror.style.top = `${textareaRect.top}px`;
+  mirror.style.left = `${textareaRect.left}px`;
+  mirror.style.width = `${textareaRect.width}px`;
+
+  for (const property of copiedProperties) {
+    mirror.style[property] = computed[property];
+  }
+
+  mirror.textContent = textarea.value.substring(0, Math.max(0, position));
+  marker.textContent = textarea.value.substring(position, position + 1) || '\u200b';
+  mirror.appendChild(marker);
+  document.body.appendChild(mirror);
+
+  const markerRect = marker.getBoundingClientRect();
+  const parsedLineHeight = Number.parseFloat(computed.lineHeight);
+  const height = Number.isFinite(parsedLineHeight) ? parsedLineHeight : markerRect.height || 24;
+  const caret = {
+    top: markerRect.top - textarea.scrollTop,
+    left: markerRect.left - textarea.scrollLeft,
+    height,
+  };
+
+  mirror.remove();
+  return caret;
+};
+
 const toTrimmedStringArray = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
 };
 
 const normalizeCharacterKey = (value: string): string =>
-  value.replace(/^@/, '').replace(/\s*\(.*\)\s*$/, '').trim().toUpperCase();
+  value.replace(/^@/, '').replace(/\s*\^\s*$/, '').replace(/\s*\(.*\)\s*$/, '').trim().toUpperCase();
 
 const AUTO_ROLE_SYNC_BLOCKLIST = new Set([
   'I',
@@ -223,7 +320,7 @@ const AUTO_ROLE_SYNC_BLOCKLIST = new Set([
 ]);
 
 const normalizeCharacterNameForRoleSync = (value: string): string =>
-  value.replace(/^@/, '').replace(/\s*\(.*\)\s*$/, '').trim();
+  value.replace(/^@/, '').replace(/\s*\^\s*$/, '').replace(/\s*\(.*\)\s*$/, '').trim();
 
 const isValidCharacterNameForRoleSync = (value: string): boolean => {
   const cleaned = normalizeCharacterNameForRoleSync(value);
@@ -340,67 +437,12 @@ const resolveCandidateProfileUrl = (candidate: Candidate): string | null => {
   return typeof urlCandidate === 'string' ? urlCandidate.trim() : null;
 };
 
-// ── Element-cycle order (TAB forward, SHIFT+TAB backward) ─────────────────
-// The cycle mirrors Final Draft's Tab behaviour in the most common flow:
-//   action → character → parenthetical → dialogue → action
-const TAB_FORWARD: Partial<Record<FountainElement, FountainElement>> = {
-  action:        'character',
-  character:     'parenthetical',
-  parenthetical: 'dialogue',
-  dialogue:      'action',
-  scene_heading: 'action',
-  transition:    'action',
-  centered:      'action',
-  section:       'action',
-  synopsis:      'action',
-};
-const TAB_BACKWARD: Partial<Record<FountainElement, FountainElement>> = {
-  character:     'action',
-  parenthetical: 'character',
-  dialogue:      'parenthetical',
-  action:        'dialogue',
-};
-
-/**
- * Rewrites a raw line string so it is formatted as `targetType`.
- * Pure function — no side-effects, fully testable.
- */
-function convertLineToElement(
-  raw: string,
-  _from: FountainElement,
-  to: FountainElement,
-): string {
-  // Strip any Fountain force-prefixes to get the naked content
-  const content = raw
-    .replace(/^@/, '')       // forced character
-    .replace(/^[.>]/, '')    // forced scene / transition
-    .replace(/^\(|\)$/g, '') // parenthetical parens
-    .trim();
-
-  switch (to) {
-    case 'character':
-      // All-caps; preserve existing extension like (V.O.) if already present in raw
-      return raw.trim().startsWith('@')
-        ? raw.trim()   // already forced — leave as-is
-        : content.toUpperCase();
-    case 'parenthetical':
-      return content ? `(${content.toLowerCase()})` : '()';
-    case 'dialogue':
-      // Remove parens wrapper if coming from parenthetical, keep content as-is otherwise
-      return content;
-    case 'scene_heading':
-      return content
-        ? `INT. ${content.toUpperCase()} - DAY`
-        : 'INT. LOCATION - DAY';
-    case 'action':
-    default:
-      return content;
-  }
-}
-
 export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   value,
   onChange,
+  manuscriptId,
+  cloudSaveState = 'unsaved',
+  cloudSaveLabel,
   characters = [],
   locations = [],
   roles = [],
@@ -423,13 +465,8 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   const lineNumbersRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef<string[]>([value]);
   const historyIndexRef = useRef(0);
-  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const localRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onChangeRef = useRef(onChange);
-  
-  // Refs for isolated auto-save - NO state updates from auto-save
-  const savePendingRef = useRef(false);
-  const lastSavedContentRef = useRef('');
-  const isMountedRef = useRef(true);
   
   // Keep onChange ref updated
   onChangeRef.current = onChange;
@@ -438,6 +475,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   // Internal state for smooth typing - this is the source of truth for the UI
   const [internalValue, setInternalValue] = useState(value);
   const lastInternalValueRef = useRef(value);
+  const recoveryValueRef = useRef(value);
   
   // Sync external value changes to internal state (but not our own changes)
   useEffect(() => {
@@ -447,8 +485,11 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
       // React DevTools / breakpoint hvis du trenger å spore eksterne syncs.
       setInternalValue(value);
       lastInternalValueRef.current = value;
+      recoveryValueRef.current = value;
       historyRef.current = [value];
       historyIndexRef.current = 0;
+      pendingElementRef.current = null;
+      blankChooserArmedRef.current = null;
     }
   }, [value]);
   
@@ -459,15 +500,145 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     'character' | 'location' | 'transition' | 'scene_prefix' | null
   >(null);
   const [autocompleteOptions, setAutocompleteOptions] = useState<string[]>([]);
+  const [characterAutocompleteDetails, setCharacterAutocompleteDetails] = useState<
+    Record<string, ScreenplayCharacterSuggestion>
+  >({});
   const [autocompletePosition, setAutocompletePosition] = useState({ top: 0, left: 0 });
   const [selectedAutocompleteIndex, setSelectedAutocompleteIndex] = useState(0);
   const [insertMenuAnchor, setInsertMenuAnchor] = useState<HTMLElement | null>(null);
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | 'saving' | 'error'>('saved');
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [elementMenuPosition, setElementMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [elementMenuQuery, setElementMenuQuery] = useState('');
+  const pendingElementRef = useRef<{ lineIndex: number; type: FountainElement } | null>(null);
+  const blankChooserArmedRef = useRef<{ lineIndex: number } | null>(null);
+  const [localSaveStatus, setLocalSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
+  const [lastLocalSaved, setLastLocalSaved] = useState<Date | null>(null);
+  const [recoveryStore, setRecoveryStore] = useState<ScreenplayRecoveryStore | null>(null);
+  const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false);
+  const recoveryUserIdRef = useRef(getCurrentUserId());
+  const lastRecoveryInputRef = useRef(value);
+  const [confirmedCharacterNames, setConfirmedCharacterNames] = useState<Set<string>>(() => new Set());
+  const [confirmedLocationNames, setConfirmedLocationNames] = useState<Set<string>>(() => new Set());
+  const [confirmingEntity, setConfirmingEntity] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isEditorFocused, setIsEditorFocused] = useState(false);
+  const [isPrimaryModifierHeld, setIsPrimaryModifierHeld] = useState(false);
+  const [selectionCollapsed, setSelectionCollapsed] = useState(true);
+  const [shortcutAnnouncement, setShortcutAnnouncement] = useState('');
+  const [shortcutSettingsOpen, setShortcutSettingsOpen] = useState(false);
+  const [shortcutOverrides, setShortcutOverrides] = useState<ScreenplayShortcutOverrides>({});
   const containerRef = useRef<HTMLDivElement>(null);
+  const screenplayPlatform = useMemo(() => detectScreenplayPlatform(), []);
+  const filteredElementMenuRules = useMemo(() => {
+    const query = elementMenuQuery.trim().toLocaleLowerCase('no-NO');
+    if (!query) return SCREENPLAY_MENU_RULES;
+    return SCREENPLAY_MENU_RULES.filter((rule) =>
+      rule.label.toLocaleLowerCase('no-NO').startsWith(query)
+      || rule.type.replace(/_/g, ' ').startsWith(query)
+      || rule.menuMnemonic === query,
+    );
+  }, [elementMenuQuery]);
+
+  useEffect(() => {
+    let active = true;
+    void settingsService
+      .getSetting<ScreenplayShortcutOverrides>(SCREENPLAY_SHORTCUT_SETTINGS_NAMESPACE)
+      .then((stored) => {
+        if (active) setShortcutOverrides(sanitizeScreenplayShortcutOverrides(stored));
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const saveShortcutOverrides = useCallback(async (next: ScreenplayShortcutOverrides) => {
+    setShortcutOverrides(next);
+    await settingsService.setSetting(SCREENPLAY_SHORTCUT_SETTINGS_NAMESPACE, next);
+    setShortcutSettingsOpen(false);
+    setShortcutAnnouncement('Hurtigtastene er lagret.');
+  }, []);
+
+  useEffect(() => {
+    if (!manuscriptId) {
+      setRecoveryStore(null);
+      setLastLocalSaved(null);
+      return;
+    }
+
+    recoveryUserIdRef.current = getCurrentUserId();
+    lastRecoveryInputRef.current = internalValue;
+    try {
+      const stored = initializeScreenplayRecovery(
+        manuscriptId,
+        recoveryUserIdRef.current,
+        internalValue,
+      );
+      setRecoveryStore(stored);
+      setLastLocalSaved(new Date(stored.draft.updatedAt));
+      setLocalSaveStatus('saved');
+    } catch {
+      setLocalSaveStatus('error');
+    }
+    // A new manuscript remounts the editor in production. Only the id should
+    // initialize a different local recovery namespace.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manuscriptId]);
+
+  useEffect(() => {
+    recoveryValueRef.current = internalValue;
+    if (!manuscriptId || readOnly || internalValue === lastRecoveryInputRef.current) return;
+    if (localRecoveryTimerRef.current) clearTimeout(localRecoveryTimerRef.current);
+    setLocalSaveStatus('saving');
+
+    localRecoveryTimerRef.current = setTimeout(() => {
+      try {
+        const shouldPreserveExistingDraft = Boolean(
+          recoveryStore
+          && recoveryStore.draft.content !== lastRecoveryInputRef.current,
+        );
+        const stored = persistScreenplayRecovery(
+          manuscriptId,
+          recoveryUserIdRef.current,
+          recoveryValueRef.current,
+          {
+            forceSnapshot: shouldPreserveExistingDraft,
+            snapshotReason: 'autosave',
+          },
+        );
+        lastRecoveryInputRef.current = recoveryValueRef.current;
+        setRecoveryStore(stored);
+        setLastLocalSaved(new Date(stored.draft.updatedAt));
+        setLocalSaveStatus('saved');
+      } catch {
+        setLocalSaveStatus('error');
+      } finally {
+        localRecoveryTimerRef.current = null;
+      }
+    }, 180);
+
+    return () => {
+      if (localRecoveryTimerRef.current) clearTimeout(localRecoveryTimerRef.current);
+    };
+  }, [internalValue, manuscriptId, readOnly, recoveryStore]);
+
+  useEffect(() => {
+    if (!manuscriptId || readOnly) return;
+    const persistBeforeUnload = () => {
+      if (recoveryValueRef.current === lastRecoveryInputRef.current) return;
+      try {
+        persistScreenplayRecovery(
+          manuscriptId,
+          recoveryUserIdRef.current,
+          recoveryValueRef.current,
+        );
+      } catch {
+        // The page is closing; the visible status already communicates any
+        // storage failure observed during normal editing.
+      }
+    };
+    window.addEventListener('beforeunload', persistBeforeUnload);
+    return () => window.removeEventListener('beforeunload', persistBeforeUnload);
+  }, [manuscriptId, readOnly]);
 
   // ── One-pass Fountain parser ────────────────────────────────────────────────
   // Iterates lines exactly once. Carries forward-state in local variables so we
@@ -491,6 +662,9 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
         // Blank line breaks the dialogue block
         inDialogueBlock = false;
         type = 'action';
+      } else if (NOTE_PATTERN.test(trimmed)) {
+        type = 'note';
+        inDialogueBlock = false;
       } else if (PAGE_BREAK_PATTERN.test(trimmed)) {
         type = 'page_break';
         inDialogueBlock = false;
@@ -506,6 +680,9 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
       } else if (CENTERED_PATTERN.test(trimmed)) {
         type = 'centered';
         inDialogueBlock = false;
+      } else if (SHOT_PATTERN.test(trimmed)) {
+        type = 'shot';
+        inDialogueBlock = false;
       } else if (FORCED_TRANSITION_PATTERN.test(trimmed) &&
                  !(CENTERED_PATTERN.test(trimmed))) { // > ... < is centered, not transition
         type = 'transition';
@@ -518,6 +695,9 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
         type = 'parenthetical';
         // stays inDialogueBlock = true
       } else if (FORCED_CHARACTER_PATTERN.test(trimmed)) {
+        type = 'character';
+        inDialogueBlock = true;
+      } else if (DUAL_CHARACTER_PATTERN.test(trimmed)) {
         type = 'character';
         inDialogueBlock = true;
       } else if (CHARACTER_PATTERN.test(trimmed)) {
@@ -584,6 +764,8 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
         marginRight: isMobile ? '10%' : isTablet ? '20%' : '27%' },
       transition: { ...base, fontWeight: 600, color: '#f472b6', textTransform: 'uppercase',
         textAlign: 'right', marginTop: `${mm}em`, marginBottom: `${mm}em` },
+      shot: { ...base, fontWeight: 700, color: '#fb7185', textTransform: 'uppercase',
+        marginTop: `${mm}em`, marginBottom: `${0.5 * mm}em` },
       centered:    { ...base, textAlign: 'center', color: '#34d399' },
       action:      { ...base, color: '#e5e5e5' },
       section:     { ...base, fontWeight: 700,
@@ -613,6 +795,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
         // Remove extensions like (V.O.), (O.S.), (CONT'D)
         const name = line.content.trim()
           .replace(/^@/, '')
+          .replace(/\s*\^\s*$/, '')
           .replace(/\s*\(.*\)\s*$/, '')
           .trim();
         if (name) chars.add(name);
@@ -650,6 +833,20 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
       .filter((name) => name.length > 0);
     return Array.from(new Set(names)).sort((left, right) => left.localeCompare(right, 'no-NO'));
   }, [roles]);
+
+  const characterSmartTypeSuggestions = useMemo(
+    () => buildCharacterSmartTypeSuggestions({
+      scriptCharacters: extractedCharacters,
+      roleNames: roleCharacterNames,
+      projectCharacters: characters,
+    }),
+    [characters, extractedCharacters, roleCharacterNames],
+  );
+
+  const characterMentionCandidates = useMemo(
+    () => characterSmartTypeSuggestions.map((suggestion) => suggestion.value),
+    [characterSmartTypeSuggestions],
+  );
 
   // All available locations
   const allLocations = useMemo(() => {
@@ -732,128 +929,17 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     return assignmentByLine;
   }, [parsedLines, characterAssignmentsByName]);
 
-  // Sync extracted characters to parent via callback (stable + filtered)
-  const existingCharacterNamesRef = useRef<Set<string>>(new Set());
-  const emittedCharacterNamesRef = useRef<Set<string>>(new Set());
-  const pendingCharacterAddsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  const AUTO_ROLE_SYNC_DELAY_MS = 900;
-
-  useEffect(() => {
-    existingCharacterNamesRef.current = new Set(characters.map((name) => normalizeCharacterKey(name)));
-  }, [characters]);
-
-  useEffect(() => {
-    return () => {
-      pendingCharacterAddsRef.current.forEach((timerId) => clearTimeout(timerId));
-      pendingCharacterAddsRef.current.clear();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!onCharacterAdd) return;
-
-    const extractedByUpper = new Map<string, string>();
-    extractedCharacters.forEach((characterName) => {
-      if (!isValidCharacterNameForRoleSync(characterName)) return;
-      const cleaned = normalizeCharacterNameForRoleSync(characterName);
-      const upper = cleaned.toUpperCase();
-      if (!extractedByUpper.has(upper)) extractedByUpper.set(upper, cleaned);
-    });
-
-    // Cancel pending timers for names that are no longer present.
-    pendingCharacterAddsRef.current.forEach((timerId, upper) => {
-      if (!extractedByUpper.has(upper)) {
-        clearTimeout(timerId);
-        pendingCharacterAddsRef.current.delete(upper);
-      }
-    });
-
-    extractedByUpper.forEach((displayName, upper) => {
-      if (existingCharacterNamesRef.current.has(upper)) {
-        emittedCharacterNamesRef.current.add(upper);
-        return;
-      }
-      if (emittedCharacterNamesRef.current.has(upper)) return;
-      if (pendingCharacterAddsRef.current.has(upper)) return;
-
-      const timerId = setTimeout(() => {
-        pendingCharacterAddsRef.current.delete(upper);
-
-        if (existingCharacterNamesRef.current.has(upper)) {
-          emittedCharacterNamesRef.current.add(upper);
-          return;
-        }
-        if (emittedCharacterNamesRef.current.has(upper)) return;
-
-        emittedCharacterNamesRef.current.add(upper);
-        onCharacterAdd(displayName);
-      }, AUTO_ROLE_SYNC_DELAY_MS);
-
-      pendingCharacterAddsRef.current.set(upper, timerId);
-    });
-  }, [extractedCharacters, onCharacterAdd]);
-
-  // Sync extracted locations to parent via callback (stable + filtered)
-  const existingLocationNamesRef = useRef<Set<string>>(new Set());
-  const emittedLocationNamesRef = useRef<Set<string>>(new Set());
-  const pendingLocationAddsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  const AUTO_LOCATION_SYNC_DELAY_MS = 1200;
-
-  useEffect(() => {
-    existingLocationNamesRef.current = new Set(
-      locations.map((name) => normalizeLocationNameForSync(name).toUpperCase()).filter(Boolean),
-    );
-  }, [locations]);
-
-  useEffect(() => {
-    return () => {
-      pendingLocationAddsRef.current.forEach((timerId) => clearTimeout(timerId));
-      pendingLocationAddsRef.current.clear();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!onLocationAdd) return;
-
-    const extractedByUpper = new Map<string, string>();
-    extractedLocations.forEach((locationName) => {
-      if (!isValidLocationNameForSync(locationName)) return;
-      const cleaned = normalizeLocationNameForSync(locationName);
-      const upper = cleaned.toUpperCase();
-      if (!extractedByUpper.has(upper)) extractedByUpper.set(upper, cleaned);
-    });
-
-    pendingLocationAddsRef.current.forEach((timerId, upper) => {
-      if (!extractedByUpper.has(upper)) {
-        clearTimeout(timerId);
-        pendingLocationAddsRef.current.delete(upper);
-      }
-    });
-
-    extractedByUpper.forEach((displayName, upper) => {
-      if (existingLocationNamesRef.current.has(upper)) {
-        emittedLocationNamesRef.current.add(upper);
-        return;
-      }
-      if (emittedLocationNamesRef.current.has(upper)) return;
-      if (pendingLocationAddsRef.current.has(upper)) return;
-
-      const timerId = setTimeout(() => {
-        pendingLocationAddsRef.current.delete(upper);
-
-        if (existingLocationNamesRef.current.has(upper)) {
-          emittedLocationNamesRef.current.add(upper);
-          return;
-        }
-        if (emittedLocationNamesRef.current.has(upper)) return;
-
-        emittedLocationNamesRef.current.add(upper);
-        onLocationAdd(displayName);
-      }, AUTO_LOCATION_SYNC_DELAY_MS);
-
-      pendingLocationAddsRef.current.set(upper, timerId);
-    });
-  }, [extractedLocations, onLocationAdd]);
+  // Script-only entities stay ephemeral until the writer explicitly confirms
+  // them for the project. This prevents typos from polluting roles/locations.
+  const registeredCharacterNames = useMemo(() => new Set([
+    ...characters.map(normalizeSmartTypeName),
+    ...roleCharacterNames.map(normalizeSmartTypeName),
+    ...confirmedCharacterNames,
+  ]), [characters, confirmedCharacterNames, roleCharacterNames]);
+  const registeredLocationNames = useMemo(() => new Set([
+    ...locations.map((name) => normalizeLocationNameForSync(name).toLocaleUpperCase('nb-NO')),
+    ...confirmedLocationNames,
+  ]), [confirmedLocationNames, locations]);
 
   // ── Batched history: snapshot only after 400 ms of typing inactivity ───────
   const HISTORY_MAX = 200;
@@ -876,7 +962,28 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
 
   // Handle text change - update internal state immediately, notify parent asynchronously
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newValue = e.target.value;
+    blankChooserArmedRef.current = null;
+    let newValue = e.target.value;
+    const cursorPos = e.target.selectionStart;
+    const lineIndex = newValue.substring(0, cursorPos).split('\n').length - 1;
+    const pendingElement = pendingElementRef.current;
+
+    // Character and transition elements are conventionally uppercase. Preserve
+    // the selected element while the first line is being typed so the editor
+    // does not fall back to Action before Fountain has enough context to infer
+    // the final element type.
+    if (
+      pendingElement?.lineIndex === lineIndex
+      && (pendingElement.type === 'character' || pendingElement.type === 'transition')
+    ) {
+      const lineStart = newValue.lastIndexOf('\n', Math.max(0, cursorPos - 1)) + 1;
+      const nextLineBreak = newValue.indexOf('\n', cursorPos);
+      const lineEnd = nextLineBreak === -1 ? newValue.length : nextLineBreak;
+      const upperLine = newValue.slice(lineStart, lineEnd).toUpperCase();
+      newValue = `${newValue.slice(0, lineStart)}${upperLine}${newValue.slice(lineEnd)}`;
+    } else if (pendingElement && pendingElement.lineIndex !== lineIndex) {
+      pendingElementRef.current = null;
+    }
 
     // Update internal state immediately for responsive typing
     setInternalValue(newValue);
@@ -891,7 +998,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     historyTimerRef.current = setTimeout(flushHistory, 400);
 
     // Check for autocomplete trigger
-    checkAutocomplete(newValue, e.target.selectionStart);
+    checkAutocomplete(newValue, cursorPos);
   };
 
   // ── Context-aware autocomplete ──────────────────────────────────────────────
@@ -904,13 +1011,19 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   const openSuggestions = (
     type: 'character' | 'location' | 'transition' | 'scene_prefix',
     options: string[],
+    characterDetails: ScreenplayCharacterSuggestion[] = [],
   ) => {
     if (!options.length) { setShowAutocomplete(false); return; }
     setAutocompleteOptions(options);
+    setCharacterAutocompleteDetails(
+      type === 'character'
+        ? Object.fromEntries(characterDetails.map((detail) => [detail.value, detail]))
+        : {},
+    );
     setAutocompleteType(type);
     setShowAutocomplete(true);
     setSelectedAutocompleteIndex(0);
-    updateAutocompletePosition();
+    updateAutocompletePosition(options.length);
   };
 
   const checkAutocomplete = (text: string, cursorPos: number) => {
@@ -922,7 +1035,10 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     // FSM-derived type for the current line (real-time via ref).
     // Cast to the full union so TS control-flow narrowing inside nested ifs
     // doesn't bleed out and flag valid comparisons below.
-    const etype = (parsedLinesRef.current[lineIdx]?.type ?? 'action') as FountainElement;
+    const pendingType = pendingElementRef.current?.lineIndex === lineIdx
+      ? pendingElementRef.current.type
+      : null;
+    const etype = (pendingType ?? parsedLinesRef.current[lineIdx]?.type ?? 'action') as FountainElement;
 
     // ── 1. SCENE_HEADING ────────────────────────────────────────────────────
     // Two sub-modes: before the prefix (prefix completion) vs after (location).
@@ -959,15 +1075,31 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     // ── 2. CHARACTER ────────────────────────────────────────────────────────
     const isCharContext =
       etype === 'character' ||
-      (prevLine.trim() === '' && /^[A-ZÆØÅ][A-ZÆØÅ0-9 ]*$/.test(rawLine.trim()));
+      (!pendingType && prevLine.trim() === '' && /^[A-ZÆØÅ][A-ZÆØÅ0-9 ]*$/.test(rawLine.trim()));
     if (isCharContext && rawLine.trim().length > 0) {
       const partial = rawLine.replace(/^@/, '').trim().toUpperCase();
       // Skip if this partial also matches a scene prefix (e.g. "INT")
       if (!isScenePrefixPartial(partial.split(' ')[0])) {
-        const charMatches = allCharacters.filter(c =>
-          c.toUpperCase().startsWith(partial),
+        const parsed = parsedLinesRef.current;
+        let sceneStartIndex = lineIdx - 1;
+        while (sceneStartIndex >= 0 && parsed[sceneStartIndex]?.type !== 'scene_heading') {
+          sceneStartIndex -= 1;
+        }
+        const recentCharacters = parsed
+          .slice(sceneStartIndex + 1, lineIdx)
+          .filter((line) => line.type === 'character')
+          .map((line) => normalizeSmartTypeName(line.content));
+        const ranked = rankCharacterSmartTypeSuggestions({
+          suggestions: characterSmartTypeSuggestions,
+          partial,
+          recentCharacters,
+          limit: 10,
+        });
+        openSuggestions(
+          'character',
+          ranked.map((suggestion) => suggestion.value),
+          ranked,
         );
-        openSuggestions('character', charMatches.slice(0, 10));
         return;
       }
     }
@@ -993,37 +1125,38 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   };
 
   // Update autocomplete position
-  const updateAutocompletePosition = () => {
+  const updateAutocompletePosition = (optionCount = autocompleteOptions.length) => {
     if (!editorRef.current) return;
-    
+
     const textarea = editorRef.current;
-    const { selectionStart } = textarea;
-    const textBefore = internalValue.substring(0, selectionStart);
-    const lines = textBefore.split('\n');
-    const lineNumber = lines.length;
-    const charInLine = lines[lines.length - 1].length;
-    
-    // Approximate position (would need more precise calculation in production)
-    const lineHeight = 24; // px
-    const charWidth = 9.6; // px for monospace
-    
+    const editorRect = textarea.parentElement?.getBoundingClientRect() ?? textarea.getBoundingClientRect();
+    const caret = getTextareaCaretViewportPosition(textarea, textarea.selectionStart);
+    const menuWidth = isMobile ? 150 : 200;
+    const menuHeight = Math.min(isMobile ? 150 : 200, Math.max(40, optionCount * 40));
+    const caretTop = caret.top - editorRect.top;
+    const caretLeft = caret.left - editorRect.left;
+    const hasRoomBelow = editorRect.bottom - (caret.top + caret.height) >= menuHeight + 8;
+    const desiredTop = hasRoomBelow
+      ? caretTop + caret.height
+      : caretTop - menuHeight;
+
     setAutocompletePosition({
-      top: lineNumber * lineHeight + 60, // offset for toolbar
-      left: charInLine * charWidth + (showLineNumbers ? 50 : 0),
+      top: Math.max(8, Math.min(desiredTop, editorRect.height - menuHeight - 8)),
+      left: Math.max(8, Math.min(caretLeft, editorRect.width - menuWidth - 8)),
     });
   };
 
   // Apply autocomplete selection
   const applyAutocomplete = (selected: string) => {
     if (!editorRef.current) return;
-    
+
     const textarea = editorRef.current;
     const { selectionStart } = textarea;
     const textBefore = internalValue.substring(0, selectionStart);
     const textAfter = internalValue.substring(selectionStart);
     const lines = textBefore.split('\n');
     const currentLine = lines[lines.length - 1];
-    
+
     let newText: string;
     
     if (autocompleteType === 'character') {
@@ -1050,6 +1183,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     }
     
     // Update internal state immediately
+    flushHistory();
     setInternalValue(newText);
     lastInternalValueRef.current = newText;
     pushHistorySnapshot(newText);
@@ -1071,8 +1205,255 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     }, 0);
   };
 
+  // ── commitValue: apply a wholesale text replacement + place cursor ──────
+  // Used by smart-key handlers so they share one consistent update path.
+  const commitValue = useCallback((newText: string, newCursorPos: number) => {
+    flushHistory();
+    setInternalValue(newText);
+    lastInternalValueRef.current = newText;
+    const cursorLines = newText.substring(0, newCursorPos).split('\n');
+    setCursorPosition({
+      line: cursorLines.length,
+      column: cursorLines[cursorLines.length - 1].length + 1,
+    });
+    setSelectionCollapsed(true);
+    // Command-style edits (Tab/Smart Enter/autocomplete) should be immediately undoable.
+    pushHistorySnapshot(newText);
+    // Propagate to parent
+    requestAnimationFrame(() => { onChangeRef.current(newText); });
+    // Restore cursor after React re-render
+    setTimeout(() => {
+      if (editorRef.current) {
+        editorRef.current.setSelectionRange(newCursorPos, newCursorPos);
+        editorRef.current.focus();
+      }
+    }, 0);
+  }, [flushHistory]);
+
+  const createLocalRecoveryPoint = useCallback(() => {
+    if (!manuscriptId) return;
+    try {
+      const stored = addScreenplayRecoveryPoint(
+        manuscriptId,
+        recoveryUserIdRef.current,
+        internalValue,
+        'manual',
+      );
+      lastRecoveryInputRef.current = internalValue;
+      setRecoveryStore(stored);
+      setLastLocalSaved(new Date(stored.draft.updatedAt));
+      setLocalSaveStatus('saved');
+      setShortcutAnnouncement('Lokalt gjenopprettingspunkt opprettet.');
+    } catch {
+      setLocalSaveStatus('error');
+      setShortcutAnnouncement('Kunne ikke opprette lokalt gjenopprettingspunkt.');
+    }
+  }, [internalValue, manuscriptId]);
+
+  const restoreLocalRecoveryPoint = useCallback((point: ScreenplayRecoveryPoint) => {
+    if (!manuscriptId || point.content === internalValue) return;
+    try {
+      addScreenplayRecoveryPoint(
+        manuscriptId,
+        recoveryUserIdRef.current,
+        internalValue,
+        'before_restore',
+      );
+      const restored = persistScreenplayRecovery(
+        manuscriptId,
+        recoveryUserIdRef.current,
+        point.content,
+      );
+      lastRecoveryInputRef.current = point.content;
+      setRecoveryStore(restored);
+      setLastLocalSaved(new Date(restored.draft.updatedAt));
+      setLocalSaveStatus('saved');
+      setRecoveryDialogOpen(false);
+      commitValue(point.content, 0);
+      setShortcutAnnouncement('Versjonen er gjenopprettet. Teksten du hadde ble sikret først.');
+    } catch {
+      setLocalSaveStatus('error');
+      setShortcutAnnouncement('Kunne ikke gjenopprette den lokale versjonen.');
+    }
+  }, [commitValue, internalValue, manuscriptId]);
+
+  const closeElementMenu = (restoreEditorFocus = true) => {
+    setInsertMenuAnchor(null);
+    setElementMenuPosition(null);
+    setElementMenuQuery('');
+    if (restoreEditorFocus) {
+      requestAnimationFrame(() => editorRef.current?.focus());
+    }
+  };
+
+  const openElementMenuAtCaret = () => {
+    const textarea = editorRef.current;
+    if (!textarea) return;
+    const caret = getTextareaCaretViewportPosition(textarea, textarea.selectionStart);
+    setInsertMenuAnchor(null);
+    setElementMenuQuery('');
+    setElementMenuPosition({
+      top: Math.max(8, Math.min(window.innerHeight - 8, caret.top + caret.height)),
+      left: Math.max(8, Math.min(window.innerWidth - 8, caret.left)),
+    });
+  };
+
+  const openSmartTypeForElement = (
+    type: FountainElement,
+    text: string,
+    cursor: number,
+  ) => {
+    setTimeout(() => {
+      if (type === 'character') {
+        openSuggestions(
+          'character',
+          characterSmartTypeSuggestions.map((suggestion) => suggestion.value),
+          characterSmartTypeSuggestions,
+        );
+      } else if (type === 'transition') {
+        openSuggestions('transition', [...COMMON_TRANSITIONS]);
+      } else if (type === 'scene_heading') {
+        checkAutocomplete(text, cursor);
+      }
+    }, 0);
+  };
+
+  const resolveEditorLineContext = () => {
+    const textarea = editorRef.current;
+    if (!textarea) return null;
+    const { selectionStart, selectionEnd } = textarea;
+    const lineStart = internalValue.lastIndexOf('\n', Math.max(0, selectionStart - 1)) + 1;
+    const nextBreak = internalValue.indexOf('\n', selectionStart);
+    const lineEnd = nextBreak === -1 ? internalValue.length : nextBreak;
+    const lineIndex = internalValue.slice(0, lineStart).split('\n').length - 1;
+    const pending = pendingElementRef.current?.lineIndex === lineIndex
+      ? pendingElementRef.current.type
+      : null;
+    return {
+      selectionStart,
+      selectionEnd,
+      lineStart,
+      lineEnd,
+      lineIndex,
+      rawLine: internalValue.slice(lineStart, lineEnd),
+      type: pending ?? parsedLinesRef.current[lineIndex]?.type ?? 'action',
+    };
+  };
+
+  const applyElementAtCursor = (type: FountainElement) => {
+    const context = resolveEditorLineContext();
+    if (!context) return;
+
+    if (
+      type === 'dual_dialogue'
+      && context.type !== 'character'
+      && context.type !== 'dual_dialogue'
+    ) {
+      closeElementMenu();
+      setShortcutAnnouncement('Dual Dialogue kan bare brukes på en karakterlinje.');
+      return;
+    }
+
+    const targetType = type === 'dual_dialogue' && /\^\s*$/.test(context.rawLine)
+      ? 'character'
+      : type;
+    const formatted = formatLineAsScreenplayElement(context.rawLine, targetType);
+    const newText = `${internalValue.slice(0, context.lineStart)}${formatted.text}${internalValue.slice(context.lineEnd)}`;
+    const newCursor = context.lineStart + formatted.cursorOffset;
+    pendingElementRef.current = { lineIndex: context.lineIndex, type: targetType };
+    blankChooserArmedRef.current = null;
+    setCurrentElement(targetType);
+    setShortcutAnnouncement(
+      type === 'dual_dialogue' && targetType === 'character'
+        ? 'Dual Dialogue er slått av.'
+        : `${getScreenplayElementRule(type).label} valgt.`,
+    );
+    closeElementMenu(false);
+
+    if (newText !== internalValue) {
+      commitValue(newText, newCursor);
+    } else {
+      requestAnimationFrame(() => {
+        editorRef.current?.setSelectionRange(newCursor, newCursor);
+        editorRef.current?.focus();
+      });
+    }
+    openSmartTypeForElement(targetType, newText, newCursor);
+  };
+
+  const handleElementMenuSelect = (type: FountainElement) => {
+    applyElementAtCursor(type);
+  };
+
+  const handleElementMenuKeyDown = (event: React.KeyboardEvent<HTMLUListElement>) => {
+    const type = screenplayElementFromShortcutKey(event.key);
+    if (type) {
+      event.preventDefault();
+      event.stopPropagation();
+      applyElementAtCursor(type);
+      return;
+    }
+    if (event.key === 'Backspace' && elementMenuQuery) {
+      event.preventDefault();
+      event.stopPropagation();
+      setElementMenuQuery((query) => query.slice(0, -1));
+      return;
+    }
+    if (
+      event.key.length === 1
+      && /^[A-Za-zÆØÅæøå]$/u.test(event.key)
+      && !event.ctrlKey
+      && !event.metaKey
+      && !event.altKey
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      setElementMenuQuery((query) => `${query}${event.key.toLocaleLowerCase('no-NO')}`);
+    }
+  };
+
+  const setBlankElementType = (lineIndex: number, type: FountainElement) => {
+    pendingElementRef.current = { lineIndex, type };
+    blankChooserArmedRef.current = null;
+    setCurrentElement(type);
+    setShowAutocomplete(false);
+    setShortcutAnnouncement(`${getScreenplayElementRule(type).label} valgt på tom linje.`);
+    requestAnimationFrame(() => editorRef.current?.focus());
+    openSmartTypeForElement(type, internalValue, editorRef.current?.selectionStart ?? 0);
+  };
+
+  const insertNextElement = (
+    context: NonNullable<ReturnType<typeof resolveEditorLineContext>>,
+    targetType: FountainElement,
+    armChooser: boolean,
+  ) => {
+    const formatted = formatLineAsScreenplayElement('', targetType);
+    const separator = getScreenplayParagraphSeparator(context.type, targetType);
+    const insertion = `${separator}${formatted.text}`;
+    const newText = `${internalValue.slice(0, context.lineEnd)}${insertion}${internalValue.slice(context.lineEnd)}`;
+    const targetLineIndex = context.lineIndex + separator.length;
+    const newCursor = context.lineEnd + separator.length + formatted.cursorOffset;
+
+    pendingElementRef.current = { lineIndex: targetLineIndex, type: targetType };
+    blankChooserArmedRef.current = armChooser && formatted.text.length === 0
+      ? { lineIndex: targetLineIndex }
+      : null;
+    setCurrentElement(targetType);
+    setShowAutocomplete(false);
+    setShortcutAnnouncement(`${getScreenplayElementRule(targetType).label} opprettet.`);
+    commitValue(newText, newCursor);
+    openSmartTypeForElement(targetType, newText, newCursor);
+  };
+
   // Handle keyboard shortcuts
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Meta' || e.key === 'Control') {
+      setIsPrimaryModifierHeld(true);
+    }
+    if (e.nativeEvent.isComposing || e.keyCode === 229 || e.getModifierState('AltGraph')) {
+      return;
+    }
+
     // Autocomplete navigation
     if (showAutocomplete) {
       if (e.key === 'ArrowDown') {
@@ -1087,12 +1468,12 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
         setSelectedAutocompleteIndex(prev => Math.max(prev - 1, 0));
         return;
       }
-      if (e.key === 'Tab') {
+      if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         applyAutocomplete(autocompleteOptions[selectedAutocompleteIndex]);
         return;
       }
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         // Keep Enter as newline/flow for scene headings/locations.
         // Use Tab/click to explicitly accept those suggestions.
         if (autocompleteType === 'character' || autocompleteType === 'transition') {
@@ -1107,7 +1488,14 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
         return;
       }
     }
-    
+
+    const shortcutCommand = screenplayShortcutFromEvent(e, shortcutOverrides, screenplayPlatform);
+    if (shortcutCommand) {
+      e.preventDefault();
+      applyElementAtCursor(shortcutCommand.element);
+      return;
+    }
+
     // Undo/Redo
     if (e.ctrlKey || e.metaKey) {
       if (e.key === 'z' && !e.shiftKey) {
@@ -1116,6 +1504,9 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
         if (historyIndexRef.current > 0) {
           historyIndexRef.current -= 1;
           const newValue = historyRef.current[historyIndexRef.current];
+          pendingElementRef.current = null;
+          blankChooserArmedRef.current = null;
+          setShowAutocomplete(false);
           setInternalValue(newValue);
           lastInternalValueRef.current = newValue;
           requestAnimationFrame(() => {
@@ -1129,6 +1520,9 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
         if (historyIndexRef.current < historyRef.current.length - 1) {
           historyIndexRef.current += 1;
           const newValue = historyRef.current[historyIndexRef.current];
+          pendingElementRef.current = null;
+          blankChooserArmedRef.current = null;
+          setShowAutocomplete(false);
           setInternalValue(newValue);
           lastInternalValueRef.current = newValue;
           requestAnimationFrame(() => {
@@ -1138,156 +1532,74 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
         return;
       }
     }
-    
+
+    if (e.key === '/' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const context = resolveEditorLineContext();
+      if (context?.rawLine.trim() === '') {
+        e.preventDefault();
+        openElementMenuAtCaret();
+        return;
+      }
+    }
+
     // ── Smart Enter ──────────────────────────────────────────────────────
     // Only intercept when no modifier keys are held (plain Enter).
-    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-      if (!editorRef.current) return;
-      const ta   = editorRef.current;
-      const sel  = ta.selectionStart;
-      const after = internalValue.substring(ta.selectionEnd);
-      const before = internalValue.substring(0, sel);
-      const lines  = before.split('\n');
-      const lineIdx = lines.length - 1;
-      const parsed  = parsedLinesRef.current[lineIdx];
-      const etype   = parsed?.type;
-
-      if (etype === 'scene_heading') {
-        // After a scene heading Enter → blank separator line, cursor on action line
-        // Prevents the next ALL-CAPS word from accidentally being parsed as character.
-        e.preventDefault();
-        commitValue(before + '\n\n' + after, sel + 2);
+    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const context = resolveEditorLineContext();
+      if (!context) return;
+      if (context.selectionStart !== context.selectionEnd || context.selectionStart !== context.lineEnd) {
+        blankChooserArmedRef.current = null;
         return;
       }
 
-      if (etype === 'character' && lines[lineIdx].trim() === '') {
-        // Pressing Enter on an empty character line cancels back to action
+      if (
+        context.rawLine.trim() === ''
+        && blankChooserArmedRef.current?.lineIndex === context.lineIndex
+      ) {
         e.preventDefault();
-        commitValue(before + '\n' + after, sel + 1);
+        openElementMenuAtCaret();
         return;
       }
 
-      if (etype === 'transition') {
-        // After a transition → blank line so next line is clearly action
-        e.preventDefault();
-        commitValue(before + '\n\n' + after, sel + 2);
-        return;
-      }
-      // All other element types: let the browser insert the newline normally.
-    }
-
-    // ── Smart TAB (element cycling) ──────────────────────────────────────
-    if (e.key === 'Tab') {
       e.preventDefault();
-      if (!editorRef.current) return;
-      const ta     = editorRef.current;
-      const sel    = ta.selectionStart;
-      const selEnd = ta.selectionEnd;
-      const before = internalValue.substring(0, sel);
-      const after  = internalValue.substring(selEnd);
-      const lines  = before.split('\n');
-      const lineIdx = lines.length - 1;
-      const rawLine = lines[lineIdx];
-      const parsed  = parsedLinesRef.current[lineIdx];
-      const etype   = parsed?.type ?? 'action';
-
-      const targetType = e.shiftKey
-        ? (TAB_BACKWARD[etype] ?? 'action')
-        : (TAB_FORWARD[etype]  ?? 'character');
-
-      const newLine = convertLineToElement(rawLine, etype, targetType);
-      lines[lineIdx] = newLine;
-      const newBefore = lines.join('\n');
-      commitValue(newBefore + after, newBefore.length);
+      insertNextElement(
+        context,
+        getNextScreenplayElement(context.type, 'enter'),
+        true,
+      );
       return;
     }
-  };
 
-  // Insert text at cursor
-  const insertAtCursor = (text: string) => {
-    if (!editorRef.current) return;
-    
-    const textarea = editorRef.current;
-    const { selectionStart, selectionEnd } = textarea;
-    const newValue = internalValue.substring(0, selectionStart) + text + internalValue.substring(selectionEnd);
-    
-    // Update internal state immediately
-    setInternalValue(newValue);
-    lastInternalValueRef.current = newValue;
-    pushHistorySnapshot(newValue);
-    
-    // Notify parent asynchronously
-    requestAnimationFrame(() => {
-      onChangeRef.current(newValue);
-    });
-    
-    // Set cursor position after inserted text
-    setTimeout(() => {
-      if (editorRef.current) {
-        const newPos = selectionStart + text.length;
-        editorRef.current.setSelectionRange(newPos, newPos);
-        editorRef.current.focus();
+    // ── Smart TAB (non-destructive paragraph navigation) ─────────────────
+    if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      const context = resolveEditorLineContext();
+      if (!context) return;
+      if (context.selectionStart !== context.selectionEnd || context.selectionStart !== context.lineEnd) {
+        setShortcutAnnouncement('Ingen tekst ble endret. Tab-overganger brukes ved slutten av linjen.');
+        return;
       }
-    }, 0);
-  };
 
-  // ── commitValue: apply a wholesale text replacement + place cursor ──────
-  // Used by smart-key handlers so they share one consistent update path.
-  const commitValue = useCallback((newText: string, newCursorPos: number) => {
-    setInternalValue(newText);
-    lastInternalValueRef.current = newText;
-    // Command-style edits (Tab/Smart Enter/autocomplete) should be immediately undoable.
-    pushHistorySnapshot(newText);
-    // Propagate to parent
-    requestAnimationFrame(() => { onChangeRef.current(newText); });
-    // Restore cursor after React re-render
-    setTimeout(() => {
-      if (editorRef.current) {
-        editorRef.current.setSelectionRange(newCursorPos, newCursorPos);
-        editorRef.current.focus();
+      if (context.rawLine.trim() === '') {
+        setBlankElementType(
+          context.lineIndex,
+          getNextScreenplayElement(context.type, 'tab', e.shiftKey),
+        );
+        return;
       }
-    }, 0);
-  }, []);
 
-  // Insert screenplay element
-  const insertElement = (type: FountainElement) => {
-    let template = '';
-    
-    switch (type) {
-      case 'scene_heading':
-        template = '\n\nINT. LOCATION - DAY\n\n';
-        break;
-      case 'character':
-        template = '\n\nCHARACTER NAME\n';
-        break;
-      case 'dialogue':
-        template = 'Dialogue text here.\n';
-        break;
-      case 'parenthetical':
-        template = '(beat)\n';
-        break;
-      case 'transition':
-        template = '\n\nCUT TO:\n\n';
-        break;
-      case 'centered':
-        template = '\n>CENTERED TEXT<\n\n';
-        break;
-      case 'action':
-        template = '\n\nAction description here.\n';
-        break;
-      case 'page_break':
-        template = '\n\n===\n\n';
-        break;
-      case 'section':
-        template = '\n\n# ACT ONE\n\n';
-        break;
-      case 'note':
-        template = '[[Note: ]]';
-        break;
+      if (e.shiftKey) {
+        setShortcutAnnouncement('Shift+Tab blar bakover bare når linjen er tom.');
+        return;
+      }
+
+      insertNextElement(
+        context,
+        getNextScreenplayElement(context.type, 'tab'),
+        false,
+      );
+      return;
     }
-    
-    insertAtCursor(template);
-    setInsertMenuAnchor(null);
   };
 
   // ── Cursor tracking via stable ref callback (no reattach on every change) ──
@@ -1303,18 +1615,30 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   const handleCursorUpdate = useCallback(() => {
     const textarea = editorRef.current;
     if (!textarea) return;
-    const { selectionStart } = textarea;
+    const { selectionStart, selectionEnd } = textarea;
     const textBefore = internalValueRef2.current.substring(0, selectionStart);
     const lines = textBefore.split('\n');
     const line   = lines.length;
     const column = lines[lines.length - 1].length + 1;
     setCursorPosition({ line, column });
+    setSelectionCollapsed(selectionStart === selectionEnd);
     const pl = parsedLinesRef.current;
     if (pl[line - 1]) {
-      setCurrentElement(pl[line - 1].type);
-      onCursorChangeRef.current?.(line, column, pl[line - 1].type);
+      const pendingType = pendingElementRef.current?.lineIndex === line - 1
+        ? pendingElementRef.current.type
+        : null;
+      const resolvedType = pendingType ?? pl[line - 1].type;
+      setCurrentElement(resolvedType);
+      onCursorChangeRef.current?.(line, column, resolvedType);
     }
   }, []); // empty deps — stable for the component lifetime
+
+  const handleEditorKeyUp = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Meta' || event.key === 'Control') {
+      setIsPrimaryModifierHeld(false);
+    }
+    handleCursorUpdate();
+  }, [handleCursorUpdate]);
 
   const currentLineContext = useMemo(() => {
     const lineIndex = Math.max(0, cursorPosition.line - 1);
@@ -1338,6 +1662,90 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     if (currentLineContext.previousLine.trim() !== '') return false;
     return /^[A-ZÆØÅ][A-ZÆØÅ0-9 ]*$/.test(trimmed);
   }, [currentLineContext]);
+
+  const currentUnregisteredCharacter = useMemo(() => {
+    if (!onCharacterAdd || (!isCharacterLineContext && currentElement !== 'character')) return null;
+    const name = normalizeCharacterNameForRoleSync(currentLineContext.text);
+    if (!isValidCharacterNameForRoleSync(name)) return null;
+    const normalized = normalizeSmartTypeName(name);
+    return registeredCharacterNames.has(normalized) ? null : normalized;
+  }, [
+    currentElement,
+    currentLineContext.text,
+    isCharacterLineContext,
+    onCharacterAdd,
+    registeredCharacterNames,
+  ]);
+
+  const currentUnregisteredLocation = useMemo(() => {
+    if (!onLocationAdd || currentLineContext.type !== 'scene_heading') return null;
+    const match = currentLineContext.text.match(
+      /^(?:INT|EXT|EST|INT\.?\/EXT|I\/E)\.?\s+(.+?)(?:\s+-\s+(?:DAY|NIGHT|DAWN|DUSK|CONTINUOUS|LATER|MORNING|EVENING|SAME))?$/i,
+    );
+    const name = normalizeLocationNameForSync(match?.[1] ?? '');
+    if (!isValidLocationNameForSync(name)) return null;
+    const normalized = name.toLocaleUpperCase('nb-NO');
+    return registeredLocationNames.has(normalized) ? null : name;
+  }, [currentLineContext.text, currentLineContext.type, onLocationAdd, registeredLocationNames]);
+
+  const confirmProjectEntity = useCallback(async (
+    type: 'character' | 'location',
+    name: string,
+  ) => {
+    const key = `${type}:${name}`;
+    setConfirmingEntity(key);
+    try {
+      if (type === 'character') {
+        const result = await onCharacterAdd?.(name);
+        if (result === false) throw new Error('Character was not saved');
+        setConfirmedCharacterNames((current) => new Set(current).add(normalizeSmartTypeName(name)));
+        setShortcutAnnouncement(`${name} er lagt til som prosjektkarakter.`);
+      } else {
+        const result = await onLocationAdd?.(name);
+        if (result === false) throw new Error('Location was not saved');
+        setConfirmedLocationNames((current) => new Set(current).add(name.toLocaleUpperCase('nb-NO')));
+        setShortcutAnnouncement(`${name} er lagt til som prosjektlokasjon.`);
+      }
+    } catch {
+      setShortcutAnnouncement(`${name} kunne ikke legges til i prosjektet.`);
+    } finally {
+      setConfirmingEntity(null);
+    }
+  }, [onCharacterAdd, onLocationAdd]);
+
+  const hasDivergentLocalDraft = Boolean(
+    recoveryStore
+    && recoveryStore.draft.content !== internalValue,
+  );
+
+  const keyboardStatus = useMemo(() => {
+    const type = currentElement ?? currentLineContext.type ?? 'action';
+    const rule = getScreenplayElementRule(type);
+    const atLineEnd = selectionCollapsed
+      && cursorPosition.column - 1 === currentLineContext.text.length;
+    const currentShortcut = SCREENPLAY_SHORTCUT_COMMANDS.find((command) =>
+      command.id !== 'general' && command.element === type,
+    );
+
+    return {
+      type,
+      label: rule.label,
+      atLineEnd,
+      enterLabel: getScreenplayElementRule(getNextScreenplayElement(type, 'enter')).label,
+      tabLabel: getScreenplayElementRule(getNextScreenplayElement(type, 'tab')).label,
+      shortcutLabel: currentShortcut
+        ? screenplayShortcutLabel(currentShortcut.id, screenplayPlatform, shortcutOverrides)
+        : '',
+    };
+  }, [
+    currentElement,
+    currentLineContext.text.length,
+    currentLineContext.type,
+    cursorPosition.column,
+    screenplayPlatform,
+    selectionCollapsed,
+    shortcutOverrides,
+  ]);
 
   const applyCharacterMentionSuggestion = useCallback((name: string) => {
     const cleanedName = name.trim();
@@ -1401,25 +1809,10 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
       if (lineNumbersRef.current) {
         lineNumbersRef.current.scrollTop = editorRef.current.scrollTop;
       }
+      if (showAutocomplete) {
+        updateAutocompletePosition();
+      }
     }
-  };
-
-  // Element type labels
-  const elementLabels: Record<FountainElement, string> = {
-    scene_heading: 'Scene Heading',
-    action: 'Action',
-    character: 'Character',
-    dialogue: 'Dialogue',
-    parenthetical: 'Parenthetical',
-    transition: 'Transition',
-    centered: 'Centered',
-    title_page: 'Title Page',
-    section: 'Section',
-    synopsis: 'Synopsis',
-    note: 'Note',
-    boneyard: 'Boneyard',
-    page_break: 'Page Break',
-    dual_dialogue: 'Dual Dialogue',
   };
 
   // Online/offline detection
@@ -1436,51 +1829,20 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     };
   }, []);
 
-  // Cleanup on unmount
   useEffect(() => {
-    return () => {
-      isMountedRef.current = false;
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
+    const releaseModifier = (event?: KeyboardEvent) => {
+      if (!event || event.key === 'Meta' || event.key === 'Control') {
+        setIsPrimaryModifierHeld(false);
       }
+    };
+    const handleWindowBlur = () => releaseModifier();
+    window.addEventListener('keyup', releaseModifier);
+    window.addEventListener('blur', handleWindowBlur);
+    return () => {
+      window.removeEventListener('keyup', releaseModifier);
+      window.removeEventListener('blur', handleWindowBlur);
     };
   }, []);
-
-  // Isolated auto-save to settings cache - NO state updates, side-effect only
-  useEffect(() => {
-    // Clear any pending auto-save timer
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-    }
-    
-    // Set up new auto-save timer (save after 2 seconds of inactivity)
-    // This effect runs on content changes but only debounces the save, no state updates
-    autoSaveTimerRef.current = setTimeout(() => {
-      // Check if component still mounted and content actually changed
-      if (!isMountedRef.current || internalValue === lastSavedContentRef.current) {
-        return;
-      }
-      
-      // Save to settings cache without any state updates - purely side-effect
-      try {
-        void settingsService.setSetting('virtualStudio_screenplayAutosave', {
-          content: internalValue,
-          timestamp: new Date().toISOString(),
-        });
-        lastSavedContentRef.current = internalValue;
-        // Do NOT call setSaveStatus - let UI be independent of auto-save
-      } catch (error) {
-        console.error('Error during auto-save to settings cache:', error);
-        // Silently fail - don't affect UI state
-      }
-    }, 2000);
-    
-    return () => {
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
-      }
-    };
-  }, [internalValue]); // Watch internalValue, not the prop
 
   // Toggle fullscreen mode
   const handleFullscreenToggle = useCallback(() => {
@@ -1528,7 +1890,12 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
           <Tooltip title="Sett inn element">
             <IconButton 
               size={responsive.buttonSize}
-              onClick={(e) => setInsertMenuAnchor(e.currentTarget)}
+              onClick={(e) => {
+                setElementMenuQuery('');
+                setElementMenuPosition(null);
+                setInsertMenuAnchor(e.currentTarget);
+              }}
+              aria-label="Sett inn manuselement"
               sx={{ color: '#a78bfa' }}
             >
               <TextFields sx={{ fontSize: responsive.iconSize }} />
@@ -1539,34 +1906,34 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
           
           {/* Quick Insert Buttons - Show fewer on mobile */}
           <Tooltip title="Scene Heading (INT./EXT.)">
-            <IconButton size={responsive.buttonSize} onClick={() => insertElement('scene_heading')}>
+            <IconButton size={responsive.buttonSize} onClick={() => applyElementAtCursor('scene_heading')}>
               <SceneIcon sx={{ color: '#fbbf24', fontSize: responsive.iconSize }} />
             </IconButton>
           </Tooltip>
           <Tooltip title="Character">
-            <IconButton size={responsive.buttonSize} onClick={() => insertElement('character')}>
+            <IconButton size={responsive.buttonSize} onClick={() => applyElementAtCursor('character')}>
               <CharacterIcon sx={{ color: '#60a5fa', fontSize: responsive.iconSize }} />
             </IconButton>
           </Tooltip>
           {!isMobile && (
             <>
               <Tooltip title="Dialogue">
-                <IconButton size={responsive.buttonSize} onClick={() => insertElement('dialogue')}>
+                <IconButton size={responsive.buttonSize} onClick={() => applyElementAtCursor('dialogue')}>
                   <DialogueIcon sx={{ color: '#f5f5f5', fontSize: responsive.iconSize }} />
                 </IconButton>
               </Tooltip>
               <Tooltip title="Parenthetical">
-                <IconButton size={responsive.buttonSize} onClick={() => insertElement('parenthetical')}>
+                <IconButton size={responsive.buttonSize} onClick={() => applyElementAtCursor('parenthetical')}>
                   <FormatAlignCenter sx={{ color: '#a78bfa', fontSize: responsive.iconSize }} />
                 </IconButton>
               </Tooltip>
               <Tooltip title="Transition">
-                <IconButton size={responsive.buttonSize} onClick={() => insertElement('transition')}>
+                <IconButton size={responsive.buttonSize} onClick={() => applyElementAtCursor('transition')}>
                   <TransitionIcon sx={{ color: '#f472b6', fontSize: responsive.iconSize }} />
                 </IconButton>
               </Tooltip>
               <Tooltip title="Action">
-                <IconButton size={responsive.buttonSize} onClick={() => insertElement('action')}>
+                <IconButton size={responsive.buttonSize} onClick={() => applyElementAtCursor('action')}>
                   <ActionIcon sx={{ color: '#e5e5e5', fontSize: responsive.iconSize }} />
                 </IconButton>
               </Tooltip>
@@ -1619,6 +1986,33 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
               </IconButton>
             </span>
           </Tooltip>
+
+          <Tooltip title="Tilpass hurtigtaster">
+            <IconButton
+              size={responsive.buttonSize}
+              onClick={() => setShortcutSettingsOpen(true)}
+              aria-label="Tilpass hurtigtaster for manuskript"
+              sx={{ color: '#93c5fd' }}
+            >
+              <KeyboardIcon sx={{ fontSize: responsive.iconSize }} />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title={manuscriptId ? 'Lokal gjenopprettingshistorikk' : 'Historikk krever et lagret manus'}>
+            <span>
+              <IconButton
+                size={responsive.buttonSize}
+                onClick={() => setRecoveryDialogOpen(true)}
+                aria-label="Åpne lokal gjenopprettingshistorikk"
+                disabled={!manuscriptId}
+                sx={{ color: '#c4b5fd' }}
+              >
+                <Badge badgeContent={recoveryStore?.points.length ?? 0} color="secondary" max={99}>
+                  <HistoryIcon sx={{ fontSize: responsive.iconSize }} />
+                </Badge>
+              </IconButton>
+            </span>
+          </Tooltip>
           
           <Box sx={{ flex: 1 }} />
           
@@ -1627,7 +2021,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
             {currentElement && !isMobile && (
               <Chip 
                 size={responsive.chipSize}
-                label={elementLabels[currentElement]}
+                label={getScreenplayElementRule(currentElement).label}
                 sx={{ 
                   bgcolor: 'rgba(167, 139, 250, 0.2)',
                   color: '#a78bfa',
@@ -1649,57 +2043,66 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
             )}
             {!isMobile && <Divider orientation="vertical" flexItem />}
             
-            {/* Save Status Indicator */}
-            {saveStatus === 'saved' && (
-              <Tooltip title={lastSaved ? `Lagret ${lastSaved.toLocaleTimeString('nb-NO')}` : 'Lagret'}>
-                <Chip 
+            {/* Local recovery and cloud/database sync are deliberately shown
+                separately so "saved" never hides a failed remote write. */}
+            {manuscriptId && (
+              <Tooltip title={lastLocalSaved
+                ? `Sikret i denne nettleseren ${lastLocalSaved.toLocaleTimeString('nb-NO')}`
+                : 'Sikres lokalt i denne nettleseren'}>
+                <Chip
+                  data-testid="screenplay-local-save-status"
                   size={responsive.chipSize}
-                  label={isMobile ? '✓' : '✓ Lagret'}
-                  sx={{ 
-                    bgcolor: 'rgba(52, 211, 153, 0.2)',
-                    color: '#34d399',
+                  label={localSaveStatus === 'saving'
+                    ? (isMobile ? 'Lokal…' : 'Lagrer lokalt…')
+                    : localSaveStatus === 'error'
+                      ? (isMobile ? 'Lokal feil' : 'Lokal lagringsfeil')
+                      : hasDivergentLocalDraft
+                        ? (isMobile ? 'Utkast' : 'Lokalt utkast funnet')
+                        : (isMobile ? '✓ Lokal' : '✓ Lagret lokalt')}
+                  onClick={() => setRecoveryDialogOpen(true)}
+                  sx={{
+                    bgcolor: localSaveStatus === 'error'
+                      ? 'rgba(244, 63, 94, 0.2)'
+                      : localSaveStatus === 'saving' || hasDivergentLocalDraft
+                        ? 'rgba(251, 191, 36, 0.2)'
+                        : 'rgba(52, 211, 153, 0.2)',
+                    color: localSaveStatus === 'error'
+                      ? '#f43f5e'
+                      : localSaveStatus === 'saving' || hasDivergentLocalDraft
+                        ? '#fbbf24'
+                        : '#34d399',
                     fontSize: responsive.captionFontSize,
+                    cursor: 'pointer',
                   }}
                 />
               </Tooltip>
             )}
-            {saveStatus === 'saving' && (
-              <Chip 
+            <Tooltip title={cloudSaveLabel || 'Status for database-/skylagring'}>
+              <Chip
+                data-testid="screenplay-cloud-save-status"
                 size={responsive.chipSize}
-                label={isMobile ? '...' : '🔄 Lagrer...'} 
-                sx={{ 
-                  bgcolor: 'rgba(60, 165, 250, 0.2)',
-                  color: '#60a5fa',
+                label={cloudSaveState === 'saved'
+                  ? (isMobile ? '☁ ✓' : `☁ ${cloudSaveLabel?.replace(/^Lagret/, 'Synkronisert') || 'Synkronisert'}`)
+                  : cloudSaveState === 'saving'
+                    ? (isMobile ? '☁ …' : '☁ Synkroniserer…')
+                    : cloudSaveState === 'error'
+                      ? (isMobile ? 'Kun lokal' : '☁ Feil – sikret lokalt')
+                      : (isMobile ? '☁ ○' : '☁ Ikke synkronisert')}
+                sx={{
+                  bgcolor: cloudSaveState === 'saved'
+                    ? 'rgba(59, 130, 246, 0.18)'
+                    : cloudSaveState === 'error'
+                      ? 'rgba(244, 63, 94, 0.2)'
+                      : 'rgba(251, 191, 36, 0.2)',
+                  color: cloudSaveState === 'saved'
+                    ? '#93c5fd'
+                    : cloudSaveState === 'error'
+                      ? '#fda4af'
+                      : '#fbbf24',
                   fontSize: responsive.captionFontSize,
                 }}
               />
-            )}
-            {saveStatus === 'unsaved' && (
-              <Tooltip title="Lagrer når du slutter å skrive">
-                <Chip 
-                  size={responsive.chipSize}
-                  label={isMobile ? '○' : '○ Ulagret'} 
-                  sx={{ 
-                    bgcolor: 'rgba(251, 191, 36, 0.2)',
-                    color: '#fbbf24',
-                    fontSize: responsive.captionFontSize,
-                  }}
-                />
-              </Tooltip>
-            )}
-            {saveStatus === 'error' && (
-              <Tooltip title="Feil ved lagring">
-                <Chip 
-                  size={responsive.chipSize}
-                  label={isMobile ? '✕' : '✕ Lagringsfeil'} 
-                  sx={{ 
-                    bgcolor: 'rgba(244, 63, 94, 0.2)',
-                    color: '#f43f5e',
-                    fontSize: responsive.captionFontSize,
-                  }}
-                />
-              </Tooltip>
-            )}
+            </Tooltip>
             
             {/* Online Status Indicator */}
             {!isMobile && <Divider orientation="vertical" flexItem />}
@@ -1736,54 +2139,88 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
         </Stack>
       </Paper>
 
+      <ScreenplayShortcutSettingsDialog
+        open={shortcutSettingsOpen}
+        platform={screenplayPlatform}
+        overrides={shortcutOverrides}
+        onClose={() => setShortcutSettingsOpen(false)}
+        onSave={saveShortcutOverrides}
+      />
+
+      <ScreenplayRecoveryDialog
+        open={recoveryDialogOpen}
+        store={recoveryStore}
+        currentContent={internalValue}
+        onClose={() => setRecoveryDialogOpen(false)}
+        onCreatePoint={createLocalRecoveryPoint}
+        onRestore={restoreLocalRecoveryPoint}
+      />
+
       {/* Insert Menu */}
       <Menu
         anchorEl={insertMenuAnchor}
-        open={Boolean(insertMenuAnchor)}
-        onClose={() => setInsertMenuAnchor(null)}
+        anchorReference={elementMenuPosition ? 'anchorPosition' : 'anchorEl'}
+        anchorPosition={elementMenuPosition ?? undefined}
+        open={Boolean(insertMenuAnchor || elementMenuPosition)}
+        onClose={() => closeElementMenu()}
+        MenuListProps={{
+          'aria-label': 'Velg manuselement',
+          onKeyDown: handleElementMenuKeyDown,
+        }}
         sx={{ zIndex: 1400 }}
       >
-        <MenuItem onClick={() => insertElement('scene_heading')}>
-          <ListItemIcon><SceneIcon sx={{ color: '#fbbf24' }} /></ListItemIcon>
-          <ListItemText primary="Scene Heading" secondary="INT./EXT. LOCATION - TIME" />
-        </MenuItem>
-        <MenuItem onClick={() => insertElement('character')}>
-          <ListItemIcon><CharacterIcon sx={{ color: '#60a5fa' }} /></ListItemIcon>
-          <ListItemText primary="Character" secondary="CHARACTER NAME" />
-        </MenuItem>
-        <MenuItem onClick={() => insertElement('dialogue')}>
-          <ListItemIcon><DialogueIcon /></ListItemIcon>
-          <ListItemText primary="Dialogue" secondary="Character's spoken lines" />
-        </MenuItem>
-        <MenuItem onClick={() => insertElement('parenthetical')}>
-          <ListItemIcon><FormatAlignCenter sx={{ color: '#a78bfa' }} /></ListItemIcon>
-          <ListItemText primary="Parenthetical" secondary="(beat), (whispering)" />
-        </MenuItem>
-        <MenuItem onClick={() => insertElement('action')}>
-          <ListItemIcon><ActionIcon /></ListItemIcon>
-          <ListItemText primary="Action" secondary="Scene description" />
-        </MenuItem>
-        <MenuItem onClick={() => insertElement('transition')}>
-          <ListItemIcon><TransitionIcon sx={{ color: '#f472b6' }} /></ListItemIcon>
-          <ListItemText primary="Transition" secondary="CUT TO:, FADE OUT" />
+        <MenuItem disabled dense sx={{ opacity: '1 !important' }}>
+          <ListItemText
+            primary={elementMenuQuery ? `Filter: ${elementMenuQuery}` : 'Skriv for å filtrere · 0–7 velger direkte'}
+            primaryTypographyProps={{ variant: 'caption', color: 'text.secondary' }}
+          />
         </MenuItem>
         <Divider />
-        <MenuItem onClick={() => insertElement('section')}>
-          <ListItemIcon><TitleIcon sx={{ color: '#f97316' }} /></ListItemIcon>
-          <ListItemText primary="Section" secondary="# ACT ONE" />
-        </MenuItem>
-        <MenuItem onClick={() => insertElement('centered')}>
-          <ListItemIcon><CenterIcon sx={{ color: '#34d399' }} /></ListItemIcon>
-          <ListItemText primary="Centered" secondary=">TEXT<" />
-        </MenuItem>
-        <MenuItem onClick={() => insertElement('page_break')}>
-          <ListItemIcon><PageIcon /></ListItemIcon>
-          <ListItemText primary="Page Break" secondary="===" />
-        </MenuItem>
-        <MenuItem onClick={() => insertElement('note')}>
-          <ListItemIcon><CodeIcon /></ListItemIcon>
-          <ListItemText primary="Note" secondary="[[Note text]]" />
-        </MenuItem>
+        {filteredElementMenuRules.map((rule) => {
+          const shortcut = rule.type === 'dual_dialogue'
+            ? screenplayShortcutLabel('dual_dialogue', screenplayPlatform, shortcutOverrides)
+            : rule.type === 'note'
+              ? screenplayShortcutLabel('note', screenplayPlatform, shortcutOverrides)
+              : rule.type === 'shot'
+                ? screenplayElementShortcutLabel('shot', screenplayPlatform, shortcutOverrides)
+                : ['scene_heading', 'action', 'character', 'parenthetical', 'dialogue', 'transition'].includes(rule.type)
+                  ? screenplayElementShortcutLabel(rule.type as 'scene_heading' | 'action' | 'character' | 'parenthetical' | 'dialogue' | 'transition', screenplayPlatform, shortcutOverrides)
+                  : '';
+          const icon = (() => {
+            switch (rule.type) {
+              case 'scene_heading': return <SceneIcon sx={{ color: '#fbbf24' }} />;
+              case 'character': return <CharacterIcon sx={{ color: '#60a5fa' }} />;
+              case 'dialogue': return <DialogueIcon />;
+              case 'parenthetical': return <FormatAlignCenter sx={{ color: '#a78bfa' }} />;
+              case 'transition': return <TransitionIcon sx={{ color: '#f472b6' }} />;
+              case 'shot': return <SceneIcon sx={{ color: '#fb7185' }} />;
+              case 'section': return <TitleIcon sx={{ color: '#f97316' }} />;
+              case 'centered': return <CenterIcon sx={{ color: '#34d399' }} />;
+              case 'page_break': return <PageIcon />;
+              case 'note': return <CodeIcon />;
+              case 'dual_dialogue': return <DialogueIcon sx={{ color: '#22d3ee' }} />;
+              default: return <ActionIcon />;
+            }
+          })();
+          return (
+            <MenuItem
+              key={rule.type}
+              onClick={() => handleElementMenuSelect(rule.type)}
+              aria-label={`${rule.label}. ${rule.accessibilityLabel}. ${rule.description}${shortcut ? `. Hurtigtast ${shortcut}` : ''}`}
+            >
+              <ListItemIcon>{icon}</ListItemIcon>
+              <ListItemText
+                primary={rule.label}
+                secondary={`${rule.description}${shortcut ? ` · ${shortcut}` : ''}`}
+              />
+            </MenuItem>
+          );
+        })}
+        {filteredElementMenuRules.length === 0 && (
+          <MenuItem disabled>
+            <ListItemText primary="Ingen manuselementer matcher" />
+          </MenuItem>
+        )}
       </Menu>
 
       {/* Editor Area */}
@@ -1916,10 +2353,13 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onClick={handleCursorUpdate}
-          onKeyUp={handleCursorUpdate}
+          onKeyUp={handleEditorKeyUp}
           onScroll={handleScroll}
           onFocus={() => setIsEditorFocused(true)}
-          onBlur={() => setIsEditorFocused(false)}
+          onBlur={() => {
+            setIsEditorFocused(false);
+            setIsPrimaryModifierHeld(false);
+          }}
           readOnly={readOnly}
           spellCheck={spellCheck}
           sx={{
@@ -1983,7 +2423,17 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
                       <TransitionIcon sx={{ color: '#f472b6', fontSize: responsive.iconSize }} />
                     )}
                   </ListItemIcon>
-                  <ListItemText primary={option} primaryTypographyProps={{ fontSize: responsive.bodyFontSize }} />
+                <ListItemText
+                  primary={option}
+                  secondary={autocompleteType === 'character'
+                    ? [
+                        characterAutocompleteDetails[option]?.sourceLabel,
+                        characterAutocompleteDetails[option]?.reason,
+                      ].filter(Boolean).join(' · ')
+                    : undefined}
+                  primaryTypographyProps={{ fontSize: responsive.bodyFontSize }}
+                  secondaryTypographyProps={{ fontSize: responsive.captionFontSize }}
+                />
                 </MenuItem>
               ))}
             </Paper>
@@ -1991,16 +2441,132 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
         )}
       </Box>
 
-      {!readOnly && isCharacterLineContext && (
-        <Box sx={{ px: responsive.padding, pt: 1 }}>
-          <GlobalMentionHelper
-            text={currentLineContext.text}
-            localCandidates={roleCharacterNames.length > 0 ? roleCharacterNames : allCharacters}
-            onApplySuggestion={applyCharacterMentionSuggestion}
-            autoTagTitle="Global character tags"
-            suggestionTitle="Mener du denne karakteren?"
-          />
-        </Box>
+      <Paper
+        data-testid="screenplay-keyboard-status"
+        variant="outlined"
+        sx={{
+          mt: isMobile ? 0.5 : 1,
+          px: isMobile ? 1 : 1.5,
+          py: 0.75,
+          borderColor: 'rgba(167, 139, 250, 0.28)',
+          bgcolor: 'rgba(12, 15, 28, 0.92)',
+          overflowX: 'auto',
+        }}
+      >
+        <Typography
+          component="span"
+          role="status"
+          aria-live="polite"
+          sx={{
+            position: 'absolute',
+            width: 1,
+            height: 1,
+            p: 0,
+            m: -1,
+            overflow: 'hidden',
+            clip: 'rect(0, 0, 0, 0)',
+            whiteSpace: 'nowrap',
+            border: 0,
+          }}
+        >
+          {shortcutAnnouncement}
+        </Typography>
+
+        {isPrimaryModifierHeld && isEditorFocused ? (
+          <Stack direction="row" spacing={0.75} useFlexGap sx={{ minWidth: 'max-content' }}>
+            {SCREENPLAY_SHORTCUT_COMMANDS.map((command) => (
+              <Chip
+                key={command.id}
+                size="small"
+                label={`${screenplayShortcutLabel(command.id, screenplayPlatform, shortcutOverrides)} ${command.label}`}
+                sx={{
+                  height: 24,
+                  color: '#dbeafe',
+                  bgcolor: 'rgba(59, 130, 246, 0.12)',
+                  border: '1px solid rgba(96, 165, 250, 0.28)',
+                  fontSize: responsive.captionFontSize,
+                }}
+              />
+            ))}
+          </Stack>
+        ) : (
+          <Stack
+            direction="row"
+            spacing={1}
+            useFlexGap
+            flexWrap="wrap"
+            alignItems="center"
+          >
+            <Typography sx={{ color: '#c4b5fd', fontWeight: 700, fontSize: responsive.captionFontSize }}>
+              {keyboardStatus.label}
+            </Typography>
+            {keyboardStatus.atLineEnd ? (
+              <>
+                <Typography sx={{ color: 'text.secondary', fontSize: responsive.captionFontSize }}>
+                  Enter: {keyboardStatus.enterLabel}
+                </Typography>
+                <Typography sx={{ color: 'text.secondary', fontSize: responsive.captionFontSize }}>
+                  Tab: {keyboardStatus.tabLabel}
+                </Typography>
+              </>
+            ) : (
+              <Typography sx={{ color: 'text.secondary', fontSize: responsive.captionFontSize }}>
+                Klar – Enter/Tab-flyt aktiveres ved slutten av linjen
+              </Typography>
+            )}
+            {keyboardStatus.shortcutLabel && (
+              <Typography sx={{ color: '#93c5fd', fontSize: responsive.captionFontSize }}>
+                {keyboardStatus.shortcutLabel}: {keyboardStatus.label}
+              </Typography>
+            )}
+            {!isMobile && (
+              <Typography sx={{ ml: 'auto !important', color: 'text.disabled', fontSize: responsive.captionFontSize }}>
+                Hold {screenplayPlatform === 'mac' ? '⌘' : 'Ctrl'} for alle hurtigtaster
+              </Typography>
+            )}
+          </Stack>
+        )}
+      </Paper>
+
+      {!readOnly && (isCharacterLineContext || currentUnregisteredCharacter || currentUnregisteredLocation) && (
+        <Stack sx={{ px: responsive.padding, pt: 1 }} spacing={1} alignItems="flex-start">
+          {isCharacterLineContext && (
+            <GlobalMentionHelper
+              text={currentLineContext.text}
+              localCandidates={characterMentionCandidates}
+              onApplySuggestion={applyCharacterMentionSuggestion}
+              autoTagTitle="Karakter i prosjektet"
+              suggestionTitle="Mener du denne karakteren?"
+              candidateScope="local"
+            />
+          )}
+          {currentUnregisteredCharacter && (
+            <Chip
+              icon={<AddCircleOutlineIcon />}
+              color="warning"
+              variant="outlined"
+              label={confirmingEntity === `character:${currentUnregisteredCharacter}`
+                ? `Legger til ${currentUnregisteredCharacter}…`
+                : `Legg ${currentUnregisteredCharacter} til som prosjektkarakter`}
+              disabled={confirmingEntity !== null}
+              onClick={() => void confirmProjectEntity('character', currentUnregisteredCharacter)}
+              aria-label={`Legg ${currentUnregisteredCharacter} til som prosjektkarakter`}
+            />
+          )}
+          {currentUnregisteredLocation && (
+            <Chip
+              icon={<AddCircleOutlineIcon />}
+              color="warning"
+              variant="outlined"
+              label={confirmingEntity === `location:${currentUnregisteredLocation}`
+                ? `Legger til ${currentUnregisteredLocation}…`
+                : `Legg ${currentUnregisteredLocation} til som prosjektlokasjon`}
+              disabled={confirmingEntity !== null}
+              onClick={() => void confirmProjectEntity('location', currentUnregisteredLocation)}
+              aria-label={`Legg ${currentUnregisteredLocation} til som prosjektlokasjon`}
+            />
+          )}
+        </Stack>
       )}
 
       {/* Stats Footer */}

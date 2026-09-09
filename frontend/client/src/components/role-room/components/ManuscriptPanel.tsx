@@ -1718,7 +1718,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         messageParts.push(`Lokasjoner: ${locationNames.join(', ')}`);
       }
 
-      showSuccess(`Auto-opprettet fra manus. ${messageParts.join(' | ')}`);
+      showSuccess(`Opprettet fra manus. ${messageParts.join(' | ')}`);
       autoCreatedRoleNamesRef.current.clear();
       autoCreatedLocationNamesRef.current.clear();
       autoCreatedToastTimerRef.current = null;
@@ -1746,16 +1746,16 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     };
   }, []);
 
-  // Memoized callbacks for character/location auto-creation
+  // Memoized callbacks for writer-confirmed character/location creation.
   const handleCharacterAdd = useCallback(async (name: string) => {
-    // Auto-create a role in casting when new character is detected
-    if (!projectId) return;
-    if (!shouldAutoCreateRoleFromScript(name)) return;
+    // Create only after explicit confirmation in the screenplay editor.
+    if (!projectId) return false;
+    if (!shouldAutoCreateRoleFromScript(name)) return false;
     const normalizedName = normalizeRoleNameFromScript(name);
-    if (!normalizedName) return;
+    if (!normalizedName) return false;
 
     const existingRole = castingRoles.find(r => r.name.toUpperCase() === normalizedName.toUpperCase());
-    if (existingRole) return; // Already exists
+    if (existingRole) return true; // Already exists
     
     try {
       const newRole: Role = {
@@ -1770,21 +1770,23 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       scheduleLoadCastingData();
       autoCreatedRoleNamesRef.current.add(normalizedName);
       scheduleAutoCreatedEntitiesToast();
-      if (DEV_LOG) console.log(`✓ Auto-created role "${normalizedName}" from screenplay`);
+      if (DEV_LOG) console.log(`✓ Confirmed role "${normalizedName}" from screenplay`);
+      return true;
     } catch (error) {
-      console.warn('Failed to auto-create role from screenplay:', error);
+      console.warn('Failed to create confirmed role from screenplay:', error);
+      return false;
     }
   }, [projectId, castingRoles, scheduleAutoCreatedEntitiesToast]);
 
   const handleLocationAdd = useCallback(async (name: string) => {
-    // Auto-create a location in casting when new location is detected
-    if (!projectId) return;
-    if (!shouldAutoCreateLocationFromScript(name)) return;
+    // Create only after explicit confirmation in the screenplay editor.
+    if (!projectId) return false;
+    if (!shouldAutoCreateLocationFromScript(name)) return false;
     const normalizedName = normalizeLocationNameFromScript(name);
-    if (!normalizedName) return;
+    if (!normalizedName) return false;
 
     const existingLoc = castingLocations.find(l => l.name.toUpperCase() === normalizedName.toUpperCase());
-    if (existingLoc) return; // Already exists
+    if (existingLoc) return true; // Already exists
     
     try {
       const newLocation: Location = {
@@ -1803,9 +1805,11 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       scheduleLoadCastingData();
       autoCreatedLocationNamesRef.current.add(normalizedName);
       scheduleAutoCreatedEntitiesToast();
-      if (DEV_LOG) console.log(`✓ Auto-created location "${normalizedName}" from screenplay`);
+      if (DEV_LOG) console.log(`✓ Confirmed location "${normalizedName}" from screenplay`);
+      return true;
     } catch (error) {
-      console.warn('Failed to auto-create location from screenplay:', error);
+      console.warn('Failed to create confirmed location from screenplay:', error);
+      return false;
     }
   }, [projectId, castingLocations, scheduleAutoCreatedEntitiesToast]);
 
@@ -2275,7 +2279,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
 
   if (!hasProjectContext) {
     return (
-      <Box sx={{
+      <Box data-testid="manuscript-panel-root" sx={{
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -2297,6 +2301,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
 
   return (
     <Box
+      data-testid="manuscript-panel-root"
       sx={{
         height: '100%',
         minHeight: 0,
@@ -4551,8 +4556,8 @@ interface EditorTabProps {
   castingLocations?: Location[];
   castingCandidates?: Candidate[];
   scenes?: SceneBreakdown[];
-  onCharacterAdd?: (name: string) => void;
-  onLocationAdd?: (name: string) => void;
+  onCharacterAdd?: (name: string) => void | boolean | Promise<void | boolean>;
+  onLocationAdd?: (name: string) => void | boolean | Promise<void | boolean>;
   storyLogicData?: StoryLogicState | null;
 }
 
@@ -4863,7 +4868,7 @@ Anna går raskt gjennom regnet.
                       : 'Ulagret',
               saveState: manuscriptSaveStatus,
             }}
-            characters={allCharacters}
+            characters={characters}
             locations={allLocations}
             roles={castingRoles}
             candidates={castingCandidates}

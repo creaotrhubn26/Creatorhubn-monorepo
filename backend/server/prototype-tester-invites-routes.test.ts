@@ -52,6 +52,34 @@ describe("prototype tester invitation delivery", () => {
     expect(query).not.toHaveBeenCalled();
   });
 
+  it("rejects malformed manual-invite fields before database or email side effects", async () => {
+    const query = vi.fn();
+    const sendInviteEmail = vi.fn();
+    const app = express();
+    app.use(express.json());
+    setupPrototypeTesterInvitesRoutes({
+      app,
+      pool: { query },
+      getPricingUserId: () => "",
+      requireUserSession: () => true,
+      requireAdminSession: async () => ({ userId: "verified-admin-id" }),
+      sendInviteEmail,
+    });
+
+    const response = await request(app)
+      .post("/api/prototype-tester-invites")
+      .send({
+        email: "tester@example.com",
+        name: "Test Tester",
+        testingAreas: [{ name: "not-a-string" }],
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("Ugyldige testområder");
+    expect(query).not.toHaveBeenCalled();
+    expect(sendInviteEmail).not.toHaveBeenCalled();
+  });
+
   it("sends a manual admin invite through the CreatorHub Email Designer sender", async () => {
     const query = vi.fn().mockImplementation(async (statement: unknown) => {
       if (String(statement).includes("INSERT INTO prototype_tester_invites")) {
@@ -162,6 +190,11 @@ describe("prototype tester invitation delivery", () => {
               email_sent_at: new Date("2027-01-31T12:00:00.000Z"),
               email_opened_at: new Date("2027-01-31T12:10:00.000Z"),
               invite_link_clicked_at: new Date("2027-01-31T12:20:00.000Z"),
+              signature_method: "email_otp_typed_name",
+              email_verified_at: new Date("2027-01-31T12:29:00.000Z"),
+              signing_receipt_id: "88888888-8888-4888-8888-888888888888",
+              receipt_email_sent_at: new Date("2027-01-31T12:31:00.000Z"),
+              receipt_email_provider: "resend",
               solo_pro_active: true,
               created_at: new Date("2027-01-31T11:59:00.000Z"),
             },
@@ -191,11 +224,20 @@ describe("prototype tester invitation delivery", () => {
       emailDelivery: { sent: true },
       emailOpenedAt: "2027-01-31T12:10:00.000Z",
       inviteLinkClickedAt: "2027-01-31T12:20:00.000Z",
+      signatureMethod: "email_otp_typed_name",
+      emailVerifiedAt: "2027-01-31T12:29:00.000Z",
+      signingReceiptId: "88888888-8888-4888-8888-888888888888",
+      receiptEmailDelivery: { sent: true, provider: "resend" },
       inviteUrl: expect.stringContaining("/prototype-tester/accept-invite?token="),
     });
     expect(
       query.mock.calls.some(([sql]) =>
         String(sql).includes("s.plan_id = 'solo_pro'"),
+      ),
+    ).toBe(true);
+    expect(
+      query.mock.calls.some(([sql]) =>
+        String(sql).includes("r.id::text = p.invite_request_id::text"),
       ),
     ).toBe(true);
   });
@@ -357,6 +399,8 @@ describe("prototype tester invitation delivery", () => {
       program_ends_at: programEndsAt,
       member_profession: "videographer",
       member_company: "Activated AS",
+      signing_receipt_id: "66666666-6666-4666-8666-666666666666",
+      agreement_digest: "a".repeat(64),
       testing_areas: [],
       granted_features: [],
     };
@@ -388,6 +432,12 @@ describe("prototype tester invitation delivery", () => {
       reason: null,
       messageId: "activated-email-id",
     });
+    const sendReceiptEmail = vi.fn().mockResolvedValue({
+      sent: true,
+      provider: "resend",
+      reason: null,
+      messageId: "receipt-email-id",
+    });
     const app = express();
     app.use(express.json());
     setupPrototypeTesterInvitesRoutes({
@@ -398,6 +448,11 @@ describe("prototype tester invitation delivery", () => {
       requireAdminSession: () => true,
       provisionTesterAccount: vi.fn().mockResolvedValue({ id: "tester-user-id" }),
       sendAccessActivatedEmail,
+      sendReceiptEmail,
+      verifySigningCode: vi.fn().mockResolvedValue({
+        ok: true,
+        verifiedAt: "2026-09-09T12:00:00.000Z",
+      }),
     });
 
     const response = await request(app)
@@ -419,6 +474,7 @@ describe("prototype tester invitation delivery", () => {
           letter_of_intent: "1.0",
         },
         confirmedSigningAuthority: true,
+        verificationCode: "123456",
       });
 
     expect(response.status).toBe(200);
@@ -429,6 +485,11 @@ describe("prototype tester invitation delivery", () => {
         sent: true,
         provider: "resend",
         messageId: "activated-email-id",
+      },
+      receiptEmailDelivery: {
+        sent: true,
+        provider: "resend",
+        messageId: "receipt-email-id",
       },
     });
     expect(sendAccessActivatedEmail).toHaveBeenCalledWith({
@@ -441,5 +502,12 @@ describe("prototype tester invitation delivery", () => {
       company: acceptedRow.member_company,
       programEndsAt,
     });
+    expect(sendReceiptEmail).toHaveBeenCalledWith(expect.objectContaining({
+      recipientEmail: acceptedRow.email,
+      recipientName: "Activated Tester",
+      receiptId: acceptedRow.signing_receipt_id,
+      agreementsUrl: "https://creatorhubn.com/login?redirect=%2Fmine-avtaler",
+      inviteId: acceptedRow.id,
+    }));
   });
 });
