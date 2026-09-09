@@ -118,6 +118,11 @@ docs/
 !docs/dance/*.md
 !docs/specs/
 !docs/specs/*.md
+!docs/superpowers/
+!docs/superpowers/specs/
+!docs/superpowers/specs/*.md
+!docs/superpowers/plans/
+!docs/superpowers/plans/*.md
 !docs/partnerships-demo/
 !docs/partnerships-demo/*.md
 !apps/resolve-script-manager/src/docs/
