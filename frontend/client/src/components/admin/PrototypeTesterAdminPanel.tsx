@@ -30,6 +30,8 @@ interface PrototypeTesterAdminInvite {
   id: string;
   name: string;
   email: string;
+  memberCompany?: string | null;
+  memberOrganizationNumber?: string | null;
   status: string;
   inviteRequestId?: string | null;
   inviteUrl: string;
@@ -64,6 +66,13 @@ function formatTimestamp(value?: string | null) {
     dateStyle: 'short',
     timeStyle: 'short',
   }).format(date);
+}
+
+function formatOrganizationNumber(value?: string | null) {
+  const digits = String(value || '').replace(/\D/g, '');
+  return /^\d{9}$/.test(digits)
+    ? digits.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3')
+    : null;
 }
 
 function LifecycleChip({ label, active }: { label: string; active: boolean }) {
@@ -300,6 +309,14 @@ export default function PrototypeTesterAdminPanel() {
                         <Typography variant="caption" sx={{ color: ws.textDim, overflowWrap: 'anywhere' }}>
                           {invite.email}
                         </Typography>
+                        {invite.memberCompany && (
+                          <Typography variant="caption" sx={{ color: ws.textDim, display: 'block', mt: 0.4 }}>
+                            {invite.memberCompany}
+                            {formatOrganizationNumber(invite.memberOrganizationNumber)
+                              ? ` · Org.nr. ${formatOrganizationNumber(invite.memberOrganizationNumber)}`
+                              : ''}
+                          </Typography>
+                        )}
                       </TableCell>
                       <TableCell sx={bodyCellSx}>
                         <Chip

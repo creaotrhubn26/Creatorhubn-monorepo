@@ -101,6 +101,8 @@ export type PrototypeTesterAgreementContext = {
   testerName: string;
   testerEmail: string;
   testerCompany?: string | null;
+  testerOrganizationNumber?: string | null;
+  testerBusinessAddress?: string | null;
 };
 
 export function canonicalJsonStringify(value: unknown): string {
@@ -162,8 +164,20 @@ export function programTermsShortSummary(): string {
 
 function counterparty(context: PrototypeTesterAgreementContext): string {
   const company = String(context.testerCompany || "").trim();
+  const organizationNumber = String(
+    context.testerOrganizationNumber || "",
+  ).replace(/\D/g, "");
+  const formattedOrganizationNumber = /^\d{9}$/.test(organizationNumber)
+    ? organizationNumber.replace(/(\d{3})(\d{3})(\d{3})/, "$1 $2 $3")
+    : "";
+  const businessAddress = String(context.testerBusinessAddress || "").trim();
+  const legalIdentity = [
+    company,
+    formattedOrganizationNumber ? `org.nr. ${formattedOrganizationNumber}` : "",
+    businessAddress,
+  ].filter(Boolean).join(", ");
   return company
-    ? `${company}, representert ved ${context.testerName} (${context.testerEmail})`
+    ? `${legalIdentity}, representert ved ${context.testerName} (${context.testerEmail})`
     : `${context.testerName} (${context.testerEmail})`;
 }
 

@@ -10,6 +10,8 @@ describe("prototype tester agreement bundle", () => {
     testerName: "Ada Lovelace",
     testerEmail: "ada@example.com",
     testerCompany: "Analytical Engines AS",
+    testerOrganizationNumber: "937518684",
+    testerBusinessAddress: "Søsterveien 11, 1474 Lørenskog",
   });
 
   it("contains four distinct, versioned documents for the represented party", () => {
@@ -31,6 +33,18 @@ describe("prototype tester agreement bundle", () => {
           document.content.includes("Ada Lovelace") ||
           document.key === "program_terms",
       ),
+    ).toBe(true);
+    expect(
+      documents
+        .filter((document) => document.key !== "program_terms")
+        .every((document) => document.content.includes("org.nr. 937 518 684")),
+    ).toBe(true);
+    expect(
+      documents
+        .filter((document) => document.key !== "program_terms")
+        .every((document) =>
+          document.content.includes("Søsterveien 11, 1474 Lørenskog"),
+        ),
     ).toBe(true);
   });
 
