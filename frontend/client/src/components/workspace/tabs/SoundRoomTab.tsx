@@ -567,20 +567,28 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                     </Box>
                   );
                 }
-                return dls.map((d: any, i: number) => (
-                  <Button key={osName + i} variant={isMine ? 'contained' : 'outlined'} startIcon={<Download sx={{ fontSize: 17 }} />}
+                return dls.map((d: any, i: number) => {
+                  const isRecommended = isMine && (osName !== 'Windows' || d.format === 'EXE');
+                  return (
+                  <Button key={osName + i} variant={isRecommended ? 'contained' : 'outlined'} startIcon={<Download sx={{ fontSize: 17 }} />}
                     href={d.url} target="_blank" rel="noopener" fullWidth
-                    sx={isMine
+                    sx={isRecommended
                       ? { bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, justifyContent: 'flex-start', '&:hover': { bgcolor: ws.accentHover } }
                       : { color: ws.text, borderColor: ws.borderSoft, textTransform: 'none', fontWeight: 600, justifyContent: 'flex-start' }}>
-                    {osName} · {d.arch} {d.sizeBytes ? `(${fmtMB(d.sizeBytes)})` : ''}{isMine ? '  — anbefalt for deg' : ''}
+                    {osName} · {d.arch}{d.format ? ` · ${d.format}` : ''} {d.sizeBytes ? `(${fmtMB(d.sizeBytes)})` : ''}{isRecommended ? '  — anbefalt for deg' : ''}{osName === 'Windows' && d.format === 'MSI' ? '  — for IT/admin' : ''}
                   </Button>
-                ));
+                  );
+                });
               })}
             </Stack>
-            {(ptRelease?.downloads || []).some((d: any) => d.signed === false) && (
+            {(ptRelease?.downloads || []).some((d: any) => d.os === 'macOS' && d.signed === false) && (
               <Typography sx={{ fontSize: 11, color: ws.textFaint, mb: 2 }}>
-                Første gang: høyreklikk appen → <b>Åpne</b> (macOS) / «Kjør likevel» (Windows) — bygget er ennå ikke signert.
+                macOS-bygget er ikke signert. Første gang: høyreklikk appen → <b>Åpne</b>.
+              </Typography>
+            )}
+            {(ptRelease?.downloads || []).some((d: any) => d.os === 'Windows' && d.signed === false) && (
+              <Typography sx={{ fontSize: 11, color: ws.textFaint, mb: 2 }}>
+                Windows-installerne er foreløpig ikke Authenticode-signert. SmartScreen kan vise «Mer informasjon» → «Kjør likevel».
               </Typography>
             )}
 
