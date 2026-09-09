@@ -288,14 +288,19 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
   const MAC_ARM_FALLBACK = "https://github.com/creaotrhubn26/Creatorhubn-monorepo/releases/download/protools-companion-v0.1.0/CreatorHub-ProTools-Companion_0.1.0_aarch64.dmg";
   let releaseCache: { at: number; data: any } | null = null;
 
-  function classifyAsset(name: string): { os: string; arch: string } | null {
+  function classifyAsset(name: string): { os: string; arch: string; format: string; signed: boolean } | null {
     const n = name.toLowerCase();
+    // `unsigned` inneholder ordet `signed`, så det må eksplisitt utelukkes.
+    // Signaturstatusen kommer fra release-pipelinens kontrollerte asset-navn.
+    const explicitlyUnsigned = /(?:^|[_-])unsigned(?:[_.-]|$)/.test(n);
+    const signed = !explicitlyUnsigned && /(?:^|[_-])signed(?:-notarized)?(?:[_.-]|$)/.test(n);
     if (n.endsWith(".dmg")) {
-      if (n.includes("aarch64") || n.includes("arm64")) return { os: "macOS", arch: "Apple Silicon" };
-      if (n.includes("x64") || n.includes("x86_64") || n.includes("intel")) return { os: "macOS", arch: "Intel" };
-      return { os: "macOS", arch: "Universal" };
+      if (n.includes("aarch64") || n.includes("arm64")) return { os: "macOS", arch: "Apple Silicon", format: "DMG", signed };
+      if (n.includes("x64") || n.includes("x86_64") || n.includes("intel")) return { os: "macOS", arch: "Intel", format: "DMG", signed };
+      return { os: "macOS", arch: "Universal", format: "DMG", signed };
     }
-    if (n.endsWith(".msi") || n.endsWith("-setup.exe") || n.endsWith(".exe")) return { os: "Windows", arch: "x64" };
+    if (n.endsWith(".msi")) return { os: "Windows", arch: "x64", format: "MSI", signed };
+    if (n.endsWith("-setup.exe") || n.endsWith(".exe")) return { os: "Windows", arch: "x64", format: "EXE", signed };
     return null;
   }
 
@@ -314,12 +319,12 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
           for (const a of rel.assets || []) {
             const c = classifyAsset(String(a.name || ""));
             if (!c) continue;
-            data.downloads.push({ os: c.os, arch: c.arch, url: a.browser_download_url, sizeBytes: a.size, signed: false });
+            data.downloads.push({ os: c.os, arch: c.arch, format: c.format, url: a.browser_download_url, sizeBytes: a.size, signed: c.signed });
           }
         }
       }
     } catch { /* faller til fallback under */ }
-    if (!data.downloads.length) data.downloads.push({ os: "macOS", arch: "Apple Silicon", url: MAC_ARM_FALLBACK, sizeBytes: 4867544, signed: false });
+    if (!data.downloads.length) data.downloads.push({ os: "macOS", arch: "Apple Silicon", format: "DMG", url: MAC_ARM_FALLBACK, sizeBytes: 4867544, signed: false });
     releaseCache = { at: Date.now(), data };
     return data;
   }
