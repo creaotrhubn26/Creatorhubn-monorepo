@@ -85,6 +85,7 @@ docker/
 !ipad/CaptureApp/CAPTURE_NATIVE_ROADMAP.md
 !backend/gfpgan-runner/GPU_DEPLOY.md
 !apps/resolve-script-manager/RELEASE.md
+!apps/resolve-script-manager/docs/POST_AGENT_RESOLVE_MCP_TASKS.md
 # Claude Code-plugin-kilder (skills/commands er markdown)
 !/plugins/**/*.md
 # THE-ROLE-ROOM-strategi-dokumenter (produktdok, BankID, ENHETSOKONOMI, DPA, VERIFISERING)
@@ -115,6 +116,8 @@ docs/
 !docs/post-agent/*.md
 !docs/leadgrid/
 !docs/leadgrid/*.md
+!docs/leadgrid/manual/
+!docs/leadgrid/manual/*.md
 !docs/dance/
 !docs/dance/*.md
 !docs/specs/
