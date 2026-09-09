@@ -34,9 +34,9 @@ nye lydfiler.
 
 ```bash
 cd apps/creatorhub-protools-companion
-npm install
+npm ci
 npm run tauri dev      # kjør appen lokalt (krever Rust-toolchain)
-npm run tauri build    # signert .app/.dmg (krever Developer ID)
+npm run tauri build    # lokalt bygg; release-signering/notarisering skjer i CI
 ```
 
 Ren logikk (Pro Tools-tekstparseren) er enhetstestet:
@@ -44,6 +44,24 @@ Ren logikk (Pro Tools-tekstparseren) er enhetstestet:
 ```bash
 cd src-tauri && cargo test
 ```
+
+## Desktop-release
+
+Workflowen `.github/workflows/protools-companion-release.yml` publiserer først når
+alle støttede installere er bygget og kontrollert:
+
+- **macOS Apple Silicon + Intel:** Developer ID-signert og Apple-notarisert DMG.
+- **Windows x64:** anbefalt NSIS EXE-installer og MSI for administrert utrulling,
+  bygget og testet på en native Windows-runner.
+- **Integritet:** `SHA256SUMS.txt` publiseres sammen med installerne.
+
+Windows-installerne er foreløpig ikke Authenticode-signert og kan derfor utløse
+SmartScreen. Brukeren kan velge «Mer informasjon» → «Kjør likevel» og kontrollere
+filens SHA-256 mot release-sjekksummen. Legg til en Windows-kodesigneringsleverandør
+før denne advarselen fjernes fra Sound Room.
+
+Ved release må versjonen være identisk i `package.json`, `src-tauri/tauri.conf.json`
+og `src-tauri/Cargo.toml`; `package-lock.json` og `Cargo.lock` skal være committed.
 
 ## Arkitektur
 
