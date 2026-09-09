@@ -200,7 +200,9 @@ pub fn spawn_watcher(app: AppHandle) -> notify::Result<()> {
                 return;
             }
             let touches_top = event.paths.iter().any(|p| {
-                p.parent().map(|parent| parent == Path::new(VOLUMES_PATH)).unwrap_or(false)
+                p.parent()
+                    .map(|parent| parent == Path::new(VOLUMES_PATH))
+                    .unwrap_or(false)
             });
             if !touches_top {
                 return;

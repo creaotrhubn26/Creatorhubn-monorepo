@@ -25,7 +25,7 @@ export default defineConfig({
   workers: 1,
   reporter: process.env.CI ? "github" : "list",
   use: {
-    baseURL: "http://localhost:1420",
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || `http://localhost:${process.env.PLAYWRIGHT_PORT || "5001"}`,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
   },
@@ -37,7 +37,8 @@ export default defineConfig({
   ],
   webServer: {
     command: "npm run dev",
-    url: "http://localhost:1420",
+    url: `http://localhost:${process.env.PLAYWRIGHT_PORT || "5001"}`,
+    env: { ...process.env, PORT: process.env.PLAYWRIGHT_PORT || "5001" },
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
   },

@@ -56,7 +56,9 @@ pub async fn demo_scan_dom(app: AppHandle, url: String) -> Result<(), String> {
     if let Some(existing) = app.get_webview_window(SCAN_LABEL) {
         let _ = existing.close();
     }
-    let parsed: tauri::Url = url.parse().map_err(|e| format!("ugyldig URL «{url}»: {e}"))?;
+    let parsed: tauri::Url = url
+        .parse()
+        .map_err(|e| format!("ugyldig URL «{url}»: {e}"))?;
     if parsed.scheme() != "http" && parsed.scheme() != "https" {
         return Err("URL må være http(s)".to_string());
     }
@@ -82,7 +84,8 @@ pub fn demo_scan_result(app: AppHandle, result: serde_json::Value) -> Result<(),
     if let Some(w) = app.get_webview_window(SCAN_LABEL) {
         let _ = w.close();
     }
-    app.emit("demo-capture://dom", result).map_err(|e| e.to_string())
+    app.emit("demo-capture://dom", result)
+        .map_err(|e| e.to_string())
 }
 
 /// Fremdrift fra skann-vinduet (stabilitet/scroll-steg/screenshots) → frontend
@@ -114,7 +117,9 @@ pub async fn demo_screenshot(app: AppHandle, url: String) -> Result<(), String> 
     if let Some(existing) = app.get_webview_window(SHOT_LABEL) {
         let _ = existing.close();
     }
-    let parsed: tauri::Url = url.parse().map_err(|e| format!("ugyldig URL «{url}»: {e}"))?;
+    let parsed: tauri::Url = url
+        .parse()
+        .map_err(|e| format!("ugyldig URL «{url}»: {e}"))?;
     if parsed.scheme() != "http" && parsed.scheme() != "https" {
         return Err("URL må være http(s)".to_string());
     }
@@ -136,7 +141,8 @@ pub fn demo_shot_result(app: AppHandle, result: serde_json::Value) -> Result<(),
     if let Some(w) = app.get_webview_window(SHOT_LABEL) {
         let _ = w.close();
     }
-    app.emit("demo-capture://shot", result).map_err(|e| e.to_string())
+    app.emit("demo-capture://shot", result)
+        .map_err(|e| e.to_string())
 }
 
 // ── Vedvarende demo-økt (G4): ETT vindu gjennom hele auto-kjøringen ──
@@ -158,8 +164,14 @@ fn session_window(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
 /// hvis et eksisterende vindu ble gjenbrukt uten navigasjon, eller "navigated"
 /// hvis `navigate=true` tvang eksisterende vindu til `url`.
 #[tauri::command]
-pub async fn demo_session_open(app: AppHandle, url: String, navigate: Option<bool>) -> Result<String, String> {
-    let parsed: tauri::Url = url.parse().map_err(|e| format!("ugyldig URL «{url}»: {e}"))?;
+pub async fn demo_session_open(
+    app: AppHandle,
+    url: String,
+    navigate: Option<bool>,
+) -> Result<String, String> {
+    let parsed: tauri::Url = url
+        .parse()
+        .map_err(|e| format!("ugyldig URL «{url}»: {e}"))?;
     if parsed.scheme() != "http" && parsed.scheme() != "https" {
         return Err("URL må være http(s)".to_string());
     }
@@ -206,18 +218,26 @@ pub async fn demo_session_exec(
         "settleMs": settle_ms,
     });
     let cfg_json = serde_json::to_string(&cfg).unwrap_or_else(|_| "{}".to_string());
-    w.eval(&format!("window.__demoSessionRun && window.__demoSessionRun({cfg_json});"))
-        .map_err(|e| format!("kunne ikke kjøre steg i økt-vinduet: {e}"))
+    w.eval(&format!(
+        "window.__demoSessionRun && window.__demoSessionRun({cfg_json});"
+    ))
+    .map_err(|e| format!("kunne ikke kjøre steg i økt-vinduet: {e}"))
 }
 
 /// Arm ett-skudds verifisering i økt-vinduet: brukeren klikker elementet,
 /// selector+label kommer via demo_session_report(kind="verify").
 #[tauri::command]
-pub async fn demo_session_verify(app: AppHandle, expected_label: Option<String>) -> Result<(), String> {
+pub async fn demo_session_verify(
+    app: AppHandle,
+    expected_label: Option<String>,
+) -> Result<(), String> {
     let w = session_window(&app)?;
-    let label_json = serde_json::to_string(&expected_label.unwrap_or_default()).unwrap_or_else(|_| "\"\"".to_string());
-    w.eval(&format!("window.__demoSessionVerify && window.__demoSessionVerify({label_json});"))
-        .map_err(|e| format!("kunne ikke arme verify i økt-vinduet: {e}"))
+    let label_json = serde_json::to_string(&expected_label.unwrap_or_default())
+        .unwrap_or_else(|_| "\"\"".to_string());
+    w.eval(&format!(
+        "window.__demoSessionVerify && window.__demoSessionVerify({label_json});"
+    ))
+    .map_err(|e| format!("kunne ikke arme verify i økt-vinduet: {e}"))
 }
 
 /// Ta skjermbilde av øktens NÅVÆRENDE tilstand (etter handlinger — i motsetning
@@ -242,7 +262,11 @@ pub async fn demo_session_close(app: AppHandle) -> Result<(), String> {
 /// lukke økten. Gjenbruker de eksisterende event-navnene for auto/verify/shot
 /// så frontend-lytterne er felles med engangs-vinduene.
 #[tauri::command]
-pub fn demo_session_report(app: AppHandle, kind: String, result: serde_json::Value) -> Result<(), String> {
+pub fn demo_session_report(
+    app: AppHandle,
+    kind: String,
+    result: serde_json::Value,
+) -> Result<(), String> {
     let event = match kind.as_str() {
         "auto" => "demo-capture://auto",
         "verify" => "demo-capture://verify",
@@ -263,14 +287,25 @@ fn reject_internal_url(raw: &str) -> Result<(), String> {
     }
     let host = u.host_str().ok_or("mangler host")?.to_lowercase();
     let h = host.trim_start_matches('[').trim_end_matches(']');
-    if h == "localhost" || h == "::1" || h.ends_with(".local") || h.ends_with(".internal") || !h.contains('.') {
+    if h == "localhost"
+        || h == "::1"
+        || h.ends_with(".local")
+        || h.ends_with(".internal")
+        || !h.contains('.')
+    {
         return Err("intern host ikke tillatt (SSRF-vern)".into());
     }
     let parts: Vec<&str> = h.split('.').collect();
     if parts.len() == 4 && parts.iter().all(|p| p.parse::<u8>().is_ok()) {
         let a: u8 = parts[0].parse().unwrap();
         let b: u8 = parts[1].parse().unwrap();
-        if a == 127 || a == 10 || a == 0 || (a == 169 && b == 254) || (a == 172 && (16..=31).contains(&b)) || (a == 192 && b == 168) {
+        if a == 127
+            || a == 10
+            || a == 0
+            || (a == 169 && b == 254)
+            || (a == 172 && (16..=31).contains(&b))
+            || (a == 192 && b == 168)
+        {
             return Err("privat/loopback IP ikke tillatt (SSRF-vern)".into());
         }
     }
@@ -291,8 +326,15 @@ pub async fn demo_fetch_site_context(url: String) -> Result<String, String> {
         .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17 Safari/605.1.15")
         .build()
         .map_err(|e| e.to_string())?;
-    let res = client.get(&url).send().await.map_err(|e| format!("kunne ikke hente siden: {e}"))?;
-    let html = res.text().await.map_err(|e| format!("kunne ikke lese siden: {e}"))?;
+    let res = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("kunne ikke hente siden: {e}"))?;
+    let html = res
+        .text()
+        .await
+        .map_err(|e| format!("kunne ikke lese siden: {e}"))?;
     Ok(extract_site_context(&html))
 }
 
@@ -315,16 +357,29 @@ pub async fn fetch_live_data(url: String) -> Result<LiveData, String> {
         .user_agent("PostAgent-Infographic/1.0")
         .build()
         .map_err(|e| e.to_string())?;
-    let res = client.get(&url).send().await.map_err(|e| format!("kunne ikke hente datakilden: {e}"))?;
+    let res = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("kunne ikke hente datakilden: {e}"))?;
     if !res.status().is_success() {
         return Err(format!("datakilden svarte {}", res.status().as_u16()));
     }
-    let text = res.text().await.map_err(|e| format!("kunne ikke lese datakilden: {e}"))?;
+    let text = res
+        .text()
+        .await
+        .map_err(|e| format!("kunne ikke lese datakilden: {e}"))?;
     let max = 512 * 1024;
     if text.chars().count() > max {
-        Ok(LiveData { text: text.chars().take(max).collect(), truncated: true })
+        Ok(LiveData {
+            text: text.chars().take(max).collect(),
+            truncated: true,
+        })
     } else {
-        Ok(LiveData { text, truncated: false })
+        Ok(LiveData {
+            text,
+            truncated: false,
+        })
     }
 }
 
@@ -332,10 +387,19 @@ fn extract_site_context(html: &str) -> String {
     use regex::Regex;
     let title = Regex::new(r"(?is)<title[^>]*>([^<]+)</title>")
         .ok()
-        .and_then(|re| re.captures(html).and_then(|c| c.get(1)).map(|m| m.as_str().trim().to_string()));
-    let desc = Regex::new(r#"(?is)<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']"#)
-        .ok()
-        .and_then(|re| re.captures(html).and_then(|c| c.get(1)).map(|m| m.as_str().trim().to_string()));
+        .and_then(|re| {
+            re.captures(html)
+                .and_then(|c| c.get(1))
+                .map(|m| m.as_str().trim().to_string())
+        });
+    let desc =
+        Regex::new(r#"(?is)<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']"#)
+            .ok()
+            .and_then(|re| {
+                re.captures(html)
+                    .and_then(|c| c.get(1))
+                    .map(|m| m.as_str().trim().to_string())
+            });
 
     // Klikkbare element-labels (knapp/lenke-tekst) — gir AI ekte targets.
     let mut labels: Vec<String> = Vec::new();
@@ -360,10 +424,22 @@ fn extract_site_context(html: &str) -> String {
     let text: String = text.chars().take(1600).collect();
 
     let mut parts: Vec<String> = Vec::new();
-    if let Some(t) = title { if !t.is_empty() { parts.push(format!("Tittel: {t}")); } }
-    if let Some(d) = desc { if !d.is_empty() { parts.push(format!("Beskrivelse: {d}")); } }
-    if !labels.is_empty() { parts.push(format!("Klikkbare elementer: {}", labels.join(" · "))); }
-    if !text.trim().is_empty() { parts.push(format!("Innhold: {text}")); }
+    if let Some(t) = title {
+        if !t.is_empty() {
+            parts.push(format!("Tittel: {t}"));
+        }
+    }
+    if let Some(d) = desc {
+        if !d.is_empty() {
+            parts.push(format!("Beskrivelse: {d}"));
+        }
+    }
+    if !labels.is_empty() {
+        parts.push(format!("Klikkbare elementer: {}", labels.join(" · ")));
+    }
+    if !text.trim().is_empty() {
+        parts.push(format!("Innhold: {text}"));
+    }
     parts.join("\n")
 }
 
@@ -373,7 +449,11 @@ fn strip_tags(s: &str) -> String {
     for c in s.chars() {
         match c {
             '<' => depth += 1,
-            '>' => { if depth > 0 { depth -= 1; } }
+            '>' => {
+                if depth > 0 {
+                    depth -= 1;
+                }
+            }
             _ if depth == 0 => out.push(c),
             _ => {}
         }

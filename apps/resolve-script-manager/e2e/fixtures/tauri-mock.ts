@@ -21,6 +21,11 @@ export interface MockOptions {
 }
 
 export function installTauriMock(opts: MockOptions = {}) {
+  // Når testen installerer Tauri-internals før appen lastes, hopper den vanlige
+  // browser-shimmen med vilje over initialisering. Behold derfor testmarkøren
+  // eksplisitt slik at test-only hooks fortsatt eksponeres.
+  (globalThis as any).__BROWSER_TEST__ = true;
+
   const responses: Record<string, unknown> = {
     photoshop_status: { connected: false, plugin_version: null, photoshop_version: null, port: 1733 },
     creation_list: [],

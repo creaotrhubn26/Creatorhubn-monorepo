@@ -1033,8 +1033,9 @@ const ACTIONS = {
         S.busy = true; render(); status("Transkriberer valgte klipp (native) — kan ta minutter …");
         try {
             const r = await PA.transcribeSelected(true);
-            log(`Transkriberte ${r.ok}/${r.total} valgte klipp (taler-deteksjon)`);
-            status(`✓ ${r.ok}/${r.total} transkribert`, "ok-text");
+            S.nativeTranscriptions = r.transcriptions || [];
+            log(`Transkriberte ${r.ok}/${r.total} valgte klipp · ${r.segmentCount || 0} segmenter · ${r.speakerCount || 0} talere`);
+            status(`✓ ${r.ok}/${r.total} transkribert · ${r.segmentCount || 0} segmenter med ord-timecodes`, "ok-text");
         } catch (e) { status("Transkripsjon feilet: " + e.message, "err"); }
         S.busy = false; render();
     },

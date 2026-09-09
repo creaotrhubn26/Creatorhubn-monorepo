@@ -29,6 +29,7 @@ import { MusicLibrary } from "./MusicLibrary";
 import { MusicSuggestionModal } from "./MusicSuggestionModal";
 import { VoiceDuckingDialog } from "./VoiceDuckingDialog";
 import { MulticamSyncStudio } from "./MulticamSyncStudio";
+import { MusicVideoResolvePlan } from "./MusicVideoResolvePlan";
 import { SocialCutsStudio } from "./SocialCutsStudio";
 import { ReviewSessionsStudio } from "./ReviewSessionsStudio";
 import { CollaborationSidebar } from "./CollaborationSidebar";
@@ -113,6 +114,7 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
   const [duckingDialogOpen, setDuckingDialogOpen] = useState(false);
   const [duckingMusicPath, setDuckingMusicPath] = useState("");
   const [multicamOpen, setMulticamOpen] = useState(false);
+  const [musicVideoPlanOpen, setMusicVideoPlanOpen] = useState(false);
   const [socialCutsOpen, setSocialCutsOpen] = useState(false);
   const [reviewSessionsOpen, setReviewSessionsOpen] = useState(false);
   const [collaborationOpen, setCollaborationOpen] = useState(false);
@@ -413,7 +415,7 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
       } | undefined;
       if (!v) throw new Error("Ingen analyse-output");
       setBeatAnalysis(v);
-      setBpm(Math.round(v.bpm));
+      setBpm(Math.min(220, Math.max(60, Math.round(v.bpm))));
       if (v.totalDurationSec > 0) {
         setSongLengthSec(Math.round(v.totalDurationSec));
       }
@@ -608,6 +610,23 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
               </span>
             )}
           </button>
+          {showBpmGrid && (
+            <button
+              onClick={() => setMusicVideoPlanOpen(true)}
+              disabled={!sourcePath}
+              title="Analyser musikken, vis alle planlagte Resolve-operasjoner og bygg en ny beat-timeline etter godkjenning"
+              style={{
+                background: "rgba(74,212,138,0.14)",
+                border: "1px solid rgba(74,212,138,0.42)",
+                color: "#4ad48a", padding: "5px 12px", fontSize: 11,
+                borderRadius: 4, cursor: sourcePath ? "pointer" : "not-allowed",
+                opacity: sourcePath ? 1 : 0.5, fontWeight: 600,
+                display: "inline-flex", alignItems: "center", gap: 5,
+              }}
+            >
+              <MusicNoteIcon sx={{ fontSize: 14 }} /> Music Video Editor
+            </button>
+          )}
           <button onClick={() => void exportResolveHandoff()}
                   disabled={handoffExporting || !sourcePath}
                   title="Eksporter agent-state som FCP7 XML + EDL for import i DaVinci Resolve"
@@ -802,7 +821,7 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
                 <span style={{ minWidth: 36 }}>BPM</span>
                 <input type="number" min={60} max={220}
                        value={bpm}
-                       onChange={e => setBpm(parseInt(e.target.value) || 120)}
+                       onChange={e => setBpm(Math.min(220, Math.max(60, parseInt(e.target.value) || 120)))}
                        style={inputStyle} />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8,
@@ -810,7 +829,7 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
                 <span style={{ minWidth: 36 }}>Lengde</span>
                 <input type="number" min={30} max={600}
                        value={songLengthSec}
-                       onChange={e => setSongLengthSec(parseInt(e.target.value) || 210)}
+                       onChange={e => setSongLengthSec(Math.min(600, Math.max(30, parseInt(e.target.value) || 210)))}
                        style={inputStyle} />
                 <span style={{ fontSize: 10, color: "var(--text-3, #a89cb8)" }}>sek</span>
               </div>
@@ -1357,6 +1376,19 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
         initialVoicePath={sourcePath}
         initialMusicPath={duckingMusicPath}
       />
+
+      {/* Music Video Editor — analyse, eksplisitt plan og trygg Resolve-bygging */}
+      {showBpmGrid && (
+        <MusicVideoResolvePlan
+          open={musicVideoPlanOpen}
+          onClose={() => setMusicVideoPlanOpen(false)}
+          sourcePath={sourcePath}
+          bpm={bpm}
+          selectedLookId={look.id}
+          selectedLookLabel={look.label}
+          genre={genre}
+        />
+      )}
 
       {/* Multi-cam Sync Studio — audio-waveform-korrelasjon */}
       {showMulticamButton && (
