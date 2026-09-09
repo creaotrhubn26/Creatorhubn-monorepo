@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import authSessionService from '../components/role-room/services/authSessionService';
 
 /**
  * Pinger POST /api/presence/heartbeat hvert 30 sek mens tab er aktiv.
@@ -11,18 +12,6 @@ import { useEffect, useRef } from 'react';
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const IDLE_THRESHOLD_MS = 15 * 60 * 1000;
 const INPUT_EVENTS = ['mousemove', 'keydown', 'pointerdown', 'scroll'];
-
-function getAuthToken(): string {
-  // Role Room lagrer tokenet i role_room_auth_token (TOKEN_STORAGE_KEY).
-  // Uten denne fallback-en sendes presence/heartbeat uten Bearer-token
-  // når brukeren kom inn via Role Room-flowen → 401 hvert 30. sek.
-  return (
-    window.localStorage.getItem('creatorhub_auth_token')
-    || window.localStorage.getItem('role_room_auth_token')
-    || window.localStorage.getItem('authToken')
-    || ''
-  );
-}
 
 export function usePresenceHeartbeat(enabled = true): void {
   const lastInputRef = useRef<number>(Date.now());
@@ -38,8 +27,12 @@ export function usePresenceHeartbeat(enabled = true): void {
     }
 
     async function ping() {
-      const token = getAuthToken();
-      if (!token) return;
+      // Role Room kan ha både et eldre CreatorHub-token og en aktiv
+      // Role Room-sesjon i localStorage. Session-servicen kjenner hvilken
+      // token som faktisk er aktiv og prioriterer den samme veien som resten
+      // av Role Room-API-et.
+      const authHeaders = authSessionService.getAuthHeadersSync();
+      if (!authHeaders.Authorization) return;
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
 
@@ -53,8 +46,9 @@ export function usePresenceHeartbeat(enabled = true): void {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
+            ...authHeaders,
           },
+          credentials: 'include',
           body: JSON.stringify({ route, idle: isIdle }),
           keepalive: true,
         });

@@ -2228,7 +2228,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
 
   if (!hasProjectContext) {
     return (
-      <Box sx={{
+      <Box data-testid="manuscript-panel-root" sx={{
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -2250,6 +2250,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
 
   return (
     <Box
+      data-testid="manuscript-panel-root"
       sx={{
         height: '100%',
         minHeight: 0,

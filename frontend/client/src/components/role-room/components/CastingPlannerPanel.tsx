@@ -320,6 +320,7 @@ import SelectionMeetPlannerCard from './SelectionMeetPlannerCard';
 import SelfTapePreviewModal from './selftape/SelfTapePreviewModal';
 import {
   availabilityChipStyle,
+  canQueryCastingRoleSelftapes,
   listCastingRoleSelftapes,
   selftapeAvailability,
   type CastingRoleSelftape,
@@ -6652,6 +6653,7 @@ type RoleRoomProjectWorkspaceState = {
         const results = await Promise.all(
           roles.map(async (r) => {
             try {
+              if (!canQueryCastingRoleSelftapes(r, currentProject.id)) return [] as CastingRoleSelftape[];
               const { selftapes } = await listCastingRoleSelftapes(r.id);
               return selftapes;
             } catch {
@@ -12462,6 +12464,7 @@ type RoleRoomProjectWorkspaceState = {
                 </Card>
 
                 <Card
+                  data-testid="story-writer-card"
                   sx={{
                     flex: '1 1 320px',
                     minWidth: { xs: '100%', sm: 320 },
