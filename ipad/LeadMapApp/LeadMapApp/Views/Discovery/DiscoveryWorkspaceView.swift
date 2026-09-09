@@ -643,9 +643,9 @@ struct DiscoveryWorkspaceView: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("\(coordinator.candidates.count) kandidater klare")
+                    Text("\(topLevelCandidates.count) forslag klare")
                         .font(.headline)
-                    Text("Match og datakvalitet vises separat – svak dokumentasjon blir aldri fremstilt som fakta.")
+                    Text(reviewSummary)
                         .font(.caption)
                         .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
                 }
@@ -683,14 +683,16 @@ struct DiscoveryWorkspaceView: View {
                         .padding(.vertical, 36)
                         .discoverySurface()
                     }
-                    ForEach(coordinator.candidates) { candidate in
+                    ForEach(topLevelCandidates) { candidate in
                         DiscoveryCandidateRow(
                             candidate: candidate,
                             territoryCode: activeTerritoryCode,
                             confirmedPlaceMatch: coordinator.confirmedPlaceMatches[candidate.id],
                             selected: coordinator.selectedCandidateIds.contains(candidate.id),
                             busy: coordinator.busyCandidateIds.contains(candidate.id),
-                            canShowPlaceDetails: coordinator.placesDetailsEnabled,
+                            canShowPlaceDetails: coordinator.placesDetailsEnabled
+                                && !(candidate.clinicGroup?.role == .practitionerContact
+                                     && candidate.clinicGroup?.clinicLeadId != nil),
                             onShowPlaceDetails: { placeDetailsCandidate = candidate },
                             onToggleSelection: {
                                 if coordinator.selectedCandidateIds.contains(candidate.id) {
@@ -743,6 +745,36 @@ struct DiscoveryWorkspaceView: View {
                 .background(.ultraThinMaterial)
             }
         }
+    }
+
+    private var topLevelCandidates: [DiscoveryV2Candidate] {
+        coordinator.candidates.filter { candidate in
+            candidate.clinicGroup?.role != .practitionerContact
+                || candidate.clinicGroup?.clinicLeadId != nil
+                || !coordinator.candidates.contains {
+                    $0.id == candidate.clinicGroup?.clinicCandidateId
+                }
+        }
+    }
+
+    private var groupedPractitionerCount: Int {
+        topLevelCandidates.reduce(0) {
+            $0 + ($1.clinicGroup?.practitioners.count ?? 0)
+        }
+    }
+
+    private var reviewSummary: String {
+        let contactsForExistingClinics = topLevelCandidates.filter {
+            $0.clinicGroup?.role == .practitionerContact
+                && $0.clinicGroup?.clinicLeadId != nil
+        }.count
+        if contactsForExistingClinics > 0 {
+            return "\(contactsForExistingClinics) tannlegekontakter kan godkjennes inn på klinikker som allerede ligger i Leadbook."
+        }
+        if groupedPractitionerCount > 0 {
+            return "\(groupedPractitionerCount) tannlegevirksomheter er samlet under klinikkene. Én godkjenning oppretter én lead med kontakter."
+        }
+        return "Match og datakvalitet vises separat – svak dokumentasjon blir aldri fremstilt som fakta."
     }
 
     private var completedView: some View {
@@ -1057,6 +1089,7 @@ struct DiscoveryCandidateRow: View {
                 Label("Treffer en eksklusjonsregel", systemImage: "nosign")
                     .font(.caption.bold()).foregroundStyle(LeadgridDiscoveryTheme.danger)
             }
+            clinicClassification
             if let reviewNotice = candidate.observation?.reviewNotice {
                 VStack(alignment: .leading, spacing: 3) {
                     Label("Approksimert historikk", systemImage: "clock.badge.exclamationmark")
@@ -1130,10 +1163,110 @@ struct DiscoveryCandidateRow: View {
         }
         Button("Avvis", role: .destructive, action: onReject)
             .buttonStyle(.bordered)
-        Button("Godkjenn", action: onApprove)
+        Button(approvalTitle, action: onApprove)
             .buttonStyle(.borderedProminent)
             .tint(LeadgridDiscoveryTheme.success)
+            .disabled(approvalBlockedByClinic)
+}
+
+@ViewBuilder
+private var clinicClassification: some View {
+    if let group = candidate.clinicGroup {
+        VStack(alignment: .leading, spacing: 7) {
+            Label(classificationTitle(group), systemImage: classificationIcon(group))
+                .font(.caption.bold())
+                .foregroundStyle(classificationColor(group))
+            if group.role == .clinicAccount, !group.practitioners.isEmpty {
+                Text("Tannleger som blir kontakter")
+                    .font(.caption2.bold())
+                    .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+                ForEach(group.practitioners.prefix(4)) { practitioner in
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.crop.circle")
+                        Text(practitioner.name)
+                        if let organizationNumber = practitioner.organizationNumber {
+                            Text("· \(organizationNumber)")
+                                .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+                        }
+                    }
+                    .font(.caption)
+                }
+                if group.practitioners.count > 4 {
+                    Text("+ \(group.practitioners.count - 4) flere")
+                        .font(.caption2)
+                        .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+                }
+                Text("Godkjenningen lager én klinikk-lead og \(group.practitioners.count) kontakter.")
+                    .font(.caption2)
+                    .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+            } else if group.role == .independentPractice {
+                Text("Ingen entydig klinikk ble funnet på samme adresse. Kandidaten behandles som en selvstendig praksis.")
+                    .font(.caption2)
+                    .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+            } else if group.role == .ambiguous {
+                Text("Leadgrid fant ikke nok entydig dokumentasjon til å gruppere virksomheten automatisk.")
+                    .font(.caption2)
+                    .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+            } else if group.role == .practitionerContact,
+                      group.clinicLeadId != nil {
+                Text("Klinikken ligger allerede i Leadbook. Godkjenning legger tannlegen til som kontakt uten å opprette en ny lead.")
+                    .font(.caption2)
+                    .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+            } else if group.role == .practitionerContact {
+                Text("Tannlegen er knyttet til klinikken, men klinikken må godkjennes først. Ingen separat lead blir opprettet.")
+                    .font(.caption2)
+                    .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+            }
+        }
+        .padding(10)
+        .background(LeadgridDiscoveryTheme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .accessibilityIdentifier("discovery.candidate.clinic-group")
     }
+}
+
+private var approvalTitle: String {
+    if candidate.clinicGroup?.role == .practitionerContact,
+       candidate.clinicGroup?.clinicLeadId != nil {
+        return "Legg til som kontakt"
+    }
+    if approvalBlockedByClinic {
+        return "Godkjenn klinikken først"
+    }
+    let contacts = candidate.clinicGroup?.practitioners.count ?? 0
+    return contacts > 0 ? "Godkjenn klinikk + \(contacts) kontakter" : "Godkjenn"
+}
+
+private var approvalBlockedByClinic: Bool {
+    candidate.clinicGroup?.role == .practitionerContact
+        && candidate.clinicGroup?.clinicLeadId == nil
+}
+
+private func classificationTitle(_ group: DiscoveryV2ClinicGroup) -> String {
+    switch group.role {
+    case .clinicAccount: return "Klinikk · salgskonto"
+    case .practitionerContact: return "Tannlege ved \(group.clinicName ?? "klinikk")"
+    case .independentPractice: return "Selvstendig tannlegepraksis"
+    case .ambiguous: return "Krever manuell vurdering"
+    }
+}
+
+private func classificationIcon(_ group: DiscoveryV2ClinicGroup) -> String {
+    switch group.role {
+    case .clinicAccount: return "building.2.fill"
+    case .practitionerContact: return "person.crop.circle.badge.checkmark"
+    case .independentPractice: return "person.crop.rectangle"
+    case .ambiguous: return "questionmark.diamond"
+    }
+}
+
+private func classificationColor(_ group: DiscoveryV2ClinicGroup) -> Color {
+    switch group.role {
+    case .clinicAccount: return LeadgridDiscoveryTheme.accentSoft
+    case .practitionerContact: return LeadgridDiscoveryTheme.success
+    case .independentPractice: return LeadgridDiscoveryTheme.warning
+    case .ambiguous: return LeadgridDiscoveryTheme.warning
+    }
+}
 
 private var selectionButton: some View {
     Button(action: onToggleSelection) {

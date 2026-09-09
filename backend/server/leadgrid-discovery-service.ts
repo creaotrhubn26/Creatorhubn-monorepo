@@ -38,6 +38,14 @@ import {
   bindDiscoveryCapacityReservation,
   reserveDiscoveryMonthlyCapacityInTransaction,
 } from "./leadgrid-discovery-governance.js";
+import {
+  buildDiscoveryClinicGroups,
+  classifyDiscoveryEntity,
+  type DiscoveryClassificationConfidence,
+  type DiscoveryClinicGroup,
+  type DiscoveryClinicGroupCandidate,
+  type DiscoveryEntityKind,
+} from "./leadgrid-discovery-clinic-grouping.js";
 
 export const LEADGRID_DISCOVERY_JOB_TYPE = "leadgrid_discovery_run";
 
@@ -82,6 +90,7 @@ export type DiscoveryServiceErrorCode =
   | "plan_changed"
   | "profile_version_conflict"
   | "place_confirmation_required"
+  | "clinic_approval_required"
   | "invalid_state"
   | "invalid_cursor"
   | "provider_not_configured"
@@ -127,6 +136,12 @@ const SERVICE_ERROR_DEFAULTS: Record<
   place_confirmation_required: {
     message:
       "Google Place ID must come from a recent explicit detail lookup by the approving user.",
+    status: 409,
+    retryable: false,
+  },
+  clinic_approval_required: {
+    message:
+      "Denne tannlegen er gruppert under en klinikk. Godkjenn klinikkgruppen for å opprette én lead og tilknyttede kontakter.",
     status: 409,
     retryable: false,
   },
@@ -354,6 +369,10 @@ export interface DiscoveryCandidateDto {
   organization_form: string | null;
   organization_form_code: string | null;
   organization_structure: "independent" | "chain" | "unknown";
+  entity_kind: DiscoveryEntityKind;
+  entity_kind_confidence: DiscoveryClassificationConfidence;
+  entity_kind_evidence: string[];
+  clinic_group: DiscoveryClinicGroup;
   nace_code: string | null;
   nace_description: string | null;
   employee_count: number | null;
@@ -414,6 +433,7 @@ export interface DiscoveryDecisionResultDto {
   candidate_status: string;
   lead_id: string | null;
   feedback_id: string;
+  contact_count: number;
   replayed: boolean;
 }
 
@@ -1372,6 +1392,10 @@ interface CandidateListRow {
   organization_form: string | null;
   organization_form_code: string | null;
   organization_structure: string | null;
+  entity_kind: string | null;
+  entity_kind_confidence: string | null;
+  entity_kind_evidence: unknown[] | null;
+  normalized_location_key: string | null;
   nace_code: string | null;
   nace_description: string | null;
   employee_count: number | null;
@@ -1406,6 +1430,69 @@ interface CandidateListRow {
   cursor_sort_value: number | string | null;
 }
 
+interface ClinicGroupContextRow {
+  id: string;
+  name: string;
+  organization_number: string | null;
+  entity_kind: string;
+  entity_kind_confidence: string;
+  normalized_location_key: string;
+  address: string | null;
+  website_url: string | null;
+  status: string;
+  imported_lead_id: string | null;
+}
+
+function candidateEntityKind(value: unknown): DiscoveryEntityKind {
+  return value === "clinic" || value === "practitioner" ? value : "unknown";
+}
+
+function candidateEntityConfidence(
+  value: unknown,
+): DiscoveryClassificationConfidence {
+  return value === "high" || value === "medium" ? value : "low";
+}
+
+function clinicGroupCandidate(
+  row: ClinicGroupContextRow,
+): DiscoveryClinicGroupCandidate {
+  return {
+    id: row.id,
+    name: row.name,
+    organizationNumber: row.organization_number,
+    entityKind: candidateEntityKind(row.entity_kind),
+    entityConfidence: candidateEntityConfidence(row.entity_kind_confidence),
+    normalizedLocationKey: row.normalized_location_key,
+    address: row.address,
+    websiteUrl: row.website_url,
+    status: row.status,
+    importedLeadId: row.imported_lead_id,
+  };
+}
+
+async function loadClinicGroupCandidates(
+  queryable: Queryable,
+  project: LeadgridAccessibleProject,
+  locationKeys: string[],
+  forUpdate = false,
+): Promise<DiscoveryClinicGroupCandidate[]> {
+  if (locationKeys.length === 0) return [];
+  const result = await queryable.query<ClinicGroupContextRow>(
+    `SELECT id::text, name, organization_number, entity_kind,
+            entity_kind_confidence, normalized_location_key, address,
+            website_url, status, imported_lead_id::text
+       FROM leadgrid_discovery_candidates
+      WHERE organization_id = $1::uuid
+        AND project_id = $2
+        AND normalized_location_key = ANY($3::text[])
+        AND entity_kind IN ('clinic', 'practitioner')
+      ORDER BY normalized_location_key, id
+      ${forUpdate ? "FOR UPDATE" : ""}`,
+    [project.organizationId, project.id, locationKeys],
+  );
+  return result.rows.map(clinicGroupCandidate);
+}
+
 function observationMetadata(input: {
   origin: unknown;
   observedAt: string | Date | null | undefined;
@@ -1425,7 +1512,30 @@ function observationMetadata(input: {
   };
 }
 
-function toCandidateDto(row: CandidateListRow): DiscoveryCandidateDto {
+function defaultClinicGroup(
+  row: Pick<CandidateListRow, "id" | "name" | "entity_kind" | "imported_lead_id">,
+): DiscoveryClinicGroup {
+  const kind = candidateEntityKind(row.entity_kind);
+  return {
+    role:
+      kind === "clinic"
+        ? "clinic_account"
+        : kind === "practitioner"
+          ? "independent_practice"
+          : "ambiguous",
+    clinic_candidate_id: kind === "clinic" ? row.id : null,
+    clinic_name: kind === "clinic" ? row.name : null,
+    clinic_lead_id: kind === "clinic" ? row.imported_lead_id : null,
+    relationship_confidence: null,
+    evidence: ["insufficient_group_context"],
+    practitioners: [],
+  };
+}
+
+function toCandidateDto(
+  row: CandidateListRow,
+  clinicGroup?: DiscoveryClinicGroup,
+): DiscoveryCandidateDto {
   const observedInProfiles: DiscoveryProfileObservationDto[] = Array.isArray(
     row.observed_in_profiles,
   )
@@ -1474,6 +1584,16 @@ function toCandidateDto(row: CandidateListRow): DiscoveryCandidateDto {
     organization_form: row.organization_form,
     organization_form_code: row.organization_form_code,
     organization_structure: organizationStructure,
+    entity_kind: candidateEntityKind(row.entity_kind),
+    entity_kind_confidence: candidateEntityConfidence(
+      row.entity_kind_confidence,
+    ),
+    entity_kind_evidence: Array.isArray(row.entity_kind_evidence)
+      ? row.entity_kind_evidence.filter(
+          (evidence): evidence is string => typeof evidence === "string",
+        )
+      : [],
+    clinic_group: clinicGroup ?? defaultClinicGroup(row),
     nace_code: row.nace_code,
     nace_description: row.nace_description,
     employee_count: row.employee_count,
@@ -1622,6 +1742,10 @@ export async function listDiscoveryCandidates(
             observation.raw_data->>'organization_form' AS organization_form,
             observation.raw_data->>'organization_form_code' AS organization_form_code,
             observation.raw_data->>'organization_structure' AS organization_structure,
+            c.entity_kind,
+            c.entity_kind_confidence,
+            c.entity_kind_evidence,
+            c.normalized_location_key,
             observation.raw_data->>'nace_code' AS nace_code,
             observation.raw_data->>'nace_description' AS nace_description,
             CASE WHEN jsonb_typeof(observation.raw_data->'employee_count') = 'number'
@@ -1773,9 +1897,39 @@ export async function listDiscoveryCandidates(
   );
   const hasMore = result.rows.length > limit;
   const pageRows = result.rows.slice(0, limit);
+  const locationKeys = [
+    ...new Set(
+      pageRows.flatMap((row) =>
+        row.normalized_location_key ? [row.normalized_location_key] : [],
+      ),
+    ),
+  ];
+  let groupCandidates: DiscoveryClinicGroupCandidate[] = pageRows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    organizationNumber: row.organization_number,
+    entityKind: candidateEntityKind(row.entity_kind),
+    entityConfidence: candidateEntityConfidence(row.entity_kind_confidence),
+    normalizedLocationKey: row.normalized_location_key,
+    address: row.address,
+    websiteUrl: row.website_url,
+    status: row.status,
+    importedLeadId: row.imported_lead_id,
+  }));
+  if (locationKeys.length > 0) {
+    const context = await loadClinicGroupCandidates(
+      pool,
+      input.project,
+      locationKeys,
+    );
+    const byId = new Map(groupCandidates.map((candidate) => [candidate.id, candidate]));
+    for (const candidate of context) byId.set(candidate.id, candidate);
+    groupCandidates = [...byId.values()];
+  }
+  const clinicGroups = buildDiscoveryClinicGroups(groupCandidates);
   const last = pageRows.at(-1);
   return {
-    items: pageRows.map(toCandidateDto),
+    items: pageRows.map((row) => toCandidateDto(row, clinicGroups.get(row.id))),
     next_cursor:
       hasMore && last
         ? encodeDiscoveryCursor(
@@ -1843,6 +1997,10 @@ interface DecisionCandidateRow {
   longitude: number | string | null;
   website_url: string | null;
   organization_number: string | null;
+  entity_kind: string | null;
+  entity_kind_confidence: string | null;
+  entity_kind_evidence: unknown[] | null;
+  normalized_location_key: string | null;
   observation_origin: string | null;
   observation_observed_at: string | Date | null;
   observation_captured_at: string | Date | null;
@@ -1880,6 +2038,10 @@ async function loadDecisionCandidate(
             observation.longitude,
             observation.website_url,
             observation.organization_number,
+            c.entity_kind,
+            c.entity_kind_confidence,
+            c.entity_kind_evidence,
+            c.normalized_location_key,
             rc.observation_snapshot->>'snapshot_origin'
               AS observation_origin,
             rc.observation_snapshot->>'observed_at'
@@ -2033,6 +2195,161 @@ function safePromotionEnrichment(
   };
 }
 
+async function attachClinicPractitioners(
+  client: PoolClient,
+  input: {
+    project: LeadgridAccessibleProject;
+    userId: string;
+    runId: string;
+    clinicCandidateId: string;
+    leadId: string;
+    normalizedLocationKey: string;
+    group: DiscoveryClinicGroup;
+  },
+): Promise<{ contactCount: number; affectedRunIds: string[] }> {
+  const practitioners = input.group.practitioners;
+  if (practitioners.length === 0) {
+    return { contactCount: 0, affectedRunIds: [] };
+  }
+
+  const practitionerIds = practitioners.map(
+    (practitioner) => practitioner.candidate_id,
+  );
+  const eligible = await client.query<{
+    id: string;
+    name: string;
+    organization_number: string | null;
+  }>(
+    `UPDATE leadgrid_discovery_candidates
+        SET status = 'imported',
+            imported_lead_id = $2::uuid,
+            existing_lead_id = COALESCE(existing_lead_id, $2::uuid),
+            decided_by = $3,
+            decided_at = NOW(),
+            imported_at = COALESCE(imported_at, NOW()),
+            updated_by = $3,
+            version = version + 1
+      WHERE id = ANY($1::uuid[])
+        AND organization_id = $4::uuid
+        AND project_id = $5
+        AND entity_kind = 'practitioner'
+        AND normalized_location_key = $6
+        AND status NOT IN ('rejected', 'archived', 'failed', 'imported')
+      RETURNING id::text, name, organization_number`,
+    [
+      practitionerIds,
+      input.leadId,
+      input.userId,
+      input.project.organizationId,
+      input.project.id,
+      input.normalizedLocationKey,
+    ],
+  );
+  const eligibleIds = new Set(eligible.rows.map((row) => row.id));
+  const relationshipById = new Map(
+    practitioners.map((practitioner) => [
+      practitioner.candidate_id,
+      practitioner,
+    ]),
+  );
+  for (const practitioner of eligible.rows) {
+    const relationship = relationshipById.get(practitioner.id);
+    if (!relationship) continue;
+    await client.query(
+      `INSERT INTO leadgrid_customer_contacts (
+          organization_id, project_id, customer_id, name, role,
+          organization_number, source, source_candidate_id,
+          relationship_confidence, relationship_evidence, confirmed_by
+        ) VALUES (
+          $1::uuid, $2, $3::uuid, $4, 'Tannlege',
+          $5, 'discovery', $6::uuid, $7, $8::jsonb, $9
+        )
+        ON CONFLICT (
+          organization_id, project_id, customer_id, source_candidate_id
+        ) WHERE source_candidate_id IS NOT NULL
+        DO UPDATE SET
+          name = EXCLUDED.name,
+          role = EXCLUDED.role,
+          organization_number = EXCLUDED.organization_number,
+          relationship_confidence = EXCLUDED.relationship_confidence,
+          relationship_evidence = EXCLUDED.relationship_evidence,
+          confirmed_by = EXCLUDED.confirmed_by,
+          updated_at = NOW()`,
+      [
+        input.project.organizationId,
+        input.project.id,
+        input.leadId,
+        practitioner.name,
+        practitioner.organization_number,
+        practitioner.id,
+        relationship.relationship_confidence,
+        JSON.stringify(relationship.evidence),
+        input.userId,
+      ],
+    );
+    await client.query(
+      `INSERT INTO leadgrid_discovery_feedback (
+          id, organization_id, project_id, candidate_id, run_id, lead_id,
+          event_type, value, reason_code, note, source, actor_user_id,
+          idempotency_key
+        ) VALUES (
+          gen_random_uuid(), $1::uuid, $2, $3::uuid, $4::uuid, $5::uuid,
+          'decision', 'grouped_contact', 'good_fit',
+          'Godkjent som tannlegekontakt i klinikkgruppen.',
+          'user', $6, $7
+        )
+        ON CONFLICT DO NOTHING`,
+      [
+        input.project.organizationId,
+        input.project.id,
+        practitioner.id,
+        input.runId,
+        input.leadId,
+        input.userId,
+        `clinic-group:${input.clinicCandidateId}`,
+      ],
+    );
+  }
+
+  const propagated = await client.query<{ run_id: string }>(
+    `UPDATE leadgrid_discovery_run_candidates
+        SET disposition = 'imported',
+            updated_at = NOW()
+      WHERE candidate_id = ANY($1::uuid[])
+        AND organization_id = $2::uuid
+        AND project_id = $3
+        AND disposition IN (
+          'found', 'existing_candidate', 'research_pending',
+          'researching', 'review_ready', 'failed'
+        )
+      RETURNING run_id::text`,
+    [[...eligibleIds], input.project.organizationId, input.project.id],
+  );
+
+  const primary = eligible.rows[0];
+  if (primary) {
+    await client.query(
+      `UPDATE crm_customers
+          SET contact_name = COALESCE(contact_name, $4),
+              contact_role = COALESCE(contact_role, 'Tannlege'),
+              updated_at = NOW()
+        WHERE id = $1::uuid
+          AND organization_id = $2::uuid
+          AND project_id IS NOT DISTINCT FROM $3`,
+      [
+        input.leadId,
+        input.project.organizationId,
+        input.project.id,
+        primary.name,
+      ],
+    );
+  }
+  return {
+    contactCount: eligible.rows.length,
+    affectedRunIds: propagated.rows.map((row) => row.run_id),
+  };
+}
+
 export async function decideDiscoveryCandidate(
   pool: Pool,
   input: {
@@ -2057,14 +2374,27 @@ export async function decideDiscoveryCandidate(
   });
 
   const outcome = await withTransaction(pool, async (client) => {
+    const decisionLockTarget = await client.query<{
+      normalized_location_key: string | null;
+    }>(
+      `SELECT normalized_location_key
+         FROM leadgrid_discovery_candidates
+        WHERE organization_id = $1::uuid
+          AND project_id = $2
+          AND id = $3::uuid
+        LIMIT 1`,
+      [input.project.organizationId, input.project.id, candidateId],
+    );
+    const locationOrCandidate =
+      decisionLockTarget.rows[0]?.normalized_location_key ?? candidateId;
     await client.query(
       `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
       [
         [
           input.project.organizationId,
           input.project.id,
-          candidateId,
-          idempotencyKey,
+          "discovery-decision",
+          locationOrCandidate,
         ].join("|"),
       ],
     );
@@ -2080,13 +2410,25 @@ export async function decideDiscoveryCandidate(
       request_hash: string | null;
       lead_id: string | null;
       value: string;
+      contact_count: number | string | null;
     }>(
-      `SELECT id::text, request_hash, lead_id::text, value
-         FROM leadgrid_discovery_feedback
-        WHERE organization_id = $1::uuid
-          AND project_id = $2
-          AND candidate_id = $3::uuid
-          AND idempotency_key = $4
+      `SELECT feedback.id::text,
+              feedback.request_hash,
+              feedback.lead_id::text,
+              feedback.value,
+              CASE WHEN feedback.lead_id IS NULL THEN 0 ELSE (
+                SELECT COUNT(*)::int
+                  FROM leadgrid_customer_contacts contact
+                 WHERE contact.organization_id = feedback.organization_id
+                   AND contact.project_id = feedback.project_id
+                   AND contact.customer_id = feedback.lead_id
+                   AND contact.source = 'discovery'
+              ) END AS contact_count
+         FROM leadgrid_discovery_feedback feedback
+        WHERE feedback.organization_id = $1::uuid
+          AND feedback.project_id = $2
+          AND feedback.candidate_id = $3::uuid
+          AND feedback.idempotency_key = $4
         LIMIT 1`,
       [
         input.project.organizationId,
@@ -2110,6 +2452,7 @@ export async function decideDiscoveryCandidate(
             candidate.imported_lead_id ??
             candidate.existing_lead_id,
           feedback_id: replay.rows[0].id,
+          contact_count: numberValue(replay.rows[0].contact_count),
           replayed: true,
         } satisfies DiscoveryDecisionResultDto,
         createdLead: false,
@@ -2132,11 +2475,111 @@ export async function decideDiscoveryCandidate(
       throw new DiscoveryServiceError("invalid_state");
     }
 
+    const clinicContext = candidate.normalized_location_key
+      ? await loadClinicGroupCandidates(
+          client,
+          input.project,
+          [candidate.normalized_location_key],
+          true,
+        )
+      : [];
+    const clinicGroup =
+      buildDiscoveryClinicGroups(clinicContext).get(candidateId) ?? {
+        role:
+          candidateEntityKind(candidate.entity_kind) === "clinic"
+            ? "clinic_account"
+            : candidateEntityKind(candidate.entity_kind) === "practitioner"
+              ? "independent_practice"
+              : "ambiguous",
+        clinic_candidate_id:
+          candidateEntityKind(candidate.entity_kind) === "clinic"
+            ? candidateId
+            : null,
+        clinic_name:
+          candidateEntityKind(candidate.entity_kind) === "clinic"
+            ? candidate.name
+            : null,
+        clinic_lead_id: candidate.imported_lead_id,
+        relationship_confidence: null,
+        evidence: ["insufficient_group_context"],
+        practitioners: [],
+      } satisfies DiscoveryClinicGroup;
+    if (
+      decision.decision === "approve" &&
+      clinicGroup.role === "practitioner_contact" &&
+      !clinicGroup.clinic_lead_id
+    ) {
+      throw new DiscoveryServiceError("clinic_approval_required");
+    }
+
     let leadId: string | null = null;
     let createdLead = false;
+    let groupedContactCount = 0;
+    let groupedAffectedRunIds: string[] = [];
+    let candidateStateAlreadyUpdated = false;
     let candidateStatus = candidate.candidate_status;
     let disposition: DiscoveryOccurrenceDisposition = "rejected";
     if (decision.decision === "approve") {
+      if (clinicGroup.role === "practitioner_contact") {
+        const clinicLeadId = clinicGroup.clinic_lead_id;
+        const relationshipConfidence = clinicGroup.relationship_confidence;
+        if (
+          !clinicLeadId ||
+          !candidate.normalized_location_key ||
+          !relationshipConfidence
+        ) {
+          throw new DiscoveryServiceError("clinic_approval_required");
+        }
+        const scopedClinicLead = await client.query<{ id: string }>(
+          `SELECT id::text
+             FROM crm_customers
+            WHERE id = $1::uuid
+              AND organization_id = $2::uuid
+              AND project_id IS NOT DISTINCT FROM $3
+              AND archived_at IS NULL
+            FOR UPDATE`,
+          [
+            clinicLeadId,
+            input.project.organizationId,
+            input.project.id,
+          ],
+        );
+        if (!scopedClinicLead.rows[0]) {
+          throw new DiscoveryServiceError("invalid_state");
+        }
+        leadId = clinicLeadId;
+        const attached = await attachClinicPractitioners(client, {
+          project: input.project,
+          userId,
+          runId,
+          clinicCandidateId: clinicGroup.clinic_candidate_id ?? candidateId,
+          leadId,
+          normalizedLocationKey: candidate.normalized_location_key,
+          group: {
+            role: "clinic_account",
+            clinic_candidate_id: clinicGroup.clinic_candidate_id,
+            clinic_name: clinicGroup.clinic_name,
+            clinic_lead_id: clinicLeadId,
+            relationship_confidence: null,
+            evidence: clinicGroup.evidence,
+            practitioners: [
+              {
+                candidate_id: candidateId,
+                name: candidate.name,
+                organization_number: candidate.organization_number,
+                relationship_confidence: relationshipConfidence,
+                evidence: clinicGroup.evidence,
+              },
+            ],
+          },
+        });
+        if (attached.contactCount !== 1) {
+          throw new DiscoveryServiceError("invalid_state");
+        }
+        groupedContactCount = attached.contactCount;
+        groupedAffectedRunIds = attached.affectedRunIds;
+        candidateStateAlreadyUpdated = true;
+      } else {
       const promotionEnrichment = safePromotionEnrichment(candidate);
       if (!promotionEnrichment.organizationNumber) {
         throw new DiscoveryServiceError("invalid_state");
@@ -2200,6 +2643,13 @@ export async function decideDiscoveryCandidate(
                 status: "not_performed_no_confirmed_place_id",
                 persisted_fields: [],
               },
+          clinic_group: {
+            role: clinicGroup.role,
+            clinic_candidate_id: clinicGroup.clinic_candidate_id,
+            included_contact_candidate_ids: clinicGroup.practitioners.map(
+              (practitioner) => practitioner.candidate_id,
+            ),
+          },
         },
       };
       if (confirmedGooglePlaceId) {
@@ -2409,10 +2859,30 @@ export async function decideDiscoveryCandidate(
         }
       }
 
+      if (
+        clinicGroup.role === "clinic_account" &&
+        leadId &&
+        candidate.normalized_location_key
+      ) {
+        const attached = await attachClinicPractitioners(client, {
+          project: input.project,
+          userId,
+          runId,
+          clinicCandidateId: candidateId,
+          leadId,
+          normalizedLocationKey: candidate.normalized_location_key,
+          group: clinicGroup,
+        });
+        groupedContactCount = attached.contactCount;
+        groupedAffectedRunIds = attached.affectedRunIds;
+      }
+      }
+
       candidateStatus = "imported";
       disposition = "imported";
-      await client.query(
-        `UPDATE leadgrid_discovery_candidates
+      if (!candidateStateAlreadyUpdated) {
+        await client.query(
+          `UPDATE leadgrid_discovery_candidates
             SET status = 'imported',
                 imported_lead_id = $2::uuid,
                 existing_lead_id = COALESCE(existing_lead_id, $2::uuid),
@@ -2424,14 +2894,15 @@ export async function decideDiscoveryCandidate(
           WHERE id = $1::uuid
             AND organization_id = $4::uuid
             AND project_id = $5`,
-        [
-          candidateId,
-          leadId,
-          userId,
-          input.project.organizationId,
-          input.project.id,
-        ],
-      );
+          [
+            candidateId,
+            leadId,
+            userId,
+            input.project.organizationId,
+            input.project.id,
+          ],
+        );
+      }
     }
 
     // Import is a project-wide terminal identity decision because every
@@ -2513,7 +2984,11 @@ export async function decideDiscoveryCandidate(
               ],
             );
     const affectedRunIds = Array.from(
-      new Set([runId, ...propagated.rows.map((row) => row.run_id)]),
+      new Set([
+        runId,
+        ...propagated.rows.map((row) => row.run_id),
+        ...groupedAffectedRunIds,
+      ]),
     );
     const feedbackId = randomUUID();
     await client.query(
@@ -2575,6 +3050,7 @@ export async function decideDiscoveryCandidate(
         candidate_status: candidateStatus,
         lead_id: leadId,
         feedback_id: feedbackId,
+        contact_count: groupedContactCount,
         replayed: false,
       } satisfies DiscoveryDecisionResultDto,
       createdLead,
@@ -2965,6 +3441,17 @@ function scoreEvidence(score: DiscoveryCandidateScore): unknown[] {
 
 function rawCandidateData(
   candidate: DiscoveryRegistryCandidate,
+  classification = classifyDiscoveryEntity({
+    name: candidate.name,
+    address: candidate.address,
+    postalCode: candidate.postalCode,
+    city: candidate.city,
+    organizationFormCode: candidate.organizationFormCode,
+    naceCode: candidate.naceCode,
+    naceDescription: candidate.naceDescription,
+    employeeCount: candidate.employeeCount,
+    website: candidate.website,
+  }),
 ): Record<string, unknown> {
   return {
     source: "brreg_open_data",
@@ -3000,6 +3487,10 @@ function rawCandidateData(
     website_quality: candidate.websiteQuality ?? null,
     registered_in_business_register: candidate.registeredInBusinessRegister,
     company_status: candidate.status,
+    entity_kind: classification.kind,
+    entity_kind_confidence: classification.confidence,
+    entity_kind_evidence: classification.evidence,
+    normalized_location_key: classification.normalizedLocationKey,
   };
 }
 
@@ -3534,7 +4025,18 @@ async function persistProviderCandidate(
       query: input.queryText,
     },
   ];
-  const rawData = rawCandidateData(input.candidate);
+  const entityClassification = classifyDiscoveryEntity({
+    name: input.candidate.name,
+    address: input.candidate.address,
+    postalCode: input.candidate.postalCode,
+    city: input.candidate.city,
+    organizationFormCode: input.candidate.organizationFormCode,
+    naceCode: input.candidate.naceCode,
+    naceDescription: input.candidate.naceDescription,
+    employeeCount: input.candidate.employeeCount,
+    website: input.candidate.website,
+  });
+  const rawData = rawCandidateData(input.candidate, entityClassification);
   const enrichmentData = {
     found: true,
     source: "brreg",
@@ -3586,13 +4088,16 @@ async function persistProviderCandidate(
       `INSERT INTO leadgrid_discovery_candidates (
           organization_id, project_id, identity_key, name, website_url,
           address, postal_code, city, country_code, latitude, longitude,
-          organization_number, research_status, enrichment_data, raw_data,
-          provenance, created_by, updated_by
+          organization_number, entity_kind, entity_kind_confidence,
+          entity_kind_evidence, normalized_location_key,
+          research_status, enrichment_data, raw_data, provenance,
+          created_by, updated_by
         ) VALUES (
           $1::uuid, $2, $3, $4, $5,
           $6, $7, $8, 'NO', $9, $10,
-          $11, 'completed', $12::jsonb, $13::jsonb,
-          $14::jsonb, $15, $15
+          $11, $12, $13, $14::jsonb, $15,
+          'completed', $16::jsonb, $17::jsonb, $18::jsonb,
+          $19, $19
         )
         ON CONFLICT (organization_id, project_id, identity_key)
         DO UPDATE SET
@@ -3609,6 +4114,10 @@ async function persistProviderCandidate(
           latitude = COALESCE(EXCLUDED.latitude, leadgrid_discovery_candidates.latitude),
           longitude = COALESCE(EXCLUDED.longitude, leadgrid_discovery_candidates.longitude),
           organization_number = EXCLUDED.organization_number,
+          entity_kind = EXCLUDED.entity_kind,
+          entity_kind_confidence = EXCLUDED.entity_kind_confidence,
+          entity_kind_evidence = EXCLUDED.entity_kind_evidence,
+          normalized_location_key = EXCLUDED.normalized_location_key,
           research_status = 'completed',
           enrichment_data = EXCLUDED.enrichment_data,
           raw_data = EXCLUDED.raw_data,
@@ -3642,6 +4151,10 @@ async function persistProviderCandidate(
         input.candidate.location?.latitude ?? null,
         input.candidate.location?.longitude ?? null,
         input.candidate.organizationNumber,
+        entityClassification.kind,
+        entityClassification.confidence,
+        JSON.stringify(entityClassification.evidence),
+        entityClassification.normalizedLocationKey,
         JSON.stringify(enrichmentData),
         JSON.stringify(rawData),
         JSON.stringify(provenance),
