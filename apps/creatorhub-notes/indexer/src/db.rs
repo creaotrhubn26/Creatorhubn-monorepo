@@ -37,6 +37,11 @@ create table if not exists chunks (
 );
 create index if not exists chunks_path on chunks(path);
 
+create table if not exists path_state (
+  path     text primary key,
+  blob_sha text not null
+);
+
 create table if not exists anchors (
   note_id    text not null,
   entity_id  integer not null,

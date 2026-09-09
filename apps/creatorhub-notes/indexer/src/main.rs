@@ -19,6 +19,10 @@ enum Command {
     Index {
         #[arg(default_value = ".")]
         repo: PathBuf,
+        /// Tell filer, biter, tokener og kostnad uten å embedde noe.
+        /// Krever ingen API-nøkkel og gjør ingen nettverkskall.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Søk semantisk i indeksen
     Search {
@@ -37,18 +41,29 @@ enum Command {
 
 fn main() -> Result<()> {
     let args = Cli::parse();
+
+    // --dry-run rører verken databasen eller Voyage, så begge bygges først når
+    // en gren faktisk trenger dem.
+    if let Command::Index { repo, dry_run: true } = &args.command {
+        print!("{}", index::dry_run(repo)?.render());
+        return Ok(());
+    }
+
     let db_path = args.db.unwrap_or_else(cli::default_db_path);
     let conn = db::open(&db_path)?;
     let embedder = VoyageEmbedder::from_env()?;
 
     match args.command {
-        Command::Index { repo } => {
+        Command::Index { repo, .. } => {
             let report = index::run(&conn, &repo, &embedder)?;
             println!(
-                "{} filer, {} biter, {}",
-                report.files,
-                report.chunks,
-                if report.incremental { "inkrementell" } else { "full" }
+                "{} filer indeksert, {} biter, {} slettet, {} uendret",
+                report.files, report.chunks, report.deleted, report.skipped
+            );
+            println!(
+                "{} tokener, omtrent ${:.2}",
+                report.tokens,
+                report.tokens as f64 / 1_000_000.0 * index::USD_PER_MILLION_TOKENS
             );
         }
         Command::Search { query, limit } => {
