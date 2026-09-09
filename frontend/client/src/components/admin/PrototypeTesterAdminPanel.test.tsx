@@ -4,9 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import PrototypeTesterAdminPanel from './PrototypeTesterAdminPanel';
 
 const apiRequest = vi.fn();
+const apiFetch = vi.fn();
 
 vi.mock('@/lib/queryClient', () => ({
   apiRequest: (...args: unknown[]) => apiRequest(...args),
+  apiFetch: (...args: unknown[]) => apiFetch(...args),
 }));
 
 vi.mock('@/integration/EnhancedMasterIntegrationProvider', () => ({
@@ -29,11 +31,15 @@ describe('PrototypeTesterAdminPanel', () => {
           inviteUrl: 'https://creatorhubn.com/prototype-tester/accept-invite?token=redacted',
           createdAt: '2026-09-08T12:00:00.000Z',
           acceptedAt: '2026-09-08T12:05:00.000Z',
+          signatureMethod: 'email_otp_typed_name',
+          emailVerifiedAt: '2026-09-08T12:04:00.000Z',
+          signingReceiptId: '88888888-8888-4888-8888-888888888888',
           emailOpenedAt: '2026-09-08T12:02:00.000Z',
           inviteLinkClickedAt: '2026-09-08T12:03:00.000Z',
           accountProvisioningComplete: true,
           soloProActive: true,
           emailDelivery: { sent: true, provider: 'resend' },
+          receiptEmailDelivery: { sent: true, provider: 'resend' },
         },
       ],
     });
@@ -53,6 +59,11 @@ describe('PrototypeTesterAdminPanel', () => {
     expect(within(row).getByText('Åpnet')).toBeInTheDocument();
     expect(within(row).getByText('Klikket')).toBeInTheDocument();
     expect(within(row).getByText('4 avtaler')).toBeInTheDocument();
+    expect(within(row).getByText('E-postkode')).toBeInTheDocument();
+    expect(within(row).getByText('PDF-kvittering')).toBeInTheDocument();
+    expect(within(row).getByText('Kvittering sendt')).toBeInTheDocument();
+    expect(within(row).getByText(/E-post verifisert/)).toBeInTheDocument();
+    expect(within(row).getByTestId('admin-download-receipt-invite-1')).toBeInTheDocument();
     expect(within(row).getByText('Konto')).toBeInTheDocument();
     expect(within(row).getByText('solo_pro')).toBeInTheDocument();
 

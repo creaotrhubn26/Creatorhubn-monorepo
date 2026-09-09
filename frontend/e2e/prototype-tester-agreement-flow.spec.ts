@@ -75,6 +75,18 @@ test("leser, aksepterer og signerer hele prototype-testerpakken", async ({
     .context()
     .route(`**/api/prototype-tester-invites/**`, async (route) => {
       if (route.request().method() === "POST") {
+        if (route.request().url().endsWith("/signing-code")) {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              success: true,
+              maskedEmail: "te****@example.com",
+              expiresAt: "2099-09-20T12:10:00.000Z",
+            }),
+          });
+          return;
+        }
         submittedBody = route.request().postDataJSON() as Record<
           string,
           unknown
@@ -106,7 +118,10 @@ test("leser, aksepterer og signerer hele prototype-testerpakken", async ({
   });
 
   for (const [index, agreement] of agreements.entries()) {
-    await expect(page.getByTestId(`accept-${agreement.key}`)).toBeDisabled();
+    const agreementCheckbox = page
+      .getByTestId(`accept-${agreement.key}`)
+      .locator("input");
+    await expect(agreementCheckbox).toBeDisabled();
     await page.getByTestId(`read-${agreement.key}`).click();
     await expect(
       page.getByTestId(`agreement-content-${agreement.key}`),
@@ -126,14 +141,17 @@ test("leser, aksepterer og signerer hele prototype-testerpakken", async ({
       });
     }
     await page.getByTestId(`mark-read-${agreement.key}`).click();
-    await expect(page.getByTestId(`accept-${agreement.key}`)).toBeEnabled();
-    await page.getByTestId(`accept-${agreement.key}`).check();
+    await expect(agreementCheckbox).toBeEnabled();
+    await agreementCheckbox.check();
   }
 
   await expect(page.getByText("4 av 4 godkjent")).toBeVisible();
 
   await page.getByTestId("confirm-signing-authority").check();
   await page.getByTestId("agreement-signer-name").fill("Test Tester");
+  await expect(page.getByTestId("sign-and-activate")).toBeDisabled();
+  await page.getByTestId("send-signing-code").click();
+  await page.getByTestId("signing-verification-code").fill("123456");
   const loginNavigation = page.waitForURL(
     /\/login\?redirect=%2Fphotographer-dashboard-material$/,
     { timeout: 8_000 },
@@ -154,6 +172,7 @@ test("leser, aksepterer og signerer hele prototype-testerpakken", async ({
     },
     agreementVersions,
     confirmedSigningAuthority: true,
+    verificationCode: "123456",
   });
   await loginNavigation;
 });
