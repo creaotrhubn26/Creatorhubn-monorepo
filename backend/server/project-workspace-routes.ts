@@ -25,7 +25,7 @@ import fs from "node:fs";
 import path from "node:path";
 import multer from "multer";
 import { canAccessProject, canEditProject } from "./project-team-routes";
-import { requireTeamAccess } from "./team-access";
+import { hasActiveTeamAccess, requireTeamAccess } from "./team-access";
 import { resolveCrewRoles } from "../../frontend/shared/crew-roles.ts";
 import { CANONICAL_PROFESSIONS, normalizeProfession as normalizeCanonProfession, isWorkspaceCategory as isWsCategory } from "../../frontend/shared/profession-types.ts";
 import { idempotencyMiddleware } from "./_shared-idempotency";
@@ -73,6 +73,112 @@ const videoUpload = multer({
 function isUuid(value: unknown): value is string {
   return typeof value === "string"
     && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+type WorkspaceEaseVerseTrack = {
+  id: string;
+  title?: string | null;
+  artist?: string | null;
+  genre?: string | null;
+  bpm?: number | null;
+  musical_key?: string | null;
+};
+
+/**
+ * Attach an EaseVerse track without throwing away an already active Sound
+ * Room. The old route always created/reused a track-specific room and moved
+ * project_audio_rooms to it, which orphaned existing Companion bounces,
+ * markers and comments when the room had been created before the track.
+ */
+export async function linkEaseVerseTrackToWorkspaceRoom(args: {
+  pool: any;
+  workspaceProjectId: string;
+  userId: string;
+  track: WorkspaceEaseVerseTrack;
+}): Promise<{ audioRoomId: string; reusedWorkspaceRoom: boolean }> {
+  const { pool, workspaceProjectId, userId, track } = args;
+  const current = await pool.query(
+    `SELECT ar.id, ar.easeverse_track_id
+       FROM project_audio_rooms pr
+       JOIN audio_review_projects ar ON ar.id = pr.audio_review_project_id
+      WHERE pr.project_id = $1 AND ar.owner_user_id = $2 AND ar.status <> 'archived'
+      LIMIT 1`,
+    [workspaceProjectId, userId],
+  ).catch(() => ({ rows: [] }));
+
+  const currentRoom = current.rows[0];
+  const canReuseCurrent = Boolean(
+    currentRoom?.id
+    && (!currentRoom.easeverse_track_id || String(currentRoom.easeverse_track_id) === track.id),
+  );
+  let audioRoomId: string | null = null;
+  let reusedWorkspaceRoom = false;
+
+  if (canReuseCurrent) {
+    const adopted = await pool.query(
+      `UPDATE audio_review_projects
+          SET title = COALESCE(NULLIF($3,''), title),
+              artist_name = COALESCE($4, artist_name),
+              genre = COALESCE($5, genre),
+              bpm = COALESCE($6, bpm),
+              musical_key = COALESCE($7, musical_key),
+              easeverse_track_id = $8,
+              external_track_id = $8,
+              updated_at = NOW()
+        WHERE id = $1::uuid AND owner_user_id = $2
+          AND (easeverse_track_id IS NULL OR easeverse_track_id::text = $8)
+        RETURNING id`,
+      [
+        String(currentRoom.id), userId, track.title || "EaseVerse-låt",
+        track.artist || null, track.genre || null, track.bpm || null,
+        track.musical_key || null, track.id,
+      ],
+    );
+    audioRoomId = adopted.rows[0]?.id ? String(adopted.rows[0].id) : null;
+    reusedWorkspaceRoom = Boolean(audioRoomId);
+  }
+
+  if (!audioRoomId) {
+    const existing = await pool.query(
+      `SELECT id FROM audio_review_projects
+        WHERE easeverse_track_id::text = $1 AND owner_user_id = $2 AND status <> 'archived'
+        ORDER BY created_at DESC LIMIT 1`,
+      [track.id, userId],
+    ).catch(() => ({ rows: [] }));
+    audioRoomId = existing.rows[0]?.id ? String(existing.rows[0].id) : null;
+  }
+
+  if (!audioRoomId) {
+    const inserted = await pool.query(
+      `INSERT INTO audio_review_projects
+         (owner_user_id, title, artist_name, genre, bpm, musical_key, status, easeverse_track_id, external_track_id)
+       VALUES ($1,$2,$3,$4,$5,$6,'draft',$7,$7) RETURNING id`,
+      [
+        userId, track.title || "EaseVerse-låt", track.artist || null,
+        track.genre || null, track.bpm || null, track.musical_key || null, track.id,
+      ],
+    );
+    audioRoomId = String(inserted.rows[0].id);
+  }
+
+  await pool.query(
+    `INSERT INTO project_audio_rooms (project_id, audio_review_project_id) VALUES ($1,$2)
+     ON CONFLICT (project_id) DO UPDATE SET audio_review_project_id = EXCLUDED.audio_review_project_id`,
+    [workspaceProjectId, audioRoomId],
+  );
+
+  // Existing Companion sessions already point at the preserved room. Give
+  // unlinked sessions the same track so their next snapshot is mirrored to
+  // EaseVerse without requiring a new pairing or losing local configuration.
+  await pool.query(
+    `UPDATE protools_companion_sessions
+        SET easeverse_track_id = $3, last_activity = NOW(), updated_at = NOW()
+      WHERE audio_review_project_id = $1::uuid AND user_id = $2
+        AND (easeverse_track_id IS NULL OR easeverse_track_id = $3)`,
+    [audioRoomId, userId, track.id],
+  ).catch(() => ({ rows: [] }));
+
+  return { audioRoomId, reusedWorkspaceRoom };
 }
 
 export interface ProjectWorkspaceRoutesDeps {
@@ -2635,8 +2741,6 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   // bro-tabellen på den. Krever at brukeren eier track-en.
   app.post("/api/projects/:projectId/audio-room/link-easeverse", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
-    // EaseVerse-kobling synker collaborators inn → team-/Enterprise-gated.
-    if (!(await requireTeamAccess(pool, uid, res))) return;
     try {
       const pid = req.params.projectId;
       const trackId = String(req.body?.trackId || "");
@@ -2644,30 +2748,22 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const tr = await pool.query(`SELECT id, title, artist, genre, bpm, musical_key, collaborators FROM easeverse_tracks WHERE id = $1::uuid AND user_id = $2 LIMIT 1`, [trackId, uid]).catch(() => ({ rows: [] }));
       const track = tr.rows[0];
       if (!track) return res.status(404).json({ error: "track_not_found" });
-      // Finn eksisterende review for track-en, ellers opprett (samme som send-to-review).
-      let arId: string | null = null;
-      const exist = await pool.query(`SELECT id FROM audio_review_projects WHERE easeverse_track_id = $1 AND owner_user_id = $2 AND status <> 'archived' ORDER BY created_at DESC LIMIT 1`, [trackId, uid]).catch(() => ({ rows: [] }));
-      if (exist.rows.length) arId = exist.rows[0].id;
-      else {
-        const ins = await pool.query(
-          `INSERT INTO audio_review_projects (owner_user_id, title, artist_name, genre, bpm, musical_key, status, easeverse_track_id, external_track_id)
-           VALUES ($1,$2,$3,$4,$5,$6,'draft',$7,$7) RETURNING id`,
-          [uid, track.title || "EaseVerse-låt", track.artist || null, track.genre || null, track.bpm || null, track.musical_key || null, trackId],
-        );
-        arId = ins.rows[0].id;
-      }
       await pool.query(`CREATE TABLE IF NOT EXISTS project_audio_rooms (project_id uuid PRIMARY KEY, audio_review_project_id uuid NOT NULL, created_at timestamptz DEFAULT now())`).catch(() => {});
-      await pool.query(
-        `INSERT INTO project_audio_rooms (project_id, audio_review_project_id) VALUES ($1,$2)
-         ON CONFLICT (project_id) DO UPDATE SET audio_review_project_id = EXCLUDED.audio_review_project_id`,
-        [pid, arId],
-      ).catch(() => {});
-      // Auto-synk band-roster fra EaseVerse-collaborators → review-medlemmer m/ invite-token (samme som audio-showcase sync-collaborators).
+      const linkedRoom = await linkEaseVerseTrackToWorkspaceRoom({
+        pool,
+        workspaceProjectId: pid,
+        userId: uid,
+        track,
+      });
+      const arId = linkedRoom.audioRoomId;
+      // Selve eierens EaseVerse/Sound Room/Companion-kobling er tilgjengelig
+      // uten Enterprise. Bare import av flere collaborators er en teamfunksjon.
+      const canSyncBandRoster = await hasActiveTeamAccess(pool, uid);
       let bandSynced = 0;
       try {
         const raw = track.collaborators;
         const collabs: string[] = Array.isArray(raw) ? raw : (() => { try { return JSON.parse(raw || "[]"); } catch { return []; } })();
-        if (collabs.length) {
+        if (canSyncBandRoster && collabs.length) {
           const existing = await pool.query(`SELECT name FROM audio_review_members WHERE project_id=$1::uuid`, [arId]).catch(() => ({ rows: [] }));
           const have = new Set(existing.rows.map((r: any) => String(r.name || "").trim().toLowerCase()));
           const PALETTE = ["#FF6B35", "#9b59b6", "#3fa7d6", "#e0a955", "#5fb88a", "#e0606a", "#8aa0b6"];
@@ -2685,7 +2781,13 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
           }
         }
       } catch { /* roster-synk er best-effort */ }
-      res.json({ audioRoomId: arId, linked: true, bandSynced });
+      res.json({
+        audioRoomId: arId,
+        linked: true,
+        bandSynced,
+        bandSyncAvailable: canSyncBandRoster,
+        reusedWorkspaceRoom: linkedRoom.reusedWorkspaceRoom,
+      });
     } catch (e) { console.error("POST link-easeverse", e); res.status(500).json({ error: "failed" }); }
   });
 

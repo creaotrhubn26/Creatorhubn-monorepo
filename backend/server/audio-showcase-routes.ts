@@ -466,6 +466,15 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   const { app, pool, requireUserSession, sendInviteEmail, sendEmail, getBrandingForUser, getYoutubeClient, getGoogleCalendar, uploadClip } = deps;
   const APP_URL = (process.env.PUBLIC_APP_URL || "https://creatorhubn.com").replace(/\/+$/, "");
 
+  // Companion-bounces ligger i privat R2. API-et eksponerer derfor en
+  // same-origin, tilgangskontrollert stream i stedet for den rå objekt-URL-en.
+  const playableVersion = (row: any, shareToken?: string): any => {
+    const { protools_bounce_id: bounceId, ...version } = row || {};
+    if (!bounceId) return version;
+    const share = shareToken ? `?share=${encodeURIComponent(shareToken)}` : "";
+    return { ...version, file_url: `/api/protools/bounces/${bounceId}/file${share}` };
+  };
+
   // Send invitasjons-e-post (fire-and-forget) hvis dep + e-post finnes.
   async function emailInvite(memberId: string, projectId: string, ownerName: string): Promise<boolean> {
     if (!sendInviteEmail) return false;
@@ -673,7 +682,17 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         ? `SELECT * FROM audio_review_members WHERE project_id = $1::uuid ORDER BY is_owner DESC, order_index ASC, created_at ASC`
         : `SELECT id, name, role, instrument, avatar_color, avatar_url, is_owner, invite_status, contributions FROM audio_review_members WHERE project_id = $1::uuid ORDER BY is_owner DESC, order_index ASC, created_at ASC`;
       const [v, members, tasks] = await Promise.all([
-        pool.query(`SELECT * FROM audio_review_versions WHERE project_id = $1::uuid ORDER BY version_number ASC`, [id]),
+        pool.query(
+          `SELECT v.*,b.id AS protools_bounce_id
+             FROM audio_review_versions v
+             LEFT JOIN LATERAL (
+               SELECT id FROM protools_companion_bounces
+                WHERE review_version_id=v.id ORDER BY created_at DESC LIMIT 1
+             ) b ON TRUE
+            WHERE v.project_id = $1::uuid
+            ORDER BY v.version_number ASC`,
+          [id],
+        ),
         pool.query(membersQuery, [id]).catch(() => ({ rows: [] })),
         pool.query(`SELECT * FROM audio_review_tasks WHERE project_id = $1::uuid ORDER BY order_index ASC, created_at ASC`, [id]).catch(() => ({ rows: [] })),
       ]);
@@ -686,7 +705,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         ).catch(() => ({ rows: [] as any[] }));
         easeverseTrack = t.rows[0] || null;
       }
-      return res.json({ project: p.rows[0], versions: v.rows, members: members.rows, tasks: tasks.rows, easeverseTrack });
+      return res.json({ project: p.rows[0], versions: v.rows.map((row) => playableVersion(row)), members: members.rows, tasks: tasks.rows, easeverseTrack });
     } catch (e) {
       if (isMissingTable(e)) return res.status(404).json({ error: "not_found" });
       return res.status(500).json({ error: "get_failed" });
@@ -737,14 +756,23 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     try {
       // IDOR-guard: kun eieren kan lese versjonen + alle dens kommentarer.
       if (!(await ownsVersion(id, s.userId))) return res.status(404).json({ error: "not_found" });
-      const v = await pool.query(`SELECT * FROM audio_review_versions WHERE id = $1::uuid LIMIT 1`, [id]);
+      const v = await pool.query(
+        `SELECT v.*,b.id AS protools_bounce_id
+           FROM audio_review_versions v
+           LEFT JOIN LATERAL (
+             SELECT id FROM protools_companion_bounces
+              WHERE review_version_id=v.id ORDER BY created_at DESC LIMIT 1
+           ) b ON TRUE
+          WHERE v.id = $1::uuid LIMIT 1`,
+        [id],
+      );
       if (!v.rows.length) return res.status(404).json({ error: "not_found" });
       const [comments, sections, approvals] = await Promise.all([
         pool.query(`SELECT * FROM audio_review_comments WHERE version_id = $1::uuid ORDER BY timecode_seconds ASC, created_at ASC`, [id]),
         pool.query(`SELECT * FROM audio_review_sections WHERE version_id = $1::uuid ORDER BY order_index ASC, start_time_seconds ASC`, [id]),
         pool.query(`SELECT * FROM audio_review_approvals WHERE version_id = $1::uuid ORDER BY created_at DESC`, [id]),
       ]);
-      return res.json({ version: v.rows[0], comments: comments.rows, sections: sections.rows, approvals: approvals.rows });
+      return res.json({ version: playableVersion(v.rows[0]), comments: comments.rows, sections: sections.rows, approvals: approvals.rows });
     } catch (e) {
       if (isMissingTable(e)) return res.status(404).json({ error: "not_found" });
       return res.status(500).json({ error: "get_version_failed" });
@@ -1860,7 +1888,17 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       const ctx = await resolveSharedMember(token);
       if (!ctx) return res.status(404).json({ error: "not_found" });
       const [v, members, tasks] = await Promise.all([
-        pool.query(`SELECT * FROM audio_review_versions WHERE project_id = $1::uuid ORDER BY version_number ASC`, [ctx.project_id]),
+        pool.query(
+          `SELECT v.*,b.id AS protools_bounce_id
+             FROM audio_review_versions v
+             LEFT JOIN LATERAL (
+               SELECT id FROM protools_companion_bounces
+                WHERE review_version_id=v.id ORDER BY created_at DESC LIMIT 1
+             ) b ON TRUE
+            WHERE v.project_id = $1::uuid
+            ORDER BY v.version_number ASC`,
+          [ctx.project_id],
+        ),
         pool.query(`SELECT id, name, role, instrument, avatar_color, avatar_url, is_owner, invite_status, contributions FROM audio_review_members WHERE project_id = $1::uuid ORDER BY is_owner DESC, order_index ASC`, [ctx.project_id]),
         pool.query(`SELECT * FROM audio_review_tasks WHERE project_id = $1::uuid ORDER BY order_index ASC`, [ctx.project_id]).catch(() => ({ rows: [] })),
       ]);
@@ -1870,7 +1908,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         easeverseTrack = t.rows[0] || null;
       }
       const project = { id: ctx.id, title: ctx.title, band_name: ctx.band_name, artist_name: ctx.artist_name, genre: ctx.genre, bpm: ctx.bpm, musical_key: ctx.musical_key, status: ctx.status, cover_url: ctx.cover_url, created_at: ctx.created_at, easeverse_track_id: ctx.easeverse_track_id };
-      return res.json({ project, versions: v.rows, members: members.rows, tasks: tasks.rows, easeverseTrack, viewer: { memberId: ctx.member_id, name: ctx.name, role: ctx.role }, readonly: true });
+      return res.json({ project, versions: v.rows.map((row) => playableVersion(row, token)), members: members.rows, tasks: tasks.rows, easeverseTrack, viewer: { memberId: ctx.member_id, name: ctx.name, role: ctx.role }, readonly: true });
     } catch (e) {
       if (isMissingTable(e)) return res.status(404).json({ error: "not_found" });
       return res.status(500).json({ error: "shared_get_failed" });
@@ -1883,13 +1921,22 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     try {
       const ctx = await resolveSharedMember(token);
       if (!ctx) return res.status(404).json({ error: "not_found" });
-      const v = await pool.query(`SELECT * FROM audio_review_versions WHERE id = $1::uuid AND project_id = $2::uuid LIMIT 1`, [vid, ctx.project_id]);
+      const v = await pool.query(
+        `SELECT v.*,b.id AS protools_bounce_id
+           FROM audio_review_versions v
+           LEFT JOIN LATERAL (
+             SELECT id FROM protools_companion_bounces
+              WHERE review_version_id=v.id ORDER BY created_at DESC LIMIT 1
+           ) b ON TRUE
+          WHERE v.id = $1::uuid AND v.project_id = $2::uuid LIMIT 1`,
+        [vid, ctx.project_id],
+      );
       if (!v.rows.length) return res.status(404).json({ error: "version_not_found" });
       const [comments, sections] = await Promise.all([
         pool.query(`SELECT * FROM audio_review_comments WHERE version_id = $1::uuid ORDER BY timecode_seconds ASC, created_at ASC`, [vid]),
         pool.query(`SELECT * FROM audio_review_sections WHERE version_id = $1::uuid ORDER BY order_index ASC`, [vid]),
       ]);
-      return res.json({ version: v.rows[0], comments: comments.rows, sections: sections.rows });
+      return res.json({ version: playableVersion(v.rows[0], token), comments: comments.rows, sections: sections.rows });
     } catch (e) {
       if (isMissingTable(e)) return res.status(404).json({ error: "not_found" });
       return res.status(500).json({ error: "shared_version_failed" });
