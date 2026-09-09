@@ -1,11 +1,10 @@
 name: Pro Tools Companion Release
 
-# Bygger den native Pro Tools Companion-appen for macOS (Apple Silicon + Intel)
-# og Windows, og laster installerene opp til GitHub-release-en. Trigges av en
-# tag `protools-companion-v*` eller manuelt (workflow_dispatch).
+# Publiserer én kontrollert desktop-release med:
+# - signert og Apple-notarisert macOS DMG for Apple Silicon og Intel
+# - native Windows x64 MSI + NSIS EXE (foreløpig uten Authenticode-signering)
 #
-# Backendens /api/protools/companion/release auto-oppdager assetene fra release-en,
-# så nye plattformer dukker opp i Sound Room-dialogen automatisk.
+# Releasen holdes som draft til alle fire installerne er bygget og verifisert.
 
 on:
   push:
@@ -14,36 +13,142 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release-tag (f.eks. protools-companion-v0.1.1)'
+        description: 'Release-tag (f.eks. protools-companion-v0.1.2)'
         required: true
-        default: 'protools-companion-v0.1.1'
+        default: 'protools-companion-v0.1.2'
 
 permissions:
   contents: write
 
+concurrency:
+  group: protools-companion-release-${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+  cancel-in-progress: false
+
 jobs:
+  prepare:
+    name: Validate version and create draft
+    runs-on: ubuntu-latest
+    outputs:
+      commit_sha: ${{ steps.release.outputs.commit_sha }}
+      release_id: ${{ steps.release.outputs.release_id }}
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # workflow_dispatch leser den korrigerte workflowen fra main, men
+          # validerer og bygger alltid den immutable release-taggen.
+          ref: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+
+      - name: Validate tag and prepare draft release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$REQUESTED_TAG"
+          if [[ ! "$tag" =~ ^protools-companion-v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::Ugyldig release-tag: $tag"
+            exit 1
+          fi
+          version="${BASH_REMATCH[1]}"
+          package_version=$(node -p "require('./apps/creatorhub-protools-companion/package.json').version")
+          tauri_version=$(node -p "require('./apps/creatorhub-protools-companion/src-tauri/tauri.conf.json').version")
+          cargo_version=$(awk '
+            /^\[package\]$/ { in_package=1; next }
+            /^\[/ { in_package=0 }
+            in_package && /^version = / { gsub(/[\" ]/, "", $3); print $3; exit }
+          ' apps/creatorhub-protools-companion/src-tauri/Cargo.toml)
+          if [[ "$version" != "$package_version" || "$version" != "$tauri_version" || "$version" != "$cargo_version" ]]; then
+            echo "::error::Tag ($version), package.json ($package_version), tauri.conf.json ($tauri_version) og Cargo.toml ($cargo_version) må være identiske"
+            exit 1
+          fi
+
+          commit_sha=$(git rev-parse HEAD)
+          # GitHubs /releases/tags/:tag-endepunkt utelater draft-releaser. List
+          # releases eksplisitt slik at en trygg rerun kan gjenbruke draften.
+          release_json=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$tag\")" | head -n 1)
+          if [[ -n "$release_json" ]]; then
+            if [[ "$(jq -r '.draft' <<<"$release_json")" != "true" ]]; then
+              echo "::error::Release $tag er allerede publisert og blir ikke overskrevet"
+              exit 1
+            fi
+            release_id=$(jq -r '.id' <<<"$release_json")
+            # En rerun bygger hele matrisen på nytt. Fjern kun assets fra den
+            # validerte draften, så tauri-action aldri kolliderer med delbygg.
+            gh api "repos/$GITHUB_REPOSITORY/releases/$release_id/assets?per_page=100" \
+              --jq '.[].id' | while read -r asset_id; do
+                [[ -n "$asset_id" ]] && gh api --method DELETE \
+                  "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+              done
+          else
+            notes_file=$(mktemp)
+            cat > "$notes_file" <<NOTES
+          Native CreatorHub Pro Tools Companion ${version} kobler Pro Tools til Sound Room og EaseVerse:
+
+          - synker markører og sesjonsmetadata fra «Export Session Info as Text»
+          - laster nye bounces inn som review-versjoner i Sound Room
+          - **macOS:** Developer ID-signert og Apple-notarisert for Apple Silicon og Intel
+          - **Windows x64:** både anbefalt EXE-installer og MSI for administrert utrulling
+
+          Windows-installerne er foreløpig ikke Authenticode-signert. Windows SmartScreen kan derfor vise «Mer informasjon» → «Kjør likevel». Kontroller filen mot SHA256SUMS.txt før installasjon.
+          NOTES
+            release_json=$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
+              -f tag_name="$tag" \
+              -f target_commitish="$commit_sha" \
+              -f name="CreatorHub Pro Tools Companion ${version}" \
+              -F draft=true \
+              -F prerelease=false \
+              --raw-field body="$(<"$notes_file")")
+            rm -f "$notes_file"
+            release_id=$(jq -r '.id' <<<"$release_json")
+          fi
+
+          {
+            echo "commit_sha=$commit_sha"
+            echo "release_id=$release_id"
+            echo "tag=$tag"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
+
   build:
+    name: Build ${{ matrix.label }}
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-14        # Apple Silicon
+          - platform: macos-14
+            label: macOS Apple Silicon
             target: aarch64-apple-darwin
             args: '--target aarch64-apple-darwin'
-          - platform: macos-13        # Intel
+            family: macos
+          - platform: macos-14
+            label: macOS Intel
             target: x86_64-apple-darwin
             args: '--target x86_64-apple-darwin'
-          - platform: windows-latest  # Windows x64
+            family: macos
+          - platform: windows-latest
+            label: Windows x64
             target: ''
             args: ''
+            family: windows
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: apps/creatorhub-protools-companion/package-lock.json
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -55,22 +160,268 @@ jobs:
         with:
           workspaces: apps/creatorhub-protools-companion/src-tauri
 
-      - name: Install frontend deps
+      - name: Install locked frontend dependencies
         working-directory: apps/creatorhub-protools-companion
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
-      - name: Build & publish (tauri-action)
-        uses: tauri-apps/tauri-action@v0
+      - name: Typecheck frontend
+        working-directory: apps/creatorhub-protools-companion
+        run: npm run typecheck
+
+      - name: Test native core
+        working-directory: apps/creatorhub-protools-companion/src-tauri
+        run: cargo test --locked
+
+      - name: Import Apple Developer ID certificate
+        if: matrix.family == 'macos'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$APPLE_CERTIFICATE" || -z "$APPLE_CERTIFICATE_PASSWORD" || -z "$APPLE_SIGNING_IDENTITY" ]]; then
+            echo "::error::Apple Developer ID signing secrets mangler"
+            exit 1
+          fi
+          keychain_path="$RUNNER_TEMP/protools-companion.keychain-db"
+          keychain_password=$(uuidgen)
+          certificate_path="$RUNNER_TEMP/protools-companion.p12"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$keychain_path"
+          security list-keychain -d user -s "$keychain_path" $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$keychain_password" "$keychain_path"
+          security find-identity -v -p codesigning "$keychain_path"
+          rm -f "$certificate_path"
+          echo "COMPANION_KEYCHAIN_PATH=$keychain_path" >> "$GITHUB_ENV"
+
+      - name: Prepare App Store Connect notarization key
+        if: matrix.family == 'macos'
+        env:
+          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$APP_STORE_CONNECT_API_KEY_CONTENT" || -z "$APP_STORE_CONNECT_API_KEY_ID" || -z "$APP_STORE_CONNECT_API_ISSUER_ID" ]]; then
+            echo "::error::App Store Connect API secrets for notarization mangler"
+            exit 1
+          fi
+          api_key_path="$RUNNER_TEMP/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY_CONTENT" | base64 --decode > "$api_key_path"
+          chmod 600 "$api_key_path"
+          {
+            echo "APPLE_API_KEY_PATH=$api_key_path"
+            echo "APPLE_API_KEY=$APP_STORE_CONNECT_API_KEY_ID"
+            echo "APPLE_API_ISSUER=$APP_STORE_CONNECT_API_ISSUER_ID"
+          } >> "$GITHUB_ENV"
+
+      - name: Build, sign, notarize and upload macOS bundles
+        if: matrix.family == 'macos'
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         with:
           projectPath: apps/creatorhub-protools-companion
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
-          releaseName: 'Pro Tools Companion __VERSION__'
-          releaseBody: |
-            Native Pro Tools Companion — synker markører («Export Session Info as Text») og bounces inn i koblet EaseVerse / Sound Room.
-
-            Usignert bygg: macOS → høyreklikk appen → **Åpne**. Windows → «Mer info» → «Kjør likevel».
-          releaseDraft: false
-          prerelease: false
+          releaseId: ${{ needs.prepare.outputs.release_id }}
+          tagName: ${{ needs.prepare.outputs.tag }}
+          releaseDraft: true
+          uploadUpdaterJson: false
+          retryAttempts: 2
+          releaseAssetNamePattern: 'CreatorHub-ProTools-Companion_[version]_[arch]_signed-notarized[ext]'
           args: ${{ matrix.args }}
+
+      - name: Notarize DMG container and verify macOS release
+        if: matrix.family == 'macos'
+        working-directory: apps/creatorhub-protools-companion
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle_root="src-tauri/target/${{ matrix.target }}/release/bundle"
+          app_count=$(find "$bundle_root" -type d -name '*.app' -prune -print | wc -l | tr -d ' ')
+          dmg_count=$(find "$bundle_root" -type f -name '*.dmg' -print | wc -l | tr -d ' ')
+          if [[ "$app_count" != "1" || "$dmg_count" != "1" ]]; then
+            echo "::error::Forventet nøyaktig én .app og én .dmg; fant $app_count og $dmg_count"
+            exit 1
+          fi
+          app_path=$(find "$bundle_root" -type d -name '*.app' -prune -print | head -n 1)
+          dmg_path=$(find "$bundle_root" -type f -name '*.dmg' -print | head -n 1)
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          xcrun stapler validate "$app_path"
+          # Tauri notariserer og stapler appen før DMG-en opprettes. Send også
+          # den ferdige, signerte DMG-containeren til Apple og staple billetten.
+          xcrun notarytool submit "$dmg_path" \
+            --key "$APPLE_API_KEY_PATH" \
+            --key-id "$APPLE_API_KEY" \
+            --issuer "$APPLE_API_ISSUER" \
+            --wait
+          xcrun stapler staple "$dmg_path"
+          xcrun stapler validate "$dmg_path"
+          codesign --verify --verbose=2 "$dmg_path"
+          spctl --assess --type execute --verbose=2 "$app_path"
+          spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg_path"
+
+          if [[ "${{ matrix.target }}" == aarch64-* ]]; then
+            release_arch="aarch64"
+          else
+            release_arch="x64"
+          fi
+          asset_name="CreatorHub-ProTools-Companion_${RELEASE_VERSION}_${release_arch}_signed-notarized.dmg"
+          release_asset="$RUNNER_TEMP/$asset_name"
+          cp "$dmg_path" "$release_asset"
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" \
+            --jq ".[] | select(.name == \"$asset_name\") | .id" | while read -r asset_id; do
+              [[ -n "$asset_id" ]] && gh api --method DELETE \
+                "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+            done
+          upload_response=$(curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            --header "Content-Type: application/octet-stream" \
+            --data-binary "@$release_asset" \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$asset_name")
+          jq -e --arg name "$asset_name" '.name == $name and .state == "uploaded"' \
+            <<<"$upload_response" >/dev/null
+
+      - name: Build and upload Windows installers
+        if: matrix.family == 'windows'
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          projectPath: apps/creatorhub-protools-companion
+          releaseId: ${{ needs.prepare.outputs.release_id }}
+          tagName: ${{ needs.prepare.outputs.tag }}
+          releaseDraft: true
+          uploadUpdaterJson: false
+          retryAttempts: 2
+          releaseAssetNamePattern: 'CreatorHub-ProTools-Companion_[version]_[arch]_unsigned[ext]'
+          args: ${{ matrix.args }}
+
+      - name: Verify Windows MSI and NSIS installers
+        if: matrix.family == 'windows'
+        working-directory: apps/creatorhub-protools-companion
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundleRoot = 'src-tauri/target/release/bundle'
+          $msi = @(Get-ChildItem -Path $bundleRoot -Recurse -File -Filter '*.msi')
+          $exe = @(Get-ChildItem -Path $bundleRoot -Recurse -File -Filter '*-setup.exe')
+          if ($msi.Count -ne 1 -or $exe.Count -ne 1) {
+            throw "Expected exactly one MSI and one NSIS setup EXE; found $($msi.Count) and $($exe.Count)"
+          }
+          foreach ($installer in @($msi[0], $exe[0])) {
+            if ($installer.Length -le 0) { throw "Empty installer: $($installer.FullName)" }
+            $signature = Get-AuthenticodeSignature -FilePath $installer.FullName
+            Write-Host "$($installer.Name): $($installer.Length) bytes, Authenticode=$($signature.Status)"
+          }
+
+      - name: Remove temporary Apple signing material
+        if: always() && matrix.family == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${APPLE_API_KEY_PATH:-}" ]]; then
+            rm -f "$APPLE_API_KEY_PATH"
+          fi
+          if [[ -n "${COMPANION_KEYCHAIN_PATH:-}" && -f "$COMPANION_KEYCHAIN_PATH" ]]; then
+            security delete-keychain "$COMPANION_KEYCHAIN_PATH"
+          fi
+
+  publish:
+    name: Verify assets and publish release
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - name: Download draft assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir artifacts
+          asset_rows=$(mktemp)
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" \
+            --jq '.[] | [.id, .name] | @tsv' > "$asset_rows"
+          if [[ ! -s "$asset_rows" ]]; then
+            echo "::error::Draft release contains no assets"
+            exit 1
+          fi
+          while IFS=$'\t' read -r asset_id asset_name; do
+            if [[ "$asset_name" == */* || "$asset_name" == *\\* ]]; then
+              echo "::error::Unsafe release asset name: $asset_name"
+              exit 1
+            fi
+            curl --fail-with-body --location --silent --show-error \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header "Accept: application/octet-stream" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" \
+              --output "artifacts/$asset_name"
+          done < "$asset_rows"
+
+      - name: Require every supported installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          require_one() {
+            local pattern="$1"
+            local label="$2"
+            local count
+            count=$(find artifacts -maxdepth 1 -type f -name "$pattern" | wc -l | tr -d ' ')
+            if [[ "$count" != "1" ]]; then
+              echo "::error::Forventet én $label ($pattern), fant $count"
+              find artifacts -maxdepth 1 -type f -print
+              exit 1
+            fi
+          }
+          require_one '*aarch64*signed-notarized*.dmg' 'Apple Silicon DMG'
+          require_one '*x64*signed-notarized*.dmg' 'Intel DMG'
+          require_one '*unsigned*.msi' 'Windows MSI'
+          require_one '*unsigned*.exe' 'Windows EXE'
+
+      - name: Generate and upload checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd artifacts
+            sha256sum * | sort -k2 > SHA256SUMS.txt
+          )
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" \
+            --jq '.[] | select(.name == "SHA256SUMS.txt") | .id' | while read -r asset_id; do
+              [[ -n "$asset_id" ]] && gh api --method DELETE \
+                "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+            done
+          upload_response=$(curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            --header "Content-Type: application/octet-stream" \
+            --data-binary '@artifacts/SHA256SUMS.txt' \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=SHA256SUMS.txt")
+          jq -e '.name == "SHA256SUMS.txt" and .state == "uploaded"' \
+            <<<"$upload_response" >/dev/null
+
+      - name: Publish verified release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+            -F draft=false \
+            --jq '{draft,tag_name,html_url,assets:[.assets[].name]}'
