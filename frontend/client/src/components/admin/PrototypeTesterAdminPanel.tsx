@@ -20,10 +20,11 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import { ThemeProvider } from '@mui/material/styles';
 import { apiFetch, apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { PrototypeTesterInviteDialog } from '../invite/RoleRoomTesterInviteDialog';
-import { ws } from '../workspace/workspaceTheme';
+import { workspaceDarkTheme, ws } from '../workspace/workspaceTheme';
 
 interface PrototypeTesterAdminInvite {
   id: string;
@@ -64,6 +65,43 @@ function formatTimestamp(value?: string | null) {
     timeStyle: 'short',
   }).format(date);
 }
+
+function LifecycleChip({ label, active }: { label: string; active: boolean }) {
+  return (
+    <Chip
+      size="small"
+      label={label}
+      data-state={active ? 'complete' : 'pending'}
+      sx={{
+        height: 26,
+        bgcolor: active ? ws.greenSoft : ws.panelInput,
+        color: active ? ws.green : ws.textDim,
+        border: `1px solid ${active ? 'rgba(52,211,153,0.38)' : ws.border}`,
+        fontWeight: 700,
+        '& .MuiChip-label': { px: 1.1 },
+      }}
+    />
+  );
+}
+
+const bodyCellSx = {
+  color: ws.text,
+  borderColor: ws.borderSoft,
+  verticalAlign: 'top',
+  py: 1.5,
+} as const;
+
+const actionButtonSx = {
+  minHeight: 36,
+  color: ws.accent,
+  fontWeight: 800,
+  whiteSpace: 'nowrap',
+  '&:hover': { bgcolor: ws.accentSoft },
+  '&:focus-visible': {
+    outline: `2px solid ${ws.accent}`,
+    outlineOffset: 2,
+  },
+} as const;
 
 export default function PrototypeTesterAdminPanel() {
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -121,25 +159,36 @@ export default function PrototypeTesterAdminPanel() {
   };
 
   return (
+    <ThemeProvider theme={workspaceDarkTheme}>
     <Box sx={{ px: { xs: 1.5, sm: 2.5 }, pb: 4 }} data-testid="prototype-tester-admin-panel">
       <Card sx={{ bgcolor: ws.panel, border: `1px solid ${ws.border}`, borderRadius: `${ws.radius}px` }}>
-        <CardContent>
+        <CardContent sx={{ p: { xs: 2, sm: 3 }, '&:last-child': { pb: { xs: 2, sm: 3 } } }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, flexWrap: 'wrap', mb: 2 }}>
-            <Box>
+            <Box sx={{ minWidth: 0, flex: '1 1 360px' }}>
               <Typography variant="h5" sx={{ color: ws.text, fontWeight: 800 }}>
                 Prototype-testere og direkte invitasjoner
               </Typography>
-              <Typography variant="body2" sx={{ color: ws.textDim, mt: 0.5 }}>
+              <Typography variant="body2" sx={{ color: ws.textDim, mt: 0.5, lineHeight: 1.55 }}>
                 Verifiserbar flyt for e-postkode, fire avtaler, signeringskvittering,
                 konto og faktisk solo_pro-tilgang.
               </Typography>
             </Box>
-            <Stack direction="row" spacing={1.25}>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1.25}
+              sx={{ width: { xs: '100%', sm: 'auto' }, '& .MuiButton-root': { minHeight: 44 } }}
+            >
               <Button
                 variant="contained"
                 startIcon={<AddIcon />}
                 onClick={() => setInviteOpen(true)}
-                sx={{ bgcolor: ws.accent, color: ws.accentContrast, fontWeight: 800, '&:hover': { bgcolor: ws.accentHover } }}
+                sx={{
+                  bgcolor: ws.accent,
+                  color: ws.accentContrast,
+                  fontWeight: 800,
+                  '&:hover': { bgcolor: ws.accentHover },
+                  '&:focus-visible': { outline: `2px solid ${ws.text}`, outlineOffset: 2 },
+                }}
               >
                 Inviter ny tester
               </Button>
@@ -147,14 +196,31 @@ export default function PrototypeTesterAdminPanel() {
                 variant="outlined"
                 startIcon={<OpenInNewIcon />}
                 href="/admin-invite-system"
-                sx={{ color: ws.accent, borderColor: ws.accentBorder }}
+                sx={{
+                  color: ws.accent,
+                  borderColor: ws.accentBorder,
+                  fontWeight: 800,
+                  '&:hover': { borderColor: ws.accent, bgcolor: ws.accentSoft },
+                  '&:focus-visible': { outline: `2px solid ${ws.accent}`, outlineOffset: 2 },
+                }}
               >
                 Full søknadsflate
               </Button>
             </Stack>
           </Box>
 
-          <Alert severity="info" variant="outlined" sx={{ mb: 2 }}>
+          <Alert
+            severity="info"
+            variant="outlined"
+            sx={{
+              mb: 2,
+              bgcolor: ws.blueSoft,
+              color: ws.text,
+              borderColor: 'rgba(96,165,250,0.42)',
+              lineHeight: 1.55,
+              '& .MuiAlert-icon': { color: ws.blue },
+            }}
+          >
             Invitasjonslenken varer i 14 dager. Tilgang aktiveres først når
             programvilkår, NDA, databehandleravtale og intensjonsavtale er akseptert
             med kode sendt til den inviterte e-posten.
@@ -175,60 +241,104 @@ export default function PrototypeTesterAdminPanel() {
               <CircularProgress size={28} />
             </Box>
           ) : invites.length === 0 ? (
-            <Alert severity="info" variant="outlined">
+            <Alert
+              severity="info"
+              variant="outlined"
+              sx={{ color: ws.text, bgcolor: ws.blueSoft, borderColor: 'rgba(96,165,250,0.42)' }}
+            >
               Ingen prototypeinvitasjoner er opprettet ennå.
             </Alert>
           ) : (
-            <TableContainer sx={{ border: `1px solid ${ws.border}`, borderRadius: `${ws.radiusSm}px` }}>
-              <Table size="small">
+            <TableContainer
+              sx={{
+                border: `1px solid ${ws.border}`,
+                borderRadius: `${ws.radiusSm}px`,
+                bgcolor: ws.panelInput,
+                overflowX: 'auto',
+                scrollbarColor: `${ws.textFaint} transparent`,
+              }}
+            >
+              <Table size="small" aria-label="Status for prototype-testere" sx={{ minWidth: 1040 }}>
                 <TableHead>
                   <TableRow>
-                    <TableCell>Tester</TableCell>
-                    <TableCell>Kilde</TableCell>
-                    <TableCell>E-postløp</TableCell>
-                    <TableCell>Avtale og tilgang</TableCell>
-                    <TableCell>Opprettet</TableCell>
-                    <TableCell align="right">Lenke</TableCell>
+                    {['Tester', 'Kilde', 'E-postløp', 'Avtale og tilgang', 'Opprettet', 'Handlinger'].map((label, index) => (
+                      <TableCell
+                        key={label}
+                        align={index === 5 ? 'right' : 'left'}
+                        sx={{
+                          bgcolor: ws.panelSolid,
+                          color: ws.textDim,
+                          borderColor: ws.border,
+                          py: 1.25,
+                          fontSize: '0.72rem',
+                          fontWeight: 800,
+                          letterSpacing: '0.06em',
+                          textTransform: 'uppercase',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {label}
+                      </TableCell>
+                    ))}
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {invites.map((invite) => (
-                    <TableRow key={invite.id} hover data-testid={`prototype-tester-invite-${invite.id}`}>
-                      <TableCell>
+                    <TableRow
+                      key={invite.id}
+                      hover
+                      data-testid={`prototype-tester-invite-${invite.id}`}
+                      sx={{
+                        '&:last-child td': { borderBottom: 0 },
+                        '&.MuiTableRow-hover:hover': { bgcolor: ws.panelAlt },
+                      }}
+                    >
+                      <TableCell sx={{ ...bodyCellSx, minWidth: 220 }}>
                         <Typography variant="body2" sx={{ fontWeight: 700, color: ws.text }}>
                           {invite.name}
                         </Typography>
-                        <Typography variant="caption" sx={{ color: ws.textDim }}>
+                        <Typography variant="caption" sx={{ color: ws.textDim, overflowWrap: 'anywhere' }}>
                           {invite.email}
                         </Typography>
                       </TableCell>
-                      <TableCell>
-                        <Chip size="small" label={invite.inviteRequestId ? 'Søknad' : 'Direkte'} variant="outlined" />
+                      <TableCell sx={bodyCellSx}>
+                        <Chip
+                          size="small"
+                          label={invite.inviteRequestId ? 'Søknad' : 'Direkte'}
+                          variant="outlined"
+                          sx={{ color: ws.blue, borderColor: 'rgba(96,165,250,0.42)', fontWeight: 700 }}
+                        />
                       </TableCell>
-                      <TableCell>
+                      <TableCell sx={{ ...bodyCellSx, minWidth: 150 }}>
                         <Stack direction="row" useFlexGap flexWrap="wrap" gap={0.75}>
-                          <Chip size="small" label="Sendt" color={invite.emailDelivery?.sent ? 'success' : 'default'} />
-                          <Chip size="small" label="Åpnet" color={invite.emailOpenedAt ? 'success' : 'default'} />
-                          <Chip size="small" label="Klikket" color={invite.inviteLinkClickedAt ? 'success' : 'default'} />
+                          <LifecycleChip label="Sendt" active={Boolean(invite.emailDelivery?.sent)} />
+                          <LifecycleChip label="Åpnet" active={Boolean(invite.emailOpenedAt)} />
+                          <LifecycleChip label="Klikket" active={Boolean(invite.inviteLinkClickedAt)} />
                         </Stack>
                         {invite.emailDelivery?.reason && (
-                          <Typography variant="caption" color="error.main">
+                          <Typography variant="caption" sx={{ color: ws.red, display: 'block', mt: 0.75 }}>
                             {invite.emailDelivery.reason}
                           </Typography>
                         )}
                       </TableCell>
-                      <TableCell>
+                      <TableCell sx={{ ...bodyCellSx, minWidth: 330 }}>
                         <Stack direction="row" useFlexGap flexWrap="wrap" gap={0.75}>
-                          <Chip size="small" label="4 avtaler" color={invite.acceptedAt ? 'success' : 'default'} />
-                          <Chip size="small" label="E-postkode" color={invite.emailVerifiedAt ? 'success' : 'default'} />
-                          <Chip size="small" label="PDF-kvittering" color={invite.signingReceiptId ? 'success' : 'default'} />
-                          <Chip size="small" label="Kvittering sendt" color={invite.receiptEmailDelivery?.sent ? 'success' : 'default'} />
-                          <Chip size="small" label="Konto" color={invite.accountProvisioningComplete ? 'success' : 'default'} />
-                          <Chip size="small" label="solo_pro" color={invite.soloProActive ? 'success' : 'default'} />
-                          {invite.status === 'expired' && <Chip size="small" label="Utløpt" color="warning" />}
+                          <LifecycleChip label="4 avtaler" active={Boolean(invite.acceptedAt)} />
+                          <LifecycleChip label="E-postkode" active={Boolean(invite.emailVerifiedAt)} />
+                          <LifecycleChip label="PDF-kvittering" active={Boolean(invite.signingReceiptId)} />
+                          <LifecycleChip label="Kvittering sendt" active={Boolean(invite.receiptEmailDelivery?.sent)} />
+                          <LifecycleChip label="Konto" active={invite.accountProvisioningComplete} />
+                          <LifecycleChip label="solo_pro" active={invite.soloProActive} />
+                          {invite.status === 'expired' && (
+                            <Chip
+                              size="small"
+                              label="Utløpt"
+                              sx={{ color: ws.amber, bgcolor: ws.amberSoft, border: '1px solid rgba(251,191,36,0.38)', fontWeight: 700 }}
+                            />
+                          )}
                         </Stack>
                         {invite.receiptEmailDelivery?.reason && (
-                          <Typography variant="caption" color="error.main" sx={{ display: 'block', mt: 0.5 }}>
+                          <Typography variant="caption" sx={{ display: 'block', mt: 0.75, color: ws.red }}>
                             Kvittering: {invite.receiptEmailDelivery.reason}
                           </Typography>
                         )}
@@ -238,9 +348,11 @@ export default function PrototypeTesterAdminPanel() {
                           </Typography>
                         )}
                       </TableCell>
-                      <TableCell>{formatTimestamp(invite.createdAt)}</TableCell>
-                      <TableCell align="right">
-                        <Stack direction="row" spacing={0.75} justifyContent="flex-end">
+                      <TableCell sx={{ ...bodyCellSx, minWidth: 120, color: ws.textDim }}>
+                        {formatTimestamp(invite.createdAt)}
+                      </TableCell>
+                      <TableCell align="right" sx={{ ...bodyCellSx, minWidth: 160 }}>
+                        <Stack direction="row" spacing={0.75} justifyContent="flex-end" useFlexGap flexWrap="wrap">
                           {invite.signingReceiptId && (
                             <Button
                               size="small"
@@ -248,11 +360,19 @@ export default function PrototypeTesterAdminPanel() {
                               disabled={receiptDownloadId === invite.id}
                               onClick={() => void downloadReceipt(invite)}
                               data-testid={`admin-download-receipt-${invite.id}`}
+                              sx={actionButtonSx}
                             >
                               {receiptDownloadId === invite.id ? 'Laster…' : 'Kvittering'}
                             </Button>
                           )}
-                          <Button size="small" component="a" href={invite.inviteUrl} target="_blank" rel="noreferrer">
+                          <Button
+                            size="small"
+                            component="a"
+                            href={invite.inviteUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            sx={actionButtonSx}
+                          >
                             Åpne
                           </Button>
                         </Stack>
@@ -265,7 +385,7 @@ export default function PrototypeTesterAdminPanel() {
           )}
 
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1.5 }}>
-            <Button size="small" onClick={() => void refetch()} disabled={isLoading}>
+            <Button size="small" onClick={() => void refetch()} disabled={isLoading} sx={actionButtonSx}>
               Oppdater status
             </Button>
           </Box>
@@ -281,5 +401,6 @@ export default function PrototypeTesterAdminPanel() {
         endpoint="/api/prototype-tester-invites"
       />
     </Box>
+    </ThemeProvider>
   );
 }
