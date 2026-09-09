@@ -424,6 +424,31 @@ final class DiscoveryV2Tests: XCTestCase {
             "Territorium-taggen må være en kort kode, for eksempel «ost-nord».")
     }
 
+    func testBriefRejectsFieldLengthsBeforeServerSubmission() {
+        var brief = DiscoveryV2Brief.mapArea(
+            center: .init(latitude: 59.91, longitude: 10.75))
+        brief.industryQueries = [String(repeating: "x", count: 121)]
+        XCTAssertEqual(
+            brief.validationMessage,
+            "Hvert kundetype- og organisasjonsnavn-søk kan være opptil 120 tegn.")
+
+        brief.industryQueries = ["castingbyrå"]
+        brief.qualificationTerms = [String(repeating: "x", count: 81)]
+        XCTAssertEqual(
+            brief.validationMessage,
+            "Hvert kvalifiseringstema kan være opptil 80 tegn.")
+
+        brief.qualificationTerms = []
+        brief.idealCustomer = String(repeating: "x", count: 1_501)
+        XCTAssertEqual(
+            brief.validationMessage,
+            "Beskrivelsen av idealkunden kan være opptil 1500 tegn.")
+
+        brief.idealCustomer = nil
+        brief.goal = String(repeating: "x", count: 501)
+        XCTAssertEqual(brief.validationMessage, "Målet kan være opptil 500 tegn.")
+    }
+
     func testProfilePresentationKeepsMultipleRegionsDistinct() throws {
         let data = Data(#"{"id":"profile-west","name":"Vest","is_default":false,"version":1,"brief":{"industry_queries":["tannklinikk"],"exclusion_terms":[],"municipality_names":["Bærum","Asker"],"municipality_numbers":["3201","3203"],"territory_code":"vest","target_count":60,"enrichment_count":40,"minimum_fit_score":65}}"#.utf8)
         let profile = try JSONDecoder().decode(DiscoveryV2Profile.self, from: data)
@@ -896,6 +921,25 @@ final class DiscoveryV2Tests: XCTestCase {
         XCTAssertEqual(direct.websiteQuality?.resolvedEvidence?.signals?.callToAction, true)
     }
 
+    func testPersonCandidateDecodesSemanticWebsiteQualification() throws {
+        let data = Data(#"{"id":"talent-1","name":"Ada Skuespiller","subject_kind":"person","website_quality":{"status":"assessed","score":84,"qualification":{"requested_terms":["skuespiller","talent"],"matched_terms":["skuespiller"]}},"score_explanation":{"content_qualification":{"requirement":"required","requested_terms":["skuespiller","talent"],"matched_terms":["skuespiller"],"outcome":"passed"}}}"#.utf8)
+
+        let candidate = try JSONDecoder().decode(DiscoveryV2Candidate.self, from: data)
+
+        XCTAssertEqual(candidate.subjectKind, .person)
+        XCTAssertEqual(
+            candidate.websiteQuality?.qualification?.requestedTerms,
+            ["skuespiller", "talent"])
+        XCTAssertEqual(
+            candidate.websiteQuality?.qualification?.matchedTerms,
+            ["skuespiller"])
+        XCTAssertEqual(candidate.scoreExplanation?.contentQualification?.requirement, .required)
+        XCTAssertEqual(candidate.scoreExplanation?.contentQualification?.outcome, "passed")
+        XCTAssertEqual(
+            candidate.scoreExplanation?.contentQualification?.presentation,
+            "Bekreftet innhold: skuespiller")
+    }
+
     func testExternalContactScopeRequiresExactActiveProjectAndIdentity() throws {
         let scope = try XCTUnwrap(LeadgridExternalContactScope.resolve(
             activeOrganizationId: " org-1 ",
@@ -1266,6 +1310,31 @@ final class DiscoveryV2Tests: XCTestCase {
             hasCampaigns: false,
             isBusy: false,
             isStartingRun: false))
+    }
+
+    func testCampaignSelectsEveryDistinctActiveProfileWithoutVerticalHardcoding() {
+        let brief = configuredClinicBrief()
+        let profiles = [
+            DiscoveryV2Profile(
+                id: "casting", name: "Casting", isDefault: false, version: 1,
+                brief: brief, placesDetailsEnabled: false, status: .active),
+            DiscoveryV2Profile(
+                id: "production", name: "Produksjon", isDefault: true, version: 1,
+                brief: brief, placesDetailsEnabled: false, status: .active),
+            DiscoveryV2Profile(
+                id: "education", name: "Utdanning", isDefault: false, version: 1,
+                brief: brief, placesDetailsEnabled: false, status: .paused),
+            DiscoveryV2Profile(
+                id: "casting", name: "Duplikat", isDefault: false, version: 1,
+                brief: brief, placesDetailsEnabled: false, status: .active),
+            DiscoveryV2Profile(
+                id: "talents", name: "Skuespillere", isDefault: false, version: 1,
+                brief: brief, placesDetailsEnabled: false, status: .active),
+        ]
+
+        let selected = DiscoveryRunCoordinator.campaignProfiles(from: profiles)
+
+        XCTAssertEqual(selected.map(\.id), ["production", "casting", "talents"])
     }
 
     func testOlderCampaignReadCannotRegressNewerCommandResponse() {

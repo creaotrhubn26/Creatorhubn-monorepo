@@ -33,6 +33,8 @@ export interface DiscoveryScoreInput {
   websiteRequirement?: "any" | "present" | "missing";
   minimumWebsiteQualityScore?: number | null;
   websiteQuality?: DiscoveryWebsiteQualityAssessment | null;
+  qualificationTerms?: string[];
+  qualificationRequirement?: "preferred" | "required";
   registeredInVatRegister?: boolean;
   registeredInVatRegisterKnown?: boolean;
   requiredVatRegistration?: boolean | null;
@@ -74,6 +76,7 @@ const PROFILE_FILTER_WEIGHTS: Record<string, number> = {
   website_quality: 15,
   vat_registration: 10,
   business_register_registration: 10,
+  content_qualification: 20,
 };
 
 const QUALITY_WEIGHTS: Record<string, number> = {
@@ -263,6 +266,7 @@ export function scoreDiscoveryCandidate(
     value: number | null,
     missingReason: string,
     evidence: FactorValue["evidence"],
+    hardFilter = true,
   ): void => {
     fitWeights[key] = PROFILE_FILTER_WEIGHTS[key];
     fitFactors.push({
@@ -271,7 +275,7 @@ export function scoreDiscoveryCandidate(
       missingReason: value === null ? missingReason : undefined,
       evidence,
     });
-    if (value === 0) filterMismatches.push(key);
+    if (value === 0 && hardFilter) filterMismatches.push(key);
     if (value === null) unknownFilterEvidence.push(key);
   };
 
@@ -462,6 +466,39 @@ export function scoreDiscoveryCandidate(
     );
   }
 
+  const qualificationTerms = input.qualificationTerms ?? [];
+  const qualificationMatches =
+    input.websiteQuality?.qualification?.matchedTerms ?? [];
+  if (qualificationTerms.length > 0) {
+    const assessed = input.websiteQuality?.status === "assessed";
+    appendProfileFactor(
+      "content_qualification",
+      assessed
+        ? qualificationMatches.length > 0
+          ? Math.min(1, 0.7 + qualificationMatches.length * 0.1)
+          : 0
+        : null,
+      "Nettstedets innhold kunne ikke kvalifiseres sikkert",
+      [
+        {
+          ref: "discovery.brief.qualification_terms",
+          label: "Kvalifiseringstema",
+          value: qualificationTerms.join(", "),
+        },
+        ...(qualificationMatches.length > 0
+          ? [
+              {
+                ref: "discovery.website_quality.qualification",
+                label: "Bekreftet på nettstedet",
+                value: qualificationMatches.join(", "),
+              },
+            ]
+          : []),
+      ],
+      input.qualificationRequirement === "required",
+    );
+  }
+
   const appendCommercialSignal = (
     key: "vat_registration" | "business_register_registration",
     required: boolean | null | undefined,
@@ -598,6 +635,11 @@ export function scoreDiscoveryCandidate(
   if (input.organizationNumber) {
     reasons.push("Har bekreftet organisasjonsnummer");
   }
+  if (qualificationMatches.length > 0) {
+    reasons.push(
+      "Nettstedet bekrefter: " + qualificationMatches.join(", "),
+    );
+  }
   if (filterMismatches.length) {
     reasons.push("Matcher ikke profilfilter: " + filterMismatches.join(", "));
   }
@@ -663,6 +705,22 @@ export function scoreDiscoveryCandidate(
                 ? "not_requested"
                 : "not_assessed",
           },
+      content_qualification:
+        qualificationTerms.length > 0
+          ? {
+              requirement: input.qualificationRequirement ?? "preferred",
+              requested_terms: qualificationTerms,
+              matched_terms: qualificationMatches,
+              outcome:
+                input.websiteQuality?.status !== "assessed"
+                  ? "unknown"
+                  : qualificationMatches.length > 0
+                    ? "passed"
+                    : input.qualificationRequirement === "required"
+                      ? "excluded"
+                      : "weak_match",
+            }
+          : null,
       minimum_fit_threshold:
         input.minimumFitScore == null
           ? null

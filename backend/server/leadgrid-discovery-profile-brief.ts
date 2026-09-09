@@ -5,6 +5,11 @@ import {
 
 export interface DiscoveryProfileBriefSource {
   target_customer_types: string[];
+  organization_name_queries?: string[];
+  country_code?: string | null;
+  subject_kind?: string | null;
+  qualification_terms?: string[];
+  qualification_requirement?: string | null;
   city_filters: string[];
   geography_lat: string | number | null;
   geography_lng: string | number | null;
@@ -64,8 +69,9 @@ export function canonicalDiscoveryProfileBrief(
     hasMunicipalities || geo
       ? null
       : (storedCity ?? row.city_filters[0] ?? null);
+  const mirroredCountryCode = row.country_code ?? storedBrief.country_code;
   const countryCode =
-    !hasMunicipalities && !geo && !city && storedBrief.country_code === "NO"
+    !hasMunicipalities && !geo && !city && mirroredCountryCode === "NO"
       ? "NO"
       : !hasMunicipalities && !geo && !city
         ? "NO"
@@ -140,13 +146,21 @@ export function canonicalDiscoveryProfileBrief(
       : {};
   const explicitBoolean = (value: unknown): boolean | null =>
     typeof value === "boolean" ? value : null;
+  const subjectKind =
+    (row.subject_kind ?? storedBrief.subject_kind) === "person"
+      ? "person"
+      : "organization";
+  const qualificationRequirement =
+    (row.qualification_requirement ?? storedBrief.qualification_requirement) ===
+    "required"
+      ? "required"
+      : "preferred";
 
   return discoveryBriefSchema.parse({
     industry_queries: row.target_customer_types,
-    organization_name_queries: strings(
-      storedBrief.organization_name_queries,
-      120,
-    ),
+    organization_name_queries:
+      row.organization_name_queries ??
+      strings(storedBrief.organization_name_queries, 120),
     exclusion_terms: strings(storedBrief.exclusion_terms, 80),
     country_code: countryCode,
     city,
@@ -172,6 +186,10 @@ export function canonicalDiscoveryProfileBrief(
     organization_structure: organizationStructure,
     website_requirement: websiteRequirement,
     website_quality: { minimum_score: minimumWebsiteQualityScore },
+    subject_kind: subjectKind,
+    qualification_terms:
+      row.qualification_terms ?? strings(storedBrief.qualification_terms, 80),
+    qualification_requirement: qualificationRequirement,
     commercial_signals: {
       registered_in_vat_register: explicitBoolean(
         commercial.registered_in_vat_register,

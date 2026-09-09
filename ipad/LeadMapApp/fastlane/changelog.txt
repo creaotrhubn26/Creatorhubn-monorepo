@@ -22,3 +22,7 @@ Leadgrid 2.1
 • Super Admin kan opprette eller velge kundebedrift, utpeke kundeadmin og opprette eller velge salgsteam i samme flyt.
 • Eier-, medlem- og lesertilgang kobles eksplisitt til riktig prosjekt, med synlig status for aktive, sendte og aksepterte invitasjoner.
 • Inviterte brukere får organisasjons-, prosjekt- og eventuell teamtilgang atomisk når invitasjonen godtas.
+• The Role Room får seks ferdige Discovery-profiler for produksjonsselskap, reklame- og innholdsbyrå, casting, filmutdanning, dansestudio og skuespillere/talenter.
+• Nettstedsinnhold kvalifiseres før kandidater foreslås, og alle aktive profiler kan kjøres samlet med treffhistorikk på tvers.
+• Skuespillere behandles som personprospekter etter eksplisitt godkjenning – aldri som automatisk opprettede talentkontoer – med reservasjons- og 90-dagers personvernflyt.
+• Super Admin kan korrigere prosjektnavn, kategori, beskrivelse og målgruppe før prosjektet opprettes eller gjenbrukes.

@@ -142,6 +142,22 @@ final class ProjectDomainOnboardingTests: XCTestCase {
             "Dansestudioer og danseskoler – Norge",
             "Skuespillere og talenter – Norge",
         ]
+        let templateKeys = [
+            "role_room.production",
+            "role_room.agencies",
+            "role_room.casting",
+            "role_room.education",
+            "role_room.dance",
+            "role_room.talents",
+        ]
+        let qualificationTerms = [
+            ["filmproduksjon", "tv-produksjon", "postproduksjon", "produksjonsselskap"],
+            ["reklame", "innholdsproduksjon", "film", "casting"],
+            ["casting", "skuespiller", "talent", "self-tape", "film", "tv"],
+            ["film", "medieproduksjon", "scenekunst", "skuespill", "tv-produksjon", "audiovisuell"],
+            ["dans", "dance", "ballett", "koreografi"],
+            ["skuespiller", "actor", "talent", "film", "scene"],
+        ]
         let profilePayloads: [[String: Any]] = profileNames.enumerated().map { index, name in
             let castingProfile = index == 2
             let educationProfile = index == 3
@@ -151,6 +167,8 @@ final class ProjectDomainOnboardingTests: XCTestCase {
                 "name": name,
                 "is_default": index == 0,
                 "status": "active",
+                "template_key": templateKeys[index],
+                "template_version": 1,
                 "brief": [
                     "industry_queries": castingProfile || educationProfile || danceProfile || talentProfile
                         ? []
@@ -169,6 +187,9 @@ final class ProjectDomainOnboardingTests: XCTestCase {
                     "target_count": castingProfile ? 40 : educationProfile ? 50 : 60,
                     "enrichment_count": 30,
                     "minimum_fit_score": castingProfile ? 70 : 65,
+                    "subject_kind": talentProfile ? "person" : "organization",
+                    "qualification_terms": qualificationTerms[index],
+                    "qualification_requirement": index == 0 ? "preferred" : "required",
                 ],
                 "approval_mode": "manual",
                 "places_details_enabled": false,
@@ -200,6 +221,8 @@ final class ProjectDomainOnboardingTests: XCTestCase {
 
         XCTAssertEqual(preview.projectName, "The Role Room")
         XCTAssertEqual(preview.recommendedProfiles.map(\.name), profileNames)
+        XCTAssertEqual(preview.recommendedProfiles.compactMap(\.templateKey), templateKeys)
+        XCTAssertTrue(preview.recommendedProfiles.allSatisfy { $0.templateVersion == 1 })
         XCTAssertTrue(preview.recommendedProfiles.allSatisfy {
             $0.brief.countryCode == "NO"
                 && $0.brief.areaSummary == "Hele Norge"
@@ -223,6 +246,34 @@ final class ProjectDomainOnboardingTests: XCTestCase {
             preview.recommendedProfiles[5].brief.organizationNameQueries,
             ["skuespiller", "actor"]
         )
+        XCTAssertEqual(preview.recommendedProfiles[5].brief.subjectKind, .person)
+        XCTAssertEqual(preview.recommendedProfiles[3].brief.qualificationRequirement, .required)
+        XCTAssertEqual(
+            preview.recommendedProfiles[3].brief.qualificationTerms,
+            qualificationTerms[3]
+        )
+    }
+
+    func testBrandOverridesEncodeTheEditableFoundationWithCanonicalKeys() throws {
+        let overrides = LeadgridProjectOnboardingBrandOverrides(
+            projectName: "The Role Room Norge",
+            projectDescription: "Produksjon, casting, utdanning og talenter.",
+            category: "Film, TV, casting og talent",
+            targetAudience: "Produksjonsselskap, byråer, skoler, dansestudioer og skuespillere"
+        )
+
+        let data = try JSONEncoder().encode(overrides)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        XCTAssertEqual(json["project_name"] as? String, "The Role Room Norge")
+        XCTAssertEqual(
+            json["project_description"] as? String,
+            "Produksjon, casting, utdanning og talenter.")
+        XCTAssertEqual(json["category"] as? String, "Film, TV, casting og talent")
+        XCTAssertEqual(
+            json["target_audience"] as? String,
+            "Produksjonsselskap, byråer, skoler, dansestudioer og skuespillere")
+        XCTAssertNil(json["targetAudience"])
     }
 
     func testCommitResponseReusesExistingDentumProjectWithoutDuplicateLeadState() throws {

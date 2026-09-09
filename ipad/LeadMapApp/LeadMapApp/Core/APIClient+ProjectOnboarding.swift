@@ -20,6 +20,13 @@ struct LeadgridProjectOnboardingSkill: Codable, Hashable, Sendable, Identifiable
 }
 
 struct LeadgridProjectOnboardingPreview: Codable, Hashable, Sendable {
+    struct BrandProfile: Codable, Hashable, Sendable {
+        var targetAudience: String
+
+        enum CodingKeys: String, CodingKey {
+            case targetAudience = "targetAudience"
+        }
+    }
     var id: String
     var websiteURL: String
     var websiteDomain: String
@@ -32,6 +39,7 @@ struct LeadgridProjectOnboardingPreview: Codable, Hashable, Sendable {
     var skills: [LeadgridProjectOnboardingSkill]
     var expiresAt: String
     var canManageMultipleProfiles: Bool
+    var brandProfile: BrandProfile? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, category, skills
@@ -44,6 +52,7 @@ struct LeadgridProjectOnboardingPreview: Codable, Hashable, Sendable {
         case recommendedProfiles = "recommended_profiles"
         case expiresAt = "expires_at"
         case canManageMultipleProfiles = "can_manage_multiple_profiles"
+        case brandProfile = "brand_profile"
     }
 }
 
@@ -130,6 +139,20 @@ struct LeadgridProjectOnboardingAccessSetup: Codable, Hashable, Sendable {
     enum CodingKeys: String, CodingKey {
         case organization, team, invitations
         case administratorEmail = "administrator_email"
+    }
+}
+
+struct LeadgridProjectOnboardingBrandOverrides: Codable, Hashable, Sendable {
+    var projectName: String
+    var projectDescription: String
+    var category: String
+    var targetAudience: String
+
+    enum CodingKeys: String, CodingKey {
+        case projectName = "project_name"
+        case projectDescription = "project_description"
+        case category
+        case targetAudience = "target_audience"
     }
 }
 
@@ -648,7 +671,8 @@ extension APIClient {
         previewId: String,
         organizationId: String,
         profiles: [DiscoveryV2ProfileWrite]? = nil,
-        accessSetup: LeadgridProjectOnboardingAccessSetup? = nil
+        accessSetup: LeadgridProjectOnboardingAccessSetup? = nil,
+        brandOverrides: LeadgridProjectOnboardingBrandOverrides? = nil
     ) async throws -> LeadgridProjectOnboardingResult {
         #if DEBUG
         if usesDomainOnboardingQAFixture {
@@ -681,12 +705,14 @@ extension APIClient {
             var previewId: String
             var profiles: [DiscoveryV2ProfileWrite]?
             var accessSetup: LeadgridProjectOnboardingAccessSetup?
+            var brandOverrides: LeadgridProjectOnboardingBrandOverrides?
 
             enum CodingKeys: String, CodingKey {
                 case profiles
                 case organizationId = "organization_id"
                 case previewId = "preview_id"
                 case accessSetup = "access_setup"
+                case brandOverrides = "brand_overrides"
             }
         }
         let data = try await executeRaw(
@@ -696,7 +722,8 @@ extension APIClient {
                 organizationId: organizationId,
                 previewId: previewId,
                 profiles: profiles,
-                accessSetup: accessSetup
+                accessSetup: accessSetup,
+                brandOverrides: brandOverrides
             )),
             organizationId: organizationId
         )

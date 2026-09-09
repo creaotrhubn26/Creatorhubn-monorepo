@@ -138,11 +138,26 @@ const requiredMetadata = [
   `<meta property="og:url" content="${metadata.canonical}" />`,
   `<meta name="twitter:title" content="${escapeAttribute(metadata.title)}" />`,
   `<link rel="canonical" href="${metadata.canonical}" />`,
+  '<link rel="icon" href="/TheRoleRoom_App_Logo.png" type="image/png" />',
   '<link rel="manifest" href="/theroleroom.webmanifest" />',
 ];
 for (const fragment of requiredMetadata) {
   if (!html.includes(fragment)) {
     throw new Error(`generate-role-room-index: mangler forventet metadata: ${fragment}`);
+  }
+}
+
+const forbiddenCreatorHubMetadata = [
+  '<meta name="apple-mobile-web-app-title" content="Creatorhubn"',
+  '<meta property="og:site_name" content="CreatorHub Norge"',
+  '<link rel="canonical" href="https://creatorhubn.com/"',
+  'creatorhub-wordmark-light.png',
+];
+for (const fragment of forbiddenCreatorHubMetadata) {
+  if (html.includes(fragment)) {
+    throw new Error(
+      `generate-role-room-index: CreatorHub-metadata lekket inn i Role Room-skallet: ${fragment}`,
+    );
   }
 }
 

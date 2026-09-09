@@ -1127,6 +1127,13 @@ struct DiscoveryCandidateRow: View {
                 Label("Treffer en eksklusjonsregel", systemImage: "nosign")
                     .font(.caption.bold()).foregroundStyle(LeadgridDiscoveryTheme.danger)
             }
+            if candidate.subjectKind == .person {
+                Label(
+                    "Personprospekt – oppretter aldri en talentkonto automatisk",
+                    systemImage: "person.crop.circle.badge.checkmark")
+                    .font(.caption.bold())
+                    .foregroundStyle(LeadgridDiscoveryTheme.accentSoft)
+            }
             clinicClassification
             if let reviewNotice = candidate.observation?.reviewNotice {
                 VStack(alignment: .leading, spacing: 3) {
@@ -1163,6 +1170,25 @@ struct DiscoveryCandidateRow: View {
                         websiteQuality.status == "assessed"
                             ? LeadgridDiscoveryTheme.accentSoft
                             : LeadgridDiscoveryTheme.secondaryText)
+            }
+            if let qualification = candidate.scoreExplanation?.contentQualification {
+                Label(
+                    qualification.presentation,
+                    systemImage: qualification.outcome == "passed"
+                        ? "checkmark.seal.fill"
+                        : "text.magnifyingglass")
+                    .font(.caption)
+                    .foregroundStyle(
+                        qualification.outcome == "passed"
+                            ? LeadgridDiscoveryTheme.success
+                            : LeadgridDiscoveryTheme.secondaryText)
+            } else if let matchedTerms = candidate.websiteQuality?.qualification?.matchedTerms,
+                      !matchedTerms.isEmpty {
+                Label(
+                    "Bekreftet innhold: \(matchedTerms.joined(separator: ", "))",
+                    systemImage: "checkmark.seal.fill")
+                    .font(.caption)
+                    .foregroundStyle(LeadgridDiscoveryTheme.success)
             }
             if let reasons = candidate.reasons, !reasons.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {

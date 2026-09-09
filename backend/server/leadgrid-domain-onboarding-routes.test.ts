@@ -310,6 +310,27 @@ describe("Leadgrid domain onboarding routes", () => {
     });
   });
 
+  it("only accepts editable brand foundations from platform Super Admin", async () => {
+    const response = await harness({ pool: permissionPool("member") }).post(
+      "/api/leadgrid/project-onboarding/commit",
+      {
+        organization_id: organizationId,
+        preview_id: "22222222-2222-4222-8222-222222222222",
+        brand_overrides: {
+          project_name: "The Role Room",
+          project_description: "Film, produksjon, utdanning og talent.",
+          category: "Film, TV, casting og talent",
+          target_audience: "Produksjonsselskap, byråer, skoler og talenter",
+        },
+      },
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.payload).toMatchObject({
+      error: { code: "brand_overrides_super_admin_only", field: "brand_overrides" },
+    });
+  });
+
   it("sends persisted onboarding invitations and exposes status without exposing tokens", async () => {
     const query = vi.fn(async () => ({ rows: [], rowCount: 1 }));
     const sendEmail = vi.fn(async () => ({

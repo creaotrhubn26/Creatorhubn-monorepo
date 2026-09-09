@@ -748,6 +748,63 @@ describe("Discovery BRREG provider", () => {
     });
   });
 
+  it("qualifies candidates from bounded visible website text and ignores script content", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        _embedded: {
+          enheter: [
+            brregUnit("999999960", {
+              navn: "Oslo Filmskole AS",
+              hjemmeside: "https://role-room-qualification.example",
+            }),
+          ],
+        },
+        page: { totalPages: 1 },
+      }),
+    );
+    const websiteFetch = vi.fn(
+      async (
+        rawUrl: string,
+        _init?: RequestInit,
+        _maxRedirects?: number,
+        beforeRequest?: (url: string, hop: number) => void | Promise<void>,
+      ) => {
+        await beforeRequest?.(rawUrl, 0);
+        return {
+          response: new Response(
+            '<html><head><title>Filmskolen</title></head><body><script>"casting"</script><main>Praktisk film og medieproduksjon for studenter. Vi samarbeider med contractors.</main></body></html>',
+            { status: 200, headers: { "Content-Type": "text/html" } },
+          ),
+          finalUrl: rawUrl,
+          redirectCount: 0,
+          requestCount: 1,
+        };
+      },
+    );
+    const provider = createDiscoveryRegistryProvider({
+      fetchImpl: fetchImpl as typeof fetch,
+      websiteFetch,
+      maxAttempts: 1,
+    });
+
+    const result = await provider.search({
+      query: "filmskole",
+      queryMode: "organization_name",
+      countryCode: "NO",
+      qualificationTerms: ["film", "medieproduksjon", "casting", "actor"],
+      websiteAssessmentLimit: 1,
+    });
+
+    expect(websiteFetch).toHaveBeenCalledOnce();
+    expect(result.candidates[0].websiteQuality).toMatchObject({
+      status: "assessed",
+      qualification: {
+        requestedTerms: ["film", "medieproduksjon", "casting", "actor"],
+        matchedTerms: ["film", "medieproduksjon"],
+      },
+    });
+  });
+
   it("keeps missing registered websites as sourced unknown evidence without crawling", async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({

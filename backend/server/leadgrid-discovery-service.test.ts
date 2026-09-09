@@ -1305,6 +1305,80 @@ describe("Leadgrid Discovery service", () => {
     ).toBe(true);
   });
 
+  it("keeps approved person prospects out of Role Room talent accounts", async () => {
+    const { pool, query } = transactionPool((sql) => {
+      if (sql.includes("SELECT c.id::text AS candidate_id")) {
+        return {
+          rows: [{
+            ...decisionCandidate(),
+            name: "Nora Skuespiller",
+            brief_snapshot: {
+              ...brief,
+              subject_kind: "person",
+            },
+          }],
+        };
+      }
+      if (sql.includes("FROM leadgrid_discovery_feedback")) {
+        return { rows: [] };
+      }
+      if (sql.includes("FROM crm_customers")) return { rows: [] };
+      if (sql.includes("INSERT INTO crm_customers")) {
+        return { rows: [{ id: LEAD_ID }], rowCount: 1 };
+      }
+      return undefined;
+    });
+
+    const result = await decideDiscoveryCandidate(pool, {
+      project,
+      userId: "user-a",
+      runId: RUN_ID,
+      candidateId: CANDIDATE_ID,
+      idempotencyKey: "approve-person-prospect-key",
+      decision: { decision: "approve", reason_code: "good_fit" },
+    });
+
+    expect(result).toMatchObject({
+      decision: "approve",
+      lead_id: LEAD_ID,
+      contact_count: 1,
+    });
+    const talentProspect = query.mock.calls.find(([queryValue]) =>
+      textOf(queryValue).includes("INSERT INTO leadgrid_customer_contacts"),
+    );
+    expect(textOf(talentProspect?.[0])).toContain("'talent', 'notice_required'");
+    expect(textOf(talentProspect?.[0])).toContain("INTERVAL '90 days'");
+    expect(talentProspect?.[1]).toEqual([
+      ORGANIZATION_ID,
+      project.id,
+      LEAD_ID,
+      "Nora Skuespiller",
+      "999888777",
+      CANDIDATE_ID,
+      "user-a",
+    ]);
+    expect(
+      query.mock.calls.some(([queryValue]) =>
+        /INSERT\s+INTO\s+(?:role_room_)?talents\b/i.test(textOf(queryValue)),
+      ),
+    ).toBe(false);
+    const crmInsert = query.mock.calls.find(([queryValue]) =>
+      textOf(queryValue).includes("INSERT INTO crm_customers"),
+    );
+    const metadata = JSON.parse(String(crmInsert?.[1]?.at(-1)));
+    expect(metadata).toMatchObject({
+      discovery: {
+        subject_kind: "person",
+        privacy: {
+          role_room_talent_profile_created: false,
+          consent_status: "not_requested",
+          notice_status: "required_before_outreach",
+          review_after_days: 90,
+        },
+      },
+    });
+  });
+
   it("requires approval through the clinic group for a linked practitioner", async () => {
     const { pool, sequence } = transactionPool((sql) => {
       if (sql.includes("SELECT c.id::text AS candidate_id")) {

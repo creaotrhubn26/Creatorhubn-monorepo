@@ -134,6 +134,15 @@ export const discoveryBriefSchema = z
     website_quality: discoveryWebsiteQualitySchema.default({
       minimum_score: null,
     }),
+    subject_kind: z.enum(["organization", "person"]).default("organization"),
+    qualification_terms: z
+      .array(nonEmpty(80))
+      .max(30)
+      .default([])
+      .transform((values) => [...new Set(values)]),
+    qualification_requirement: z
+      .enum(["preferred", "required"])
+      .default("preferred"),
     commercial_signals: discoveryCommercialSignalsSchema.default({
       registered_in_vat_register: null,
       registered_in_business_register: null,

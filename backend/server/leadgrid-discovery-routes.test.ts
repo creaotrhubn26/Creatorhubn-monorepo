@@ -723,6 +723,9 @@ describe("Leadgrid Discovery HTTP contract", () => {
             organization_structure: "any",
             website_requirement: "any",
             website_quality: { minimum_score: null },
+            subject_kind: "organization",
+            qualification_terms: [],
+            qualification_requirement: "preferred",
             commercial_signals: {
               registered_in_vat_register: null,
               registered_in_business_register: null,

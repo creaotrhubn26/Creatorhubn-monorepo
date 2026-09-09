@@ -173,6 +173,18 @@ final class DiscoveryRunCoordinator {
         hasCampaigns && !isBusy && !isStartingRun
     }
 
+    nonisolated static func campaignProfiles(
+        from profiles: [DiscoveryV2Profile]
+    ) -> [DiscoveryV2Profile] {
+        var observedIds: Set<String> = []
+        return profiles
+            .filter { $0.isActive && observedIds.insert($0.id).inserted }
+            .sorted { left, right in
+                if left.isDefault != right.isDefault { return left.isDefault }
+                return left.name.localizedCaseInsensitiveCompare(right.name) == .orderedAscending
+            }
+    }
+
     @discardableResult
     private func beginCampaignRequest() -> UInt64 {
         campaignRequestGeneration &+= 1
@@ -986,22 +998,18 @@ final class DiscoveryRunCoordinator {
             return
         }
         let profileIds = orderedProfiles.map(\.id)
-        let confirmedDrafts = DiscoveryV2ProfilePreset.osloRegionClinicPilot
-            .drafts(copying: brief)
         guard !orderedProfiles.isEmpty,
-              orderedProfiles.count == confirmedDrafts.count,
               profileIds.count == Set(profileIds).count,
-              (zip(confirmedDrafts, orderedProfiles).allSatisfy { draft, profile in
-                  profile.isActive && Self.profile(draft, matches: profile)
-              }),
+              orderedProfiles.allSatisfy(\.isActive),
               orderedProfiles.allSatisfy({ ordered in
                   profiles.contains(where: {
                       $0.id == ordered.id && $0.version == ordered.version
+                          && $0.isActive
                   })
               })
         else {
             showError(
-                "En kampanjeprofil ble endret eller pauset etter bekreftelsen. Se gjennom de fire profilene på nytt.",
+                "En kampanjeprofil ble endret eller pauset etter bekreftelsen. Last profilene på nytt og prøv igjen.",
                 retryable: false)
             return
         }

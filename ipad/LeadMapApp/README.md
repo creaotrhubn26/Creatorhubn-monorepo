@@ -180,6 +180,32 @@ xcodegen generate
 open LeadMapApp.xcodeproj
 ```
 
+## Ekte staging-E2E før TestFlight
+
+`scripts/staging-testflight-e2e.sh` avviser produksjons-URL og bruker en
+dedikert staging-bruker. Standardkjøringen verifiserer innlogging, PostgreSQL,
+lead-opprettelse, Leadbook-idempotens og -sletting, BRREG-worker og pairing.
+
+For The Role Room aktiveres i tillegg domeneanalyse, alle seks Discovery-
+profiler og den native iPad-flyten slik:
+
+```bash
+LEADGRID_STAGING_BASE_URL=https://staging.example.no \
+LEADGRID_STAGING_EMAIL=leadgrid-e2e@example.no \
+LEADGRID_STAGING_PASSWORD='fra-hemmelig-lager' \
+LEADGRID_RUN_ROLE_ROOM_E2E=1 \
+LEADGRID_RUN_SIMULATOR_E2E=1 \
+./scripts/staging-testflight-e2e.sh
+```
+
+Sett også `LEADGRID_RUN_ROLE_ROOM_CAMPAIGN_E2E=1` for å kjøre alle seks
+profilene autoritativt. Da venter testen i inntil ti minutter og krever seks
+fullførte profilkjøringer, ingen feilede profiler og minst ett samlet resultat.
+Dette flagget bruker faktiske Discovery-kilder og skal derfor bare kjøres i et
+isolert staging-miljø. En TestFlight-installasjon på fysisk iPad må til slutt
+bekrefte skjerm, nettverksbrudd og reconnect; simulatorløpet alene dekker ikke
+den fysiske brukeropplevelsen.
+
 ## Implementasjons-plan
 
 | Fase | Hva | Estimat |

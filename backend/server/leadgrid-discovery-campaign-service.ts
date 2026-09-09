@@ -181,6 +181,11 @@ interface ProfileSnapshotRow {
   name: string;
   brief: Record<string, unknown> | null;
   target_customer_types: string[];
+  organization_name_queries: string[];
+  country_code: string | null;
+  subject_kind: string;
+  qualification_terms: string[];
+  qualification_requirement: string;
   city_filters: string[];
   geography_lat: string | number | null;
   geography_lng: string | number | null;
@@ -827,7 +832,9 @@ export async function createDiscoveryCampaign(
 
       const profiles = await client.query<ProfileSnapshotRow>(
          `SELECT id::text, version, status, name, brief,
-              target_customer_types, city_filters, geography_lat::text,
+              target_customer_types, organization_name_queries, country_code,
+              subject_kind, qualification_terms, qualification_requirement,
+              city_filters, geography_lat::text,
               geography_lng::text, geography_radius_km,
               company_size_min, company_size_max,
               max_candidates_per_run, enrichment_count, source_cursor_map
