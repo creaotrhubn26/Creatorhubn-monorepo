@@ -15,3 +15,4 @@ pub fn register_vec_extension() {
 
 pub mod chunk;
 pub mod db;
+pub mod gitsrc;
