@@ -52,6 +52,34 @@ describe("prototype tester invitation delivery", () => {
     expect(query).not.toHaveBeenCalled();
   });
 
+  it("rejects malformed manual-invite fields before database or email side effects", async () => {
+    const query = vi.fn();
+    const sendInviteEmail = vi.fn();
+    const app = express();
+    app.use(express.json());
+    setupPrototypeTesterInvitesRoutes({
+      app,
+      pool: { query },
+      getPricingUserId: () => "",
+      requireUserSession: () => true,
+      requireAdminSession: async () => ({ userId: "verified-admin-id" }),
+      sendInviteEmail,
+    });
+
+    const response = await request(app)
+      .post("/api/prototype-tester-invites")
+      .send({
+        email: "tester@example.com",
+        name: "Test Tester",
+        testingAreas: [{ name: "not-a-string" }],
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("Ugyldige testområder");
+    expect(query).not.toHaveBeenCalled();
+    expect(sendInviteEmail).not.toHaveBeenCalled();
+  });
+
   it("sends a manual admin invite through the CreatorHub Email Designer sender", async () => {
     const query = vi.fn().mockImplementation(async (statement: unknown) => {
       if (String(statement).includes("INSERT INTO prototype_tester_invites")) {
@@ -196,6 +224,11 @@ describe("prototype tester invitation delivery", () => {
     expect(
       query.mock.calls.some(([sql]) =>
         String(sql).includes("s.plan_id = 'solo_pro'"),
+      ),
+    ).toBe(true);
+    expect(
+      query.mock.calls.some(([sql]) =>
+        String(sql).includes("r.id::text = p.invite_request_id::text"),
       ),
     ).toBe(true);
   });

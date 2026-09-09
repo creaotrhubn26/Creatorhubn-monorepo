@@ -12,6 +12,7 @@ struct LeadDetailSheet: View {
     @State private var updating = false
     @State private var enrichment: EnrichmentModel?
     @State private var demographics: DemographicsModel?
+    @State private var discoveredContacts: [LeadgridCustomerContact] = []
     @State private var visitLogShown = false
     @State private var strategyShown = false
     @State private var briefShown = false
@@ -49,6 +50,9 @@ struct LeadDetailSheet: View {
                     distanceBar
                     pitchDeckCTA
                     metaSection
+                    if !discoveredContacts.isEmpty {
+                        discoveryContactsSection
+                    }
                     if let enrichment, enrichment.found, let company = enrichment.company {
                         brregSection(company: company, contacts: enrichment.contacts ?? [])
                     }
@@ -70,6 +74,10 @@ struct LeadDetailSheet: View {
                 }
             }
             .task {
+                discoveredContacts = (lead.contacts ?? []).filter {
+                    $0.source == "discovery"
+                }
+                await loadDiscoveredContacts()
                 await loadEnrichment()
                 await loadPitchAvailability()
                 await markSeenIfAssigned()
@@ -255,6 +263,50 @@ struct LeadDetailSheet: View {
             }
         }
         .font(.subheadline)
+    }
+
+    private var discoveryContactsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Tannleger ved klinikken", systemImage: "person.2.fill")
+                .font(.caption.bold())
+                .foregroundStyle(.tint)
+            ForEach(discoveredContacts) { contact in
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(contact.name).font(.subheadline.bold())
+                        if let organizationNumber = contact.organizationNumber {
+                            Text("Org.nr. \(organizationNumber)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    Text(contact.role ?? "Kontakt")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Text("Kontaktene ble bekreftet sammen med klinikkgruppen i Discovery.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .background(Color.purple.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .accessibilityIdentifier("lead.discovery-contacts")
+    }
+
+    private func loadDiscoveredContacts() async {
+        guard let api = appState.api else { return }
+        do {
+            let current = try await api.fetchLead(
+                id: lead.id,
+                organizationId: appState.activeOrganizationId)
+            discoveredContacts = (current.contacts ?? []).filter {
+                $0.source == "discovery"
+            }
+        } catch {
+            // The cached/list payload remains usable while offline.
+        }
     }
 
     private func brregSection(company: EnrichmentCompany, contacts: [EnrichmentContact]) -> some View {
