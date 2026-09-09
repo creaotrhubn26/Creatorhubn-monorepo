@@ -82,7 +82,7 @@ Fire enheter med hver sin jobb:
 
 | Enhet | Ansvar |
 |---|---|
-| `indexer` (Rust) | `git ls-files` → chunk → Voyage → sqlite. Inkrementelt på git-HEAD-endring. Overvåker notatmappen med `notify`. |
+| `indexer` (Rust) | `git ls-files -s` → chunk → Voyage → sqlite. Inkrementelt på blob-hash per fil. Overvåker notatmappen med `notify`. |
 | `brain` (Rust) | Ved lagring: Claude-klassifisering, vektorsøk etter kandidat-ankre, skriver forslag til sqlite. |
 | `app` (React) | Editor, søk, margfelt med ankerforslag, entitetsside. |
 | `mcp` (egen binær) | Leser samme sqlite skrivebeskyttet, eksponerer verktøy til Claude Code. |
@@ -112,8 +112,13 @@ indekserbare filer og 3 180 395 linjer kode. Ved 40-linjers biter med 10
 linjers overlapp gir det 107 386 vektorer. Kjør `notes-index index --dry-run`
 for tallet som gjelder akkurat nå; det koster ingenting.
 
-Engangs-embedding er 41-50 millioner tokener, omtrent 6-8 dollar med
-voyage-code-3 til $0,18 per million. Deretter kun endrede filer per commit.
+Engangs-embedding er 41-50 millioner tokener, altså 7-9 dollar med
+voyage-code-3 til $0,18 per million. `--dry-run` anslår høyere, fordi
+token-estimatet bevisst overdriver — en for stor pakke blir avvist, mens en for
+liten bare koster én forespørsel ekstra. Deretter kun endrede filer.
+
+`.tsx` og `.ts` står for 86 % av regninga. Vil du ned i pris, er det der spaken
+er.
 
 Indeksfila blir omtrent 650 MB. 107 386 vektorer à 1024 float32 er 440 MB, og
 bitteksten kommer i tillegg.
@@ -143,9 +148,21 @@ Fire, alle merket med `entity.kind`:
 
 ### Inkrementell oppdatering
 
-`notify` overvåker `.git/HEAD` og notatmappen. Ved commit eller branch-bytte
-kjøres `git diff --name-only` mot forrige indekserte SHA, og kun de filene
-reindekseres. Full skanning skjer bare første gang.
+Hver indeksert fil får blob-hashen sin lagret i `path_state`. En kjøring lister
+`git ls-files -s`, sammenligner hashene, og reindekserer kun filer som avviker
+eller mangler. Filer som er borte fra lista får radene sine slettet.
+
+Ingen lagret HEAD-SHA, ingen diff mot forrige commit. Det var det opprinnelige
+designet, og det ble forkastet av to grunner: en lagret SHA som blir uoppnåelig
+etter rebase, force-push eller gc låser indeksen permanent, og en SHA sier
+ingenting om hvor langt en avbrutt kjøring kom.
+
+Arbeidet gjøres i pakker som hver får plass i én Voyage-forespørsel. Per pakke:
+embed først, så én transaksjon som sletter, setter inn og oppdaterer
+`path_state`, og committer. Nettverket ligger utenfor transaksjonen. En kjøring
+som feiler midtveis beholder hver committet pakke, og neste kjøring finner kun
+det som fortsatt mangler — det som allerede er betalt for, betales ikke om
+igjen.
 
 ## MCP-verktøy
 
@@ -176,8 +193,9 @@ Ett gullsett med 20 håndskrevne spørsmål og forventet treff. Kjøres hver gan
 chunking eller embedding-modell endres. Dette er den eneste testen som måler om
 produktet virker.
 
-I tillegg Rust-enhetstester på chunker-grenser og på inkrementell git-diff med
-SHA-håndtering. Ingen E2E-rammeverk i fase 1.
+I tillegg Rust-enhetstester på chunker-grenser, på blob-hash-basert
+inkrementalitet, og på at en embedder som feiler eller returnerer for få
+vektorer lar databasen stå urørt. Ingen E2E-rammeverk i fase 1.
 
 ## Faser
 

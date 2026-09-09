@@ -17,7 +17,7 @@ API-nøkkel. Det er tallet som avgjør om filtrene bør strammes inn før du
 betaler.
 
 Målt mot origin/main: 8 023 indekserbare filer, 3 180 395 linjer og 107 386
-biter. Det er 41-50 millioner tokener, altså omtrent 6-8 dollar med
+biter. Det er 41-50 millioner tokener, altså 7-9 dollar med
 voyage-code-3 til $0,18 per million. Kjøringen tar 30-60 minutter og gir en
 indeksfil på omtrent 650 MB.
 

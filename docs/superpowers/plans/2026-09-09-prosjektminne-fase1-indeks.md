@@ -10,6 +10,17 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-09-prosjektminne-notatapp-design.md`
 
+> **Status after execution:** every task below was implemented, reviewed and
+> merged, and then a final whole-branch review triggered one fix wave that
+> changed the indexing design. Incrementality is no longer a stored HEAD SHA
+> compared with `git diff`; it is a per-file git blob hash in a `path_state`
+> table, with work committed per batch so an interrupted run resumes without
+> re-paying. `gitsrc::changed_files`, `META_LAST_SHA` and
+> `IndexReport.incremental` no longer exist, and `index` gained `--dry-run`.
+> The task bodies below are preserved as the record of what was built in what
+> order; **the spec is the design of record**, and it describes the shipped
+> behaviour.
+
 ## Global Constraints
 
 - Rust edition 2021. Crate lives at `apps/creatorhub-notes/indexer/`.
@@ -22,7 +33,7 @@
 - Indexed file extensions: `ts tsx js jsx rs py swift sql md`. Skip any file over 500 000 bytes and any path containing `.min.`.
 - No network calls in unit tests. Tests use the `Embedder` trait with a fake implementation.
 - Never commit an API key. `VOYAGE_API_KEY` is read from the environment only.
-- Measured scale of the corpus, against origin/main through the crate's own filters: **8 023 indexable files, 3 180 395 lines, 107 386 chunks, 41-50M embedding tokens, roughly $6-8** at $0.18 per million with `voyage-code-3`. The finished index file is roughly 650 MB. Run `notes-index index --dry-run` — no API key, no network call — before any paid run; it is the number that governs.
+- Measured scale of the corpus, against origin/main through the crate's own filters: **8 023 indexable files, 3 180 395 lines, 107 386 chunks, 41-50M embedding tokens, roughly $7-9** at $0.18 per million with `voyage-code-3`. The finished index file is roughly 650 MB. Run `notes-index index --dry-run` — no API key, no network call — before any paid run; it is the number that governs.
 
 ---
 
@@ -1789,7 +1800,7 @@ git commit -m "feat(notes): add notes-index command-line interface"
 
 - [ ] **Step 6: Run the real index and evaluation**
 
-This is the phase gate. It costs roughly **$6-8** of Voyage credit and takes 30-60 minutes. Confirm the scale with `--dry-run` first — it needs no API key and makes no network call — and get the user's authorisation before spending.
+This is the phase gate. It costs roughly **$7-9** of Voyage credit and takes 30-60 minutes. Confirm the scale with `--dry-run` first — it needs no API key and makes no network call — and get the user's authorisation before spending.
 
 ```bash
 cd apps/creatorhub-notes/indexer
@@ -1975,7 +1986,7 @@ Kjør alltid `--dry-run` først. Den teller filer, linjer, biter, tokener og
 kostnad uten å ringe Voyage og uten å trenge API-nøkkel.
 
 Første indeksering er omtrent 8 000 filer, 3,2 millioner linjer og 107 000
-biter, altså 41-50 millioner tokener og 6-8 dollar. Den tar 30-60 minutter og
+biter, altså 41-50 millioner tokener og 7-9 dollar. Den tar 30-60 minutter og
 gir en indeksfil på omtrent 650 MB. Senere kjøringer leser kun filer der
 blob-hashen har endret seg.
 
