@@ -14,6 +14,7 @@ pub fn register_vec_extension() {
 }
 
 pub mod chunk;
+pub mod cli;
 pub mod db;
 pub mod embed;
 pub mod eval;
