@@ -11,7 +11,6 @@
  */
 import React, { useEffect, useState, useRef } from 'react';
 import { Box, Stack, Typography, Button, CircularProgress, TextField, Avatar, IconButton, Dialog, DialogContent, Divider } from '@mui/material';
-import { useLocation } from 'wouter';
 import GraphicEq from '@mui/icons-material/GraphicEq';
 import OpenInFull from '@mui/icons-material/OpenInFull';
 import OpenInNew from '@mui/icons-material/OpenInNew';
@@ -37,7 +36,6 @@ const ti = { '& .MuiOutlinedInput-root': { fontSize: 13, color: ws.text, bgcolor
 const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const isReal = projectId && projectId !== 'sample';
   const { hasTeamAccess } = useTeamAccess(); // band/samarbeid er Enterprise-gated
-  const [, navigate] = useLocation();
   const [roomId, setRoomId] = useState<string | null>(null);
   const [summary, setSummary] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -215,7 +213,15 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     }
   });
 
-  const openRoom = () => { if (roomId) navigate(`/audio-review/${roomId}?ws=${encodeURIComponent(projectId)}`); };
+  const openRoom = () => {
+    if (!roomId) return;
+    // AudioShowcasePage is lazy-loaded in App.tsx. Wouter publishes its route
+    // change through an external subscription, so React.startTransition cannot
+    // reliably cover the resulting update: a cold chunk then throws React
+    // #426 from this click. A same-tab document navigation keeps auth/session
+    // state while letting the lazy page suspend safely during initial render.
+    window.location.assign(`/audio-review/${roomId}?ws=${encodeURIComponent(projectId)}`);
+  };
   const linkTrack = async (trackId: string) => {
     if (linking) return; setLinking(trackId);
     try {

@@ -48,6 +48,22 @@ function sampleProject(id: string) {
   };
 }
 
+function oneSecondWav(): Buffer {
+  const sampleRate = 44_100;
+  const samples = sampleRate;
+  const dataSize = samples * 2;
+  const wav = Buffer.alloc(44 + dataSize);
+  wav.write('RIFF', 0); wav.writeUInt32LE(36 + dataSize, 4); wav.write('WAVE', 8);
+  wav.write('fmt ', 12); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22); wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * 2, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+  wav.write('data', 36); wav.writeUInt32LE(dataSize, 40);
+  for (let i = 0; i < samples; i += 1) {
+    wav.writeInt16LE(Math.round(Math.sin((i / sampleRate) * Math.PI * 2 * 440) * 4_000), 44 + i * 2);
+  }
+  return wav;
+}
+
 /** Fanger uncaught exceptions + console.error som matcher kjente signaturer. */
 async function collectRuntimeErrors(page: import('@playwright/test').Page) {
   const errors: string[] = [];
@@ -332,8 +348,11 @@ test('single-project /workspace auto-redirects into the workspace without React 
 });
 
 test('music producer sees EaseVerse marketing and can start the Pro Tools Companion flow', async ({ page }) => {
+  test.setTimeout(240_000);
   const errors = await collectRuntimeErrors(page);
   let pairingPayload: Record<string, unknown> | null = null;
+  let delayedAudioShowcaseChunk = false;
+  let bounceMediaRequested = false;
   await primeAuthAndApi(page, [sampleProject('p1')]);
   const musicUser = { ...AUTH_USER, role: 'musicproducer', profession: 'musicproducer' };
   await page.addInitScript((user) => {
@@ -367,8 +386,22 @@ test('music producer sees EaseVerse marketing and can start the Pro Tools Compan
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ audioRoomId: 'room-1' }) }),
   );
   await page.route('**/api/audio-showcases/room-1', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ project: { title: 'Smoke Project p1' }, versions: [], members: [] }) }),
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      project: { id: 'room-1', title: 'Smoke Project p1', status: 'under_review' },
+      versions: [{
+        id: 'version-1', project_id: 'room-1', version_label: 'Mix V1', version_number: 1,
+        file_name: 'workspace-smoke.wav', file_url: '/api/protools/bounces/bounce-1/file', status: 'under_review',
+      }],
+      members: [], tasks: [],
+    }) }),
   );
+  await page.route('**/api/audio-versions/version-1', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: {}, comments: [], sections: [], approvals: [] }) }),
+  );
+  await page.route('**/api/protools/bounces/bounce-1/file', (route) => {
+    bounceMediaRequested = true;
+    return route.fulfill({ status: 200, contentType: 'audio/wav', headers: { 'Accept-Ranges': 'bytes' }, body: oneSecondWav() });
+  });
   await page.route('**/api/projects/p1/easeverse-tracks', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
       connected: true, linkedTrackId: 'track-1',
@@ -385,10 +418,16 @@ test('music producer sees EaseVerse marketing and can start the Pro Tools Compan
     pairingPayload = route.request().postDataJSON();
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: '246810', expiresInSeconds: 600 }) });
   });
+  await page.route(/\/src\/pages\/audio-showcase\.tsx(?:\?.*)?$/, async (route) => {
+    delayedAudioShowcaseChunk = true;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await route.continue();
+  });
 
-  await page.goto(`${ORIGIN}/workspace`, { waitUntil: 'domcontentloaded' });
-  await page.waitForURL('**/workspace/p1', { timeout: 30_000 });
-  await expect(page.getByText('EaseVerse + Pro Tools Companion', { exact: true })).toBeVisible({ timeout: 30_000 });
+  // Auto-redirecten har en egen test over. Start her på prosjektet slik at
+  // denne testen isolerer musikkflyten og Sound Room → lazy Audio Showcase.
+  await page.goto(`${ORIGIN}/workspace/p1`, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByText('EaseVerse + Pro Tools Companion', { exact: true })).toBeVisible({ timeout: 90_000 });
   const overviewHref = await page.getByRole('link', { name: 'Åpne EaseVerse' }).getAttribute('href');
   const overviewUrl = new URL(overviewHref!);
   expect(overviewUrl.origin).toBe('https://easeverse.netlify.app');
@@ -409,5 +448,15 @@ test('music producer sees EaseVerse marketing and can start the Pro Tools Compan
   expect(soundRoomUrl.searchParams.get('audioReviewProjectId')).toBe('room-1');
   expect(soundRoomUrl.searchParams.get('externalTrackId')).toBe('track-1');
   await expect(page.getByText('Shotlist', { exact: true })).toHaveCount(0);
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).not.toBeVisible();
+  await page.getByRole('button', { name: 'Åpne lydrommet' }).first().click();
+  await page.waitForURL('**/audio-review/room-1?ws=p1', { timeout: 60_000 });
+  await expect(page.getByText('Universal Showcase', { exact: true })).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByText('Laster waveform…', { exact: true })).toHaveCount(0, { timeout: 30_000 });
+  await expect(page.getByText(/\/ 0:01/).first()).toBeVisible();
+  expect(bounceMediaRequested, 'WaveSurfer må hente Companion-bouncen gjennom same-origin-streamen').toBe(true);
+  expect(delayedAudioShowcaseChunk, 'Testen må faktisk forsinke den lazy-lastede lydrom-chunken').toBe(true);
   expect(errors, `Runtime errors in music Workspace flow:\n${errors.join('\n')}`).toEqual([]);
 });

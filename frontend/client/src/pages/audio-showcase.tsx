@@ -24,7 +24,7 @@ import {
   CategoryOutlined, StyleOutlined, Schedule, CalendarTodayOutlined, ArrowForwardIos, FiberManualRecord, Sync,
   PhotoCamera, ReceiptLongOutlined, ContentCopy, DoneAll, RocketLaunchOutlined, FileDownloadDoneOutlined, TipsAndUpdatesOutlined, MovieCreationOutlined, SelfImprovement, EventOutlined,
 } from '@mui/icons-material';
-import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
+import { apiRequest, getAuthHeader, getStoredAuthToken, buildApiUrl } from '@/lib/queryClient';
 import { easeVerseBoothUrl } from '@/lib/easeverse';
 import { buildSectionAnchors, parseSongSections, sectionInsertToken, INSERT_SECTION_OPTIONS, SECTION_COLORS as SECTION_TYPE_COLORS, NB_LABELS, type SectionType } from '@/lib/lyric-sections';
 import ImageDrop from '@/components/universal/showcase/ImageDrop';
@@ -50,6 +50,21 @@ const relTime = (iso?: string) => {
   const days = Math.floor((Date.now() - t) / 86400000);
   if (days <= 0) return 'I dag'; if (days === 1) return 'I går'; if (days < 7) return `${days} dager siden`;
   return new Date(t).toLocaleDateString('no-NO', { day: 'numeric', month: 'short' });
+};
+
+// Companion-bounces are private and keep working after a browser restart via
+// the persisted CreatorHub OAuth token. Scope the token to our own protected
+// stream path so it can never be forwarded to third-party audio URLs.
+export const isProtectedCompanionAudio = (url: string): boolean =>
+  /^\/api\/protools\/bounces\/[0-9a-f-]+\/file(?:\?|$)/i.test(url.trim());
+
+export const companionAudioFetchParams = (url: string): RequestInit => {
+  if (!isProtectedCompanionAudio(url)) return { credentials: 'omit' };
+  const token = getStoredAuthToken();
+  return {
+    credentials: 'include',
+    ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+  };
 };
 
 type CommentFilter = 'all' | 'unresolved' | 'resolved' | 'decision';
@@ -112,6 +127,25 @@ export default function AudioShowcasePage() {
 
   const saveCover = async (dataUrl: string) => {
     try { const p = await apiRequest(`/api/audio-showcases/${projectId}`, { method: 'PATCH', body: { coverUrl: dataUrl } }); setProject(p); } catch { /* */ }
+  };
+  const downloadVersion = async (version: any) => {
+    const url = String(version?.file_url || '');
+    if (!isProtectedCompanionAudio(url)) return;
+    try {
+      const response = await fetch(url, companionAudioFetchParams(url));
+      if (!response.ok) throw new Error(`Download failed (${response.status})`);
+      const blobUrl = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement('a');
+      anchor.href = blobUrl;
+      anchor.download = String(version?.file_name || 'CreatorHub-bounce.wav');
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1_000);
+    } catch {
+      setSplitToast('Kunne ikke laste ned lydfilen');
+      window.setTimeout(() => setSplitToast(null), 3_500);
+    }
   };
   const generateSplitSheet = async () => {
     setSplitToast('Genererer splittark…');
@@ -194,6 +228,7 @@ export default function AudioShowcasePage() {
   const waveRef = React.useRef<HTMLDivElement | null>(null);
   const wsRef = React.useRef<WaveSurfer | null>(null);
   const [ready, setReady] = React.useState(false);
+  const [mediaError, setMediaError] = React.useState(false);
   const [playing, setPlaying] = React.useState(false);
   const [cur, setCur] = React.useState(0);
   const [dur, setDur] = React.useState(0);
@@ -205,23 +240,102 @@ export default function AudioShowcasePage() {
   const fracRef = React.useRef(0);
 
   React.useEffect(() => {
-    if (!waveRef.current || !effectiveSrc) return;
+    const container = waveRef.current;
+    if (loading || !container || !effectiveSrc) return;
     let cancelled = false;
+    let ws: WaveSurfer | null = null;
+    let decodeContext: AudioContext | null = null;
+    const abortController = new AbortController();
     setReady(false);
-    const ws = WaveSurfer.create({
-      container: waveRef.current, url: effectiveSrc, height: 96,
-      waveColor: 'rgba(245,242,234,0.22)', progressColor: ACCENT, cursorColor: 'rgba(245,242,234,0.85)',
-      cursorWidth: 2, barWidth: 2, barGap: 1, barRadius: 3, normalize: true,
+    setMediaError(false);
+    const dispose = (instance: WaveSurfer) => {
+      const media = instance.getMediaElement() as HTMLMediaElement & { audioContext?: AudioContext };
+      try { instance.destroy(); } catch { /* ignore */ }
+      if (media.audioContext?.state !== 'closed') void media.audioContext?.close().catch(() => {});
+    };
+    const bindPlayer = (instance: WaveSurfer, deferReady: boolean) => {
+      ws = instance;
+      wsRef.current = instance;
+      instance.on('ready', () => {
+        if (cancelled || ws !== instance || deferReady) return;
+        setReady(true); setDur(instance.getDuration()); instance.setVolume(vol);
+        if (fracRef.current > 0) instance.setTime(fracRef.current * instance.getDuration());
+      });
+      instance.on('error', () => { if (!cancelled && ws === instance) { setReady(false); setMediaError(true); } });
+      instance.on('timeupdate', (t: number) => { if (!cancelled && ws === instance) { setCur(t); if (instance.getDuration()) fracRef.current = t / instance.getDuration(); } });
+      instance.on('play', () => !cancelled && ws === instance && setPlaying(true));
+      instance.on('pause', () => !cancelled && ws === instance && setPlaying(false));
+      instance.on('finish', () => { if (cancelled || ws !== instance) return; if (loopRef.current) { instance.setTime(0); void instance.play(); } else setPlaying(false); });
+    };
+    void (async () => {
+      if (isProtectedCompanionAudio(effectiveSrc)) {
+        const response = await fetch(effectiveSrc, {
+          ...companionAudioFetchParams(effectiveSrc),
+          signal: abortController.signal,
+        });
+        if (!response.ok) throw new Error(`Audio load failed (${response.status})`);
+        const sourceBytes = await response.arrayBuffer();
+        decodeContext = new AudioContext();
+        const decoded = await decodeContext.decodeAudioData(sourceBytes.slice(0));
+        if (cancelled) return;
+        const instance = WaveSurfer.create({
+          container, height: 96, backend: 'WebAudio',
+          waveColor: 'rgba(245,242,234,0.22)', progressColor: ACCENT, cursorColor: 'rgba(245,242,234,0.85)',
+          cursorWidth: 2, barWidth: 2, barGap: 1, barRadius: 3, normalize: true,
+        });
+        bindPlayer(instance, true);
+        const peaks = Array.from({ length: decoded.numberOfChannels }, (_, channel) => decoded.getChannelData(channel));
+        await instance.load('', peaks, decoded.duration);
+        const media = instance.getMediaElement() as unknown as HTMLMediaElement & {
+          audioContext?: AudioContext;
+          buffer?: AudioBuffer | null;
+          duration: number;
+        };
+        media.buffer = decoded;
+        media.duration = decoded.duration;
+        if (cancelled || wsRef.current !== instance) return;
+        setReady(true); setDur(decoded.duration); instance.setVolume(vol);
+        if (fracRef.current > 0) instance.setTime(fracRef.current * decoded.duration);
+        return;
+      }
+      const instance = WaveSurfer.create({
+        container, url: effectiveSrc, height: 96,
+        // Never forward the CreatorHub token to third-party audio hosts.
+        fetchParams: companionAudioFetchParams(effectiveSrc),
+        waveColor: 'rgba(245,242,234,0.22)', progressColor: ACCENT, cursorColor: 'rgba(245,242,234,0.85)',
+        cursorWidth: 2, barWidth: 2, barGap: 1, barRadius: 3, normalize: true,
+      });
+      bindPlayer(instance, false);
+    })().catch((error) => {
+      if (!cancelled && !(error instanceof DOMException && error.name === 'AbortError')) {
+        setReady(false);
+        setMediaError(true);
+      }
+    }).finally(() => {
+      if (decodeContext?.state !== 'closed') void decodeContext?.close().catch(() => {});
+      decodeContext = null;
     });
-    wsRef.current = ws;
-    ws.on('ready', () => { if (cancelled) return; setReady(true); setDur(ws.getDuration()); ws.setVolume(vol); if (fracRef.current > 0) ws.setTime(fracRef.current * ws.getDuration()); });
-    ws.on('timeupdate', (t: number) => { if (!cancelled) { setCur(t); if (ws.getDuration()) fracRef.current = t / ws.getDuration(); } });
-    ws.on('play', () => !cancelled && setPlaying(true));
-    ws.on('pause', () => !cancelled && setPlaying(false));
-    ws.on('finish', () => { if (cancelled) return; if (loopRef.current) { ws.setTime(0); void ws.play(); } else setPlaying(false); });
-    return () => { cancelled = true; try { ws.destroy(); } catch { /* ignore */ } wsRef.current = null; };
-  }, [effectiveSrc]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => {
+      cancelled = true;
+      abortController.abort();
+      if (decodeContext?.state !== 'closed') void decodeContext?.close().catch(() => {});
+      if (ws) dispose(ws);
+      wsRef.current = null;
+    };
+  }, [effectiveSrc, loading]); // eslint-disable-line react-hooks/exhaustive-deps
   const seekFrac = (f: number) => { const ws = wsRef.current; if (ws && dur) ws.setTime(Math.max(0, Math.min(1, f)) * dur); };
+  const togglePlayback = async () => {
+    const ws = wsRef.current;
+    if (!ws) return;
+    const media = ws.getMediaElement() as HTMLMediaElement & { audioContext?: AudioContext };
+    try {
+      if (media.audioContext?.state === 'suspended') await media.audioContext.resume();
+      await ws.playPause();
+    } catch {
+      setPlaying(false);
+      setMediaError(true);
+    }
+  };
 
   /* ── Mutasjoner (alle wired) ── */
   const addComment = async (body: string, opts: { parentId?: string; sectionRef?: string | null } = {}) => {
@@ -500,14 +614,16 @@ export default function AudioShowcasePage() {
               </Box>
               {easeverseTrack && <Button startIcon={<CloudUpload />} size="small" onClick={pullTakes} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '8px', mr: 1 }}>Hent takes</Button>}
               {easeverseTrack && <Button startIcon={<GraphicEq />} size="small" onClick={pullSections} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '8px', mr: 1 }}>Hent seksjoner</Button>}
-              {currentVersion?.file_url && <Button startIcon={<FileDownloadOutlined />} size="small" href={currentVersion.file_url} target="_blank" variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '8px', mr: 1 }}>Last ned</Button>}
+              {currentVersion?.file_url && (isProtectedCompanionAudio(currentVersion.file_url)
+                ? <Button startIcon={<FileDownloadOutlined />} size="small" onClick={() => void downloadVersion(currentVersion)} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '8px', mr: 1 }}>Last ned</Button>
+                : <Button startIcon={<FileDownloadOutlined />} size="small" href={currentVersion.file_url} target="_blank" rel="noopener noreferrer" variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '8px', mr: 1 }}>Last ned</Button>)}
               <IconButton size="small" sx={{ color: MUTED }}><MoreHoriz fontSize="small" /></IconButton>
             </Stack>
 
             {/* Waveform + playhead-boble */}
             <Box sx={{ position: 'relative' }}>
               <Box ref={waveRef} sx={{ cursor: 'pointer' }} />
-              {!ready && <Typography sx={{ position: 'absolute', top: 38, left: 0, right: 0, textAlign: 'center', color: FAINT, fontSize: '0.8rem' }}>Laster waveform…</Typography>}
+              {!ready && <Typography sx={{ position: 'absolute', top: 38, left: 0, right: 0, textAlign: 'center', color: mediaError ? '#e0606a' : FAINT, fontSize: '0.8rem' }}>{mediaError ? 'Kunne ikke laste lydfilen' : 'Laster waveform…'}</Typography>}
               {ready && dur > 0 && (
                 <Box sx={{ position: 'absolute', top: -8, transform: 'translateX(-50%)', left: `${(cur / dur) * 100}%`, bgcolor: ACCENT, color: '#150d05', fontSize: '0.68rem', fontWeight: 700, px: 0.7, py: 0.1, borderRadius: '5px', fontVariantNumeric: 'tabular-nums', pointerEvents: 'none' }}>{fmt(cur)}</Box>
               )}
@@ -536,7 +652,7 @@ export default function AudioShowcasePage() {
               <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5 }}>
                 <IconButton onClick={() => setLoopOn((v) => !v)} sx={{ color: loopOn ? ACCENT : MUTED }}><LoopIcon /></IconButton>
                 <IconButton onClick={() => seekFrac(Math.max(0, (cur - 10) / (dur || 1)))} sx={{ color: TEXT }}><SkipPrevious /></IconButton>
-                <IconButton onClick={() => wsRef.current?.playPause()} disabled={!ready} sx={{ bgcolor: 'transparent', color: ACCENT, border: `2px solid ${ACCENT}`, width: 52, height: 52, '&:hover': { bgcolor: 'rgba(255,107,53,0.12)' }, '&.Mui-disabled': { borderColor: BORDER, color: FAINT } }}>{playing ? <Pause sx={{ fontSize: 28 }} /> : <PlayArrow sx={{ fontSize: 28 }} />}</IconButton>
+                <IconButton onClick={() => void togglePlayback()} disabled={!ready} sx={{ bgcolor: 'transparent', color: ACCENT, border: `2px solid ${ACCENT}`, width: 52, height: 52, '&:hover': { bgcolor: 'rgba(255,107,53,0.12)' }, '&.Mui-disabled': { borderColor: BORDER, color: FAINT } }}>{playing ? <Pause sx={{ fontSize: 28 }} /> : <PlayArrow sx={{ fontSize: 28 }} />}</IconButton>
                 <IconButton onClick={() => seekFrac(Math.min(1, (cur + 10) / (dur || 1)))} sx={{ color: TEXT }}><SkipNext /></IconButton>
                 <Stack direction="row" alignItems="center" spacing={1} sx={{ width: 110 }}>
                   <VolumeUp sx={{ fontSize: 18, color: MUTED }} />

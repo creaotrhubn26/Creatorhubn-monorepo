@@ -36,7 +36,7 @@
 
 import type express from "express";
 import crypto from "crypto";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   type EaseVerseProToolsMarker,
@@ -51,6 +51,7 @@ import {
   retryEaseVerseSync,
 } from "./protools-companion-persistence.js";
 import { broadcastSoundRoomUpdated } from "./sound-room-events.js";
+import { canAccessProject } from "./project-team-routes.js";
 
 export interface ProToolsCompanionDeps {
   app: express.Application;
@@ -84,6 +85,56 @@ function getR2(): { client: S3Client; cfg: R2Config } | null {
   return _r2;
 }
 function sanitizeName(v: string): string { return String(v || "bounce").replace(/[^A-Za-z0-9.\-_]/g, "_").slice(0, 120); }
+
+async function streamBounceObject(req: any, res: any, storageKey: string, fileName: string | null): Promise<void> {
+  const r2 = getR2();
+  if (!r2) { res.status(503).json({ error: "storage_not_configured" }); return; }
+  if (!storageKey.startsWith("protools-bounces/")) { res.status(404).json({ error: "not_found" }); return; }
+
+  const requestedRange = typeof req.headers.range === "string" ? req.headers.range.trim() : "";
+  if (requestedRange && !/^bytes=(?:\d+-\d*|-\d+)$/.test(requestedRange)) {
+    res.status(416).setHeader("Accept-Ranges", "bytes").end();
+    return;
+  }
+
+  try {
+    const obj: any = await r2.client.send(new GetObjectCommand({
+      Bucket: r2.cfg.bucket,
+      Key: storageKey,
+      ...(requestedRange ? { Range: requestedRange } : {}),
+    }));
+    if (!obj.Body) { res.status(404).json({ error: "not_found" }); return; }
+
+    res.status(obj.ContentRange ? 206 : 200);
+    res.setHeader("Content-Type", obj.ContentType || "audio/wav");
+    res.setHeader("Accept-Ranges", obj.AcceptRanges || "bytes");
+    // Revokert team-/invite-tilgang skal få effekt ved neste avspilling.
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+    if (obj.ContentLength != null) res.setHeader("Content-Length", String(obj.ContentLength));
+    if (obj.ContentRange) res.setHeader("Content-Range", String(obj.ContentRange));
+    if (obj.ETag) res.setHeader("ETag", String(obj.ETag));
+    if (obj.LastModified) res.setHeader("Last-Modified", new Date(obj.LastModified).toUTCString());
+    const displayName = String(fileName || storageKey.split("/").pop() || "bounce.wav");
+    const fallbackName = sanitizeName(displayName) || "bounce.wav";
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${fallbackName}"; filename*=UTF-8''${encodeURIComponent(displayName)}`,
+    );
+    if (typeof obj.Body.pipe === "function") {
+      obj.Body.on?.("error", (error: unknown) => res.destroy(error as Error));
+      obj.Body.pipe(res);
+    } else {
+      res.end(Buffer.from(await obj.Body.transformToByteArray()));
+    }
+  } catch (error: any) {
+    const status = Number(error?.$metadata?.httpStatusCode || 0);
+    if (status === 404 || error?.name === "NoSuchKey") { res.status(404).json({ error: "not_found" }); return; }
+    if (status === 416) { res.status(416).setHeader("Accept-Ranges", "bytes").end(); return; }
+    console.error("[protools-companion] bounce stream:", error);
+    res.status(502).json({ error: "storage_read_failed" });
+  }
+}
 
 function isUuid(v: string): boolean { return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v); }
 // ─────────────────────────── Hjelpere ────────────────────────────────────────────────
@@ -571,6 +622,58 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
     const ph = { timecode: strOrNull(req.body?.timecode, 24), seconds: numOrNull(req.body?.seconds), isPlaying: !!req.body?.isPlaying, at: new Date().toISOString() };
     await pool.query(`UPDATE protools_companion_sessions SET playhead = $2::jsonb, last_activity = NOW() WHERE id = $1::uuid`, [sess.id, JSON.stringify(ph)]).catch(() => {});
     res.json({ ok: true });
+  });
+
+  // GET /api/protools/bounces/:id/file — same-origin avspilling fra privat R2.
+  // Nettleserens <audio>/WaveSurfer trenger Range (206), og CreatorHub-CSP-en
+  // tillater med vilje ikke direkte media fra R2-endepunktet. Eier/team bruker
+  // vanlig sesjon; en invitert reviewer bruker den eksisterende invite-tokenen.
+  app.get("/api/protools/bounces/:id/file", async (req, res) => {
+    const bounceId = String(req.params.id || "").trim();
+    if (!isUuid(bounceId)) return res.status(400).json({ error: "invalid_bounce_id" });
+    const shareToken = typeof req.query?.share === "string" ? req.query.share.trim().slice(0, 80) : "";
+    try {
+      let row: any = null;
+      if (shareToken) {
+        if (!shareToken.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
+        const shared = await pool.query(
+          `SELECT b.storage_key,b.file_name
+             FROM protools_companion_bounces b
+             JOIN audio_review_versions v ON v.id=b.review_version_id
+             JOIN audio_review_members m ON m.project_id=v.project_id
+            WHERE b.id=$1::uuid AND m.invite_token=$2
+              AND (m.invite_expires_at IS NULL OR m.invite_expires_at > NOW())
+            LIMIT 1`,
+          [bounceId, shareToken],
+        );
+        row = shared.rows[0] || null;
+      } else {
+        const session = requireUserSession(req, res); if (!session) return;
+        const owned = await pool.query(
+          `SELECT b.storage_key,b.file_name,s.user_id,par.project_id AS workspace_project_id
+             FROM protools_companion_bounces b
+             JOIN protools_companion_sessions s ON s.id=b.session_id
+             LEFT JOIN audio_review_versions v ON v.id=b.review_version_id
+             LEFT JOIN project_audio_rooms par ON par.audio_review_project_id=v.project_id
+            WHERE b.id=$1::uuid
+            LIMIT 1`,
+          [bounceId],
+        );
+        row = owned.rows[0] || null;
+        if (row && String(row.user_id) !== String(session.userId)) {
+          const workspaceProjectId = row.workspace_project_id ? String(row.workspace_project_id) : "";
+          if (!workspaceProjectId || !(await canAccessProject(pool, session.userId, workspaceProjectId))) {
+            return res.status(404).json({ error: "not_found" });
+          }
+        }
+      }
+      if (!row?.storage_key) return res.status(404).json({ error: "not_found" });
+      await streamBounceObject(req, res, String(row.storage_key), row.file_name ? String(row.file_name) : null);
+    } catch (error) {
+      console.error("[protools-companion] bounce playback:", error);
+      if (!res.headersSent) return res.status(404).json({ error: "not_found" });
+      res.destroy(error instanceof Error ? error : undefined);
+    }
   });
 
   // POST /api/protools/sessions/:id/bounce/presign — { fileName, sizeBytes?, mimeType? } → presignert PUT

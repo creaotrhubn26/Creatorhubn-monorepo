@@ -1287,6 +1287,52 @@ struct DiscoveryV2ScoreExplanation: Codable, Hashable, Sendable {
     }
 }
 
+enum DiscoveryV2EntityKind: String, Codable, Hashable, Sendable {
+    case clinic, practitioner, unknown
+}
+
+enum DiscoveryV2ClinicLeadRole: String, Codable, Hashable, Sendable {
+    case clinicAccount = "clinic_account"
+    case practitionerContact = "practitioner_contact"
+    case independentPractice = "independent_practice"
+    case ambiguous
+}
+
+struct DiscoveryV2ClinicPractitioner: Codable, Hashable, Sendable, Identifiable {
+    var candidateId: String
+    var name: String
+    var organizationNumber: String?
+    var relationshipConfidence: String
+    var evidence: [String]
+
+    var id: String { candidateId }
+
+    enum CodingKeys: String, CodingKey {
+        case name, evidence
+        case candidateId = "candidate_id"
+        case organizationNumber = "organization_number"
+        case relationshipConfidence = "relationship_confidence"
+    }
+}
+
+struct DiscoveryV2ClinicGroup: Codable, Hashable, Sendable {
+    var role: DiscoveryV2ClinicLeadRole
+    var clinicCandidateId: String?
+    var clinicName: String?
+    var clinicLeadId: String?
+    var relationshipConfidence: String?
+    var evidence: [String]
+    var practitioners: [DiscoveryV2ClinicPractitioner]
+
+    enum CodingKeys: String, CodingKey {
+        case role, evidence, practitioners
+        case clinicCandidateId = "clinic_candidate_id"
+        case clinicName = "clinic_name"
+        case clinicLeadId = "clinic_lead_id"
+        case relationshipConfidence = "relationship_confidence"
+    }
+}
+
 
 struct DiscoveryV2Candidate: Codable, Hashable, Sendable, Identifiable {
     var id: String
@@ -1303,6 +1349,10 @@ struct DiscoveryV2Candidate: Codable, Hashable, Sendable, Identifiable {
     var organizationForm: String?
     var organizationFormCode: String?
     var organizationStructure: String?
+    var entityKind: DiscoveryV2EntityKind?
+    var entityKindConfidence: String?
+    var entityKindEvidence: [String]?
+    var clinicGroup: DiscoveryV2ClinicGroup?
     var naceCode: String?
     var naceDescription: String?
     var employeeCount: Int?
@@ -1336,6 +1386,10 @@ struct DiscoveryV2Candidate: Codable, Hashable, Sendable, Identifiable {
         case organizationForm = "organization_form"
         case organizationFormCode = "organization_form_code"
         case organizationStructure = "organization_structure"
+        case entityKind = "entity_kind"
+        case entityKindConfidence = "entity_kind_confidence"
+        case entityKindEvidence = "entity_kind_evidence"
+        case clinicGroup = "clinic_group"
         case naceCode = "nace_code"
         case naceDescription = "nace_description"
         case employeeCount = "employee_count"

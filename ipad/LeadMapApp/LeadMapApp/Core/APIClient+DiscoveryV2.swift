@@ -13,6 +13,7 @@ struct DiscoveryV2DecisionResult: Decodable, Sendable {
     let candidateStatus: String
     let leadId: String?
     let feedbackId: String?
+    let contactCount: Int?
     let replayed: Bool
 
     enum CodingKeys: String, CodingKey {
@@ -22,6 +23,7 @@ struct DiscoveryV2DecisionResult: Decodable, Sendable {
         case candidateStatus = "candidate_status"
         case leadId = "lead_id"
         case feedbackId = "feedback_id"
+        case contactCount = "contact_count"
     }
 }
 
