@@ -37,6 +37,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # workflow_dispatch leser den korrigerte workflowen fra main, men
+          # validerer og bygger alltid den immutable release-taggen.
+          ref: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
 
       - name: Validate tag and prepare draft release
         id: release
@@ -64,8 +67,12 @@ jobs:
             exit 1
           fi
 
-          commit_sha="$GITHUB_SHA"
-          if release_json=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" 2>/dev/null); then
+          commit_sha=$(git rev-parse HEAD)
+          # GitHubs /releases/tags/:tag-endepunkt utelater draft-releaser. List
+          # releases eksplisitt slik at en trygg rerun kan gjenbruke draften.
+          release_json=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$tag\")" | head -n 1)
+          if [[ -n "$release_json" ]]; then
             if [[ "$(jq -r '.draft' <<<"$release_json")" != "true" ]]; then
               echo "::error::Release $tag er allerede publisert og blir ikke overskrevet"
               exit 1
@@ -83,13 +90,15 @@ jobs:
 
           Windows-installerne er foreløpig ikke Authenticode-signert. Windows SmartScreen kan derfor vise «Mer informasjon» → «Kjør likevel». Kontroller filen mot SHA256SUMS.txt før installasjon.
           NOTES
-            gh release create "$tag" \
-              --draft \
-              --target "$commit_sha" \
-              --title "CreatorHub Pro Tools Companion ${version}" \
-              --notes-file "$notes_file"
+            release_json=$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
+              -f tag_name="$tag" \
+              -f target_commitish="$commit_sha" \
+              -f name="CreatorHub Pro Tools Companion ${version}" \
+              -F draft=true \
+              -F prerelease=false \
+              --raw-field body="$(<"$notes_file")")
             rm -f "$notes_file"
-            release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" --jq '.id')
+            release_id=$(jq -r '.id' <<<"$release_json")
           fi
 
           {
