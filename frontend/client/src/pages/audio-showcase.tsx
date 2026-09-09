@@ -240,26 +240,102 @@ export default function AudioShowcasePage() {
   const fracRef = React.useRef(0);
 
   React.useEffect(() => {
-    if (!waveRef.current || !effectiveSrc) return;
+    const container = waveRef.current;
+    if (loading || !container || !effectiveSrc) return;
     let cancelled = false;
+    let ws: WaveSurfer | null = null;
+    let decodeContext: AudioContext | null = null;
+    const abortController = new AbortController();
     setReady(false);
     setMediaError(false);
-    const ws = WaveSurfer.create({
-      container: waveRef.current, url: effectiveSrc, height: 96,
-      fetchParams: companionAudioFetchParams(effectiveSrc),
-      waveColor: 'rgba(245,242,234,0.22)', progressColor: ACCENT, cursorColor: 'rgba(245,242,234,0.85)',
-      cursorWidth: 2, barWidth: 2, barGap: 1, barRadius: 3, normalize: true,
+    const dispose = (instance: WaveSurfer) => {
+      const media = instance.getMediaElement() as HTMLMediaElement & { audioContext?: AudioContext };
+      try { instance.destroy(); } catch { /* ignore */ }
+      if (media.audioContext?.state !== 'closed') void media.audioContext?.close().catch(() => {});
+    };
+    const bindPlayer = (instance: WaveSurfer, deferReady: boolean) => {
+      ws = instance;
+      wsRef.current = instance;
+      instance.on('ready', () => {
+        if (cancelled || ws !== instance || deferReady) return;
+        setReady(true); setDur(instance.getDuration()); instance.setVolume(vol);
+        if (fracRef.current > 0) instance.setTime(fracRef.current * instance.getDuration());
+      });
+      instance.on('error', () => { if (!cancelled && ws === instance) { setReady(false); setMediaError(true); } });
+      instance.on('timeupdate', (t: number) => { if (!cancelled && ws === instance) { setCur(t); if (instance.getDuration()) fracRef.current = t / instance.getDuration(); } });
+      instance.on('play', () => !cancelled && ws === instance && setPlaying(true));
+      instance.on('pause', () => !cancelled && ws === instance && setPlaying(false));
+      instance.on('finish', () => { if (cancelled || ws !== instance) return; if (loopRef.current) { instance.setTime(0); void instance.play(); } else setPlaying(false); });
+    };
+    void (async () => {
+      if (isProtectedCompanionAudio(effectiveSrc)) {
+        const response = await fetch(effectiveSrc, {
+          ...companionAudioFetchParams(effectiveSrc),
+          signal: abortController.signal,
+        });
+        if (!response.ok) throw new Error(`Audio load failed (${response.status})`);
+        const sourceBytes = await response.arrayBuffer();
+        decodeContext = new AudioContext();
+        const decoded = await decodeContext.decodeAudioData(sourceBytes.slice(0));
+        if (cancelled) return;
+        const instance = WaveSurfer.create({
+          container, height: 96, backend: 'WebAudio',
+          waveColor: 'rgba(245,242,234,0.22)', progressColor: ACCENT, cursorColor: 'rgba(245,242,234,0.85)',
+          cursorWidth: 2, barWidth: 2, barGap: 1, barRadius: 3, normalize: true,
+        });
+        bindPlayer(instance, true);
+        const peaks = Array.from({ length: decoded.numberOfChannels }, (_, channel) => decoded.getChannelData(channel));
+        await instance.load('', peaks, decoded.duration);
+        const media = instance.getMediaElement() as unknown as HTMLMediaElement & {
+          audioContext?: AudioContext;
+          buffer?: AudioBuffer | null;
+          duration: number;
+        };
+        media.buffer = decoded;
+        media.duration = decoded.duration;
+        if (cancelled || wsRef.current !== instance) return;
+        setReady(true); setDur(decoded.duration); instance.setVolume(vol);
+        if (fracRef.current > 0) instance.setTime(fracRef.current * decoded.duration);
+        return;
+      }
+      const instance = WaveSurfer.create({
+        container, url: effectiveSrc, height: 96,
+        // Never forward the CreatorHub token to third-party audio hosts.
+        fetchParams: companionAudioFetchParams(effectiveSrc),
+        waveColor: 'rgba(245,242,234,0.22)', progressColor: ACCENT, cursorColor: 'rgba(245,242,234,0.85)',
+        cursorWidth: 2, barWidth: 2, barGap: 1, barRadius: 3, normalize: true,
+      });
+      bindPlayer(instance, false);
+    })().catch((error) => {
+      if (!cancelled && !(error instanceof DOMException && error.name === 'AbortError')) {
+        setReady(false);
+        setMediaError(true);
+      }
+    }).finally(() => {
+      if (decodeContext?.state !== 'closed') void decodeContext?.close().catch(() => {});
+      decodeContext = null;
     });
-    wsRef.current = ws;
-    ws.on('ready', () => { if (cancelled) return; setReady(true); setDur(ws.getDuration()); ws.setVolume(vol); if (fracRef.current > 0) ws.setTime(fracRef.current * ws.getDuration()); });
-    ws.on('error', () => { if (!cancelled) { setReady(false); setMediaError(true); } });
-    ws.on('timeupdate', (t: number) => { if (!cancelled) { setCur(t); if (ws.getDuration()) fracRef.current = t / ws.getDuration(); } });
-    ws.on('play', () => !cancelled && setPlaying(true));
-    ws.on('pause', () => !cancelled && setPlaying(false));
-    ws.on('finish', () => { if (cancelled) return; if (loopRef.current) { ws.setTime(0); void ws.play(); } else setPlaying(false); });
-    return () => { cancelled = true; try { ws.destroy(); } catch { /* ignore */ } wsRef.current = null; };
-  }, [effectiveSrc]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => {
+      cancelled = true;
+      abortController.abort();
+      if (decodeContext?.state !== 'closed') void decodeContext?.close().catch(() => {});
+      if (ws) dispose(ws);
+      wsRef.current = null;
+    };
+  }, [effectiveSrc, loading]); // eslint-disable-line react-hooks/exhaustive-deps
   const seekFrac = (f: number) => { const ws = wsRef.current; if (ws && dur) ws.setTime(Math.max(0, Math.min(1, f)) * dur); };
+  const togglePlayback = async () => {
+    const ws = wsRef.current;
+    if (!ws) return;
+    const media = ws.getMediaElement() as HTMLMediaElement & { audioContext?: AudioContext };
+    try {
+      if (media.audioContext?.state === 'suspended') await media.audioContext.resume();
+      await ws.playPause();
+    } catch {
+      setPlaying(false);
+      setMediaError(true);
+    }
+  };
 
   /* ── Mutasjoner (alle wired) ── */
   const addComment = async (body: string, opts: { parentId?: string; sectionRef?: string | null } = {}) => {
@@ -576,7 +652,7 @@ export default function AudioShowcasePage() {
               <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5 }}>
                 <IconButton onClick={() => setLoopOn((v) => !v)} sx={{ color: loopOn ? ACCENT : MUTED }}><LoopIcon /></IconButton>
                 <IconButton onClick={() => seekFrac(Math.max(0, (cur - 10) / (dur || 1)))} sx={{ color: TEXT }}><SkipPrevious /></IconButton>
-                <IconButton onClick={() => wsRef.current?.playPause()} disabled={!ready} sx={{ bgcolor: 'transparent', color: ACCENT, border: `2px solid ${ACCENT}`, width: 52, height: 52, '&:hover': { bgcolor: 'rgba(255,107,53,0.12)' }, '&.Mui-disabled': { borderColor: BORDER, color: FAINT } }}>{playing ? <Pause sx={{ fontSize: 28 }} /> : <PlayArrow sx={{ fontSize: 28 }} />}</IconButton>
+                <IconButton onClick={() => void togglePlayback()} disabled={!ready} sx={{ bgcolor: 'transparent', color: ACCENT, border: `2px solid ${ACCENT}`, width: 52, height: 52, '&:hover': { bgcolor: 'rgba(255,107,53,0.12)' }, '&.Mui-disabled': { borderColor: BORDER, color: FAINT } }}>{playing ? <Pause sx={{ fontSize: 28 }} /> : <PlayArrow sx={{ fontSize: 28 }} />}</IconButton>
                 <IconButton onClick={() => seekFrac(Math.min(1, (cur + 10) / (dur || 1)))} sx={{ color: TEXT }}><SkipNext /></IconButton>
                 <Stack direction="row" alignItems="center" spacing={1} sx={{ width: 110 }}>
                   <VolumeUp sx={{ fontSize: 18, color: MUTED }} />

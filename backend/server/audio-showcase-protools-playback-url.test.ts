@@ -9,12 +9,18 @@ const VERSION_ID = "00000000-0000-4000-8000-000000000002";
 const BOUNCE_ID = "00000000-0000-4000-8000-000000000003";
 
 describe("Audio Showcase Pro Tools playback URL", () => {
-  it("sends the persisted OAuth token for protected playback and download only", () => {
+  it("uses Web Audio and sends the persisted OAuth token for protected playback and download only", () => {
     const source = fs.readFileSync(
       new URL("../../frontend/client/src/pages/audio-showcase.tsx", import.meta.url),
       "utf8",
     );
+    expect(source).toContain("backend: 'WebAudio'");
     expect(source).toContain("fetchParams: companionAudioFetchParams(effectiveSrc)");
+    expect(source).toContain("[effectiveSrc, loading]");
+    expect(source).toContain("decodeAudioData(sourceBytes.slice(0))");
+    expect(source).toContain("instance.load('', peaks, decoded.duration)");
+    expect(source).toContain("media.buffer = decoded");
+    expect(source).toContain("media.audioContext.resume()");
     expect(source).toContain("fetch(url, companionAudioFetchParams(url))");
     expect(source).toContain("/^\\/api\\/protools\\/bounces\\/");
     expect(source).toContain("headers: { Authorization: `Bearer ${token}` }");
