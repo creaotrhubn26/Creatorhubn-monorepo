@@ -7,12 +7,66 @@ import { test, expect, type Page } from '@playwright/test';
 // ═══════════════════════════════════════════════════════════════════════
 
 const TEST_PAGE = '/e2e-casting-test.html';
+const storyWriterRuntimeErrors = new WeakMap<Page, string[]>();
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
+/** Resolve API calls immediately so local-fallback tests never wait for a backend proxy. */
+async function useOfflineApiFallback(page: Page) {
+  let seededProject: unknown = null;
+
+  await page.route('**/api/**', async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    const method = route.request().method();
+
+    if (pathname === '/api/casting/health') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":"offline"}' });
+      return;
+    }
+
+    if (pathname === '/api/settings/list') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"entries":[]}' });
+      return;
+    }
+
+    if (pathname === '/api/settings') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"data":null}' });
+      return;
+    }
+
+    if (pathname === '/api/casting/projects' && method === 'POST') {
+      seededProject = route.request().postDataJSON();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(seededProject),
+      });
+      return;
+    }
+
+    if (pathname.startsWith('/api/casting/projects/') && method === 'GET' && seededProject) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(seededProject),
+      });
+      return;
+    }
+
+    if (pathname === '/api/professions/all') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+      return;
+    }
+
+    // Empty successful responses keep Chrome's console clean while the health
+    // response above still makes casting/manuscript services use local state.
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+  });
+}
+
 /** Navigate to the CastingPlannerPanel and wait for it to render */
-async function openRoleRoom(page: Page) {
-  await page.goto(TEST_PAGE, { waitUntil: 'load', timeout: 60_000 });
+async function openRoleRoom(page: Page, testPage = TEST_PAGE) {
+  await page.goto(testPage, { waitUntil: 'load', timeout: 60_000 });
   // Sprint A.7: bytt til stabil DOM-marker. Tekst-locator var fragil — den
   // matchet "The Role Room" i et skjult element så testen feilet selv om
   // panelet faktisk var mountet.
@@ -395,9 +449,24 @@ test.describe('Tab 8: Shot Lists (via Story Arc Studio)', () => {
 
 test.describe('Tab 9: Story Arc Studio', () => {
   test.beforeEach(async ({ page }) => {
-    await openRoleRoom(page);
+    const runtimeErrors: string[] = [];
+    storyWriterRuntimeErrors.set(page, runtimeErrors);
+    page.on('pageerror', (error) => runtimeErrors.push(`[pageerror] ${error.message}`));
+    page.on('console', (message) => {
+      if (message.type() === 'error') runtimeErrors.push(`[console] ${message.text()}`);
+    });
+
+    // Denne gruppen tester navigasjon, ikke backend. Seed prosjektet i
+    // harnessets lokale lager slik at preconditionen er deterministisk også
+    // når lokal API-server ikke kjører.
+    await useOfflineApiFallback(page);
+    await openRoleRoom(page, `${TEST_PAGE}?seed=story-writer`);
     await ensureProject(page);
     await clickTab(page, 'tab-story-arc-studio');
+  });
+
+  test.afterEach(async ({ page }) => {
+    expect(storyWriterRuntimeErrors.get(page) ?? []).toEqual([]);
   });
 
   test('11.1 Story Arc Studio main view shows two cards', async ({ page }) => {
@@ -459,32 +528,27 @@ test.describe('Tab 9: Story Arc Studio', () => {
   });
 
   test('11.5 Can navigate to Story Writer sub-view', async ({ page }) => {
-    const writerCard = page.locator('text=/Story Writer|Historieforfatter/i').first();
-    const hasCard = await writerCard.isVisible({ timeout: 5_000 }).catch(() => false);
-    if (hasCard) {
-      await writerCard.click();
-      await page.waitForTimeout(1000);
+    const writerCard = page.getByTestId('story-writer-card');
+    await expect(writerCard).toBeVisible({ timeout: 5_000 });
+    await writerCard.click({ noWaitAfter: true });
 
-      // Should see ManuscriptPanel content (editor tabs or manuscript list)
-      const manuscriptContent = page.locator('text=/manuskript|manuscript|editor|scene/i').first();
-      const hasContent = await manuscriptContent.isVisible({ timeout: 5_000 }).catch(() => false);
-      expect(hasContent).toBe(true);
-    }
+    // Assert selve view-roten. En bred tekstregex kunne velge et skjult
+    // "manuskript"-/"scene"-treff og gjorde testen tilfeldig.
+    await expect(page.getByTestId('manuscript-panel-root')).toBeVisible({ timeout: 10_000 });
   });
 
   test('11.6 Story Writer has manuscript sub-tabs', async ({ page }) => {
-    const writerCard = page.locator('text=/Story Writer|Historieforfatter/i').first();
-    const hasCard = await writerCard.isVisible({ timeout: 5_000 }).catch(() => false);
-    if (hasCard) {
-      await writerCard.click();
-      await page.waitForTimeout(1000);
+    const writerCard = page.getByTestId('story-writer-card');
+    await expect(writerCard).toBeVisible({ timeout: 5_000 });
+    await writerCard.click({ noWaitAfter: true });
 
-      // ManuscriptPanel has tabs: editor, acts, scenes, characters, dialogue, etc.
-      const tabs = page.locator('[role="tab"]');
-      const tabCount = await tabs.count();
-      // Should have multiple sub-tabs within the manuscript panel
-      expect(tabCount).toBeGreaterThanOrEqual(1);
-    }
+    const manuscriptPanel = page.getByTestId('manuscript-panel-root');
+    await expect(manuscriptPanel).toBeVisible({ timeout: 10_000 });
+
+    // ManuscriptPanel has tabs: editor, acts, scenes, characters, dialogue, etc.
+    const tabs = manuscriptPanel.locator('[role="tab"]');
+    await expect(manuscriptPanel.getByRole('tab', { name: /Editor/i })).toBeVisible({ timeout: 5_000 });
+    expect(await tabs.count()).toBeGreaterThanOrEqual(5);
   });
 });
 
