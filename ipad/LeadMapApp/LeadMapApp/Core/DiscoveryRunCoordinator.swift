@@ -647,6 +647,13 @@ final class DiscoveryRunCoordinator {
                 confirmedPlaceMatches = confirmedPlaceMatches.filter {
                     visibleCandidateIds.contains($0.key)
                 }
+                let actionableCandidateIds = Set(candidates.compactMap { candidate in
+                    candidate.clinicGroup?.role == .practitionerContact
+                        && candidate.clinicGroup?.clinicLeadId == nil
+                        ? nil
+                        : candidate.id
+                })
+                selectedCandidateIds.formIntersection(actionableCandidateIds)
             }
             nextCursor = page.nextCursor
             await persist()
@@ -710,7 +717,11 @@ final class DiscoveryRunCoordinator {
                     placeConfirmationExpiresAt: confirmedPlaceMatch?.confirmationExpiresAt))
             guard isCurrent(binding),
                   isCurrentRunSelection(selectionGeneration, expectedRunId: expectedRunId) else { return false }
-            candidates.removeAll { $0.id == candidateId }
+            candidates.removeAll { candidate in
+                candidate.id == candidateId ||
+                    (candidate.clinicGroup?.role == .practitionerContact &&
+                     candidate.clinicGroup?.clinicCandidateId == candidateId)
+            }
             selectedCandidateIds.remove(candidateId)
             confirmedPlaceMatches.removeValue(forKey: candidateId)
             let refreshed = try? await api.fetchDiscoveryRun(projectId: projectId, runId: run.id)

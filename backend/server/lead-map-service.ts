@@ -105,6 +105,14 @@ export interface MapLead {
   organizationNumber: string | null;
   contactName: string | null;
   contactRole: string | null;
+  contacts: Array<{
+    id: string;
+    name: string;
+    role: string | null;
+    organizationNumber: string | null;
+    source: string;
+    relationshipConfidence: string | null;
+  }>;
   employeeCountEstimate: number | null;
   annualRevenueNokEstimate: number | null;
   instagramUrl: string | null;
@@ -187,6 +195,27 @@ function rowToLead(row: any): MapLead {
     organizationNumber: row.enrichment_org_nr ?? null,
     contactName: row.contact_name ?? null,
     contactRole: row.contact_role ?? null,
+    contacts: Array.isArray(row.contacts)
+      ? row.contacts.flatMap((value: unknown) => {
+          if (!value || typeof value !== "object") return [];
+          const contact = value as Record<string, unknown>;
+          if (typeof contact.id !== "string" || typeof contact.name !== "string") return [];
+          return [{
+            id: contact.id,
+            name: contact.name,
+            role: typeof contact.role === "string" ? contact.role : null,
+            organizationNumber:
+              typeof contact.organization_number === "string"
+                ? contact.organization_number
+                : null,
+            source: typeof contact.source === "string" ? contact.source : "unknown",
+            relationshipConfidence:
+              typeof contact.relationship_confidence === "string"
+                ? contact.relationship_confidence
+                : null,
+          }];
+        })
+      : [],
     employeeCountEstimate: row.employee_count_estimate === null || row.employee_count_estimate === undefined
       ? null
       : Number(row.employee_count_estimate),
@@ -278,6 +307,23 @@ export async function listLeadsInBounds(
             c.project_id,
             c.industry_id::text AS industry_id,
             c.cpv_koder,
+            COALESCE((
+              SELECT jsonb_agg(
+                jsonb_build_object(
+                  'id', contact.id::text,
+                  'name', contact.name,
+                  'role', contact.role,
+                  'organization_number', contact.organization_number,
+                  'source', contact.source,
+                  'relationship_confidence', contact.relationship_confidence
+                )
+                ORDER BY contact.name, contact.id
+              )
+                FROM leadgrid_customer_contacts contact
+               WHERE contact.organization_id = c.organization_id
+                 AND contact.project_id = c.project_id
+                 AND contact.customer_id = c.id
+            ), '[]'::jsonb) AS contacts,
             EXISTS (
               SELECT 1 FROM leadgrid_lead_favorites f
                WHERE f.organization_id = c.organization_id
@@ -318,6 +364,23 @@ export async function getLeadById(
             c.project_id,
             c.industry_id::text AS industry_id,
             c.cpv_koder,
+            COALESCE((
+              SELECT jsonb_agg(
+                jsonb_build_object(
+                  'id', contact.id::text,
+                  'name', contact.name,
+                  'role', contact.role,
+                  'organization_number', contact.organization_number,
+                  'source', contact.source,
+                  'relationship_confidence', contact.relationship_confidence
+                )
+                ORDER BY contact.name, contact.id
+              )
+                FROM leadgrid_customer_contacts contact
+               WHERE contact.organization_id = c.organization_id
+                 AND contact.project_id = c.project_id
+                 AND contact.customer_id = c.id
+            ), '[]'::jsonb) AS contacts,
             EXISTS (
               SELECT 1 FROM leadgrid_lead_favorites f
                WHERE f.organization_id = c.organization_id

@@ -954,6 +954,126 @@ describe("Leadgrid Discovery service", () => {
     expect(values.at(-1)).toBe(2);
   });
 
+  it("returns one clinic account with co-located practitioners as contacts", async () => {
+    const clinicId = CANDIDATE_ID;
+    const dentistId = "88888888-8888-4888-8888-888888888888";
+    const baseRow = {
+      run_id: RUN_ID,
+      address: "Storgata 39",
+      city: "Oslo",
+      postal_code: "0182",
+      country_code: "NO",
+      latitude: null,
+      longitude: null,
+      website_url: null,
+      phone: null,
+      email: null,
+      source_uri: null,
+      organization_form: "Aksjeselskap",
+      organization_structure: "unknown",
+      nace_code: "86.230",
+      nace_description: "Tannhelsetjenester",
+      employee_count: null,
+      registered_in_vat_register: null,
+      registered_in_business_register: true,
+      entity_kind_confidence: "high",
+      entity_kind_evidence: [],
+      normalized_location_key: "storgata39|0182|oslo",
+      status: "review_ready",
+      research_status: "completed",
+      disposition: "review_ready",
+      fit_score: 80,
+      fit_coverage: 1,
+      data_quality_score: 70,
+      data_quality_coverage: 1,
+      excluded: false,
+      exclusion_matches: [],
+      score_explanation: {},
+      reasons: [],
+      evidence: [],
+      existing_lead_id: null,
+      imported_lead_id: null,
+      created_at: "2026-09-09T09:00:00.000Z",
+      updated_at: "2026-09-09T09:00:00.000Z",
+      cursor_sort_value: 80,
+    };
+    const rows = [
+      {
+        ...baseRow,
+        id: clinicId,
+        name: "Storgata Tannklinikk AS",
+        organization_number: "999888777",
+        entity_kind: "clinic",
+      },
+      {
+        ...baseRow,
+        id: dentistId,
+        name: "Tannlege Kari Nordmann",
+        address: "Storgata Tannklinikk, Storgata 39",
+        organization_number: "987654321",
+        entity_kind: "practitioner",
+        cursor_sort_value: 70,
+      },
+    ];
+    const query = vi.fn(async (queryValue: unknown) => {
+      const sql = textOf(queryValue);
+      if (sql.includes("FROM leadgrid_discovery_runs r")) {
+        return { rows, rowCount: rows.length };
+      }
+      if (
+        sql.includes("FROM leadgrid_discovery_candidates") &&
+        sql.includes("normalized_location_key = ANY")
+      ) {
+        return {
+          rows: rows.map((row) => ({
+            id: row.id,
+            name: row.name,
+            organization_number: row.organization_number,
+            entity_kind: row.entity_kind,
+            entity_kind_confidence: row.entity_kind_confidence,
+            normalized_location_key: row.normalized_location_key,
+            address: row.address,
+            website_url: row.website_url,
+            status: row.status,
+            imported_lead_id: null,
+          })),
+          rowCount: rows.length,
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const result = await listDiscoveryCandidates({ query } as unknown as Pool, {
+      project,
+      runId: RUN_ID,
+      disposition: "pending",
+      sort: "score_desc",
+      limit: 50,
+    });
+
+    expect(result.items[0]).toMatchObject({
+      id: clinicId,
+      entity_kind: "clinic",
+      clinic_group: {
+        role: "clinic_account",
+        practitioners: [
+          {
+            candidate_id: dentistId,
+            name: "Tannlege Kari Nordmann",
+            relationship_confidence: "high",
+          },
+        ],
+      },
+    });
+    expect(result.items[1]).toMatchObject({
+      id: dentistId,
+      clinic_group: {
+        role: "practitioner_contact",
+        clinic_candidate_id: clinicId,
+      },
+    });
+  });
+
   it("promotes exactly one CRM lead and broadcasts only after commit", async () => {
     const sequence: string[] = [];
     const emit = vi
@@ -1040,6 +1160,324 @@ describe("Leadgrid Discovery service", () => {
     ).toBe(true);
     expect(
       sequence.some((entry) => entry.includes("FOR UPDATE OF r, c, rc")),
+    ).toBe(true);
+  });
+
+  it("promotes a clinic once and persists its visible practitioners as contacts", async () => {
+    const dentistId = "88888888-8888-4888-8888-888888888888";
+    const otherRunId = "99999999-9999-4999-8999-999999999999";
+    const { pool, query } = transactionPool((sql) => {
+      if (sql.includes("SELECT normalized_location_key")) {
+        return {
+          rows: [{ normalized_location_key: "storgata39|0182|oslo" }],
+        };
+      }
+      if (sql.includes("SELECT c.id::text AS candidate_id")) {
+        return {
+          rows: [
+            {
+              ...decisionCandidate(),
+              name: "Storgata Tannklinikk AS",
+              address: "Storgata 39",
+              postal_code: "0182",
+              entity_kind: "clinic",
+              entity_kind_confidence: "high",
+              entity_kind_evidence: ["public_clinic_name"],
+              normalized_location_key: "storgata39|0182|oslo",
+            },
+          ],
+        };
+      }
+      if (
+        sql.includes("FROM leadgrid_discovery_candidates") &&
+        sql.includes("normalized_location_key = ANY")
+      ) {
+        return {
+          rows: [
+            {
+              id: CANDIDATE_ID,
+              name: "Storgata Tannklinikk AS",
+              organization_number: "999888777",
+              entity_kind: "clinic",
+              entity_kind_confidence: "high",
+              normalized_location_key: "storgata39|0182|oslo",
+              address: "Storgata 39",
+              website_url: "https://tryggregnskap.no",
+              status: "review_ready",
+              imported_lead_id: null,
+            },
+            {
+              id: dentistId,
+              name: "Tannlege Kari Nordmann",
+              organization_number: "987654321",
+              entity_kind: "practitioner",
+              entity_kind_confidence: "high",
+              normalized_location_key: "storgata39|0182|oslo",
+              address: "Storgata Tannklinikk, Storgata 39",
+              website_url: null,
+              status: "review_ready",
+              imported_lead_id: null,
+            },
+          ],
+          rowCount: 2,
+        };
+      }
+      if (sql.includes("FROM leadgrid_discovery_feedback")) return { rows: [] };
+      if (sql.includes("FROM crm_customers")) return { rows: [] };
+      if (sql.includes("INSERT INTO crm_customers")) {
+        return { rows: [{ id: LEAD_ID }], rowCount: 1 };
+      }
+      if (
+        sql.includes("UPDATE leadgrid_discovery_candidates") &&
+        sql.includes("id = ANY($1::uuid[])")
+      ) {
+        return {
+          rows: [
+            {
+              id: dentistId,
+              name: "Tannlege Kari Nordmann",
+              organization_number: "987654321",
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      if (
+        sql.includes("UPDATE leadgrid_discovery_run_candidates") &&
+        sql.includes("candidate_id = ANY($1::uuid[])")
+      ) {
+        return { rows: [{ run_id: otherRunId }], rowCount: 1 };
+      }
+      return undefined;
+    });
+
+    const result = await decideDiscoveryCandidate(pool, {
+      project,
+      userId: "user-a",
+      runId: RUN_ID,
+      candidateId: CANDIDATE_ID,
+      idempotencyKey: "approve-clinic-group-key",
+      decision: { decision: "approve", reason_code: "good_fit" },
+    });
+
+    expect(result).toMatchObject({
+      decision: "approve",
+      lead_id: LEAD_ID,
+      contact_count: 1,
+      replayed: false,
+    });
+    const promotionCall = query.mock.calls.find(([queryValue]) =>
+      textOf(queryValue).includes("INSERT INTO crm_customers"),
+    );
+    const promotionMetadata = JSON.parse(String(promotionCall?.[1]?.[19]));
+    expect(promotionMetadata.discovery.clinic_group).toEqual({
+      role: "clinic_account",
+      clinic_candidate_id: CANDIDATE_ID,
+      included_contact_candidate_ids: [dentistId],
+    });
+    expect(
+      query.mock.calls.some(
+        ([queryValue, values]) =>
+          textOf(queryValue).includes(
+            "INSERT INTO leadgrid_customer_contacts",
+          ) && values?.[5] === dentistId,
+      ),
+    ).toBe(true);
+    expect(
+      query.mock.calls.some(([queryValue]) =>
+        textOf(queryValue).includes("contact_name = COALESCE(contact_name"),
+      ),
+    ).toBe(true);
+    const groupedCandidateUpdate = query.mock.calls.find(([queryValue]) =>
+      textOf(queryValue).includes("id = ANY($1::uuid[])"),
+    );
+    expect(textOf(groupedCandidateUpdate?.[0])).toContain(
+      "normalized_location_key = $6",
+    );
+    expect(groupedCandidateUpdate?.[1]?.[5]).toBe("storgata39|0182|oslo");
+    expect(
+      query.mock.calls.some(
+        ([queryValue, values]) =>
+          textOf(queryValue).includes("pg_advisory_xact_lock") &&
+          values?.[0] ===
+            `${ORGANIZATION_ID}|${project.id}|discovery-decision|storgata39|0182|oslo`,
+      ),
+    ).toBe(true);
+  });
+
+  it("requires approval through the clinic group for a linked practitioner", async () => {
+    const { pool, sequence } = transactionPool((sql) => {
+      if (sql.includes("SELECT c.id::text AS candidate_id")) {
+        return {
+          rows: [
+            {
+              ...decisionCandidate(),
+              name: "Tannlege Kari Nordmann",
+              entity_kind: "practitioner",
+              entity_kind_confidence: "high",
+              normalized_location_key: "storgata39|0182|oslo",
+            },
+          ],
+        };
+      }
+      if (sql.includes("FROM leadgrid_discovery_feedback")) return { rows: [] };
+      if (
+        sql.includes("FROM leadgrid_discovery_candidates") &&
+        sql.includes("normalized_location_key = ANY")
+      ) {
+        return {
+          rows: [
+            {
+              id: CANDIDATE_ID,
+              name: "Tannlege Kari Nordmann",
+              organization_number: "987654321",
+              entity_kind: "practitioner",
+              entity_kind_confidence: "high",
+              normalized_location_key: "storgata39|0182|oslo",
+              address: "Storgata Tannklinikk, Storgata 39",
+              website_url: null,
+              status: "review_ready",
+              imported_lead_id: null,
+            },
+            {
+              id: "77777777-7777-4777-8777-777777777777",
+              name: "Storgata Tannklinikk AS",
+              organization_number: "999888777",
+              entity_kind: "clinic",
+              entity_kind_confidence: "high",
+              normalized_location_key: "storgata39|0182|oslo",
+              address: "Storgata 39",
+              website_url: null,
+              status: "review_ready",
+              imported_lead_id: null,
+            },
+          ],
+        };
+      }
+      return undefined;
+    }, []);
+
+    await expect(
+      decideDiscoveryCandidate(pool, {
+        project,
+        userId: "user-a",
+        runId: RUN_ID,
+        candidateId: CANDIDATE_ID,
+        idempotencyKey: "approve-linked-practitioner-key",
+        decision: { decision: "approve", reason_code: "good_fit" },
+      }),
+    ).rejects.toMatchObject({ code: "clinic_approval_required", status: 409 });
+    expect(sequence).toContain("ROLLBACK");
+    expect(
+      sequence.some((entry) => entry.includes("INSERT INTO crm_customers")),
+    ).toBe(false);
+  });
+
+  it("attaches a newly discovered practitioner to an already imported clinic", async () => {
+    const clinicCandidateId = "77777777-7777-4777-8777-777777777777";
+    const { pool, query } = transactionPool((sql) => {
+      if (sql.includes("SELECT c.id::text AS candidate_id")) {
+        return {
+          rows: [
+            {
+              ...decisionCandidate(),
+              name: "Tannlege Kari Nordmann",
+              organization_number: "987654321",
+              entity_kind: "practitioner",
+              entity_kind_confidence: "high",
+              normalized_location_key: "storgata39|0182|oslo",
+            },
+          ],
+        };
+      }
+      if (sql.includes("FROM leadgrid_discovery_feedback")) return { rows: [] };
+      if (
+        sql.includes("FROM leadgrid_discovery_candidates") &&
+        sql.includes("normalized_location_key = ANY")
+      ) {
+        return {
+          rows: [
+            {
+              id: CANDIDATE_ID,
+              name: "Tannlege Kari Nordmann",
+              organization_number: "987654321",
+              entity_kind: "practitioner",
+              entity_kind_confidence: "high",
+              normalized_location_key: "storgata39|0182|oslo",
+              address: "Storgata Tannklinikk, Storgata 39",
+              website_url: null,
+              status: "review_ready",
+              imported_lead_id: null,
+            },
+            {
+              id: clinicCandidateId,
+              name: "Storgata Tannklinikk AS",
+              organization_number: "999888777",
+              entity_kind: "clinic",
+              entity_kind_confidence: "high",
+              normalized_location_key: "storgata39|0182|oslo",
+              address: "Storgata 39",
+              website_url: null,
+              status: "imported",
+              imported_lead_id: LEAD_ID,
+            },
+          ],
+        };
+      }
+      if (
+        sql.includes("SELECT id::text") &&
+        sql.includes("FROM crm_customers") &&
+        sql.includes("archived_at IS NULL")
+      ) {
+        return { rows: [{ id: LEAD_ID }], rowCount: 1 };
+      }
+      if (
+        sql.includes("UPDATE leadgrid_discovery_candidates") &&
+        sql.includes("id = ANY($1::uuid[])")
+      ) {
+        return {
+          rows: [
+            {
+              id: CANDIDATE_ID,
+              name: "Tannlege Kari Nordmann",
+              organization_number: "987654321",
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return undefined;
+    });
+
+    const result = await decideDiscoveryCandidate(pool, {
+      project,
+      userId: "user-a",
+      runId: RUN_ID,
+      candidateId: CANDIDATE_ID,
+      idempotencyKey: "attach-practitioner-key",
+      decision: { decision: "approve", reason_code: "good_fit" },
+    });
+
+    expect(result).toMatchObject({
+      lead_id: LEAD_ID,
+      candidate_status: "imported",
+      contact_count: 1,
+      replayed: false,
+    });
+    expect(
+      query.mock.calls.some(([queryValue]) =>
+        textOf(queryValue).includes("INSERT INTO crm_customers"),
+      ),
+    ).toBe(false);
+    expect(
+      query.mock.calls.some(
+        ([queryValue, values]) =>
+          textOf(queryValue).includes(
+            "INSERT INTO leadgrid_customer_contacts",
+          ) &&
+          values?.[2] === LEAD_ID &&
+          values?.[5] === CANDIDATE_ID,
+      ),
     ).toBe(true);
   });
 
@@ -1512,6 +1950,7 @@ describe("Leadgrid Discovery service", () => {
               request_hash: requestHash,
               lead_id: LEAD_ID,
               value: "approve",
+              contact_count: 2,
             },
           ],
         };
@@ -1532,7 +1971,15 @@ describe("Leadgrid Discovery service", () => {
       replayed: true,
       lead_id: LEAD_ID,
       candidate_status: "imported",
+      contact_count: 2,
     });
+    const replayLookup = sequence.find((entry) =>
+      entry.includes("FROM leadgrid_discovery_feedback feedback"),
+    );
+    expect(replayLookup).toContain(
+      "contact.organization_id = feedback.organization_id",
+    );
+    expect(replayLookup).toContain("contact.project_id = feedback.project_id");
     expect(
       sequence.some((entry) => entry.includes("INSERT INTO crm_customers")),
     ).toBe(false);

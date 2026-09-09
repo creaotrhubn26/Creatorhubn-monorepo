@@ -214,6 +214,72 @@ final class DiscoveryV2Tests: XCTestCase {
         XCTAssertEqual(candidate.sources?.map(\.id), ["brreg"])
     }
 
+    func testCandidateDecodesClinicAccountWithPractitionerContacts() throws {
+        let data = Data(#"""
+        {
+          "id":"clinic-1",
+          "name":"Storgata Tannklinikk AS",
+          "entity_kind":"clinic",
+          "entity_kind_confidence":"high",
+          "entity_kind_evidence":["public_clinic_name"],
+          "clinic_group":{
+            "role":"clinic_account",
+            "clinic_candidate_id":"clinic-1",
+            "clinic_name":"Storgata Tannklinikk AS",
+            "clinic_lead_id":null,
+            "relationship_confidence":null,
+            "evidence":["classified_clinic_account"],
+            "practitioners":[{
+              "candidate_id":"dentist-1",
+              "name":"Tannlege Kari Nordmann",
+              "organization_number":"987654321",
+              "relationship_confidence":"high",
+              "evidence":["same_normalized_address","only_clinic_at_location"]
+            }]
+          }
+        }
+        """#.utf8)
+
+        let candidate = try JSONDecoder().decode(DiscoveryV2Candidate.self, from: data)
+
+        XCTAssertEqual(candidate.entityKind, .clinic)
+        XCTAssertEqual(candidate.entityKindConfidence, "high")
+        XCTAssertEqual(candidate.clinicGroup?.role, .clinicAccount)
+        XCTAssertEqual(candidate.clinicGroup?.practitioners.count, 1)
+        XCTAssertEqual(candidate.clinicGroup?.practitioners.first?.name, "Tannlege Kari Nordmann")
+    }
+
+    func testLegacyCandidateWithoutClinicGroupingStillDecodes() throws {
+        let data = Data(#"{"id":"candidate-legacy","name":"Legacy AS"}"#.utf8)
+        let candidate = try JSONDecoder().decode(DiscoveryV2Candidate.self, from: data)
+
+        XCTAssertNil(candidate.entityKind)
+        XCTAssertNil(candidate.clinicGroup)
+    }
+
+    func testPractitionerCanReferenceAnExistingClinicLead() throws {
+        let data = Data(#"{"id":"dentist-1","name":"Tannlege Kari Nordmann","entity_kind":"practitioner","clinic_group":{"role":"practitioner_contact","clinic_candidate_id":"clinic-1","clinic_name":"Storgata Tannklinikk AS","clinic_lead_id":"lead-1","relationship_confidence":"high","evidence":["same_normalized_address"],"practitioners":[]}}"#.utf8)
+        let candidate = try JSONDecoder().decode(DiscoveryV2Candidate.self, from: data)
+
+        XCTAssertEqual(candidate.clinicGroup?.role, .practitionerContact)
+        XCTAssertEqual(candidate.clinicGroup?.clinicLeadId, "lead-1")
+    }
+
+    func testDecisionAndLeadbookContactContractsDecode() throws {
+        let decisionData = Data(#"{"candidate_id":"clinic-1","run_id":"run-1","decision":"approve","candidate_status":"imported","lead_id":"lead-1","feedback_id":"feedback-1","contact_count":2,"replayed":false}"#.utf8)
+        let decision = try JSONDecoder().decode(
+            DiscoveryV2DecisionResult.self,
+            from: decisionData)
+        XCTAssertEqual(decision.contactCount, 2)
+
+        let contactData = Data(#"{"id":"contact-1","name":"Tannlege Kari Nordmann","role":"Tannlege","organizationNumber":"987654321","source":"discovery","relationshipConfidence":"high"}"#.utf8)
+        let contact = try JSONDecoder().decode(
+            LeadgridCustomerContact.self,
+            from: contactData)
+        XCTAssertEqual(contact.organizationNumber, "987654321")
+        XCTAssertEqual(contact.relationshipConfidence, "high")
+    }
+
     func testMigratedProfileUsesDefensiveBriefDefaults() throws {
         let data = Data(#"{"id":"profile-1","name":"Standard","is_default":true,"version":2,"brief":{"industry_queries":["regnskap"],"exclusion_terms":[],"city":"Oslo","target_count":20,"enrichment_count":10}}"#.utf8)
         let profile = try JSONDecoder().decode(DiscoveryV2Profile.self, from: data)

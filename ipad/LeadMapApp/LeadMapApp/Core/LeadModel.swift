@@ -41,6 +41,15 @@ enum LeadStatus: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+struct LeadgridCustomerContact: Identifiable, Codable, Hashable, Sendable {
+    let id: String
+    let name: String
+    let role: String?
+    let organizationNumber: String?
+    let source: String
+    let relationshipConfidence: String?
+}
+
 struct LeadModel: Identifiable, Codable, Hashable {
     let id: String
     let name: String
@@ -61,6 +70,7 @@ struct LeadModel: Identifiable, Codable, Hashable {
     var organizationNumber: String? = nil
     var contactName: String? = nil
     var contactRole: String? = nil
+    var contacts: [LeadgridCustomerContact]? = nil
     var employeeCountEstimate: Int? = nil
     var annualRevenueNokEstimate: Double? = nil
     let instagramUrl: String?
