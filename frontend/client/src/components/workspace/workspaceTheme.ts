@@ -229,6 +229,20 @@ export function navForCategory(
 }
 
 /**
+ * Vent med kategori-avhengig deep-link-validering til workspace-bootstrapen
+ * er ferdig. Ellers bruker første render service-fallbacken og sender gyldige
+ * musikk-/visual-rom til Oversikt før prosjektkategorien er kjent.
+ */
+export function shouldFallbackWorkspaceTab(
+  tab: string,
+  navItems: readonly WsNavItem[],
+  workspaceLoading: boolean,
+): boolean {
+  if (workspaceLoading || navItems.length === 0 || tab === 'oversikt') return false;
+  return !navItems.some((item) => item.key === tab);
+}
+
+/**
  * Bytt til engelske labels for utenlandske partner-vendors (wsLocale='en').
  * Items uten labelEn beholder sin (norske) label.
  */

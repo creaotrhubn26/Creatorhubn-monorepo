@@ -44,7 +44,7 @@ import CommunityHub from '../community/CommunityHub';
 import WorkspaceChatPanel from './WorkspaceChatPanel';
 import UniversalPrototypeFeedback from '../prototype-testing/UniversalPrototypeFeedback';
 import { roomOnlineState, usePresence } from './usePresence';
-import { ws, WS_NAV, navForCategory, localizeNav, workspaceCategoryFor, type WsNavItem } from './workspaceTheme';
+import { ws, WS_NAV, navForCategory, localizeNav, shouldFallbackWorkspaceTab, workspaceCategoryFor, type WsNavItem } from './workspaceTheme';
 import { getProfessionDisplayName } from '@shared/profession-types';
 import { WsLocaleProvider, type WsLocale } from './wsLocale';
 import { localeForVendor } from '../universal/editing-marketplace/editingMarketplaceStrings';
@@ -317,12 +317,12 @@ const TeamWorkspacePage: React.FC = () => {
   // Hvis aktiv fane ikke finnes i profesjonens nav (f.eks. delt lenke til
   // 'shotlist' for en musikkprodusent), fall tilbake til Oversikt.
   useEffect(() => {
-    if (!nav.length) return;
-    const valid = new Set(nav.map((n) => n.key));
-    // 'chat' og universelle finnes alltid i nav; rom/visuelle kan mangle.
-    if (!valid.has(tab) && tab !== 'oversikt') goTab('oversikt');
+    // Ekte prosjekter starter med en service-fallback før bootstrapen har
+    // returnert kategori. Ikke valider deep-linken mot den midlertidige nav-en.
+    const categoryPending = projectId !== 'sample' && workspaceLoading;
+    if (shouldFallbackWorkspaceTab(tab, nav, categoryPending)) goTab('oversikt');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, nav]);
+  }, [tab, nav, projectId, workspaceLoading]);
 
   // Slå opp i den kategori-resolvede nav-en (riktig label for f.eks. vendor);
   // WS_NAV som fallback for keys utenfor profesjonens nav.
