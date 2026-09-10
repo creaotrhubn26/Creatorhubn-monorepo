@@ -77,6 +77,61 @@ fn text_search_finds_the_matching_note_and_not_the_other() {
     assert!(!paths.contains(&"notes/handleliste.md"));
 }
 
+/// Regresjonstest: en tidligere versjon pakket hele spørringen som én sitert
+/// FTS5-frase, som krevde at ordene sto ved siden av hverandre i akkurat den
+/// rekkefølgen. To ord som finnes i samme notat, men langt fra hverandre, må
+/// fortsatt gi treff — det er den vanligste bruken av et notatsøk.
+#[test]
+fn multi_word_query_matches_terms_that_are_not_adjacent() {
+    let dir = tempdir().unwrap();
+    let repo = init_repo(dir.path());
+    write(
+        &repo,
+        "notes/leverandor.md",
+        "Vi kjøper komponenten fra en forhandler i Tyskland. Produsenten \
+         oppgir at firmware må oppdateres før levering.\n",
+    );
+    write(&repo, "notes/annet.md", "Ferieplanlegging for sommeren.\n");
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["commit", "-qm", "first"]);
+
+    let conn = db::open(&dir.path().join("index.db")).unwrap();
+    index::run_no_embed(&conn, &repo).unwrap();
+
+    let hits = search::text(&conn, "forhandler firmware", 5).unwrap();
+    let paths: Vec<&str> = hits.iter().map(|h| h.path.as_str()).collect();
+    assert!(
+        paths.contains(&"notes/leverandor.md"),
+        "both terms appear in the note, just not as a phrase; got {paths:?}"
+    );
+}
+
+/// Samme oppsett, men her sjekkes rangeringen: et notat som treffer begge
+/// termene skal rangeres over et som bare treffer én av dem.
+#[test]
+fn a_note_matching_both_terms_outranks_one_matching_only_one() {
+    let dir = tempdir().unwrap();
+    let repo = init_repo(dir.path());
+    write(
+        &repo,
+        "notes/begge.md",
+        "forhandler i Tyskland leverer komponenter, og firmware må oppdateres.\n",
+    );
+    write(&repo, "notes/kun_en.md", "vi har en ny forhandler i Sverige nå.\n");
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["commit", "-qm", "first"]);
+
+    let conn = db::open(&dir.path().join("index.db")).unwrap();
+    index::run_no_embed(&conn, &repo).unwrap();
+
+    let hits = search::text(&conn, "forhandler firmware", 5).unwrap();
+    assert_eq!(hits.len(), 2);
+    assert_eq!(
+        hits[0].path, "notes/begge.md",
+        "the note matching both terms must rank first, got {hits:?}"
+    );
+}
+
 #[test]
 fn a_note_mentioning_the_term_repeatedly_outranks_one_mentioning_it_once() {
     let dir = tempdir().unwrap();

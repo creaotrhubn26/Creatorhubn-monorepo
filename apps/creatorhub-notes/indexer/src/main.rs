@@ -74,10 +74,16 @@ fn main() -> Result<()> {
     }
     if let Command::Search { query, limit, text: true } = &args.command {
         let conn = db::open(&db_path)?;
+        // bm25-tallet betyr ingenting for en leser (og alle treff ser like ut
+        // avrundet); utdraget med treffordene markert er det som forklarer
+        // hvorfor notatet traff.
         for hit in search::text(&conn, query, *limit)? {
             println!(
-                "{:.4}  {}:{}-{}",
-                hit.distance, hit.path, hit.start_line, hit.end_line
+                "{}:{}-{}\n  {}",
+                hit.path,
+                hit.start_line,
+                hit.end_line,
+                hit.text.replace('\n', " ")
             );
         }
         return Ok(());
