@@ -691,6 +691,82 @@ export function createCreatorHubGoogleRouter(
     }
   });
 
+  // Reuse an already authenticated Workspace session when opening a trusted
+  // satellite product. The bearer token never enters the browser URL: only a
+  // short-lived, single-use transfer id crosses the origin boundary.
+  router.post('/oauth/satellite-transfer', async (req: Request, res: Response) => {
+    try {
+      pruneExpiredCreatorHubGoogleState();
+      const sessionToken = req.headers.authorization?.replace(/^Bearer\s+/i, '').trim() ?? '';
+      const session = await resolveSessionFromBearer(pool, activeSessions, sessionToken);
+      if (!session || !sessionToken) {
+        res.status(401).json({ error: 'Du må være logget inn i CreatorHub Workspace.' });
+        return;
+      }
+
+      const requestedOrigin = sanitizeBrowserOrigin(req.body?.browserOrigin);
+      let easeVerseOrigin = 'https://easeverse.netlify.app';
+      try {
+        easeVerseOrigin = new URL(
+          process.env.EASEVERSE_API_URL?.trim() || easeVerseOrigin,
+        ).origin;
+      } catch {
+        // Keep the fixed production origin if the optional environment value is invalid.
+      }
+      if (!requestedOrigin || requestedOrigin !== easeVerseOrigin) {
+        res.status(400).json({ error: 'Ugyldig mottaker for CreatorHub-innlogging.' });
+        return;
+      }
+
+      const name = session.displayName || session.name || session.email;
+      const transferId = crypto.randomUUID();
+      const transferPayload: CreatorHubGoogleTransferPayload = {
+        mode: 'login',
+        createdAt: Date.now(),
+        createdByUserId: session.userId,
+        createdByEmail: session.email,
+        sessionToken,
+        user: {
+          id: session.userId,
+          email: session.email,
+          role: session.role,
+          name,
+          display_name: name,
+          picture: session.picture,
+          verified_email: session.verified_email === true,
+        },
+        googleEmail: session.email,
+        googleSubject: `workspace-session:${session.userId}`,
+        profile: {
+          email: session.email,
+          name,
+          picture: session.picture ?? null,
+          verified_email: session.verified_email === true,
+          auth_source: 'workspace_session',
+        },
+      };
+      const persisted = await persistOauthTransfer(
+        pool,
+        transferId,
+        transferPayload,
+        new Date(transferPayload.createdAt + CREATORHUB_GOOGLE_TRANSFER_TTL_MS),
+      );
+      if (!persisted) {
+        res.status(503).json({ error: 'Kunne ikke opprette sikker EaseVerse-overføring.' });
+        return;
+      }
+      creatorHubGoogleTransferStore.set(transferId, transferPayload);
+      res.status(201).json({
+        transferId,
+        browserOrigin: easeVerseOrigin,
+        expiresInSeconds: Math.floor(CREATORHUB_GOOGLE_TRANSFER_TTL_MS / 1000),
+      });
+    } catch (error) {
+      console.error('CreatorHub satellite session transfer error:', error);
+      res.status(503).json({ error: 'CreatorHub-innlogging kan ikke overføres akkurat nå.' });
+    }
+  });
+
   // Meet-opptak-import: henter opptak + transkripsjoner for et Google Meet-møte
   // og fester dem til Drive-filene (Meet REST API + drive.meet.readonly).
   router.post('/meet/import-artifacts', async (req: Request, res: Response) => {

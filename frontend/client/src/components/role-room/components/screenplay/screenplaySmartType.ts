@@ -5,6 +5,21 @@ export interface ScreenplayCharacterSuggestion {
   sources: ScreenplaySmartTypeSource[];
   sourceLabel: string;
   reason: string;
+  contextLabels?: string[];
+}
+
+export interface ScreenplayCharacterRenameOccurrence {
+  lineIndex: number;
+  lineNumber: number;
+  before: string;
+  after: string;
+}
+
+export interface ScreenplayCharacterRenamePreview {
+  oldName: string;
+  newName: string;
+  content: string;
+  occurrences: ScreenplayCharacterRenameOccurrence[];
 }
 
 interface BuildCharacterSuggestionsInput {
@@ -29,9 +44,9 @@ export const normalizeSmartTypeName = (value: string): string => value
   .trim()
   .toLocaleUpperCase('nb-NO');
 
-const isUsableName = (value: string): boolean => {
+export const isUsableSmartTypeName = (value: string): boolean => {
   const normalized = normalizeSmartTypeName(value);
-  return normalized.length > 0 && normalized.length <= 80;
+  return normalized.length > 0 && normalized.length <= 80 && !/[\r\n]/.test(value);
 };
 
 const sourceLabel = (sources: ScreenplaySmartTypeSource[]): string => sources
@@ -51,7 +66,7 @@ export function buildCharacterSmartTypeSuggestions({
 
   const add = (values: string[], source: ScreenplaySmartTypeSource) => {
     values.forEach((value) => {
-      if (!isUsableName(value)) return;
+      if (!isUsableSmartTypeName(value)) return;
       const normalized = normalizeSmartTypeName(value);
       const existing = candidates.get(normalized);
       if (existing) {
@@ -99,6 +114,7 @@ export function rankCharacterSmartTypeSuggestions({
   const lastSpeaker = normalizedRecent.at(-1) ?? '';
   const likelyReply = [...normalizedRecent].reverse().find((name) => name !== lastSpeaker) ?? '';
   const sceneCharacters = new Set(normalizedRecent);
+  const recentlyUsedCharacters = new Set(normalizedRecent.slice(-3));
 
   const scored = suggestions
     .filter((suggestion) => suggestion.value.startsWith(normalizedPartial))
@@ -112,13 +128,25 @@ export function rankCharacterSmartTypeSuggestions({
       if (suggestion.sources.includes('project')) score += 10;
       score -= suggestion.value.length / 100;
 
+      const contextLabels = [
+        sceneCharacters.has(suggestion.value) ? 'I denne scenen' : null,
+        recentlyUsedCharacters.has(suggestion.value) ? 'Nylig brukt' : null,
+      ].filter((label): label is string => Boolean(label));
       const reason = suggestion.value === likelyReply
         ? 'Sannsynlig svar i dialogen'
         : sceneCharacters.has(suggestion.value)
           ? 'Brukt i denne scenen'
           : suggestion.reason;
 
-      return { suggestion: { ...suggestion, reason }, score };
+      return {
+        suggestion: {
+          ...suggestion,
+          sourceLabel: [...suggestion.sourceLabel.split(' · '), ...contextLabels].join(' · '),
+          contextLabels,
+          reason,
+        },
+        score,
+      };
     });
 
   return scored
@@ -128,4 +156,68 @@ export function rankCharacterSmartTypeSuggestions({
     ))
     .slice(0, limit)
     .map(({ suggestion }) => suggestion);
+}
+
+const replaceCharacterLineName = (
+  rawLine: string,
+  oldName: string,
+  newName: string,
+): string | null => {
+  if (normalizeSmartTypeName(rawLine) !== oldName) return null;
+  const leadingWhitespace = rawLine.match(/^\s*/)?.[0] ?? '';
+  const trailingWhitespace = rawLine.match(/\s*$/)?.[0] ?? '';
+  let core = rawLine.slice(leadingWhitespace.length, rawLine.length - trailingWhitespace.length);
+  const forced = core.startsWith('@') ? '@' : '';
+  if (forced) core = core.slice(1);
+  const dual = /\^\s*$/.test(core) ? '^' : '';
+  if (dual) core = core.replace(/\s*\^\s*$/, '');
+  const extension = core.match(/\s*(\([^\r\n]*\))\s*$/)?.[1] ?? '';
+  return `${leadingWhitespace}${forced}${newName}${extension ? ` ${extension}` : ''}${dual ? ` ${dual}` : ''}${trailingWhitespace}`;
+};
+
+/**
+ * Builds an exact, reviewable rename operation. The caller supplies parsed
+ * character-line indexes so uppercase action or shot lines are never touched.
+ */
+export function buildCharacterRenamePreview({
+  content,
+  oldName,
+  newName,
+  characterLineIndexes,
+}: {
+  content: string;
+  oldName: string;
+  newName: string;
+  characterLineIndexes: number[];
+}): ScreenplayCharacterRenamePreview {
+  const normalizedOld = normalizeSmartTypeName(oldName);
+  const normalizedNew = normalizeSmartTypeName(newName);
+  const lines = content.split('\n');
+  const allowedIndexes = new Set(characterLineIndexes);
+  const occurrences: ScreenplayCharacterRenameOccurrence[] = [];
+
+  if (
+    !isUsableSmartTypeName(normalizedOld)
+    || !isUsableSmartTypeName(normalizedNew)
+    || normalizedOld === normalizedNew
+  ) {
+    return { oldName: normalizedOld, newName: normalizedNew, content, occurrences };
+  }
+
+  allowedIndexes.forEach((lineIndex) => {
+    const before = lines[lineIndex];
+    if (typeof before !== 'string') return;
+    const after = replaceCharacterLineName(before, normalizedOld, normalizedNew);
+    if (after === null || after === before) return;
+    lines[lineIndex] = after;
+    occurrences.push({ lineIndex, lineNumber: lineIndex + 1, before, after });
+  });
+
+  occurrences.sort((left, right) => left.lineIndex - right.lineIndex);
+  return {
+    oldName: normalizedOld,
+    newName: normalizedNew,
+    content: lines.join('\n'),
+    occurrences,
+  };
 }

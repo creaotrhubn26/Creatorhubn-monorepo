@@ -1,4 +1,8 @@
 import type { CrewMember } from '../../models/casting';
+import {
+  getProductionRoleLabel,
+  getTechnicalSubgroupForProductionRole,
+} from '../../config/productionRoleCatalog';
 
 export type TechnicalCrewSubgroup = 'all' | 'camera' | 'lighting' | 'sound' | 'post';
 
@@ -77,7 +81,9 @@ export function getTechnicalSubgroupForMember(member: CrewMember): TechnicalCrew
     return department;
   }
   const role = String(member.role ?? '').toLowerCase();
-  return TECHNICAL_ROLE_TO_SUBGROUP[role] ?? 'other';
+  return getTechnicalSubgroupForProductionRole(role)
+    ?? TECHNICAL_ROLE_TO_SUBGROUP[role]
+    ?? 'other';
 }
 
 export function isTechnicalCrewMember(member: CrewMember, subgroup: TechnicalCrewSubgroup = 'all'): boolean {
@@ -95,5 +101,6 @@ export function getRoleCapacity(role?: string): number {
 
 export function getRoleLabel(role?: string): string {
   if (!role) return 'Ukjent rolle';
-  return String(role).replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+  return getProductionRoleLabel(role)
+    ?? String(role).replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }

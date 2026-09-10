@@ -53,11 +53,21 @@ Alle nye cross-app payloads bærer `schemaVersion: 1` og relevante ID-er i `proj
 
 ## 4. Felles OAuth-flyt
 
-1. EaseVerse åpner CreatorHub authorization-endepunkt med PKCE, `state` og en strengt validert callback.
-2. Callback sender authorization code + verifier til EaseVerse `/api/auth/creatorhub/exchange`.
-3. Serveren validerer utvekslingen mot CreatorHub og setter en `HttpOnly`, `Secure`, `SameSite=Lax` session-cookie.
-4. Web/native leser autentisert bruker via `/api/auth/session`; token lagres ikke i `localStorage`.
-5. Deep-link til `/integrations/creatorhub` lagrer validert prosjektkontekst og sender brukeren til riktig EaseVerse-prosjekt.
+1. En allerede innlogget Workspace-bruker oppretter en kortlivet engangs-
+   `POST /api/creatorhub/google/oauth/satellite-transfer` for den eksplisitt
+   tillatte EaseVerse-origin-en. Det eksisterende session-tokenet returneres
+   aldri til nettleseren eller URL-en.
+2. Workspace åpner EaseVerse-callbacken med bare transfer-ID og en lokalt
+   validert `/integrations/creatorhub`-retursti.
+3. EaseVerse bytter transfer-ID-en server-til-server, setter en `HttpOnly`,
+   `Secure`, `SameSite=Lax` session-cookie, og engangs-ID-en kan ikke spilles av
+   på nytt.
+4. Hvis brukeren ikke kommer fra en aktiv Workspace-sesjon, brukes samme
+   CreatorHub Google OAuth som fallback. Callbacken bevarer prosjektet gjennom
+   `next`, men avviser eksterne og andre interne retur-ruter.
+5. Web/native leser autentisert bruker via `/api/auth/session`; token lagres
+   ikke i `localStorage`. Deep-linken lagrer validert prosjektkontekst og sender
+   brukeren til riktig EaseVerse-prosjekt.
 
 Kun relative retur-URL-er eller godkjente CreatorHub-domener aksepteres. Hemmelige nøkler skal kun ligge i servermiljøet.
 

@@ -178,6 +178,103 @@ describe("shared CreatorHub Google OAuth handoff", () => {
     }
   });
 
+  it("hands an authenticated Workspace session to EaseVerse exactly once without returning the token", async () => {
+    const { pool, transfers } = createOauthPool();
+    const activeSessions = new Map([
+      [
+        "workspace-session-token",
+        {
+          userId: "user-1",
+          email: "producer@example.com",
+          role: "music_producer",
+          name: "Music Producer",
+          displayName: "Music Producer",
+          verified_email: true,
+          loginAt: new Date().toISOString(),
+        },
+      ],
+    ]);
+    const router = createCreatorHubGoogleRouter(pool, activeSessions);
+    const transferHandler = routeHandler(
+      router,
+      "POST",
+      "/oauth/satellite-transfer",
+    );
+    const response = makeResponse();
+
+    await transferHandler(
+      {
+        body: { browserOrigin: "https://easeverse.netlify.app" },
+        headers: { authorization: "Bearer workspace-session-token" },
+      },
+      response,
+    );
+
+    expect(response.statusCode).toBe(201);
+    expect(response.body).toMatchObject({
+      browserOrigin: "https://easeverse.netlify.app",
+    });
+    expect(response.body).not.toHaveProperty("sessionToken");
+    const transferId = String(response.body.transferId);
+    expect(transfers.get(transferId)).toMatchObject({
+      mode: "login",
+      sessionToken: "workspace-session-token",
+      user: { id: "user-1", email: "producer@example.com" },
+    });
+
+    const resultHandler = routeHandler(
+      router,
+      "GET",
+      "/oauth/session-result/:transferId",
+    );
+    const firstResult = makeResponse();
+    await resultHandler({ params: { transferId } }, firstResult);
+    expect(firstResult.statusCode).toBe(200);
+    expect(firstResult.body).toMatchObject({
+      mode: "login",
+      sessionToken: "workspace-session-token",
+    });
+    const replay = makeResponse();
+    await resultHandler({ params: { transferId } }, replay);
+    expect(replay.statusCode).toBe(404);
+  });
+
+  it("rejects missing sessions and untrusted satellite origins", async () => {
+    const { pool, transfers } = createOauthPool();
+    const activeSessions = new Map([
+      [
+        "workspace-session-token",
+        {
+          userId: "user-1",
+          email: "producer@example.com",
+          role: "music_producer",
+          name: "Music Producer",
+          loginAt: new Date().toISOString(),
+        },
+      ],
+    ]);
+    const router = createCreatorHubGoogleRouter(pool, activeSessions);
+    const handler = routeHandler(router, "POST", "/oauth/satellite-transfer");
+
+    const anonymous = makeResponse();
+    await handler(
+      { body: { browserOrigin: "https://easeverse.netlify.app" }, headers: {} },
+      anonymous,
+    );
+    expect(anonymous.statusCode).toBe(401);
+
+    const attacker = makeResponse();
+    await handler(
+      {
+        body: { browserOrigin: "https://attacker.example" },
+        headers: { authorization: "Bearer workspace-session-token" },
+      },
+      attacker,
+    );
+    expect(attacker.statusCode).toBe(400);
+    expect(transfers.size).toBe(0);
+  });
+
   it("persists and atomically consumes state and login transfers", async () => {
     const { pool } = createOauthPool();
     const expiresAt = new Date(Date.now() + 60_000);

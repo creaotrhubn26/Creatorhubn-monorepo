@@ -83,6 +83,11 @@ interface Props {
   /** Ved endring av timestamp-comments som rendres — for å vise
    *  markører på video-timeline. Liste sorteres etter sec. */
   onTimestampCommentsChanged?: (markers: Array<{ sec: number; label: string }>) => void;
+  /** Called after a successful create/status update so parent indexes refresh. */
+  onChanged?: () => void;
+  /** Focus the composer when a newly selected annotation opens. */
+  autoFocusComposer?: boolean;
+  composerPlaceholder?: string;
 }
 
 function buildAuthHeaders(auth: PostCommentAuth): Record<string, string> {
@@ -98,6 +103,7 @@ export function PostCommentLayer({
   pollingIntervalMs = 5000,
   apiBase = '/api/role-room',
   currentTimeSec, onSeek, onTimestampCommentsChanged,
+  onChanged, autoFocusComposer = false, composerPlaceholder,
 }: Props) {
   const [attachToTimestamp, setAttachToTimestamp] = useState(false);
   const [comments, setComments] = useState<PostCommentItem[]>([]);
@@ -106,6 +112,8 @@ export function PostCommentLayer({
   const [expandedView, setExpandedView] = useState(false);
   const [draft, setDraft] = useState('');
   const [posting, setPosting] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [replyDraft, setReplyDraft] = useState('');
   const [draftAuthor, setDraftAuthor] = useState(authorDisplayName ?? '');
   const lastServerTimeRef = useRef<string | null>(null);
 
@@ -187,8 +195,8 @@ export function PostCommentLayer({
     return () => clearInterval(id);
   }, [poll, pollingIntervalMs]);
 
-  const handlePost = async () => {
-    const text = draft.trim();
+  const handlePost = async (parentId?: string) => {
+    const text = (parentId ? replyDraft : draft).trim();
     if (!text) return;
     setPosting(true);
     setError(null);
@@ -208,15 +216,22 @@ export function PostCommentLayer({
           anchorRef,
           timestampSec: useTimestamp ? currentTimeSec : undefined,
           commentText: text,
+          parentId,
           authorDisplayName: draftAuthor || undefined,
           priority: text.includes('!urgent') ? 'urgent'
             : text.includes('!high') ? 'high' : 'normal',
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setDraft('');
+      if (parentId) {
+        setReplyDraft('');
+        setReplyingTo(null);
+      } else {
+        setDraft('');
+      }
       setAttachToTimestamp(false);
       await refresh();
+      onChanged?.();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -224,36 +239,40 @@ export function PostCommentLayer({
     }
   };
 
-  const handleResolve = async (commentId: string) => {
+  const handleStatus = async (commentId: string, status: 'open' | 'resolved') => {
+    setError(null);
     try {
-      await fetch(`${apiBase}/editor-comments/${commentId}`, {
+      const res = await fetch(`${apiBase}/editor-comments/${commentId}`, {
         method: 'PATCH',
         headers: {
           ...buildAuthHeaders(auth),
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ status: 'resolved' }),
+        body: JSON.stringify({ status }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       await refresh();
+      onChanged?.();
     } catch (e) {
       setError((e as Error).message);
     }
   };
 
+  const topLevelComments = comments.filter((comment) => comment.parentId == null);
   const visibleComments = expandedView
-    ? comments
-    : comments.slice(0, defaultVisibleCount);
-  const hiddenCount = Math.max(0, comments.length - defaultVisibleCount);
-  const unresolvedCount = comments.filter(
+    ? topLevelComments
+    : topLevelComments.slice(0, defaultVisibleCount);
+  const hiddenCount = Math.max(0, topLevelComments.length - defaultVisibleCount);
+  const unresolvedCount = topLevelComments.filter(
     c => c.status === 'open' || c.status === 'in_progress').length;
 
   return (
     <div className={className} style={baseSx}>
       <div style={headerSx}>
         <span style={titleSx}>
-          {comments.length === 0
+          {topLevelComments.length === 0
             ? 'Ingen kommentarer enda'
-            : `${comments.length} ${comments.length === 1 ? 'kommentar' : 'kommentarer'}`}
+            : `${topLevelComments.length} ${topLevelComments.length === 1 ? 'tråd' : 'tråder'}`}
         </span>
         {unresolvedCount > 0 && (
           <span style={badgeSx}>{unresolvedCount} uløst</span>
@@ -266,11 +285,56 @@ export function PostCommentLayer({
 
       {loaded && visibleComments.length > 0 && (
         <div style={listSx}>
-          {visibleComments.map(c => (
-            <CommentRow key={c.id} comment={c}
-                          onResolve={() => void handleResolve(c.id)}
-                          onSeek={onSeek} />
-          ))}
+          {visibleComments.map(c => {
+            const replies = comments.filter((reply) => reply.parentId === c.id);
+            return (
+              <div key={c.id} style={threadSx}>
+                <CommentRow
+                  comment={c}
+                  onStatus={(status) => void handleStatus(c.id, status)}
+                  onReply={() => {
+                    setReplyingTo((current) => current === c.id ? null : c.id);
+                    setReplyDraft('');
+                  }}
+                  onSeek={onSeek}
+                />
+                {replies.map((reply) => (
+                  <CommentRow key={reply.id} comment={reply} reply />
+                ))}
+                {replyingTo === c.id && !readOnly && (
+                  <div style={replyComposerSx}>
+                    <textarea
+                      autoFocus
+                      value={replyDraft}
+                      onChange={(event) => setReplyDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') {
+                          setReplyingTo(null);
+                          setReplyDraft('');
+                        }
+                        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                          event.preventDefault();
+                          void handlePost(c.id);
+                        }
+                      }}
+                      aria-label={`Svar til ${c.authorDisplayName}`}
+                      rows={2}
+                      placeholder="Skriv et svar …"
+                      style={{ ...inputSx, minHeight: 44, resize: 'vertical' }}
+                    />
+                    <div style={composerActionsSx}>
+                      <button onClick={() => setReplyingTo(null)} style={secondaryBtnSx}>Avbryt</button>
+                      <button
+                        onClick={() => void handlePost(c.id)}
+                        disabled={posting || !replyDraft.trim()}
+                        style={{ ...primaryBtnSx, opacity: posting || !replyDraft.trim() ? 0.4 : 1 }}
+                      >Svar</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
           {hiddenCount > 0 && !expandedView && (
             <button onClick={() => setExpandedView(true)} style={expandBtnSx}>
               Vis {hiddenCount} flere
@@ -292,6 +356,7 @@ export function PostCommentLayer({
                    style={inputSx} />
           )}
           <textarea value={draft}
+                    autoFocus={autoFocusComposer}
                     onChange={e => setDraft(e.target.value)}
                     onKeyDown={e => {
                       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -302,7 +367,7 @@ export function PostCommentLayer({
                     rows={2}
                     placeholder={attachToTimestamp
                       ? `Skriv kommentar (knyttes til ${formatTime(currentTimeSec ?? 0)}) …`
-                      : 'Skriv kommentar …'}
+                      : (composerPlaceholder ?? 'Skriv kommentar …')}
                     style={{ ...inputSx, minHeight: 50, resize: 'vertical' }} />
           {typeof currentTimeSec === 'number' && currentTimeSec > 0 && (
             <label style={{
@@ -335,9 +400,12 @@ export function PostCommentLayer({
   );
 }
 
-function CommentRow({ comment, onResolve, onSeek }: {
-  comment: PostCommentItem; onResolve: () => void;
+function CommentRow({ comment, onStatus, onReply, onSeek, reply = false }: {
+  comment: PostCommentItem;
+  onStatus?: (status: 'open' | 'resolved') => void;
+  onReply?: () => void;
   onSeek?: (sec: number) => void;
+  reply?: boolean;
 }) {
   const isResolved = comment.status === 'resolved' || comment.status === 'wontfix';
   const isTimestamp = comment.anchorType === 'timestamp'
@@ -345,6 +413,7 @@ function CommentRow({ comment, onResolve, onSeek }: {
   return (
     <div style={{
       ...rowSx,
+      ...(reply ? replyRowSx : {}),
       background: isResolved ? 'rgba(74,212,138,0.05)' : 'rgba(255,255,255,0.03)',
       borderColor: isResolved ? 'rgba(74,212,138,0.15)' : 'rgba(160,48,192,0.15)',
     }}>
@@ -386,15 +455,23 @@ function CommentRow({ comment, onResolve, onSeek }: {
           }}>
             {comment.status.replace('_', ' ')}
           </span>
-          {!isResolved && (
-            <button onClick={onResolve} style={resolveBtnSx}
-                    title="Markér som løst">
-              ✓
+          {!reply && onStatus && (
+            <button
+              onClick={() => onStatus(isResolved ? 'open' : 'resolved')}
+              style={resolveBtnSx}
+              title={isResolved ? 'Gjenåpne tråden' : 'Marker som løst'}
+            >
+              {isResolved ? '↺' : '✓'}
             </button>
           )}
         </span>
       </div>
       <div style={textSx}>{comment.commentText}</div>
+      {!reply && onReply && (
+        <button onClick={onReply} style={replyBtnSx}>
+          Svar{comment.replyCount > 0 ? ` (${comment.replyCount})` : ''}
+        </button>
+      )}
     </div>
   );
 }
@@ -431,9 +508,25 @@ const listSx: React.CSSProperties = {
   marginBottom: 8,
 };
 
+const threadSx: React.CSSProperties = {
+  display: 'flex', flexDirection: 'column', gap: 5,
+};
+
 const rowSx: React.CSSProperties = {
   padding: 8, borderRadius: 4,
   border: '1px solid',
+};
+
+const replyRowSx: React.CSSProperties = {
+  marginLeft: 18,
+  borderLeftWidth: 2,
+  background: 'rgba(255,255,255,0.018)',
+};
+
+const replyComposerSx: React.CSSProperties = {
+  marginLeft: 18,
+  padding: 8,
+  borderLeft: '2px solid rgba(160,48,192,0.25)',
 };
 
 const rowHeaderSx: React.CSSProperties = {
@@ -466,6 +559,18 @@ const resolveBtnSx: React.CSSProperties = {
   color: '#4ad48a', borderRadius: 3,
   padding: '0 6px', fontSize: 10, fontWeight: 700,
   cursor: 'pointer',
+};
+
+const replyBtnSx: React.CSSProperties = {
+  marginTop: 6, padding: 0,
+  border: 0, background: 'transparent',
+  color: '#c8a8e8', fontSize: 10.5, fontWeight: 600,
+  cursor: 'pointer',
+};
+
+const secondaryBtnSx: React.CSSProperties = {
+  border: 0, background: 'transparent', color: 'rgba(200,188,216,0.8)',
+  fontSize: 10.5, cursor: 'pointer',
 };
 
 const composerSx: React.CSSProperties = {

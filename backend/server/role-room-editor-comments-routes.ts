@@ -116,6 +116,56 @@ async function viewerCanAccessProject(
   return rows[0]?.owns === true || rows[0]?.member === true;
 }
 
+const SCREENPLAY_ANCHORS = new Set([
+  "manuscript", "manuscript_scene", "screenplay_line",
+]);
+
+async function screenplayAnchorBelongsToProject(
+  pool: Pool,
+  projectId: string,
+  anchorType: string,
+  anchorRef: string | null,
+): Promise<boolean> {
+  if (!SCREENPLAY_ANCHORS.has(anchorType)) return true;
+  if (!anchorRef) return false;
+  const manuscriptId = anchorRef.split("#", 1)[0]?.trim();
+  if (!manuscriptId) return false;
+  const { rows } = await pool.query<{ found: boolean }>(
+    `SELECT EXISTS(
+       SELECT 1 FROM casting_manuscripts
+        WHERE id = $1 AND project_id = $2
+     ) AS found`,
+    [manuscriptId, projectId],
+  );
+  return rows[0]?.found === true;
+}
+
+async function viewerCanCommentOnScreenplay(
+  pool: Pool,
+  projectId: string,
+  viewerId: string,
+): Promise<boolean> {
+  const { rows } = await pool.query<{ can_comment: boolean }>(
+    `SELECT (
+       EXISTS(SELECT 1 FROM casting_projects
+               WHERE id = $1 AND created_by = $2)
+       OR EXISTS(
+         SELECT 1 FROM casting_user_roles
+          WHERE project_id = $1 AND user_id = $2
+            AND deactivated_at IS NULL
+            AND (
+              role IN ('director', 'producer', 'content_producer',
+                       'writer', 'script_editor', 'client_reviewer')
+              OR permissions->>'canComment' = 'true'
+              OR permissions->>'canEditScript' = 'true'
+            )
+       )
+     ) AS can_comment`,
+    [projectId, viewerId],
+  );
+  return rows[0]?.can_comment === true;
+}
+
 /** Parse @mentions fra kommentar-tekst. Returnerer array av
  * brukernavn/IDer som ble tagget. Vi støtter @user-id og
  * @"Navn Navnesen"-syntax. */
@@ -317,7 +367,7 @@ export function registerRoleRoomEditorCommentsRoutes(
       };
       const projectId = typeof body?.projectId === "string"
         ? body.projectId.trim() : "";
-      const anchorType = typeof body?.anchorType === "string"
+      let anchorType = typeof body?.anchorType === "string"
         ? body.anchorType : "general";
       const commentText = typeof body?.commentText === "string"
         ? body.commentText.trim().slice(0, 5000) : "";
@@ -366,6 +416,43 @@ export function registerRoleRoomEditorCommentsRoutes(
             res.status(403).json({ error: "ingen_tilgang" }); return;
           }
         }
+        let anchorRef = typeof body?.anchorRef === "string"
+          ? body.anchorRef.slice(0, 200) : null;
+        const parentId = typeof body?.parentId === "string"
+          ? body.parentId.trim() : null;
+        if (parentId) {
+          const { rows: parents } = await pool.query<{
+            project_id: string;
+            parent_id: string | null;
+            anchor_type: string;
+            anchor_ref: string | null;
+          }>(
+            `SELECT project_id, parent_id, anchor_type, anchor_ref
+               FROM role_room_editor_comments
+              WHERE id = $1`,
+            [parentId],
+          );
+          const parent = parents[0];
+          if (!parent) {
+            res.status(404).json({ error: "forelder_ikke_funnet" }); return;
+          }
+          if (parent.project_id !== projectId || parent.parent_id !== null) {
+            res.status(400).json({ error: "ugyldig_kommentartraad" }); return;
+          }
+          // Replies inherit their thread anchor. Never trust a client-supplied
+          // anchor that could silently move the reply to another manuscript.
+          anchorType = parent.anchor_type;
+          anchorRef = parent.anchor_ref;
+        }
+        if (!await screenplayAnchorBelongsToProject(
+          pool, projectId, anchorType, anchorRef,
+        )) {
+          res.status(400).json({ error: "manus_anker_ikke_i_prosjekt" }); return;
+        }
+        if (!actor.isClient && SCREENPLAY_ANCHORS.has(anchorType)
+            && !await viewerCanCommentOnScreenplay(pool, projectId, actor.userId)) {
+          res.status(403).json({ error: "mangler_kommentarrettighet" }); return;
+        }
         const priority = typeof body?.priority === "string"
           && VALID_PRIORITIES.includes(body.priority)
           ? body.priority : "normal";
@@ -383,13 +470,12 @@ export function registerRoleRoomEditorCommentsRoutes(
            RETURNING id, created_at`,
           [
             projectId, anchorType,
-            typeof body?.anchorRef === "string"
-              ? body.anchorRef.slice(0, 200) : null,
+            anchorRef,
             typeof body?.timestampSec === "number" ? body.timestampSec : null,
             typeof body?.agentKind === "string"
               ? body.agentKind.slice(0, 50) : null,
             commentText,
-            typeof body?.parentId === "string" ? body.parentId : null,
+            parentId,
             priority,
             typeof body?.assignedTo === "string"
               ? body.assignedTo.slice(0, 200) : null,
@@ -405,7 +491,7 @@ export function registerRoleRoomEditorCommentsRoutes(
                                    byDisplayName: displayName,
                                    commentText,
                                    anchorType,
-                                   anchorRef: typeof body?.anchorRef === "string" ? body.anchorRef : null,
+                                   anchorRef,
                                  });
         }
         // Email-notify producer når klient kommenterer på en
@@ -448,13 +534,17 @@ export function registerRoleRoomEditorCommentsRoutes(
       if (!id) { res.status(400).json({ error: "mangler_id" }); return; }
       try {
         const { rows: existing } = await pool.query(
-          `SELECT project_id, author_id FROM role_room_editor_comments WHERE id = $1`,
+          `SELECT project_id, author_id, anchor_type FROM role_room_editor_comments WHERE id = $1`,
           [id]);
         if (existing.length === 0) {
           res.status(404).json({ error: "ikke_funnet" }); return;
         }
         if (!await viewerCanAccessProject(pool, existing[0].project_id, auth.userId)) {
           res.status(403).json({ error: "ingen_tilgang" }); return;
+        }
+        if (SCREENPLAY_ANCHORS.has(existing[0].anchor_type)
+            && !await viewerCanCommentOnScreenplay(pool, existing[0].project_id, auth.userId)) {
+          res.status(403).json({ error: "mangler_kommentarrettighet" }); return;
         }
         const updates: string[] = [];
         const values: unknown[] = [];
@@ -475,6 +565,9 @@ export function registerRoleRoomEditorCommentsRoutes(
             updates.push(`resolved_by = $${p++}`);
             values.push(auth.userId);
             updates.push(`resolved_at = now()`);
+          } else {
+            updates.push(`resolved_by = NULL`);
+            updates.push(`resolved_at = NULL`);
           }
         }
         if (typeof body?.priority === "string"
@@ -512,6 +605,73 @@ export function registerRoleRoomEditorCommentsRoutes(
       }
     });
 
+  // GET one thread's replies. The full project feed also includes replies,
+  // but this endpoint lets lightweight clients fetch a thread on demand.
+  app.get("/api/role-room/editor-comments/:id/replies",
+    async (req: Request, res: Response) => {
+      const actor = await resolveActor(pool, req, activeSessions);
+      if (!actor) { res.status(401).json({ error: "krever_innlogging" }); return; }
+      const id = req.params.id;
+      try {
+        const { rows: parents } = await pool.query<{
+          project_id: string; anchor_type: string;
+        }>(
+          `SELECT project_id, anchor_type
+             FROM role_room_editor_comments
+            WHERE id = $1 AND parent_id IS NULL`,
+          [id],
+        );
+        const parent = parents[0];
+        if (!parent) {
+          res.status(404).json({ error: "ikke_funnet" }); return;
+        }
+        if (actor.isClient) {
+          if (actor.clientProjectId !== parent.project_id
+              || !CLIENT_VISIBLE_ANCHORS.has(parent.anchor_type)) {
+            res.status(403).json({ error: "ingen_tilgang" }); return;
+          }
+        } else if (!await viewerCanAccessProject(pool, parent.project_id, actor.userId)) {
+          res.status(403).json({ error: "ingen_tilgang" }); return;
+        }
+        const { rows } = await pool.query(
+          `SELECT id, project_id, anchor_type, anchor_ref, timestamp_sec,
+                  agent_kind, comment_text, parent_id, status,
+                  assigned_to, priority, author_id, author_display_name,
+                  resolved_by, resolved_at, created_at, updated_at
+             FROM role_room_editor_comments
+            WHERE parent_id = $1
+            ORDER BY created_at ASC`,
+          [id],
+        );
+        res.json({
+          replies: rows.map((r) => ({
+            id: r.id,
+            projectId: r.project_id,
+            anchorType: r.anchor_type,
+            anchorRef: r.anchor_ref,
+            timestampSec: r.timestamp_sec == null ? null : parseFloat(r.timestamp_sec),
+            agentKind: r.agent_kind,
+            commentText: r.comment_text,
+            parentId: r.parent_id,
+            status: r.status,
+            assignedTo: r.assigned_to,
+            priority: r.priority,
+            authorId: r.author_id,
+            authorDisplayName: r.author_display_name,
+            resolvedBy: r.resolved_by,
+            resolvedAt: r.resolved_at,
+            createdAt: r.created_at,
+            updatedAt: r.updated_at,
+            replyCount: 0,
+          })),
+        });
+      } catch (err) {
+        console.error("[editor-comments] replies GET failed:", err);
+        res.status(500).json({ error: "intern_feil",
+          detail: (err as Error).message });
+      }
+    });
+
   // DELETE comment (bare forfatter eller project-owner)
   app.delete("/api/role-room/editor-comments/:id",
     async (req: Request, res: Response) => {
@@ -520,7 +680,7 @@ export function registerRoleRoomEditorCommentsRoutes(
       const id = req.params.id;
       try {
         const { rows: existing } = await pool.query(
-          `SELECT c.project_id, c.author_id, p.created_by
+          `SELECT c.project_id, c.author_id, c.anchor_type, p.created_by
              FROM role_room_editor_comments c
              JOIN casting_projects p ON p.id = c.project_id
             WHERE c.id = $1`,
@@ -533,6 +693,10 @@ export function registerRoleRoomEditorCommentsRoutes(
         const isOwner = ex.created_by === auth.userId;
         if (!isAuthor && !isOwner) {
           res.status(403).json({ error: "ingen_tilgang" }); return;
+        }
+        if (SCREENPLAY_ANCHORS.has(ex.anchor_type)
+            && !await viewerCanCommentOnScreenplay(pool, ex.project_id, auth.userId)) {
+          res.status(403).json({ error: "mangler_kommentarrettighet" }); return;
         }
         await pool.query(`DELETE FROM role_room_editor_comments WHERE id = $1`, [id]);
         res.json({ ok: true });

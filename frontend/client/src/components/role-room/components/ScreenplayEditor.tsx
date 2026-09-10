@@ -43,6 +43,8 @@ import {
   TextFields,
   Keyboard as KeyboardIcon,
   History as HistoryIcon,
+  DriveFileRenameOutline as RenameCharacterIcon,
+  HelpOutline as HelpOutlineIcon,
   AddCircleOutline as AddCircleOutlineIcon,
   Fullscreen as FullscreenIcon,
   FullscreenExit as FullscreenExitIcon,
@@ -51,6 +53,7 @@ import settingsService, { getCurrentUserId } from '../services/settingsService';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import ScreenplayRecoveryDialog from './screenplay/ScreenplayRecoveryDialog';
 import ScreenplayShortcutSettingsDialog from './screenplay/ScreenplayShortcutSettingsDialog';
+import ScreenplayCharacterRenameDialog from './screenplay/ScreenplayCharacterRenameDialog';
 import type { Candidate, Role } from '../models/casting';
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 import {
@@ -77,6 +80,7 @@ import {
   type ScreenplayRecoveryStore,
 } from './screenplay/screenplayRecovery';
 import {
+  buildCharacterRenamePreview,
   buildCharacterSmartTypeSuggestions,
   normalizeSmartTypeName,
   rankCharacterSmartTypeSuggestions,
@@ -157,11 +161,19 @@ interface ParsedLine {
   metadata?: Record<string, string>;
 }
 
+export interface ScreenplayTextSelection {
+  start: number;
+  end: number;
+  startLine: number;
+  endLine: number;
+  text: string;
+}
+
 interface ScreenplayEditorProps {
   value: string;
   onChange: (value: string) => void;
   manuscriptId?: string;
-  cloudSaveState?: 'saved' | 'unsaved' | 'saving' | 'error';
+  cloudSaveState?: 'saved' | 'unsaved' | 'saving' | 'local-only' | 'conflict' | 'error';
   cloudSaveLabel?: string;
   characters?: string[];
   locations?: string[];
@@ -178,6 +190,10 @@ interface ScreenplayEditorProps {
   commentLines?: Set<number>;
   /** Klikk på en kommentar-markør i margen. */
   onCommentLineClick?: (line: number) => void;
+  /** Oppdateres for både markør og tekstutvalg. */
+  onSelectionChange?: (selection: ScreenplayTextSelection) => void;
+  /** Google Docs-kompatibel kommentarhandling: Cmd/Ctrl+Alt+M. */
+  onAddComment?: (selection: ScreenplayTextSelection) => void;
 }
 
 // Fountain syntax patterns
@@ -456,6 +472,8 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   spellCheck = true,
   commentLines,
   onCommentLineClick,
+  onSelectionChange,
+  onAddComment,
 }) => {
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
@@ -519,6 +537,9 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   const [confirmedCharacterNames, setConfirmedCharacterNames] = useState<Set<string>>(() => new Set());
   const [confirmedLocationNames, setConfirmedLocationNames] = useState<Set<string>>(() => new Set());
   const [confirmingEntity, setConfirmingEntity] = useState<string | null>(null);
+  const [characterRenameDialogOpen, setCharacterRenameDialogOpen] = useState(false);
+  const [characterRenameFrom, setCharacterRenameFrom] = useState('');
+  const [characterRenameTo, setCharacterRenameTo] = useState('');
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isEditorFocused, setIsEditorFocused] = useState(false);
@@ -1454,6 +1475,27 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
       return;
     }
 
+    if (
+      e.key.toLowerCase() === 'm'
+      && (e.metaKey || e.ctrlKey)
+      && e.altKey
+      && !e.shiftKey
+      && onAddComment
+    ) {
+      e.preventDefault();
+      const { selectionStart, selectionEnd, value: editorValue } = e.currentTarget;
+      const start = Math.min(selectionStart, selectionEnd);
+      const end = Math.max(selectionStart, selectionEnd);
+      onAddComment({
+        start,
+        end,
+        startLine: editorValue.slice(0, start).split('\n').length,
+        endLine: editorValue.slice(0, Math.max(start, end - 1)).split('\n').length,
+        text: editorValue.slice(start, end),
+      });
+      return;
+    }
+
     // Autocomplete navigation
     if (showAutocomplete) {
       if (e.key === 'ArrowDown') {
@@ -1609,6 +1651,8 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   parsedLinesRef.current = parsedLines;
   const onCursorChangeRef = useRef(onCursorChange);
   onCursorChangeRef.current = onCursorChange;
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  onSelectionChangeRef.current = onSelectionChange;
   const internalValueRef2 = useRef(internalValue);
   internalValueRef2.current = internalValue;
 
@@ -1622,6 +1666,15 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     const column = lines[lines.length - 1].length + 1;
     setCursorPosition({ line, column });
     setSelectionCollapsed(selectionStart === selectionEnd);
+    onSelectionChangeRef.current?.({
+      start: selectionStart,
+      end: selectionEnd,
+      startLine: line,
+      endLine: internalValueRef2.current
+        .slice(0, Math.max(selectionStart, selectionEnd - 1))
+        .split('\n').length,
+      text: internalValueRef2.current.slice(selectionStart, selectionEnd),
+    });
     const pl = parsedLinesRef.current;
     if (pl[line - 1]) {
       const pendingType = pendingElementRef.current?.lineIndex === line - 1
@@ -1687,6 +1740,55 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     const normalized = name.toLocaleUpperCase('nb-NO');
     return registeredLocationNames.has(normalized) ? null : name;
   }, [currentLineContext.text, currentLineContext.type, onLocationAdd, registeredLocationNames]);
+
+  const renameCharacterNames = useMemo(
+    () => Array.from(new Set(extractedCharacters.map(normalizeSmartTypeName)))
+      .filter(Boolean)
+      .sort((left, right) => left.localeCompare(right, 'nb-NO')),
+    [extractedCharacters],
+  );
+
+  const characterRenamePreview = useMemo(() => {
+    const characterLineIndexes = parsedLines
+      .map((line, index) => (
+        line.type === 'character' && normalizeSmartTypeName(line.content) === normalizeSmartTypeName(characterRenameFrom)
+          ? index
+          : -1
+      ))
+      .filter((index) => index >= 0);
+    return buildCharacterRenamePreview({
+      content: internalValue,
+      oldName: characterRenameFrom,
+      newName: characterRenameTo,
+      characterLineIndexes,
+    });
+  }, [characterRenameFrom, characterRenameTo, internalValue, parsedLines]);
+
+  const openCharacterRenameDialog = useCallback(() => {
+    const currentName = currentLineContext.type === 'character'
+      ? normalizeSmartTypeName(currentLineContext.text)
+      : '';
+    setCharacterRenameFrom(
+      renameCharacterNames.includes(currentName) ? currentName : renameCharacterNames[0] ?? '',
+    );
+    setCharacterRenameTo('');
+    setCharacterRenameDialogOpen(true);
+  }, [currentLineContext.text, currentLineContext.type, renameCharacterNames]);
+
+  const applyCharacterRename = useCallback(() => {
+    if (characterRenamePreview.occurrences.length === 0) return;
+    const activeLineIndex = Math.max(0, cursorPosition.line - 1);
+    const nextLines = characterRenamePreview.content.split('\n');
+    const nextCursor = nextLines
+      .slice(0, activeLineIndex)
+      .reduce((sum, line) => sum + line.length + 1, 0)
+      + (nextLines[activeLineIndex]?.length ?? 0);
+    commitValue(characterRenamePreview.content, nextCursor);
+    setCharacterRenameDialogOpen(false);
+    setShortcutAnnouncement(
+      `${characterRenamePreview.oldName} ble endret til ${characterRenamePreview.newName} på ${characterRenamePreview.occurrences.length} Character-linjer.`,
+    );
+  }, [characterRenamePreview, commitValue, cursorPosition.line]);
 
   const confirmProjectEntity = useCallback(async (
     type: 'character' | 'location',
@@ -1998,6 +2100,21 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
             </IconButton>
           </Tooltip>
 
+          <Tooltip title="Endre et karakternavn i hele manuset med forhåndsvisning">
+            <span>
+              <IconButton
+                data-testid="screenplay-character-rename-open"
+                size={responsive.buttonSize}
+                onClick={openCharacterRenameDialog}
+                aria-label="Endre karakternavn i hele manuset"
+                disabled={readOnly || renameCharacterNames.length === 0}
+                sx={{ color: '#60a5fa' }}
+              >
+                <RenameCharacterIcon sx={{ fontSize: responsive.iconSize }} />
+              </IconButton>
+            </span>
+          </Tooltip>
+
           <Tooltip title={manuscriptId ? 'Lokal gjenopprettingshistorikk' : 'Historikk krever et lagret manus'}>
             <span>
               <IconButton
@@ -2085,18 +2202,22 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
                   ? (isMobile ? '☁ ✓' : `☁ ${cloudSaveLabel?.replace(/^Lagret/, 'Synkronisert') || 'Synkronisert'}`)
                   : cloudSaveState === 'saving'
                     ? (isMobile ? '☁ …' : '☁ Synkroniserer…')
+                    : cloudSaveState === 'conflict'
+                      ? (isMobile ? 'Konflikt' : `☁ ${cloudSaveLabel || 'Konflikt – velg versjon'}`)
+                      : cloudSaveState === 'local-only'
+                        ? (isMobile ? 'Kun lokal' : `☁ ${cloudSaveLabel || 'Venter – sikret lokalt'}`)
                     : cloudSaveState === 'error'
                       ? (isMobile ? 'Kun lokal' : '☁ Feil – sikret lokalt')
                       : (isMobile ? '☁ ○' : '☁ Ikke synkronisert')}
                 sx={{
                   bgcolor: cloudSaveState === 'saved'
                     ? 'rgba(59, 130, 246, 0.18)'
-                    : cloudSaveState === 'error'
+                    : cloudSaveState === 'error' || cloudSaveState === 'conflict'
                       ? 'rgba(244, 63, 94, 0.2)'
                       : 'rgba(251, 191, 36, 0.2)',
                   color: cloudSaveState === 'saved'
                     ? '#93c5fd'
-                    : cloudSaveState === 'error'
+                    : cloudSaveState === 'error' || cloudSaveState === 'conflict'
                       ? '#fda4af'
                       : '#fbbf24',
                   fontSize: responsive.captionFontSize,
@@ -2145,6 +2266,19 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
         overrides={shortcutOverrides}
         onClose={() => setShortcutSettingsOpen(false)}
         onSave={saveShortcutOverrides}
+      />
+
+      <ScreenplayCharacterRenameDialog
+        open={characterRenameDialogOpen}
+        characterNames={renameCharacterNames}
+        targetSuggestions={characterSmartTypeSuggestions.map((suggestion) => suggestion.value)}
+        oldName={characterRenameFrom}
+        newName={characterRenameTo}
+        preview={characterRenamePreview}
+        onOldNameChange={setCharacterRenameFrom}
+        onNewNameChange={setCharacterRenameTo}
+        onClose={() => setCharacterRenameDialogOpen(false)}
+        onConfirm={applyCharacterRename}
       />
 
       <ScreenplayRecoveryDialog
@@ -2353,6 +2487,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onClick={handleCursorUpdate}
+          onSelect={handleCursorUpdate}
           onKeyUp={handleEditorKeyUp}
           onScroll={handleScroll}
           onFocus={() => setIsEditorFocused(true)}
@@ -2434,6 +2569,27 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
                   primaryTypographyProps={{ fontSize: responsive.bodyFontSize }}
                   secondaryTypographyProps={{ fontSize: responsive.captionFontSize }}
                 />
+                {autocompleteType === 'character' && characterAutocompleteDetails[option] && (
+                  <Tooltip
+                    title={`Hvorfor vises dette? ${characterAutocompleteDetails[option].sourceLabel}. ${characterAutocompleteDetails[option].reason}.`}
+                  >
+                    <Box
+                      component="span"
+                      tabIndex={0}
+                      aria-label={`Hvorfor vises ${option}? ${characterAutocompleteDetails[option].sourceLabel}. ${characterAutocompleteDetails[option].reason}.`}
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }
+                      }}
+                      sx={{ display: 'inline-flex', ml: 1, color: 'text.secondary' }}
+                    >
+                      <HelpOutlineIcon sx={{ fontSize: responsive.iconSize - 4 }} />
+                    </Box>
+                  </Tooltip>
+                )}
                 </MenuItem>
               ))}
             </Paper>
