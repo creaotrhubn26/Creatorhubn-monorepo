@@ -75,7 +75,45 @@ describe("prototype tester invitation delivery", () => {
       });
 
     expect(response.status).toBe(400);
-    expect(response.body.error).toBe("Ugyldige testområder");
+    expect(response.body.error).toBe("Velg minst ett gyldig testområde");
+    expect(query).not.toHaveBeenCalled();
+    expect(sendInviteEmail).not.toHaveBeenCalled();
+  });
+
+  it("requires profession and at least one testing area at the API boundary", async () => {
+    const query = vi.fn();
+    const sendInviteEmail = vi.fn();
+    const app = express();
+    app.use(express.json());
+    setupPrototypeTesterInvitesRoutes({
+      app,
+      pool: { query },
+      getPricingUserId: () => "",
+      requireUserSession: () => true,
+      requireAdminSession: async () => ({ userId: "verified-admin-id" }),
+      sendInviteEmail,
+    });
+
+    const missingArea = await request(app)
+      .post("/api/prototype-tester-invites")
+      .send({
+        email: "tester@example.com",
+        name: "Test Tester",
+        profession: "photographer",
+        testingAreas: [],
+      });
+    expect(missingArea.status).toBe(400);
+    expect(missingArea.body.error).toContain("minst ett");
+
+    const missingProfession = await request(app)
+      .post("/api/prototype-tester-invites")
+      .send({
+        email: "tester@example.com",
+        name: "Test Tester",
+        testingAreas: ["CreatorHub-dashboard"],
+      });
+    expect(missingProfession.status).toBe(400);
+    expect(missingProfession.body.error).toContain("profesjon");
     expect(query).not.toHaveBeenCalled();
     expect(sendInviteEmail).not.toHaveBeenCalled();
   });
@@ -119,9 +157,17 @@ describe("prototype tester invitation delivery", () => {
           organizationNumber: "937518684",
           name: "CREATORHUB AS",
           organizationForm: "Aksjeselskap",
+          organizationFormCode: null,
           primaryIndustryCode: "62.100",
           primaryIndustryDescription: "Programmeringstjenester",
           recommendedProfession: null,
+          professionRecommendation: null,
+          suggestedTestingAreas: [
+            "CreatorHub-dashboard",
+            "Prosjekt og arbeidsflyt",
+            "Kontrakt og fakturering",
+            "Integrasjoner",
+          ],
           businessAddress: "Søsterveien 11, 1474 LØRENSKOG",
           operationalStatus: "active",
         },
@@ -142,6 +188,7 @@ describe("prototype tester invitation delivery", () => {
           organizationNumber: "998989159",
           name: "ESTREMO RECORDING STUDIOS JENS MICHAEL PETERS NIELSEN",
           organizationForm: "Enkeltpersonforetak",
+          organizationFormCode: "ENK",
           primaryIndustryCode: "59.200",
           primaryIndustryDescription:
             "Produksjon og utgivelse av musikk- og lydopptak",
@@ -158,9 +205,96 @@ describe("prototype tester invitation delivery", () => {
     expect(response.status).toBe(200);
     expect(response.body.companies[0]).toMatchObject({
       organizationNumber: "998989159",
+      organizationFormCode: "ENK",
       primaryIndustryCode: "59.200",
       recommendedProfession: "music_producer",
+      professionRecommendation: {
+        profession: "music_producer",
+        confidence: "high",
+      },
+      suggestedTestingAreas: expect.arrayContaining(["Integrasjoner"]),
     });
+  });
+
+  it("suggests only the public ENK holder and requires UI confirmation", async () => {
+    const lookupBrregContact = vi.fn().mockResolvedValue({
+      name: "Jens Michael Peters Nielsen",
+      role: "Innehaver",
+    });
+    const app = express();
+    setupPrototypeTesterInvitesRoutes({
+      app,
+      pool: { query: vi.fn() },
+      getPricingUserId: () => "",
+      requireUserSession: () => true,
+      requireAdminSession: async () => ({ userId: "verified-admin-id" }),
+      lookupBrregContact,
+    });
+
+    const response = await request(app).get(
+      "/api/prototype-tester-invites/brreg/998989159/contact",
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.contact).toEqual({
+      name: "Jens Michael Peters Nielsen",
+      role: "Innehaver",
+      source: "BRREG_ROLLER",
+      requiresConfirmation: true,
+    });
+    expect(response.body.contact).not.toHaveProperty("fodselsdato");
+  });
+
+  it("previews the exact Email Designer output without database or mail side effects", async () => {
+    const query = vi.fn();
+    const sendInviteEmail = vi.fn();
+    const previewInviteEmail = vi.fn().mockResolvedValue({
+      subject: "Du er invitert til CreatorHubs prototypeprogram",
+      html: "<html><body>CreatorHub preview</body></html>",
+      text: "CreatorHub preview",
+      fromLabel: "CreatorHub Norge",
+      fromAddress: "hello@creatorhubn.com",
+      replyToEmail: "hello@creatorhubn.com",
+    });
+    const app = express();
+    app.use(express.json());
+    setupPrototypeTesterInvitesRoutes({
+      app,
+      pool: { query },
+      getPricingUserId: () => "",
+      requireUserSession: () => true,
+      requireAdminSession: async () => ({ userId: "verified-admin-id" }),
+      previewInviteEmail,
+      sendInviteEmail,
+    });
+
+    const response = await request(app)
+      .post("/api/prototype-tester-invites/preview")
+      .send({
+        email: "tester@example.com",
+        name: "Test Tester",
+        profession: "music_producer",
+        testingAreas: ["CreatorHub-dashboard"],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      recipientEmail: "tester@example.com",
+      subject: "Du er invitert til CreatorHubs prototypeprogram",
+      agreements: [
+        "Programvilkår",
+        "NDA",
+        "Databehandleravtale",
+        "Intensjonsavtale",
+      ],
+    });
+    expect(previewInviteEmail).toHaveBeenCalledWith(expect.objectContaining({
+      recipientEmail: "tester@example.com",
+      profession: "music_producer",
+      testingAreas: ["CreatorHub-dashboard"],
+    }));
+    expect(query).not.toHaveBeenCalled();
+    expect(sendInviteEmail).not.toHaveBeenCalled();
   });
 
   it("omits non-active companies from BRREG search results", async () => {
@@ -253,6 +387,7 @@ describe("prototype tester invitation delivery", () => {
         company: "Forfalsket navn AS",
         organizationNumber: "937 518 684",
         businessAddress: "Forfalsket adresse 1",
+        profession: "photographer",
         testingAreas: ["CreatorHub-dashboard"],
       });
 
@@ -299,6 +434,7 @@ describe("prototype tester invitation delivery", () => {
       .send({
         email: "tester@example.com",
         name: "Test Tester",
+        profession: "photographer",
         organizationNumber: "937518684",
         testingAreas: ["CreatorHub-dashboard"],
       });
@@ -337,6 +473,7 @@ describe("prototype tester invitation delivery", () => {
       .send({
         email: "tester@example.com",
         name: "Test Tester",
+        profession: "photographer",
         organizationNumber: "937518684",
         testingAreas: ["CreatorHub-dashboard"],
       });
@@ -507,6 +644,101 @@ describe("prototype tester invitation delivery", () => {
         String(sql).includes("r.id::text = p.invite_request_id::text"),
       ),
     ).toBe(true);
+  });
+
+  it("retries a failed delivery on the same invitation without creating a new row", async () => {
+    const inviteId = "77777777-7777-4777-8777-777777777777";
+    const inviteRow = {
+      id: inviteId,
+      token: "same-invite-token",
+      email: "retry.tester@example.com",
+      name: "Retry Tester",
+      status: "pending",
+      expires_at: "2099-01-01T00:00:00.000Z",
+      member_profession: "photographer",
+      member_company: "Retry AS",
+      testing_areas: ["CreatorHub-dashboard"],
+      personal_message: null,
+      email_sent_at: null,
+      email_last_attempt_at: null,
+      program_duration_weeks: 12,
+    };
+    const query = vi.fn().mockImplementation(async (statement: unknown) => {
+      const sql = String(statement);
+      if (sql.includes("WHERE p.id = $1")) return { rows: [inviteRow], rowCount: 1 };
+      if (sql.includes("email_delivery_attempt_count") && sql.includes("RETURNING *")) {
+        return { rows: [inviteRow], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    const sendInviteEmail = vi.fn().mockResolvedValue({
+      sent: true,
+      provider: "resend",
+      reason: null,
+      messageId: "retry-message-id",
+    });
+    const app = express();
+    app.use(express.json());
+    setupPrototypeTesterInvitesRoutes({
+      app,
+      pool: { query },
+      getPricingUserId: () => "",
+      requireUserSession: () => true,
+      requireAdminSession: async () => ({ userId: "verified-admin-id" }),
+      sendInviteEmail,
+    });
+
+    const response = await request(app)
+      .post(`/api/prototype-tester-invites/${inviteId}/retry`)
+      .send({ step: "invite_email" });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ success: true, inviteId, step: "invite_email" });
+    expect(sendInviteEmail).toHaveBeenCalledWith(expect.objectContaining({
+      inviteId,
+      inviteUrl: expect.stringContaining("same-invite-token"),
+    }));
+    expect(query.mock.calls.some(([sql]) => String(sql).includes("INSERT INTO prototype_tester_invites"))).toBe(false);
+  });
+
+  it("does not consume a retry attempt when the requested step is already complete", async () => {
+    const inviteId = "77777777-7777-4777-8777-777777777777";
+    const query = vi.fn().mockImplementation(async (statement: unknown) => {
+      if (String(statement).includes("WHERE p.id = $1")) {
+        return {
+          rows: [{
+            id: inviteId,
+            status: "pending",
+            email_sent_at: "2026-09-10T10:00:00.000Z",
+            expires_at: "2099-01-01T00:00:00.000Z",
+          }],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    const sendInviteEmail = vi.fn();
+    const app = express();
+    app.use(express.json());
+    setupPrototypeTesterInvitesRoutes({
+      app,
+      pool: { query },
+      getPricingUserId: () => "",
+      requireUserSession: () => true,
+      requireAdminSession: async () => ({ userId: "verified-admin-id" }),
+      sendInviteEmail,
+    });
+
+    const response = await request(app)
+      .post(`/api/prototype-tester-invites/${inviteId}/retry`)
+      .send({ step: "invite_email" });
+
+    expect(response.status).toBe(409);
+    expect(sendInviteEmail).not.toHaveBeenCalled();
+    expect(query.mock.calls.some(([sql]) =>
+      String(sql).includes("email_delivery_attempt_count") &&
+      String(sql).includes("RETURNING *"),
+    )).toBe(false);
   });
 
   it("sends approval invitations through the centralized provider and records the journey", async () => {
