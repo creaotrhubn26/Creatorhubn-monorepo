@@ -55,6 +55,6 @@
     "0490_leadgrid_core_dataflow.sql": null,
     "0491_leadgrid_lead_files.sql": null,
     "0492_leadgrid_runtime_schema_backfill.sql": null,
-    "0506_role_room_storage_ownership_billing.sql": null
+    "0506_role_room_storage_ownership_billing.sql": "1c2099c6e99f910c48ef0bff63157b85bd7823ec70c4e1bfbe934e0484e935da"
   }
 }
