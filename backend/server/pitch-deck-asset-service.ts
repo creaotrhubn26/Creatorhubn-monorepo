@@ -36,6 +36,7 @@ import {
   leadgridStorageKeys,
   type LeadgridStorageProvider,
 } from "./leadgrid-s3-storage-service.js";
+import { leadgridStoragePersistenceError } from "./leadgrid-org-storage-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -331,6 +332,10 @@ export function registerPitchDeckAssetRoutes({
         assetId = assetRes.rows[0].id;
       } catch (error) {
         await storage.deleteObject(uploaded.key).catch(() => undefined);
+        const storageError = leadgridStoragePersistenceError(error);
+        if (storageError) {
+          return res.status(storageError.status).json({ error: storageError.code });
+        }
         throw error;
       }
 

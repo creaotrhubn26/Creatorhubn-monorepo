@@ -62,6 +62,7 @@ import {
   getLeadgridObjectStorage,
   leadgridStorageKeys,
 } from "./leadgrid-s3-storage-service.js";
+import { leadgridStoragePersistenceError } from "./leadgrid-org-storage-service.js";
 import { hydrateLeadgridPrizeImageUrls } from "./leadgrid-prize-image-service.js";
 
 type SessionUser = {
@@ -668,6 +669,8 @@ export function registerSalesLeadershipRoutes(
       } catch (err) {
         if (stored) await storage.deleteObject(stored.key).catch(() => undefined);
         console.error("[sales-leadership] prize image upload failed:", err);
+        const storageError = leadgridStoragePersistenceError(err);
+        if (storageError) return res.status(storageError.status).json({ error: storageError.code });
         return res.status(502).json({ error: "upload_failed", detail: "internal_error" });
       }
       const imageUrl = await storage.createDownloadUrl(stored.key, 600).catch(() => null);

@@ -15,6 +15,7 @@ import {
   getLeadgridObjectStorage,
   leadgridStorageKeys,
 } from "./leadgrid-s3-storage-service.js";
+import { leadgridStoragePersistenceError } from "./leadgrid-org-storage-service.js";
 
 // Strukturen (Daniel 2026-08-05): Møte/Lead/Befaring/Salgsplan/Prosjekt/
 // Rute — gamle verdier beholdes så eksisterende notater dekoder.
@@ -581,6 +582,11 @@ export function registerLeadgridCanvasRoutes(deps: {
         );
       } catch (error) {
         await storage.deleteObject(uploaded.key).catch(() => undefined);
+        const storageError = leadgridStoragePersistenceError(error);
+        if (storageError) {
+          res.status(storageError.status).json({ error: storageError.code });
+          return;
+        }
         throw error;
       }
 

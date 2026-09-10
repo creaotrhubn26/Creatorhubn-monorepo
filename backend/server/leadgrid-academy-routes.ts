@@ -45,6 +45,7 @@ import {
   leadgridStorageKeys,
   type LeadgridStorageProvider,
 } from "./leadgrid-s3-storage-service.js";
+import { leadgridStoragePersistenceError } from "./leadgrid-org-storage-service.js";
 
 // Legacy Backblaze B2 reader. Existing and platform-owned videos stay readable
 // while every new organization-owned upload uses AWS_LEADGRID_* below.
@@ -669,6 +670,8 @@ export function registerLeadgridAcademyRoutes(deps: AcademyRoutesDeps): void {
         return res.json({ ok: true });
       } catch (err) {
         console.error("[leadgrid-academy] video-attach feilet:", err);
+        const storageError = leadgridStoragePersistenceError(err);
+        if (storageError) return res.status(storageError.status).json({ error: storageError.code });
         return res.status(500).json({ error: "academy_video_attach_failed" });
       }
     },

@@ -580,7 +580,7 @@ export function registerPartnerVerificationRoutes({ app, pool, activeSessions }:
         fileBuffer: file.buffer,
         uploadedBy: session.userId,
       });
-      if (!r.ok) return res.status(400).json({ error: r.error });
+      if (!r.ok) return res.status(r.status ?? 400).json({ error: r.error });
       res.status(201).json({ ok: true, document_id: r.document_id });
     },
   );

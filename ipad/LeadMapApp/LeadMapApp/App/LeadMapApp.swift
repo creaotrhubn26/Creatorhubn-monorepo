@@ -432,6 +432,10 @@ struct RootView: View {
             }
             NetworkMonitor.shared.onConnectivityRestored = {
                 Task {
+                    // Stripe-webhooken kan ha gjenåpnet workspacet mens
+                    // enheten var offline. Hent alltid autoritativ billing-
+                    // og read-only-status før køen forsøker nye writes.
+                    await appState.loadWorkspacePlanSummary()
                     guard let api = appState.api,
                           let organizationId = appState.activeOrganizationId,
                           let projectId = appState.activeProjectId,

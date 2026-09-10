@@ -16,6 +16,7 @@ import {
   leadgridStorageKeys,
   type LeadgridStorageProvider,
 } from "./leadgrid-s3-storage-service.js";
+import { leadgridStoragePersistenceError } from "./leadgrid-org-storage-service.js";
 
 const B2_REGION = process.env.B2_REGION || "eu-central-003";
 const B2_ENDPOINT = `https://s3.${B2_REGION}.backblazeb2.com`;
@@ -82,6 +83,7 @@ export interface UploadResult {
   document_id?: string;
   storage_key?: string;
   error?: string;
+  status?: number;
 }
 
 export async function uploadPartnerDocument(
@@ -182,6 +184,10 @@ export async function uploadPartnerDocument(
     await storage.deleteObject(uploaded.key).catch((cleanupError) => {
       console.error("[partner-documents] orphan cleanup failed", cleanupError);
     });
+    const storageError = leadgridStoragePersistenceError(error);
+    if (storageError) {
+      return { ok: false, error: storageError.code, status: storageError.status };
+    }
     throw error;
   }
 }

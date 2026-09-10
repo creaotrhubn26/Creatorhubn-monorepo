@@ -17,6 +17,10 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import Stripe from "stripe";
 import { getPlanSummary } from "./plan-limits-service.js";
+import {
+  createLeadgridCheckoutSession,
+  LeadgridBillingError,
+} from "./leadgrid-billing-service.js";
 
 function getStripe(): Stripe | null {
   const key = process.env.CREATORHUB_STRIPE_SECRET_KEY ?? process.env.STRIPE_SECRET_KEY;
@@ -49,7 +53,8 @@ export function registerPlanRoutes({ app, pool, activeSessions }: Deps): void {
               max_playbooks_visible, max_team_members,
               has_automation_rules, has_custom_fields,
               has_pitch_deck_studio, has_white_label_portal,
-              has_salgshierarki, audit_log_retention_days
+              has_salgshierarki, audit_log_retention_days,
+              included_storage_bytes
          FROM plan_limits
         WHERE is_active = TRUE
         ORDER BY display_order ASC`,
@@ -119,56 +124,23 @@ export function registerPlanRoutes({ app, pool, activeSessions }: Deps): void {
       return res.status(404).json({ error: `Ingen pris for ${planKey}/${billing}` });
     }
 
-    const orgR = await pool.query<{
-      stripe_customer_id: string | null;
-      contact_email: string | null;
-      name: string;
-    }>(
-      `SELECT stripe_customer_id, contact_email, name
-         FROM organizations WHERE id = $1`, [orgId],
-    );
-    if (orgR.rows.length === 0) return res.status(404).json({ error: "Org ikke funnet" });
-    let customerId = orgR.rows[0].stripe_customer_id;
-
-    // Opprett Stripe-kunde hvis ikke finnes (Free-orgs uten kort)
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: orgR.rows[0].contact_email ?? session.email ?? undefined,
-        name: orgR.rows[0].name,
-        metadata: { organization_id: orgId, user_id: session.userId },
-      });
-      customerId = customer.id;
-      await pool.query(
-        `UPDATE organizations SET stripe_customer_id = $1 WHERE id = $2`,
-        [customerId, orgId],
-      );
-    }
-
     try {
-      const checkoutSession = await stripe.checkout.sessions.create({
-        mode: "subscription",
-        customer: customerId,
-        line_items: [{ price: priceId, quantity: 1 }],
-        success_url: `${PUBLIC_BASE}/?upgrade=success&plan=${encodeURIComponent(planKey)}`,
-        cancel_url: `${PUBLIC_BASE}/?upgrade=cancelled`,
-        allow_promotion_codes: true,
-        metadata: {
-          organization_id: orgId,
-          plan_key: planKey,
-          product_family: "leadgrid",
-          billing,
-        },
-        subscription_data: {
-          metadata: {
-            organization_id: orgId,
-            plan_key: planKey,
-            product_family: "leadgrid",
-            billing,
-          },
-        },
+      const checkout = await createLeadgridCheckoutSession({
+        pool,
+        stripe,
+        organizationId: orgId,
+        planKey,
+        billing: billing === "yearly" ? "yearly" : "monthly",
+        priceId,
+        successUrl: `${PUBLIC_BASE}/?upgrade=success&plan=${encodeURIComponent(planKey)}`,
+        cancelUrl: `${PUBLIC_BASE}/?upgrade=cancelled`,
+        fallbackEmail: session.email,
       });
-      res.json({ url: checkoutSession.url });
-    } catch (e: any) {
+      res.json({ url: checkout.url, sessionId: checkout.sessionId, reused: checkout.reused });
+    } catch (e: unknown) {
+      if (e instanceof LeadgridBillingError) {
+        return res.status(e.status).json({ error: e.code, ...e.details });
+      }
       console.error("[plan upgrade]", e);
       res.status(500).json({ error: "internal_error" });
     }

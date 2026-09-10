@@ -67,6 +67,7 @@ function makeHarness(pool: Pool) {
           ? { authorization: options.authorization }
           : {},
         session: options.session,
+        get: () => undefined,
       } as unknown as Request;
       let status = 200;
       let body: unknown;
@@ -265,6 +266,144 @@ describe("Leadgrid project team routes", () => {
     expect(mail.send).not.toHaveBeenCalled();
   });
 
+  it("lets Super Admin configure a Dentum prototype invite with organization storage", async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("FROM leadgrid_projects p")) {
+        return { rows: [accessibleProject({ created_by: "dentum-owner" })] };
+      }
+      if (sql.includes("SELECT role FROM leadgrid_project_members")) {
+        return { rows: [{ role: "member" }] };
+      }
+      if (sql.includes("SELECT EXISTS") && sql.includes("role = 'super_admin'")) {
+        return { rows: [{ is_super_admin: true }] };
+      }
+      if (sql.includes("SELECT pm.id::text")) return { rows: [] };
+      if (sql.includes("SELECT name, email FROM users")) {
+        return { rows: [{ name: "Daniel Qazi", email: "daniel@creatorhubn.com" }] };
+      }
+      if (sql.includes("INSERT INTO leadgrid_project_invitations")) {
+        return { rows: [{ id: "prototype-invite-1" }] };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    const response = await makeHarness({ query } as unknown as Pool).call(
+      "POST",
+      "/api/admin-room/lead-map/projects/:id/invitations",
+      {
+        authorization: `Bearer ${token}`,
+        params: { id: projectId },
+        body: {
+          email: "tester@dentum.no",
+          role: "member",
+          is_prototype_tester: true,
+          use_organization_storage: true,
+        },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      isPrototypeTester: true,
+      storagePolicy: "organization",
+      setupManagedBySuperAdmin: true,
+    });
+    const invitationInsert = query.mock.calls.find(([sql]) =>
+      sql.includes("INSERT INTO leadgrid_project_invitations"),
+    );
+    expect(invitationInsert?.[1]?.slice(6, 9)).toEqual([true, "organization", true]);
+    expect(query.mock.calls.some(([sql]) =>
+      sql.includes("configure_leadgrid_project_invite"),
+    )).toBe(true);
+    expect(mail.send.mock.calls[0][0].text).toContain("prototype-tester");
+    expect(mail.send.mock.calls[0][0].text).toContain("organisasjonens delte lagring");
+  });
+
+  it("rejects prototype and storage configuration from a normal project owner", async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("FROM leadgrid_projects p")) return { rows: [accessibleProject()] };
+      if (sql.includes("SELECT EXISTS") && sql.includes("role = 'super_admin'")) {
+        return { rows: [{ is_super_admin: false }] };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    const response = await makeHarness({ query } as unknown as Pool).call(
+      "POST",
+      "/api/admin-room/lead-map/projects/:id/invitations",
+      {
+        authorization: `Bearer ${token}`,
+        params: { id: projectId },
+        body: {
+          email: "tester@dentum.no",
+          role: "member",
+          is_prototype_tester: true,
+        },
+      },
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({
+      error: "prototype_og_lagringsoppsett_krever_superadmin",
+    });
+    expect(mail.send).not.toHaveBeenCalled();
+  });
+
+  it("persists Super Admin setup into organization and project membership on accept", async () => {
+    const clientQuery = vi.fn(async (sql: string) => {
+      if (sql.includes("FROM users")) return { rows: [{ email: "tester@dentum.no" }] };
+      if (sql.includes("FROM leadgrid_project_invitations pi")) {
+        return { rows: [{
+          id: "prototype-invite-1",
+          organization_id: organizationId,
+          project_id: projectId,
+          email: "tester@dentum.no",
+          role: "member",
+          expires_at: "2099-01-01T00:00:00.000Z",
+          accepted_at: null,
+          organization_role: "member",
+          sales_team_id: null,
+          sales_team_role: null,
+          is_prototype_tester: true,
+          storage_policy: "organization",
+          setup_managed_by_super_admin: true,
+        }] };
+      }
+      if (sql.includes("INSERT INTO leadgrid_project_members")) {
+        return { rows: [{ role: "member" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    const response = await makeHarness({
+      query: vi.fn(),
+      connect: vi.fn(async () => ({ query: clientQuery, release: vi.fn() })),
+    } as unknown as Pool).call(
+      "POST",
+      "/api/lead-map/invitations/:token/accept",
+      {
+        authorization: `Bearer ${token}`,
+        params: { token: "prototype-invite-token" },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      isPrototypeTester: true,
+      storagePolicy: "organization",
+      setupManagedBySuperAdmin: true,
+    });
+    expect(clientQuery.mock.calls.find(([sql]) =>
+      sql.includes("INSERT INTO organization_members"),
+    )?.[1]).toEqual([
+      organizationId, actorId, "member", true, "organization", true,
+    ]);
+    expect(clientQuery.mock.calls.find(([sql]) =>
+      sql.includes("INSERT INTO leadgrid_project_members"),
+    )?.[1]).toEqual([
+      organizationId, projectId, actorId, "member", true, "organization", true,
+    ]);
+  });
+
   it("keeps the immutable project creator as an owner", async () => {
     const query = vi.fn(async (sql: string) => {
       if (sql.includes("FROM leadgrid_projects p")) {
@@ -354,10 +493,14 @@ describe("Leadgrid project team routes", () => {
     )?.[0]).toContain("FOR UPDATE OF pi");
     expect(clientQuery.mock.calls.find(([sql]) =>
       sql.includes("INSERT INTO leadgrid_project_members"),
-    )?.[1]).toEqual([organizationId, projectId, actorId, "viewer"]);
+    )?.[1]).toEqual([
+      organizationId, projectId, actorId, "viewer", false, "organization", false,
+    ]);
     expect(clientQuery.mock.calls.find(([sql]) =>
       sql.includes("INSERT INTO organization_members"),
-    )?.[1]).toEqual([organizationId, actorId, "viewer"]);
+    )?.[1]).toEqual([
+      organizationId, actorId, "viewer", false, "organization", false,
+    ]);
     expect(clientQuery.mock.calls.find(([sql]) =>
       sql.includes("INSERT INTO organization_members"),
     )?.[0]).toContain("ON CONFLICT (organization_id, user_id) DO UPDATE");
@@ -411,7 +554,9 @@ describe("Leadgrid project team routes", () => {
     });
     expect(clientQuery.mock.calls.find(([sql]) =>
       sql.includes("INSERT INTO organization_members"),
-    )?.[1]).toEqual([organizationId, actorId, "admin"]);
+    )?.[1]).toEqual([
+      organizationId, actorId, "admin", false, "organization", false,
+    ]);
     expect(clientQuery.mock.calls.some(([sql]) =>
       sql.includes("UPDATE leadgrid_sales_teams team") && sql.includes("leader_user_id"),
     )).toBe(true);

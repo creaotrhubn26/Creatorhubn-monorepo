@@ -6,3 +6,6 @@ Leadgrid 2.1 gjør veien fra domene til kvalifiserte leads enklere:
 • Tannklinikker behandles som salgskontoer, mens trygt identifiserte tannlegeforetak på samme adresse legges til som kontakter.
 • Kandidater må fortsatt godkjennes før de blir leads, og alle funn holdes adskilt per organisasjon og prosjekt.
 • Lead-detaljen viser Discovery-kontakter, og duplikat- og BRREG-flyten fortsetter sømløst etter godkjenning.
+• Super Admin kan merke prosjektinvitasjoner som prototype-testere og velge om de får bruke organisasjonens delte lagring.
+• Abonnement, lagringskvote og betalingsstatus tilhører nå organisasjonen; kun organisasjonsadmin kan administrere betaling.
+• Ved betalingsproblemer går prosjektet trygt over til lesemodus uten at filer slettes, og full tilgang gjenopprettes automatisk etter betaling.

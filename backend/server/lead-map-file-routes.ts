@@ -15,6 +15,7 @@ import {
   type LeadgridObjectStorage,
   type LeadgridStorageProvider,
 } from "./leadgrid-s3-storage-service.js";
+import { leadgridStoragePersistenceError } from "./leadgrid-org-storage-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 type ScopedRequest = Request & {
@@ -226,6 +227,8 @@ export function registerLeadMapFileRoutes(deps: {
         await objectStorage.deleteObject(uploaded.key).catch((cleanupError) => {
           console.error("[leadgrid-files] orphan cleanup failed", cleanupError);
         });
+        const storageError = leadgridStoragePersistenceError(error);
+        if (storageError) return res.status(storageError.status).json({ error: storageError.code });
         throw error;
       }
       return res.status(201).json({

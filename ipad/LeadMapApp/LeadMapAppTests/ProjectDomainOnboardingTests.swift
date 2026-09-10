@@ -27,6 +27,34 @@ final class ProjectDomainOnboardingTests: XCTestCase {
         XCTAssertEqual(invitation.salesTeamId, "dentum-salg")
     }
 
+    func testDentumPrototypeInviteDecodesSuperAdminStorageSetup() throws {
+        let data = Data(#"""
+        {
+          "id":"invite-prototype",
+          "email":"tester@dentum.no",
+          "role":"member",
+          "invitedAt":"2026-09-10T08:00:00.000Z",
+          "expiresAt":"2026-09-17T08:00:00.000Z",
+          "acceptedAt":null,
+          "status":"pending",
+          "emailStatus":"sent",
+          "salesTeamId":null,
+          "salesTeamRole":null,
+          "isPrototypeTester":true,
+          "storagePolicy":"organization",
+          "setupManagedBySuperAdmin":true
+        }
+        """#.utf8)
+
+        let invitation = try JSONDecoder().decode(
+            LeadgridProjectInvitationStatus.self,
+            from: data
+        )
+        XCTAssertEqual(invitation.isPrototypeTester, true)
+        XCTAssertEqual(invitation.storagePolicy, "organization")
+        XCTAssertEqual(invitation.setupManagedBySuperAdmin, true)
+    }
+
     func testAccessSetupEncodesTenantProjectAndTeamRolesWithoutLocalIdentifiers() throws {
         let setup = LeadgridProjectOnboardingAccessSetup(
             organization: .init(mode: "create", organizationId: nil, name: "Dentum"),
