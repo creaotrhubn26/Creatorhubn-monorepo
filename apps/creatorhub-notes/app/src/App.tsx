@@ -333,7 +333,7 @@ export default function App() {
             </>
           ) : (
             <div className="velkomst">
-              <h1>{tomtArkiv ? "Ingen notater ennå" : "Ingen notat er åpent"}</h1>
+              <h1>{tomtArkiv ? "Ingen notater ennå" : "Velg et notat"}</h1>
               <p>
                 {tomtArkiv
                   ? "Her skriver du ned det du vil huske senere. Notatene lagrer seg selv, og du kan søke i alt du har skrevet."
