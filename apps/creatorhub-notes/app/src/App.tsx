@@ -6,14 +6,17 @@ import {
   listNotes,
   readNote,
   reindex,
+  rettAvsnitt,
   searchNotes,
   understandNote,
   writeNote,
   type Note,
   type Paragraph,
+  type Retting,
   type SearchHit,
   type Understanding,
 } from "./api";
+import { lesTema, settTema, TEMAER, type Tema } from "./tema";
 
 const klokke = new Intl.DateTimeFormat("nb-NO", { hour: "2-digit", minute: "2-digit" });
 const dagIAr = new Intl.DateTimeFormat("nb-NO", { weekday: "short", day: "numeric", month: "short" });
@@ -99,6 +102,7 @@ export default function App() {
   const [panel, setPanel] = useState(() => localStorage.getItem("forstaelse") !== "skjult");
   const [forståelse, setForståelse] = useState<Understanding | null>(null);
   const [peker, setPeker] = useState<{ from: number; to: number; n: number } | null>(null);
+  const [tema, setTema] = useState<Tema>(() => lesTema());
 
   const søkefelt = useRef<HTMLInputElement>(null);
   /** Lista slik den er nå, uten å binde tilbakekallene til den. */
@@ -113,28 +117,31 @@ export default function App() {
    *  teksten — starter man en ny for hvert tastetrykk, køer de seg opp og
    *  panelet viser noe som var sant for et halvt minutt siden. */
   const leser = useRef(false);
-  const køet = useRef<string | null>(null);
+  const køet = useRef<{ sti: string; tekst: string } | null>(null);
 
   /** Les notatet på nytt. Ingen venter på dette: teksten er allerede på disk,
    *  og panelet fyller seg ut når svaret kommer. */
-  const les: (tekst: string) => Promise<void> = useCallback(async (tekst: string) => {
-    if (!panelPå.current) return;
-    if (leser.current) {
-      køet.current = tekst;
-      return;
-    }
-    leser.current = true;
-    try {
-      setForståelse(await understandNote(tekst));
-    } catch {
-      // Panelet blir stående som det var. Notatet er lagret uansett.
-    } finally {
-      leser.current = false;
-      const neste = køet.current;
-      køet.current = null;
-      if (neste !== null && neste !== tekst) void les(neste);
-    }
-  }, []);
+  const les: (sti: string, tekst: string) => Promise<void> = useCallback(
+    async (sti: string, tekst: string) => {
+      if (!panelPå.current) return;
+      if (leser.current) {
+        køet.current = { sti, tekst };
+        return;
+      }
+      leser.current = true;
+      try {
+        setForståelse(await understandNote(sti, tekst));
+      } catch {
+        // Panelet blir stående som det var. Notatet er lagret uansett.
+      } finally {
+        leser.current = false;
+        const neste = køet.current;
+        køet.current = null;
+        if (neste && (neste.sti !== sti || neste.tekst !== tekst)) void les(neste.sti, neste.tekst);
+      }
+    },
+    [],
+  );
 
   /** Skriv til disk, indekser, oppdater lista. Kalles på pause, før bytte av
    *  notat og før søk — det siste er det som gjør at et notat fra ett minutt
@@ -147,7 +154,7 @@ export default function App() {
     try {
       await writeNote(p.path, p.content);
       setStatus(`Lagret ${klokke.format(new Date())}`);
-      void les(p.content);
+      void les(p.path, p.content);
     } catch (e) {
       setFeil(String(e));
       return;
@@ -183,7 +190,7 @@ export default function App() {
         setDetaljer(false);
         setPeker(null);
         setForståelse(null);
-        void les(tekst);
+        void les(p, tekst);
         // Lagringsmerket står alltid. Er ingenting endret ennå, er sannheten
         // tidspunktet fila sist ble skrevet.
         const rørt = notater.current.find((n) => n.path === p)?.modified;
@@ -193,6 +200,22 @@ export default function App() {
       }
     },
     [lagre, les],
+  );
+
+  /** Brukerens egen retting av én linje. Den lagres, og panelet leses opp
+   *  igjen fra den samme teksten — avsnittene er uendret, så det koster
+   *  ingenting utover et oppslag. */
+  const rett = useCallback(
+    async (r: Retting) => {
+      try {
+        await rettAvsnitt(r);
+      } catch (e) {
+        setFeil(String(e));
+        return;
+      }
+      if (path) void les(path, uskrevet.current?.content ?? doc);
+    },
+    [path, doc, les],
   );
 
   const nyttNotat = useCallback(async () => {
@@ -291,6 +314,19 @@ export default function App() {
             </button>
           )}
         </div>
+        <label className="tema">
+          Tema
+          <select
+            value={tema}
+            onChange={(e) => setTema(settTema(e.target.value as Tema))}
+          >
+            {TEMAER.map((t) => (
+              <option key={t.verdi} value={t.verdi}>
+                {t.navn}
+              </option>
+            ))}
+          </select>
+        </label>
         <button
           className="bryter"
           aria-pressed={panel}
@@ -298,7 +334,7 @@ export default function App() {
             const på = !panel;
             setPanel(på);
             localStorage.setItem("forstaelse", på ? "vist" : "skjult");
-            if (på) void les(uskrevet.current?.content ?? doc);
+            if (på && path) void les(path, uskrevet.current?.content ?? doc);
           }}
         >
           {panel ? "Skjul forståelse" : "Vis forståelse"}
@@ -361,26 +397,32 @@ export default function App() {
           )}
           {path ? (
             <>
-              {topp && (
-                <div className="notatinfo">
-                  <div className="notatlinje">
-                    <span>{topp.etikett}</span>
+              {/* Lagringsmerket står her, ikke nede i hjørnet: det er her øyet
+                  allerede er når man ser på notatet, og et lagringsmerke ingen
+                  finner gjør ingen trygge. */}
+              <div className="notatinfo">
+                <div className="notatlinje">
+                  <span>{topp?.etikett ?? "Notat"}</span>
+                  <span className="status" aria-live="polite">
+                    {status}
+                  </span>
+                  {topp && (
                     <button onClick={() => setDetaljer(!detaljer)}>
                       {detaljer ? "Skjul detaljer" : "Vis detaljer"}
                     </button>
-                  </div>
-                  {detaljer && (
-                    <dl className="detaljer">
-                      {topp.felt.map(([navn, verdi]) => (
-                        <Fragment key={navn}>
-                          <dt>{navn}</dt>
-                          <dd>{verdi || "—"}</dd>
-                        </Fragment>
-                      ))}
-                    </dl>
                   )}
                 </div>
-              )}
+                {detaljer && topp && (
+                  <dl className="detaljer">
+                    {topp.felt.map(([navn, verdi]) => (
+                      <Fragment key={navn}>
+                        <dt>{navn}</dt>
+                        <dd>{verdi || "—"}</dd>
+                      </Fragment>
+                    ))}
+                  </dl>
+                )}
+              </div>
               <Editor path={path} doc={doc} onChange={skriv} selectTitle={nytt} peker={peker} />
             </>
           ) : (
@@ -396,17 +438,20 @@ export default function App() {
               </button>
             </div>
           )}
-          <span className="status" aria-live="polite">
-            {status}
-          </span>
         </main>
 
         {panel &&
           (path ? (
             <Panel
+              key={path}
               forståelse={forståelse}
+              sti={path}
               onVelg={(p: Paragraph) =>
                 setPeker((forrige) => ({ from: p.start, to: p.end, n: (forrige?.n ?? 0) + 1 }))
+              }
+              onRett={(r) => void rett(r)}
+              onLukkMerknad={() =>
+                setForståelse((f) => (f ? { ...f, reread: [] } : f))
               }
             />
           ) : (

@@ -17,13 +17,26 @@
   --mark: rgba(28, 107, 89, 0.18);
   --skygge: 0 1px 0 rgba(23, 27, 25, 0.05);
 
+  /* Merkene i panelet. Fargen er et tillegg til formen, aldri det eneste
+     skillet: hake, spørsmålstegn, pil og rombe er fire forskjellige tegn, og
+     hver linje står med ord ved siden av seg. Alle fire holder minst 6:1 mot
+     bakgrunnen i begge temaene. */
+  --merke-forstått: #1c6b59;
+  --merke-uavklart: #1b5c96;
+  --merke-oppgave: #8a5312;
+  --merke-idé: #5b4a8f;
+
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --serif: "Iowan Old Style", "Charter", "Palatino Linotype", Palatino, Georgia, serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
 }
 
+/* Mørkt tema. Verdiene står to ganger med vilje: én gang for maskinens
+   innstilling, én gang for brukerens eget valg. CSS kan ikke slå sammen en
+   media-spørring og en attributtvelger i én regel, og et valg som bare gjaldt
+   halve appen ville vært verre enn en gjentakelse. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-tema="lyst"]) {
     --ground: #121514;
     --paper: #191d1c;
     --ink: #e3e8e6;
@@ -34,7 +47,38 @@
     --sel: rgba(107, 196, 174, 0.2);
     --mark: rgba(107, 196, 174, 0.24);
     --skygge: 0 1px 0 rgba(0, 0, 0, 0.4);
+
+    --merke-forstått: #6bc4ae;
+    --merke-uavklart: #7db4e8;
+    --merke-oppgave: #d9a55c;
+    --merke-idé: #ac9ce0;
   }
+}
+
+:root[data-tema="mørkt"] {
+    --ground: #121514;
+    --paper: #191d1c;
+    --ink: #e3e8e6;
+    --ink-soft: #a3ada9;
+    --ink-faint: #7d8784;
+    --rule: #2a302e;
+    --accent: #6bc4ae;
+    --sel: rgba(107, 196, 174, 0.2);
+    --mark: rgba(107, 196, 174, 0.24);
+    --skygge: 0 1px 0 rgba(0, 0, 0, 0.4);
+
+    --merke-forstått: #6bc4ae;
+    --merke-uavklart: #7db4e8;
+    --merke-oppgave: #d9a55c;
+    --merke-idé: #ac9ce0;
+}
+
+:root[data-tema="lyst"] {
+  color-scheme: light;
+}
+
+:root[data-tema="mørkt"] {
+  color-scheme: dark;
 }
 
 * {
@@ -86,7 +130,7 @@ kbd {
 
 .topp {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto auto auto;
   align-items: center;
   gap: 16px;
   padding: 0 18px;
@@ -165,6 +209,34 @@ kbd {
   border-color: var(--ink-faint);
 }
 
+/* Temavalget er navngitt og sier hva det gjør. Tre tilstander, ikke to: noen
+   vil ha lyst tema om kvelden uansett hva maskinen mener. */
+.tema {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  align-items: center;
+  font-size: 15px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.tema select {
+  height: 44px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 15px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  box-shadow: var(--skygge);
+}
+
+.tema select:hover {
+  border-color: var(--ink-faint);
+}
+
 /* Bryteren er navngitt og sier hva den gjør, ikke hva den er. Er panelet
    skjult, skjer det ingen lesning i det hele tatt. */
 .bryter[aria-pressed="true"] {
@@ -181,7 +253,20 @@ kbd {
 }
 
 .kropp.med-panel {
-  grid-template-columns: 320px 1fr 300px;
+  grid-template-columns: 320px 1fr 336px;
+}
+
+/* I et smalt vindu er det skriveflaten som skal ha plassen. Registeret og
+   panelet gir fra seg noen piksler heller enn å presse teksten ned i en
+   spalte man ikke kan lese. */
+@media (max-width: 1180px) {
+  .kropp {
+    grid-template-columns: 250px 1fr;
+  }
+
+  .kropp.med-panel {
+    grid-template-columns: 250px 1fr 300px;
+  }
 }
 
 /* Registeret: én linje per notat, dagen som eneste inndeling. Rekkefølgen er
@@ -306,7 +391,8 @@ kbd {
 
 .notatlinje {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 0 16px;
   align-items: center;
   color: var(--ink-soft);
 }
@@ -376,18 +462,19 @@ kbd {
   border-radius: 8px;
 }
 
-/* Lagringen sier fra av seg selv. Diskré, men lesbar — det er den som gjør
-   at man tør å la være å lete etter en lagreknapp. */
+/* Lagringen sier fra av seg selv, i metalinja øverst i notatet. Nede i
+   hjørnet fant ingen den — og et lagringsmerke ingen finner gjør ingen
+   trygge. Diskré, men lesbar: samme størrelse som resten av linja. */
 .status {
-  position: absolute;
-  right: 20px;
-  bottom: 14px;
-  padding: 4px 10px;
   font-size: 15px;
+  font-variant-numeric: tabular-nums;
   color: var(--ink-soft);
-  background: var(--paper);
-  border-radius: 6px;
-  pointer-events: none;
+}
+
+.status::before {
+  margin-right: 12px;
+  color: var(--ink-faint);
+  content: "·";
 }
 
 .feil {
@@ -451,28 +538,63 @@ kbd {
   padding-top: 8px;
 }
 
+/* «Endre» står alltid der, med ord. Skjult bak hover ville den vært usynlig
+   for den som trenger den mest. */
+.linjerad {
+  display: flex;
+  align-items: center;
+}
+
 .linje {
   display: grid;
+  flex: 1;
   grid-template-columns: 18px 1fr;
   gap: 10px;
-  width: 100%;
+  min-width: 0;
   min-height: 44px;
-  padding: 10px 20px;
+  padding: 10px 4px 10px 20px;
   text-align: left;
 }
 
-.linje:hover {
+.endre {
+  flex: none;
+  min-height: 44px;
+  margin-right: 12px;
+  padding: 0 12px;
+  font-size: 15px;
+  color: var(--ink-soft);
+  border-radius: 8px;
+}
+
+.linje:hover,
+.endre:hover {
   background: color-mix(in srgb, var(--ink) 5%, transparent);
 }
 
-.tegn {
-  font-size: 15px;
-  line-height: 1.5;
-  color: var(--accent);
+.endre:hover {
+  color: var(--ink);
 }
 
-.åpen .tegn {
-  color: var(--ink-faint);
+.tegn {
+  font-size: 16px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.tegn-forstått {
+  color: var(--merke-forstått);
+}
+
+.tegn-uavklart {
+  color: var(--merke-uavklart);
+}
+
+.tegn-oppgave {
+  color: var(--merke-oppgave);
+}
+
+.tegn-idé {
+  color: var(--merke-idé);
 }
 
 .kort {
@@ -481,11 +603,16 @@ kbd {
   line-height: 1.5;
 }
 
+/* Det oppgaven venter på hører til oppgaven, og står i samme linje som den. */
+.venter {
+  color: var(--ink-soft);
+}
+
 .merknad {
   margin-left: 8px;
   font-family: var(--sans);
   font-size: 15px;
-  color: var(--ink-faint);
+  color: var(--ink-soft);
   white-space: nowrap;
 }
 
@@ -494,13 +621,144 @@ kbd {
   margin: 6px 20px 0;
   font-size: 15px;
   line-height: 1.6;
-  color: var(--ink-faint);
+  color: var(--ink-soft);
 }
 
+
+/* Rettingen står der linja sto. Ingen dialog, ingenting som legger seg over
+   noe annet: det er den samme linja, åpnet. */
+.retting {
+  display: grid;
+  gap: 12px;
+  padding: 12px 20px 16px;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+
+.rettefelt {
+  display: grid;
+  gap: 6px;
+  font-size: 15px;
+  color: var(--ink-soft);
+}
+
+.rettefelt input {
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  font-family: var(--serif);
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
+.rettefelt input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--sel);
+}
+
+.plassvalg {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.plassvalg legend {
+  padding: 0 0 2px;
+  font-size: 15px;
+  color: var(--ink-soft);
+}
+
+.plassvalg label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 44px;
+  font-size: 15px;
+}
+
+.plassvalg input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.plassvalg .tegn {
+  width: 18px;
+}
+
+.retteknapper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.retteknapper button {
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 15px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
+.retteknapper .lagre {
+  color: var(--paper);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.retteknapper .fjern {
+  margin-left: auto;
+  color: var(--ink-soft);
+}
+
+.retteknapper .fjern:hover {
+  color: var(--ink);
+}
+
+/* Angre og «lest på nytt» er de to gangene panelet snakker til brukeren.
+   Begge er rolige, begge står til de er lest, og ingen av dem gjør noe selv. */
+.angre,
+.påNytt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 10px 14px 0;
+  padding: 10px 12px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  border-radius: 8px;
+}
+
+.angre span,
+.påNytt span {
+  flex: 1 1 60%;
+}
+
+.angre button,
+.påNytt button {
+  flex: none;
+  min-height: 44px;
+  padding: 0 14px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
 
 @media (prefers-reduced-motion: no-preference) {
   .rad,
   .linje,
+  .endre,
   .bryter,
   .nytt,
   .søk .tøm {
