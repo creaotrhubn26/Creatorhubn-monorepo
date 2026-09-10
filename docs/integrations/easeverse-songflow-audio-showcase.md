@@ -20,13 +20,17 @@ Den kanoniske flyten er:
 | Synlig Workspace-inngang | ✅ | Musikkprodusent ser EaseVerse og Pro Tools Companion fra Workspace/Oversikt og Sound Room, også før første studiosesjon finnes. |
 | Companion-paring | ✅ | DB-lagret seks-sifret engangskode, utløp, rate-limit, atomisk claim, device-token og målrettet tilbakekalling per enhet. |
 | Markører og metadata | ✅ | Session Info/Memory Locations parses lokalt, valideres og lagres transaksjonelt, blir Sound Room-seksjoner og speiles til EaseVerse. |
+| Direkte Pro Tools-kontroll | ✅ | Companion bruker den lokalt lisensierte Avid PTSL 2026.4-broen til locate, markøropprettelse, lydimport og mix-export. Filmodus er fortsatt fallback. |
 | Bounce til review | ✅ | Stabil filfingerprint, retry og `clientEventId` gjør opplasting idempotent; én bounce gir én review-versjon. |
 | Keeper tilbake til Sound Room | ✅ | EaseVerse sender keeper via service-autentisert webhook og oppretter idempotent review-kandidat. |
+| Kanonisk lydlinje | ✅ | `creatorhub_music_artifacts` følger take → import → mix → review → keeper/master med foreldre-ID, revision og prosjekt-/tenantkontekst. |
 | Godkjent referansemiks | ✅ | Sound Room sender godkjent miks til EaseVerse sitt `/api/v1/collab/reference`-endepunkt. |
+| Native lyd i EaseVerse | ✅ | Referansespor, takes og produsentmemoer spiller i iOS/Android og web gjennom samme `expo-audio`-spiller. |
+| Pro Tools Intro-preflight | ✅ | Companion teller audio-, instrument-, MIDI-, aux- og I/O-ressurser og viser konkrete stem/flatten-tiltak før handoff. |
 | Lyrics | ✅ | Revisjons-/tidsstempelstyrt last-write-wins hindrer eldre offlineutkast fra å overskrive nyere tekst. |
 | Robust synk | ✅ | Companion har atomisk lokal outbox og auto-resume etter omstart. CreatorHub og EaseVerse har DB-outbox med leasing, eksponentiell retry, dead-letter og bakgrunnsworker/Netlify-cron. |
 | Auth-recovery | ✅ | 401 og auth-relaterte 403-responser ugyldiggjør den lokale CreatorHub-sesjonen og viser felles innlogging på nytt; rollebaserte 403-responser logger ikke brukeren ut. |
-| Companion-feedback | ✅ | Companion viser kommentarer, åpne tasks, beslutninger og godkjenninger fra koblet Sound Room og oppdaterer hvert 15. sekund. |
+| Companion-feedback | ✅ | Companion viser kommentarer, tasks og godkjenninger, kan locate/svare/løse, og reagerer på den brukeravgrensede WebSocket-strømmen; 60 sekunders polling er kun fallback. |
 | Realtime-sikkerhet | ✅ | Web-klienten henter en tilfeldig 30-sekunders engangsticket før WebSocket-oppkobling; OAuth-token legges ikke i URL-en. |
 | Legacy EaseVerse-paring | ✅ | Gamle Clerk-/lokale Companion-kort er fjernet fra aktiv EaseVerse-UI. Paring administreres i Workspace/Sound Room. |
 | Desktop-distribusjon | 🟡 | macOS DMG-er er Developer ID-signert/notarisert. Windows x64-pipelinen krever gyldig Authenticode før publisering; offentlig v0.1.2 er fortsatt usignert mens Azure Public Trust-validering fullføres. |
@@ -69,12 +73,32 @@ Kun relative retur-URL-er eller godkjente CreatorHub-domener aksepteres. Hemmeli
 
 ### Session og DAW-data
 
+Når den lisensierte Avid-broen er installert lokalt og Pro Tools lytter på
+`127.0.0.1:31416`, er PTSL primær transport. Companion registrerer en ny lokal
+PTSL-forbindelse per operasjon og støtter:
+
+- flytting av timeline/playhead fra en Sound Room-kommentar
+- opprettelse av en minnelokasjon/markør fra kommentaren
+- sikker nedlasting og import av keeper/reference på nytt lydspor
+- 24-bit WAV-export av aktiv mix-output til valgt `Bounced Files`-mappe
+
+SDK, generert Avid-klient og rammeverk skal ikke committes eller publiseres fra
+repoet. Lokalt ligger den bygde CLI-broen under
+`~/.creatorhub-protools-companion/ptsl/`; Windows bruker tilsvarende appdata-path
+og må bygges med Windows-utgaven av samme lisensierte SDK.
+
 - `POST /api/protools/sessions`
 - `POST /api/protools/sessions/:id/markers`
 - `POST /api/protools/sessions/:id/metadata`
 - `POST /api/protools/sessions/:id/playhead`
 - `POST /api/protools/sessions/:id/bounce/presign`
 - `POST /api/protools/sessions/:id/bounce/complete`
+- `POST /api/protools/sessions/:id/realtime-ticket`
+- `GET /api/protools/sessions/:id/commands`
+- `POST /api/protools/sessions/:id/commands/:commandId/complete`
+- `POST /api/protools/sessions/:id/feedback/comments/:commentId`
+- `GET /api/protools/sessions/:id/artifacts`
+- `GET /api/protools/sessions/:id/artifacts/:artifactId/file`
 
 Watcher markerer ikke en fil som ferdig behandlet før serveren har bekreftet mottak. Session Info og bounces legges først i en atomisk lokal JSON-outbox. Køen og `auto_watch` overlever app-/maskinomstart, skannes ved oppstart og retries eksponentielt i opptil 15-minutters intervaller. Markør-/metadataeventer og bounces har stabile event-ID-er basert på innhold, ikke lokal filsti.
 
@@ -84,6 +108,7 @@ Watcher markerer ikke en fil som ferdig behandlet før serveren har bekreftet mo
 - `POST /api/protools/web/unlink-device` tilbakekaller kun valgt enhet.
 - `POST /api/protools/web/retry-sync` prøver pending EaseVerse-leveranser på nytt.
 - `GET /api/protools/sessions/:id/feedback` gir den device-scopede innboksen med kommentarer, tasks og godkjenninger.
+- `POST /api/protools/web/commands` legger locate, markør, import eller export i en varig, device-scopet kø. Kun eier eller Workspace-editor kan kontrollere Pro Tools.
 - `GET /api/protools/worker/health` er separat heartbeat/readiness for den automatiske synk-workeren.
 - Companion kan tilbakekalle sitt eget token ved unpair.
 
@@ -112,6 +137,14 @@ Migrasjon `0558_protools_companion_integration_integrity.sql` etablerer grunnkon
 - egen outbox for godkjente referansemikser
 - nødvendige indekser for multi-instance draining
 
+Migrasjon `0572_music_artifact_lineage_and_companion_actions.sql` legger til:
+
+- kanonisk, tenant-scopet artefaktgraf for take/stem/mix/reference/keeper/master
+- varig og lease-basert Sound Room → Companion-kommandokø
+- PTSL-status, Pro Tools-utgave og Intro-preflight på Companion-session
+- markørkvittering på Sound Room-kommentarer
+- kobling fra bounce til kanonisk artefakt
+
 EaseVerse-migrasjon `0002_creatorhub_sync_outbox.sql` etablerer varig keeper-levering tilbake til CreatorHub. Collaboration-lageret lagrer prosjektkontekst, canonical Pro Tools snapshot, referansemiks og lyrics-revisjon.
 
 ## 8. Objektlagring og tenant-hierarki
@@ -138,12 +171,14 @@ Før produksjonsrelease skal følgende passere:
 | CreatorHub backend | `npm run build` | Passerer |
 | CreatorHub web | `npm run build` | Passerer |
 | Companion Rust | `cargo test` | Alle passerer |
+| Companion + ekte Pro Tools | lisensiert lokal PTSL live-test | locate, marker, import og 24-bit WAV-export bekreftes av Pro Tools |
 | Companion webview | `npm run typecheck && npm run build` | Passerer |
 | Companion Windows | native Windows build → Artifact Signing → install/start/uninstall-smoke | App-EXE, NSIS EXE og MSI har samme gyldige publisher; installert app starter |
 | EaseVerse | `npm run typecheck && npm test` | Alle passerer |
 | EaseVerse Netlify | `npm run netlify:build` | Genererte funksjoner/ruter inkluderer nye API-er |
 | OAuth E2E | CreatorHub login → HttpOnly cookie → integration handoff → prosjekt | Passerer uten token i localStorage |
 | Musikk E2E | Workspace → Sound Room → pair → markers/metadata → bounce → review | Samme prosjekt-/track-ID hele veien |
+| Artefaktlinje | EaseVerse keeper → PT-import → export → Sound Room → approve | Foreldrelenke og status bevares; filendepunkt krever riktig device/tenant |
 | Offline | Endring uten nett → retry/reconnect → én server-side versjon | Ingen duplikater eller tapt state |
 
 ## 10. Produksjonskonfigurasjon

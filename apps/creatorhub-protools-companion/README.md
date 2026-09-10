@@ -6,11 +6,23 @@ synker arbeidet inn i den koblede EaseVerse-låtens **Sound Room** i CreatorHub:
 - **Markører** (fra «Export Session Info as Text») → `audio_review_sections` på gjeldende review-versjon
 - **Bounces** (nye filer i «Bounced Files»-mappa) → nye `audio_review_versjoner` (review starter automatisk)
 - **Metadata** (samplerate/bitdybde/spor, og tempo/key der det finnes) → review + EaseVerse-track
+- **Tidskodet feedback** fra Sound Room → locate/markør direkte i Pro Tools
+- **Keeper/reference** → sikker lokal staging og import på nytt lydspor
+- **Export til review** → 24-bit WAV i den valgte `Bounced Files`-mappa
+- **Pro Tools Intro-preflight** → spor-/routinggrenser og konkrete stem-tiltak
 
-## Hvorfor «Session Info as Text»?
+## PTSL og robust filmodus
 
-Pro Tools har ingen åpen marker-/scripting-API på vanlige lisenser. Den eneste
-pålitelige veien til markører uten AAX/EuCon er teksteksporten:
+Når Avids lisensierte lokale PTSL-klient er installert, bruker Companion PTSL på
+`localhost:31416` for direkte handlinger. SDK-kilde, generert klient og
+rammeverk ligger aldri i dette repoet. Lokalt forventes klienten her:
+
+- macOS/Linux: `~/.creatorhub-protools-companion/ptsl/ptslcmd`
+- Windows: `%USERPROFILE%\.creatorhub-protools-companion\ptsl\ptslcmd.exe`
+
+Alternativt kan `CREATORHUB_PTSLCMD` peke til en lisensiert lokal build.
+
+«Session Info as Text» og bounce-watcher er fortsatt den portable fallbacken:
 
 > **Pro Tools → File → Export → Session Info as Text…**
 > Huk av «Markers» (og gjerne «Track List»). Lagre som `.txt`.
@@ -19,14 +31,14 @@ Companionen overvåker den eksporterte fila. Hver gang du re-eksporterer (eller
 lagrer over den), synkes markørene på nytt. Bounce-mappa overvåkes separat for
 nye lydfiler.
 
-> Live playhead-sync er ikke med i v1 (krever MTC/EuCon). Markører + bounces er
-> det som gir mest verdi i review-flyten.
+Watcher-køen er atomisk, fortsetter etter omstart og bruker stabil
+filfingerprint/idempotens slik at offline arbeid ikke dupliseres.
 
 ## Slik kobler du til
 
 1. I CreatorHub: åpne **Sound Room → «Pro Tools Companion»** og lag en paringskode.
 2. I companionen: skriv inn den 6-sifrede koden → **Koble til**.
-3. Velg **EaseVerse-låt** (Sound Room), **Session Info-fila** og **Bounced Files-mappa**.
+3. Velg **EaseVerse-låt**, Pro Tools-utgave, **Session Info-fila** og **Bounced Files-mappa**.
 4. **Start overvåking.** Eksporter Session Info / bounce i Pro Tools som vanlig — det
    dukker opp i Sound Room automatisk.
 
@@ -44,6 +56,10 @@ Ren logikk (Pro Tools-tekstparseren) er enhetstestet:
 ```bash
 cd src-tauri && cargo test
 ```
+
+Den ignorerte live-testen krever åpen Pro Tools-session og lokalt lisensiert
+`ptslcmd`; testlyd og bounce-mappe gis via miljøvariablene
+`CREATORHUB_PTSL_LIVE_AUDIO` og `CREATORHUB_PTSL_LIVE_BOUNCE_DIR`.
 
 ## Desktop-release
 
@@ -84,6 +100,9 @@ og `src-tauri/Cargo.toml`; `package-lock.json` og `Cargo.lock` skal være commit
 | `src-tauri/src/ptx_parser.rs` | Parser «Session Info as Text» → markører/metadata (enhetstestet) |
 | `src-tauri/src/api_client.rs` | HTTP mot backendens `/api/protools/*` (device-token) |
 | `src-tauri/src/processing.rs` | Les eksport → push markører/metadata/bounce til backend |
+| `src-tauri/src/ptsl.rs` | Lisensiert lokal PTSL-transport for locate/marker/import/export |
+| `src-tauri/src/command_processor.rs` | Varig, device-scopet Sound Room → Pro Tools-kommandokø |
+| `src-tauri/src/intro_preflight.rs` | Pro Tools Intro-grenser og stem/flatten-anbefalinger |
 | `src-tauri/src/watcher.rs` | `notify`-fil-overvåking + debounce/stabilitets-sjekk |
 | `src-tauri/src/config.rs` | Persistert config i `~/.creatorhub-protools-companion/` |
 | `src/App.tsx` | Paring → sesjons-oppsett → dashboard + aktivitetslogg |

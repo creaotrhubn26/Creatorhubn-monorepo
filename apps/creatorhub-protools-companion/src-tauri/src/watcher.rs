@@ -10,7 +10,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use notify::{EventKind, RecursiveMode, Watcher};
 use tauri::AppHandle;
 
-use crate::config::{self, PendingBounce};
+use crate::config::{self, AppConfig, PendingBounce};
 use crate::processing;
 use crate::state::{emit_activity, snapshot, SharedConfig, SharedWatcher};
 
@@ -50,6 +50,41 @@ fn now_ms() -> u64 {
 fn retry_delay_ms(attempt: u32) -> u64 {
     let seconds = 2_u64.saturating_pow(attempt.min(10)).clamp(5, 900);
     seconds * 1_000
+}
+
+fn dequeue_if_uploaded(current: &mut AppConfig, fingerprint: &str) -> bool {
+    if !current
+        .uploaded_bounces
+        .iter()
+        .any(|item| item == fingerprint)
+    {
+        return false;
+    }
+    let before = current.pending_bounces.len();
+    current
+        .pending_bounces
+        .retain(|queued| queued.fingerprint != fingerprint);
+    current.pending_bounces.len() != before
+}
+
+/// Rydd lokale køelementer som allerede er bekreftet, eller som peker på en
+/// eldre mellomtilstand av en fil som senere ble skrevet ferdig. Dette kjøres
+/// før retry-frister slik at en maskinomstart ikke lar ferdige opplastinger bli
+/// liggende synlig i køen i opptil 15 minutter.
+fn reconcile_pending_bounces(current: &mut AppConfig) -> usize {
+    let before = current.pending_bounces.len();
+    current.pending_bounces.retain(|queued| {
+        if current.uploaded_bounces.contains(&queued.fingerprint) {
+            return false;
+        }
+        match processing::file_fingerprint(Path::new(&queued.path)) {
+            Ok(current_fingerprint) => current_fingerprint == queued.fingerprint,
+            // Behold utilgjengelige filer: de kan ligge på en disk som ikke er
+            // montert ennå og skal ikke forsvinne ved omstart.
+            Err(_) => true,
+        }
+    });
+    before - current.pending_bounces.len()
 }
 
 fn queue_bounce(cfg: &SharedConfig, path: &Path) -> Result<bool, String> {
@@ -134,6 +169,18 @@ async fn drain_one_bounce(cfg: &SharedConfig, app: &AppHandle) {
             .cloned()
     };
     let Some(item) = item else { return };
+    {
+        let mut current = cfg.lock().unwrap();
+        if dequeue_if_uploaded(&mut current, &item.fingerprint) {
+            let _ = config::save(&current);
+            emit_activity(
+                app,
+                "info",
+                "Fjernet allerede bekreftet bounce fra lokal retry-kø",
+            );
+            return;
+        }
+    }
     let path = PathBuf::from(&item.path);
     if !path.exists() {
         let mut current = cfg.lock().unwrap();
@@ -174,6 +221,49 @@ async fn drain_one_bounce(cfg: &SharedConfig, app: &AppHandle) {
             let _ = config::save(&current);
             emit_activity(app, "error", &format!("Bounce i retry-kø: {}", error));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn restart_reconciles_a_confirmed_bounce_left_in_the_pending_queue() {
+        let mut current = AppConfig::default();
+        current.uploaded_bounces.push("mix:1".into());
+        current.pending_bounces.push(PendingBounce {
+            path: "/tmp/Mix.wav".into(),
+            fingerprint: "mix:1".into(),
+            attempt_count: 4,
+            next_attempt_at_ms: 123,
+            last_error: Some("interrupted after acknowledgement".into()),
+        });
+        assert!(dequeue_if_uploaded(&mut current, "mix:1"));
+        assert!(current.pending_bounces.is_empty());
+    }
+
+    #[test]
+    fn restart_discards_an_intermediate_fingerprint_after_the_file_finishes() {
+        let path = std::env::temp_dir().join(format!(
+            "creatorhub-watcher-reconcile-{}-{}.wav",
+            std::process::id(),
+            now_ms()
+        ));
+        std::fs::write(&path, b"finished audio bytes").unwrap();
+
+        let mut current = AppConfig::default();
+        current.pending_bounces.push(PendingBounce {
+            path: path.to_string_lossy().into_owned(),
+            fingerprint: "temporary-write:1:1".into(),
+            attempt_count: 4,
+            next_attempt_at_ms: u64::MAX,
+            last_error: Some("interrupted while file was growing".into()),
+        });
+
+        assert_eq!(reconcile_pending_bounces(&mut current), 1);
+        assert!(current.pending_bounces.is_empty());
+        let _ = std::fs::remove_file(path);
     }
 }
 
@@ -234,6 +324,17 @@ pub fn start(
     let app2 = app.clone();
 
     tauri::async_runtime::spawn(async move {
+        {
+            let mut current = cfg2.lock().unwrap();
+            if reconcile_pending_bounces(&mut current) > 0 {
+                let _ = config::save(&current);
+                emit_activity(
+                    &app2,
+                    "info",
+                    "Ryddet ferdige eller utdaterte bounces fra lokal retry-kø",
+                );
+            }
+        }
         scan_bounce_dir(&cfg2);
         if info_path
             .as_ref()
