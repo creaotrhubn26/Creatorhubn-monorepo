@@ -142,6 +142,10 @@ import {
 } from './icons/CastingIcons';
 
 import type { CastingProject, Role, Candidate, ContactInfo, Schedule, UserRole, UserRoleType } from '../models/casting';
+import {
+  getCalendarDepartmentForProductionRole,
+  type ProductionCalendarDepartment,
+} from '../config/productionRoleCatalog';
 import { RichTextEditor } from './RichTextEditor';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import { AuditionSchedulePanel } from './AuditionSchedulePanel';
@@ -355,35 +359,9 @@ interface TabPanelProps {
 }
 
 // Helper function to map CrewRole to Department for calendar
-const mapRoleToDepartment = (role: string): 'regi' | 'produksjon' | 'kamera' | 'lys' | 'grip' | 'lyd' | 'art' | 'hmu' | 'kostyme' | 'personal' => {
-  const roleMap: Record<string, 'regi' | 'produksjon' | 'kamera' | 'lys' | 'grip' | 'lyd' | 'art' | 'hmu' | 'kostyme' | 'personal'> = {
-    director: 'regi',
-    producer: 'produksjon',
-    casting_director: 'produksjon',
-    production_manager: 'produksjon',
-    camera_operator: 'kamera',
-    camera_assistant: 'kamera',
-    cinematographer: 'kamera',
-    drone_pilot: 'kamera',
-    gaffer: 'lys',
-    grip: 'grip',
-    sound_engineer: 'lyd',
-    audio_mixer: 'lyd',
-    video_editor: 'produksjon',
-    colorist: 'produksjon',
-    vfx_artist: 'art',
-    motion_graphics: 'art',
-    production_assistant: 'produksjon',
-    script_supervisor: 'regi',
-    location_manager: 'produksjon',
-    production_designer: 'art',
-    makeup_artist: 'hmu',
-    wardrobe: 'kostyme',
-    stylist: 'kostyme',
-    collaborator: 'produksjon',
-    other: 'personal',
-  };
-  return roleMap[role] || 'personal';
+const mapRoleToDepartment = (role: string): ProductionCalendarDepartment => {
+  if (role === 'other') return 'personal';
+  return getCalendarDepartmentForProductionRole(role);
 };
 
 // Helper function to get an icon for each crew role — used in crew calendars & team displays
