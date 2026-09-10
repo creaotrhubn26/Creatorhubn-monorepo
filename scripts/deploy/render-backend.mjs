@@ -283,6 +283,10 @@ const LEADGRID_RUNTIME_ENVIRONMENT = Object.freeze({
   AWS_LEADGRID_BUCKET_NAME: 'leadgrid-prod-745600963362-eu-north-1',
   AWS_LEADGRID_REGION: 'eu-north-1',
 });
+const CREATORHUB_RUNTIME_ENVIRONMENT = Object.freeze({
+  CREATORHUB_S3_BUCKET: 'creatorhubn-prod-745600963362-eu-north-1',
+  CREATORHUB_S3_REGION: 'eu-north-1',
+});
 
 /**
  * Fail closed before a Render release when Leadgrid's private object storage
@@ -338,6 +342,57 @@ export async function assertLeadgridStorageRuntimeEnvironment({
     );
   }
   console.log('Verified Render Leadgrid storage configuration.');
+}
+
+/**
+ * Keep Sound Room and Pro Tools artifacts on CreatorHub's tenant-scoped S3
+ * bucket. Secret values are never returned or included in error messages.
+ */
+export async function assertCreatorHubStorageRuntimeEnvironment({
+  fetchImpl = fetch,
+  apiKey,
+  serviceId,
+}) {
+  const requiredNonEmpty = ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'];
+  const invalid = [];
+
+  for (const key of requiredNonEmpty) {
+    try {
+      const value = await readRenderEnvironmentValue({
+        fetchImpl,
+        apiKey,
+        serviceId,
+        key,
+      });
+      if (!value.trim()) invalid.push(key);
+    } catch {
+      invalid.push(key);
+    }
+  }
+
+  for (const [key, expectedValue] of Object.entries(
+    CREATORHUB_RUNTIME_ENVIRONMENT,
+  )) {
+    try {
+      const value = await readRenderEnvironmentValue({
+        fetchImpl,
+        apiKey,
+        serviceId,
+        key,
+      });
+      if (value.trim() !== expectedValue) invalid.push(key);
+    } catch {
+      invalid.push(key);
+    }
+  }
+
+  if (invalid.length > 0) {
+    throw new Error(
+      'Render CreatorHub storage configuration is missing or invalid: ' +
+        [...new Set(invalid)].join(', '),
+    );
+  }
+  console.log('Verified Render CreatorHub storage configuration.');
 }
 
 function isLeastPrivilegeMigrationDatabaseUrl(value) {
@@ -984,6 +1039,54 @@ async function runSelfTest() {
       return true;
     },
   );
+
+  const creatorHubEnvironment = new Map([
+    ['AWS_ACCESS_KEY_ID', 'creatorhub-access-key'],
+    ['AWS_SECRET_ACCESS_KEY', 'creatorhub-secret-key'],
+    ['CREATORHUB_S3_BUCKET', 'creatorhubn-prod-745600963362-eu-north-1'],
+    ['CREATORHUB_S3_REGION', 'eu-north-1'],
+  ]);
+  const requestedCreatorHubKeys = [];
+  const creatorHubFetch = async (url) => {
+    const key = decodeURIComponent(String(url).split('/').at(-1) || '');
+    requestedCreatorHubKeys.push(key);
+    return responseFor({
+      envVar: { key, value: creatorHubEnvironment.get(key) },
+    });
+  };
+  await assert.doesNotReject(
+    assertCreatorHubStorageRuntimeEnvironment({
+      fetchImpl: creatorHubFetch,
+      apiKey: 'test-key',
+      serviceId: 'srv-' + 'a'.repeat(20),
+    }),
+  );
+  assert.deepEqual(requestedCreatorHubKeys, [
+    'AWS_ACCESS_KEY_ID',
+    'AWS_SECRET_ACCESS_KEY',
+    'CREATORHUB_S3_BUCKET',
+    'CREATORHUB_S3_REGION',
+  ]);
+  await assert.rejects(
+    assertCreatorHubStorageRuntimeEnvironment({
+      fetchImpl: async (url) => {
+        const key = decodeURIComponent(String(url).split('/').at(-1) || '');
+        const value =
+          key === 'CREATORHUB_S3_BUCKET'
+            ? 'another-product-bucket'
+            : creatorHubEnvironment.get(key);
+        return responseFor({ envVar: { key, value } });
+      },
+      apiKey: 'test-key',
+      serviceId: 'srv-' + 'a'.repeat(20),
+    }),
+    (error) => {
+      assert.match(error.message, /CREATORHUB_S3_BUCKET/);
+      assert.doesNotMatch(error.message, /another-product-bucket/);
+      assert.doesNotMatch(error.message, /creatorhub-secret-key/);
+      return true;
+    },
+  );
   console.log('Render backend deploy self-test passed.');
 }
 
@@ -1019,6 +1122,10 @@ async function main() {
     await assertLeadgridStorageRuntimeEnvironment({ apiKey, serviceId });
     return;
   }
+  if (command === 'assert-creatorhub-storage-runtime') {
+    await assertCreatorHubStorageRuntimeEnvironment({ apiKey, serviceId });
+    return;
+  }
   if (command === 'deploy-and-verify') {
     const commit = validateCommit(process.argv[3]);
     const backendUrl = validateBackendUrl(requiredEnv('BACKEND_URL'));
@@ -1031,7 +1138,7 @@ async function main() {
     return;
   }
   throw new Error(
-    'Usage: render-backend.mjs --self-test | assert-auto-deploy-off | assert-runtime-database-roles | assert-leadgrid-storage-runtime | disable-auto-deploy | deploy-and-verify <sha>',
+    'Usage: render-backend.mjs --self-test | assert-auto-deploy-off | assert-runtime-database-roles | assert-leadgrid-storage-runtime | assert-creatorhub-storage-runtime | disable-auto-deploy | deploy-and-verify <sha>',
   );
 }
 
