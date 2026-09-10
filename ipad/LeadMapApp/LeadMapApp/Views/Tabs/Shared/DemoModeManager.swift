@@ -54,10 +54,15 @@ final class DemoModeManager {
         #if DEBUG
         let envDemo = ProcessInfo.processInfo.environment["QA_DEMO"] == "1"
         self.isActive = envDemo || UserDefaults.standard.bool(forKey: Self.key)
+        if ProcessInfo.processInfo.environment["QA_TOUR"] == "dentum-outreach" {
+            self.mockLeads = Self.generateDentumMockLeads()
+        } else {
+            self.mockLeads = Self.generateMockLeads()
+        }
         #else
         self.isActive = false
+        self.mockLeads = []
         #endif
-        self.mockLeads = Self.generateMockLeads()
     }
 
     /// ~50 leads spredt i Oslo-området med varierende status, score og
@@ -66,6 +71,56 @@ final class DemoModeManager {
     private(set) var mockLeads: [LeadModel]
 
     // MARK: - Mock-data generator
+
+    /// Prosjektisolert Dentum-fixture for simulator/E2E. Hele appen leser
+    /// `mockLeads`, så en Dentum-runde kan aldri lekke den globale
+    /// salgspresentasjonens restauranter, hoteller eller programvareselskap.
+    private static func generateDentumMockLeads() -> [LeadModel] {
+        let now = Date()
+        var lead = LeadModel(
+            id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            name: "Majorstuen Tannlegesenter AS",
+            company: nil,
+            category: "Tannhelse",
+            status: .unvisited,
+            address: "Kirkeveien 64 A",
+            postalCode: "0364",
+            city: "Oslo",
+            country: "Norge",
+            latitude: 59.9298,
+            longitude: 10.7147,
+            phone: "+47 22 00 00 00",
+            email: "hei@majorstuentannlegesenter.example",
+            websiteUrl: "https://majorstuentannlegesenter.example",
+            instagramUrl: nil,
+            linkedinUrl: nil,
+            googleRating: nil,
+            googlePlaceId: nil,
+            logoUrl: nil,
+            aiOpportunityScore: 86,
+            estimatedValue: nil,
+            leadSource: "discovery",
+            assignedUserId: "qa-tour-user",
+            assignedUserName: "Daniel Qazi",
+            assignedUserEmail: "daniel@creatorhubn.com",
+            projectId: "dentum-oslo",
+            lastVisitAt: nil,
+            nextFollowUpAt: nil,
+            nextAction: "Inviter klinikken til Dentum-piloten",
+            tags: ["tannklinikk", "oslo", "dentum-pilot"],
+            notes: "Godkjent Discovery-kandidat i Dentum-prosjektet.",
+            createdAt: now,
+            updatedAt: now,
+            leadTemperature: "warm",
+            pipelineStage: "unvisited",
+            leadScore: 86,
+            industryId: "tannhelse"
+        )
+        lead.organizationNumber = "999888777"
+        lead.contactName = "Anne Lunde"
+        lead.contactRole = "Daglig leder"
+        return [lead]
+    }
 
     private static func generateMockLeads() -> [LeadModel] {
         // Centroid Oslo + radius ~25 km så leads spres realistisk.

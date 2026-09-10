@@ -1022,6 +1022,39 @@ func configureDiscovery() async {
             self.userEmail = "demo@leadgrid.no"
             self.currentUserId = "qa-tour-user"
             self.activeOrganizationId = "qa-tour-organization"
+            if qaTour == "dentum-outreach" {
+                self.userEmail = "daniel@creatorhubn.com"
+                self.profileStore.seedForQA(
+                    email: "daniel@creatorhubn.com",
+                    firstName: "Daniel",
+                    lastName: "Qazi"
+                )
+                self.roleInOrg = "admin"
+                self.permissions = ["leads.view", "leads.update", "visits.create"]
+                self.organizations = [OrganizationSummary(
+                    id: "qa-tour-organization",
+                    name: "Dentum",
+                    slug: "dentum",
+                    plan: "prototype",
+                    orgType: "sales",
+                    logoUrl: nil,
+                    role: "admin",
+                    memberCount: 1,
+                    projectCount: 1
+                )]
+                self.projects = [ProjectListItem(
+                    id: "dentum-oslo",
+                    organizationId: "qa-tour-organization",
+                    name: "Dentum",
+                    description: "Klinikkpilot for tannklinikker i Oslo",
+                    status: "active",
+                    hasBrandKit: true,
+                    leadCount: 1,
+                    competitorCount: 0
+                )]
+                self.projectsLoadState = .loaded
+                self.activeProjectId = "dentum-oslo"
+            }
             if qaTour == "agent-skills" {
                 self.activeProjectId = "qa-agent-project"
                 self.permissions = ["leads.view", "leads.update", "visits.create"]

@@ -368,6 +368,86 @@ final class QASweepTests: XCTestCase {
         app.terminate()
     }
 
+    /// Full native Dentum-slice: valgt klinikk → prosjekt-/bransjemal →
+    /// ferdig personalisert mottaker, emne og tekst. Testen stopper før
+    /// ekstern e-postapp, så den kan aldri sende en virkelig melding.
+    func testDentumLeadBuildsPersonalizedDentalClinicEmail() throws {
+        let app = launchApp(
+            tab: 0,
+            environment: ["QA_TOUR": "dentum-outreach", "QA_DEMO": "1"]
+        )
+
+        XCTAssertTrue(
+            app.staticTexts["Majorstuen Tannlegesenter AS"]
+                .firstMatch.waitForExistence(timeout: 10)
+        )
+        for irrelevantName in ["Holy Crust", "Holmenkollen Hotell"] {
+            let leakedElement = app.descendants(matching: .any).matching(
+                NSPredicate(format: "label CONTAINS[c] %@", irrelevantName)
+            ).firstMatch
+            XCTAssertFalse(
+                leakedElement.exists,
+                "Dentum-prosjektet skal ikke vise \(irrelevantName)"
+            )
+        }
+        XCTAssertFalse(app.staticTexts["1 248 leads"].exists)
+        XCTAssertFalse(app.staticTexts["+842 nye"].exists)
+
+        let showSidebar = app.buttons["Show Sidebar"].firstMatch
+        if showSidebar.exists && showSidebar.isHittable {
+            showSidebar.tap()
+        }
+        let leadsTab = app.buttons["Leads"].firstMatch
+        XCTAssertTrue(leadsTab.waitForExistence(timeout: 5))
+        XCTAssertTrue(leadsTab.isHittable)
+        leadsTab.tap()
+
+        let clinicRow = app.buttons[
+            "lead.row.aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        ]
+        XCTAssertTrue(clinicRow.waitForExistence(timeout: 10))
+        XCTAssertTrue(clinicRow.isHittable)
+        clinicRow.tap()
+
+        let openOutreach = app.buttons["lead.outreach.open"].firstMatch
+        XCTAssertTrue(openOutreach.waitForExistence(timeout: 5))
+        XCTAssertTrue(openOutreach.isHittable)
+        openOutreach.tap()
+
+        XCTAssertTrue(app.navigationBars["Klar e-post"].waitForExistence(timeout: 6))
+        XCTAssertEqual(app.staticTexts["outreach.audience"].label, "7 maler for tannklinikker")
+        XCTAssertTrue(app.staticTexts["Dentum-oppsett"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Tannhelse"].firstMatch.exists)
+
+        let subject = app.textFields["outreach.subject"]
+        XCTAssertTrue(subject.waitForExistence(timeout: 5))
+        XCTAssertEqual(
+            subject.value as? String,
+            "Kan Majorstuen Tannlegesenter AS bli med i Dentum-piloten?"
+        )
+
+        let body = app.textViews["outreach.body"]
+        XCTAssertTrue(body.waitForExistence(timeout: 5))
+        let pilotText = body.value as? String ?? ""
+        XCTAssertTrue(pilotText.contains("Hei Anne,"))
+        XCTAssertTrue(pilotText.contains("pasienter i Oslo"))
+        XCTAssertTrue(pilotText.contains("Majorstuen Tannlegesenter AS"))
+        XCTAssertTrue(pilotText.contains("Daniel Qazi"))
+        XCTAssertFalse(pilotText.contains("{{"))
+
+        let profileTemplate = app.buttons["outreach.template.dentum-profile"]
+        XCTAssertTrue(profileTemplate.waitForExistence(timeout: 5))
+        profileTemplate.tap()
+        XCTAssertEqual(
+            subject.value as? String,
+            "Vi setter opp Dentum-profilen for Majorstuen Tannlegesenter AS"
+        )
+        XCTAssertTrue((body.value as? String ?? "").contains("før publisering"))
+
+        snap(app, "dentum-lead-personalisert-epost")
+        app.terminate()
+    }
+
     func testSuperAdminRoleRoomOnboardingCoversAllCustomerTypes() throws {
         let app = XCUIApplication()
         app.launchEnvironment["QA_TOUR"] = "domain-onboarding"

@@ -3818,7 +3818,11 @@ private struct MoteOppgaverCard: View {
 
     private func lastOppgaver() async {
         if DemoModeManager.isActiveNonisolated {
-            if oppgaver.isEmpty { oppgaver = Self.demoOppgaver }
+            if oppgaver.isEmpty {
+                oppgaver = ProcessInfo.processInfo.environment["QA_TOUR"] == "dentum-outreach"
+                    ? Self.dentumDemoOppgaver
+                    : Self.demoOppgaver
+            }
             return
         }
         guard let api = appState.api,
@@ -3854,6 +3858,23 @@ private struct MoteOppgaverCard: View {
         MoteOppgaveDTO(id: "demo-o3", selskap: "BoligPartner AS",
                        tittel: "Send referanse fra Byggmester Hansen",
                        frist: "i morgen", status: "open"),
+    ]
+
+    private static let dentumDemoOppgaver: [MoteOppgaveDTO] = [
+        MoteOppgaveDTO(
+            id: "dentum-o1",
+            selskap: "Majorstuen Tannlegesenter AS",
+            tittel: "Kvalitetssikre klinikkprofilen med Anne",
+            frist: "før publisering",
+            status: "open"
+        ),
+        MoteOppgaveDTO(
+            id: "dentum-o2",
+            selskap: "Majorstuen Tannlegesenter AS",
+            tittel: "Avtal oppstart av Dentum-piloten",
+            frist: "neste steg",
+            status: "open"
+        ),
     ]
 }
 
