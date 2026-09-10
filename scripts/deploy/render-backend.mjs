@@ -278,6 +278,67 @@ export function isLeastPrivilegeRuntimeDatabaseUrl(value) {
   );
 }
 
+const LEADGRID_RUNTIME_ENVIRONMENT = Object.freeze({
+  AWS_LEADGRID_BUCKET_NAME: 'leadgrid-prod-745600963362-eu-north-1',
+  AWS_LEADGRID_REGION: 'eu-north-1',
+});
+
+/**
+ * Fail closed before a Render release when Leadgrid's private object storage
+ * or fixed storage add-on is unavailable. Values are deliberately never
+ * returned or logged: failures only identify the configuration key.
+ */
+export async function assertLeadgridStorageRuntimeEnvironment({
+  fetchImpl = fetch,
+  apiKey,
+  serviceId,
+}) {
+  const requiredNonEmpty = [
+    'AWS_LEADGRID_ACCESS_KEY_ID',
+    'AWS_LEADGRID_SECRET_ACCESS_KEY',
+    'LEADGRID_PRICE_STORAGE_100_GIB',
+  ];
+  const invalid = [];
+
+  for (const key of requiredNonEmpty) {
+    try {
+      const value = await readRenderEnvironmentValue({
+        fetchImpl,
+        apiKey,
+        serviceId,
+        key,
+      });
+      if (!value.trim()) invalid.push(key);
+    } catch {
+      invalid.push(key);
+    }
+  }
+
+  for (const [key, expectedValue] of Object.entries(
+    LEADGRID_RUNTIME_ENVIRONMENT,
+  )) {
+    try {
+      const value = await readRenderEnvironmentValue({
+        fetchImpl,
+        apiKey,
+        serviceId,
+        key,
+      });
+      if (value.trim() !== expectedValue) invalid.push(key);
+    } catch {
+      invalid.push(key);
+    }
+  }
+
+  if (invalid.length > 0) {
+    throw new Error(
+      'Render Leadgrid storage configuration is missing or invalid: ' +
+        [...new Set(invalid)].join(', '),
+    );
+  }
+  console.log('Verified Render Leadgrid storage configuration.');
+}
+
 function isLeastPrivilegeMigrationDatabaseUrl(value) {
   const target = postgresDatabaseTarget(value);
   return Boolean(
@@ -852,6 +913,57 @@ async function runSelfTest() {
       return true;
     },
   );
+
+  const leadgridEnvironment = new Map([
+    ['AWS_LEADGRID_ACCESS_KEY_ID', 'access-key'],
+    ['AWS_LEADGRID_SECRET_ACCESS_KEY', 'secret-key'],
+    [
+      'AWS_LEADGRID_BUCKET_NAME',
+      'leadgrid-prod-745600963362-eu-north-1',
+    ],
+    ['AWS_LEADGRID_REGION', 'eu-north-1'],
+    ['LEADGRID_PRICE_STORAGE_100_GIB', 'price_storage_100_gib'],
+  ]);
+  const requestedLeadgridKeys = [];
+  const leadgridFetch = async (url) => {
+    const key = decodeURIComponent(String(url).split('/').at(-1) || '');
+    requestedLeadgridKeys.push(key);
+    return responseFor({ envVar: { key, value: leadgridEnvironment.get(key) } });
+  };
+  await assert.doesNotReject(
+    assertLeadgridStorageRuntimeEnvironment({
+      fetchImpl: leadgridFetch,
+      apiKey: 'test-key',
+      serviceId: 'srv-' + 'a'.repeat(20),
+    }),
+  );
+  assert.deepEqual(requestedLeadgridKeys, [
+    'AWS_LEADGRID_ACCESS_KEY_ID',
+    'AWS_LEADGRID_SECRET_ACCESS_KEY',
+    'LEADGRID_PRICE_STORAGE_100_GIB',
+    'AWS_LEADGRID_BUCKET_NAME',
+    'AWS_LEADGRID_REGION',
+  ]);
+  await assert.rejects(
+    assertLeadgridStorageRuntimeEnvironment({
+      fetchImpl: async (url) => {
+        const key = decodeURIComponent(String(url).split('/').at(-1) || '');
+        const value =
+          key === 'AWS_LEADGRID_BUCKET_NAME'
+            ? 'another-product-bucket'
+            : leadgridEnvironment.get(key);
+        return responseFor({ envVar: { key, value } });
+      },
+      apiKey: 'test-key',
+      serviceId: 'srv-' + 'a'.repeat(20),
+    }),
+    (error) => {
+      assert.match(error.message, /AWS_LEADGRID_BUCKET_NAME/);
+      assert.doesNotMatch(error.message, /another-product-bucket/);
+      assert.doesNotMatch(error.message, /secret-key/);
+      return true;
+    },
+  );
   console.log('Render backend deploy self-test passed.');
 }
 
@@ -883,6 +995,10 @@ async function main() {
     });
     return;
   }
+  if (command === 'assert-leadgrid-storage-runtime') {
+    await assertLeadgridStorageRuntimeEnvironment({ apiKey, serviceId });
+    return;
+  }
   if (command === 'deploy-and-verify') {
     const commit = validateCommit(process.argv[3]);
     const backendUrl = validateBackendUrl(requiredEnv('BACKEND_URL'));
@@ -895,7 +1011,7 @@ async function main() {
     return;
   }
   throw new Error(
-    'Usage: render-backend.mjs --self-test | assert-auto-deploy-off | assert-runtime-database-roles | disable-auto-deploy | deploy-and-verify <sha>',
+    'Usage: render-backend.mjs --self-test | assert-auto-deploy-off | assert-runtime-database-roles | assert-leadgrid-storage-runtime | disable-auto-deploy | deploy-and-verify <sha>',
   );
 }
 
