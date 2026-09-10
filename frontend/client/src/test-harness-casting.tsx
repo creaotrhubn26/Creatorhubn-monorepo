@@ -100,6 +100,69 @@ function buildBasicSeedProject(): CastingProject {
   } as unknown as CastingProject;
 }
 
+function buildDirectorSeedProject(): CastingProject {
+  const project = buildBasicSeedProject();
+  return {
+    ...project,
+    roles: [
+      { id: 'director-role-nora', projectId: project.id, name: 'NORA', status: 'filled', sceneIds: ['director-scene-1', 'director-scene-2'] },
+      { id: 'director-role-elias', projectId: project.id, name: 'ELIAS', status: 'filled', sceneIds: ['director-scene-2'] },
+    ],
+    sceneBreakdowns: [
+      {
+        id: 'director-scene-1',
+        manuscriptId: 'e2e-director-manuscript',
+        projectId: project.id,
+        sceneNumber: 1,
+        sceneHeading: 'INT. FJELLSTUE - DAG',
+        locationName: 'Fjellstue',
+        intExt: 'INT',
+        timeOfDay: 'DAY',
+        description: 'Nora gjør rommet klart før gjestene kommer.',
+        characters: ['NORA'],
+        propsNeeded: ['Nøkkelknippe'],
+        storyboardFrames: [{ id: 'director-frame-1', title: 'Etablering' }],
+      },
+      {
+        id: 'director-scene-2',
+        manuscriptId: 'e2e-director-manuscript',
+        projectId: project.id,
+        sceneNumber: 2,
+        sceneHeading: 'EXT. SKOG - NATT',
+        locationName: 'Skog',
+        intExt: 'EXT',
+        timeOfDay: 'NIGHT',
+        description: 'Nora og Elias følger sporene inn i tåken.',
+        characters: ['NORA', 'ELIAS'],
+      },
+    ],
+    shotLists: [{
+      id: 'director-shot-list-1',
+      projectId: project.id,
+      sceneId: 'director-scene-1',
+      shots: [{
+        id: 'director-shot-1',
+        sceneId: 'director-scene-1',
+        shotType: 'Wide',
+        cameraAngle: 'Eye Level',
+        cameraMovement: 'Static',
+        description: 'Etablering av fjellstuen',
+        status: 'completed',
+      }],
+    }],
+    productionDays: [{
+      id: 'director-production-day-1',
+      projectId: project.id,
+      date: '2026-09-11',
+      scenes: ['director-scene-1'],
+      crew: [],
+      props: [],
+      callTime: '07:30',
+      status: 'planned',
+    }],
+  } as CastingProject;
+}
+
 /**
  * Wrapper that pre-seeds a mock auth session before rendering CastingPlannerPanel.
  * This prevents the "no adminUser → redirect to /casting.html" path that fires
@@ -156,9 +219,9 @@ function SessionSeeder({ children }: { children: ReactNode }) {
         ? 'roleRoom_workspaceState_content_producer'
         : 'roleRoom_workspaceState_production_team';
 
-      if (seedFlag === 'basic' || seedFlag === 'demo' || seedFlag === 'story-writer') {
+      if (seedFlag === 'basic' || seedFlag === 'demo' || seedFlag === 'story-writer' || seedFlag === 'director') {
         try {
-          const seedProject = buildBasicSeedProject();
+          const seedProject = seedFlag === 'director' ? buildDirectorSeedProject() : buildBasicSeedProject();
           await castingService.saveProject(seedProject);
 
           // Pre-seed workspace-state så panelet auto-restorer prosjektet
@@ -175,19 +238,22 @@ function SessionSeeder({ children }: { children: ReactNode }) {
             { userId: 'e2e-test-user' },
           );
 
-          if (seedFlag === 'story-writer') {
+          if (seedFlag === 'story-writer' || seedFlag === 'director') {
             const now = new Date().toISOString();
+            const isDirectorSeed = seedFlag === 'director';
             await settingsService.setSetting(
               'virtualStudio_manuscripts',
               [{
-                id: 'e2e-story-writer-manuscript',
+                id: isDirectorSeed ? 'e2e-director-manuscript' : 'e2e-story-writer-manuscript',
                 projectId: seedProject.id,
-                title: 'E2E Story Writer',
+                title: isDirectorSeed ? 'Siste servering' : 'E2E Story Writer',
                 subtitle: '',
                 author: 'E2E Tester',
                 version: '1.0',
                 format: 'fountain',
-                content: '',
+                content: isDirectorSeed
+                  ? 'INT. FJELLSTUE - DAG\n\nNORA gjør rommet klart.\n\nNORA\nAlt må være klart før de kommer.\n\nEXT. SKOG - NATT\n\nNORA og ELIAS følger sporene inn i tåken.'
+                  : '',
                 pageCount: 0,
                 wordCount: 0,
                 status: 'draft',

@@ -1221,6 +1221,13 @@ type RoleRoomProjectWorkspaceState = {
     const surface = params.get('surface');
     return isDirectorSurface(surface) ? surface : 'today';
   });
+  const [directorSceneId, setDirectorSceneId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('portal') === 'client') return null;
+    const sceneId = params.get('scene');
+    return sceneId?.trim() || null;
+  });
   const [lastNonLiveTab, setLastNonLiveTab] = useState(0);
   const [isBrowserFullscreen, setIsBrowserFullscreen] = useState<boolean>(() => (
     typeof document !== 'undefined' ? Boolean(document.fullscreenElement) : false
@@ -2040,10 +2047,10 @@ type RoleRoomProjectWorkspaceState = {
 
     switch (surface) {
       case 'today':
-        navigateToTab(0);
+        navigateToTab(0, { directorSurface: surface });
         return;
       case 'scenes':
-        navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'main', directorSurface: surface });
+        navigateToTab(0, { directorSurface: surface });
         return;
       case 'casting':
         navigateToTab(SELECTION_TAB_INDEX, { directorSurface: surface });
@@ -2060,6 +2067,33 @@ type RoleRoomProjectWorkspaceState = {
         navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'main', directorSurface: surface });
         return;
     }
+  }, [navigateToTab]);
+
+  const handleOpenDirectorSceneManuscript = useCallback((sceneId: string) => {
+    setDirectorSceneId(sceneId);
+    navigateToTab(STORY_ARC_TAB_INDEX, {
+      storyArcView: 'story-writer',
+      storyArcFocus: { sceneId },
+      directorSurface: 'scenes',
+    });
+  }, [navigateToTab]);
+
+  const handleOpenDirectorSceneStoryboard = useCallback((sceneId: string) => {
+    setDirectorSceneId(sceneId);
+    navigateToTab(STORY_ARC_TAB_INDEX, {
+      storyArcView: 'main',
+      storyArcFocus: { sceneId },
+      directorSurface: 'scenes',
+    });
+  }, [navigateToTab]);
+
+  const handleOpenDirectorSceneShotList = useCallback((sceneId: string) => {
+    setDirectorSceneId(sceneId);
+    navigateToTab(STORY_ARC_TAB_INDEX, {
+      storyArcView: 'shot-list',
+      storyArcFocus: { sceneId },
+      directorSurface: 'scenes',
+    });
   }, [navigateToTab]);
 
   const handleOpenDirectorWorkspace = useCallback(() => {
@@ -4915,17 +4949,22 @@ type RoleRoomProjectWorkspaceState = {
       : contentProducerPlannerSurface !== 'overview'
         ? contentProducerPlannerSurface
         : '';
+    const desiredScene = effectiveWorkspaceLens === 'director'
+      ? directorSceneId ?? ''
+      : '';
     const currentTabParam = params.get('tab') ?? '';
     const currentProjectParam = params.get('project') ?? '';
     const currentViewParam = params.get('view') ?? '';
     const currentSurfaceParam = params.get('surface') ?? '';
     const currentLensParam = params.get('lens') ?? '';
+    const currentSceneParam = params.get('scene') ?? '';
     if (
       currentTabParam === desiredTabSlug
       && currentProjectParam === desiredProject
       && currentViewParam === desiredView
       && currentSurfaceParam === desiredSurface
       && currentLensParam === desiredLens
+      && currentSceneParam === desiredScene
     ) return;
     if (desiredTabSlug) params.set('tab', desiredTabSlug);
     else params.delete('tab');
@@ -4937,6 +4976,8 @@ type RoleRoomProjectWorkspaceState = {
     else params.delete('surface');
     if (desiredLens) params.set('lens', desiredLens);
     else params.delete('lens');
+    if (desiredScene) params.set('scene', desiredScene);
+    else params.delete('scene');
     const nextSearch = params.toString() ? `?${params.toString()}` : '';
     const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
     if (nextUrl === `${window.location.pathname}${window.location.search}${window.location.hash}`) return;
@@ -4948,6 +4989,7 @@ type RoleRoomProjectWorkspaceState = {
     storyArcView,
     contentProducerPlannerSurface,
     directorSurface,
+    directorSceneId,
     effectiveWorkspaceLens,
     isAssignedDirectorProjectRole,
     isExternalClientPortalMode,
@@ -5011,6 +5053,8 @@ type RoleRoomProjectWorkspaceState = {
       const urlLens = params.get('lens');
       const nextLens = isRoleRoomWorkspaceLens(urlLens) ? urlLens : null;
       setWorkspaceLensPreference((previous) => (previous === nextLens ? previous : nextLens));
+      const nextDirectorSceneId = params.get('scene')?.trim() || null;
+      setDirectorSceneId((previous) => (previous === nextDirectorSceneId ? previous : nextDirectorSceneId));
       const urlSurface = params.get('surface');
       if (nextLens === 'director' && isDirectorSurface(urlSurface)) {
         setDirectorSurface((previous) => (previous === urlSurface ? previous : urlSurface));
@@ -10558,8 +10602,14 @@ type RoleRoomProjectWorkspaceState = {
               candidates={allCandidates}
               schedules={schedules}
               activeSurface={directorSurface}
+              selectedSceneId={directorSceneId}
               readOnly={!permissions.canEditProduction && !permissions.canEditCasting}
+              canComment={permissions.canComment || isRoleRoomAdminSession}
               onNavigate={handleDirectorNavigate}
+              onSceneChange={setDirectorSceneId}
+              onOpenSceneManuscript={handleOpenDirectorSceneManuscript}
+              onOpenSceneStoryboard={handleOpenDirectorSceneStoryboard}
+              onOpenSceneShotList={handleOpenDirectorSceneShotList}
               onOpenFullWorkspace={handleOpenFullWorkspace}
             />
           ) : (

@@ -30,6 +30,7 @@ import {
   type DirectorBriefTone,
   type DirectorSurface,
 } from './directorWorkspaceModel';
+import { DirectorSceneWorkspace } from './DirectorSceneWorkspace';
 
 interface DirectorWorkspaceProps {
   project: CastingProject;
@@ -37,8 +38,14 @@ interface DirectorWorkspaceProps {
   candidates: Candidate[];
   schedules: Schedule[];
   activeSurface?: DirectorSurface;
+  selectedSceneId?: string | null;
   readOnly?: boolean;
+  canComment?: boolean;
   onNavigate: (surface: DirectorSurface) => void;
+  onSceneChange: (sceneId: string) => void;
+  onOpenSceneManuscript: (sceneId: string) => void;
+  onOpenSceneStoryboard: (sceneId: string) => void;
+  onOpenSceneShotList: (sceneId: string) => void;
   onOpenFullWorkspace: () => void;
 }
 
@@ -80,8 +87,14 @@ export function DirectorWorkspace({
   candidates,
   schedules,
   activeSurface = 'today',
+  selectedSceneId,
   readOnly = false,
+  canComment = false,
   onNavigate,
+  onSceneChange,
+  onOpenSceneManuscript,
+  onOpenSceneStoryboard,
+  onOpenSceneShotList,
   onOpenFullWorkspace,
 }: DirectorWorkspaceProps) {
   const { isMobile } = useScreenTier();
@@ -197,6 +210,18 @@ export function DirectorWorkspace({
           })}
         </Box>
 
+        {activeSurface === 'scenes' ? (
+          <DirectorSceneWorkspace
+            project={project}
+            roles={roles}
+            selectedSceneId={selectedSceneId}
+            canComment={canComment}
+            onSceneChange={onSceneChange}
+            onOpenManuscript={onOpenSceneManuscript}
+            onOpenStoryboard={onOpenSceneStoryboard}
+            onOpenShotList={onOpenSceneShotList}
+          />
+        ) : (
         <Box
           data-testid="director-today"
           sx={{
@@ -313,6 +338,7 @@ export function DirectorWorkspace({
             </Card>
           </Box>
         </Box>
+        )}
       </Box>
     </Box>
   );
