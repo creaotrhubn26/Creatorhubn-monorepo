@@ -77,6 +77,25 @@ export type PrototypeTesterDirectInviteEmailSender = (input: {
   inviteExpiresDays: number;
 }) => Promise<PrototypeTesterEmailDelivery>;
 
+export type PrototypeTesterInviteEmailPreviewer = (input: {
+  recipientEmail: string;
+  recipientName: string;
+  inviteUrl: string;
+  profession: string | null;
+  company: string | null;
+  testingAreas: string[];
+  personalMessage: string | null;
+  programDurationWeeks: number;
+  inviteExpiresDays: number;
+}) => Promise<{
+  subject: string;
+  html: string;
+  text: string;
+  fromLabel: string;
+  fromAddress: string;
+  replyToEmail: string;
+}>;
+
 export type PrototypeTesterAccessActivatedEmailSender = (input: {
   recipientEmail: string;
   recipientName: string;
@@ -138,6 +157,7 @@ export interface PrototypeTesterInvitesDeps {
     organizationNumber?: string | null,
   ) => Promise<any>;
   sendInviteEmail?: PrototypeTesterDirectInviteEmailSender;
+  previewInviteEmail?: PrototypeTesterInviteEmailPreviewer;
   sendAccessActivatedEmail?: PrototypeTesterAccessActivatedEmailSender;
   issueSigningCode?: PrototypeTesterSigningCodeIssuer;
   verifySigningCode?: PrototypeTesterSigningCodeVerifier;
@@ -148,12 +168,16 @@ export interface PrototypeTesterInvitesDeps {
   searchBrregCompanies?: (
     searchTerm: string,
   ) => Promise<PrototypeTesterBrregCompany[]>;
+  lookupBrregContact?: (
+    organizationNumber: string,
+  ) => Promise<{ name: string; role: string } | null>;
 }
 
 export type PrototypeTesterBrregCompany = {
   organizationNumber: string;
   name: string;
   organizationForm: string | null;
+  organizationFormCode?: string | null;
   primaryIndustryCode?: string | null;
   primaryIndustryDescription?: string | null;
   businessAddress: string | {
@@ -169,9 +193,15 @@ type PrototypeTesterProfession =
   | "videographer"
   | "music_producer";
 
-function recommendPrototypeTesterProfession(
+type ProfessionRecommendation = {
+  profession: PrototypeTesterProfession;
+  confidence: "high" | "medium";
+  reason: string;
+};
+
+function recommendPrototypeTesterProfessionDetailed(
   company: PrototypeTesterBrregCompany,
-): PrototypeTesterProfession | null {
+): ProfessionRecommendation | null {
   const industryCode = String(company.primaryIndustryCode || "").replace(
     /[^\d]/g,
     "",
@@ -185,10 +215,22 @@ function recommendPrototypeTesterProfession(
     industry.includes("produksjon og utgivelse av musikk") ||
     industry.includes("lydopptak")
   ) {
-    return "music_producer";
+    return {
+      profession: "music_producer",
+      confidence: industryCode.startsWith("592") ? "high" : "medium",
+      reason: industryCode.startsWith("592")
+        ? `Næringskode ${company.primaryIndustryCode} gjelder produksjon eller utgivelse av musikk- og lydopptak.`
+        : "Næringsbeskrivelsen omtaler musikk- eller lydproduksjon.",
+    };
   }
   if (industryCode.startsWith("742") || industry.includes("fotografering")) {
-    return "photographer";
+    return {
+      profession: "photographer",
+      confidence: industryCode.startsWith("742") ? "high" : "medium",
+      reason: industryCode.startsWith("742")
+        ? `Næringskode ${company.primaryIndustryCode} gjelder fotografvirksomhet.`
+        : "Næringsbeskrivelsen omtaler fotografering.",
+    };
   }
   if (
     industryCode.startsWith("5911") ||
@@ -196,9 +238,56 @@ function recommendPrototypeTesterProfession(
     industry.includes("film-, video-") ||
     industry.includes("film og video")
   ) {
-    return "videographer";
+    return {
+      profession: "videographer",
+      confidence:
+        industryCode.startsWith("5911") || industryCode.startsWith("5912")
+          ? "high"
+          : "medium",
+      reason:
+        industryCode.startsWith("5911") || industryCode.startsWith("5912")
+          ? `Næringskode ${company.primaryIndustryCode} gjelder film- eller videoproduksjon.`
+          : "Næringsbeskrivelsen omtaler film- eller videoproduksjon.",
+    };
   }
   return null;
+}
+
+function recommendedTestingAreas(profession: string | null): string[] {
+  switch (profession) {
+    case "music_producer":
+      return [
+        "CreatorHub-dashboard",
+        "Prosjekt og arbeidsflyt",
+        "Showcase og klient-godkjenning",
+        "Kontrakt og fakturering",
+        "Integrasjoner",
+      ];
+    case "videographer":
+      return [
+        "CreatorHub-dashboard",
+        "Story Arc Studio",
+        "Prosjekt og arbeidsflyt",
+        "Showcase og klient-godkjenning",
+        "Mobil",
+      ];
+    case "photographer":
+      return [
+        "CreatorHub-dashboard",
+        "Prosjekt og arbeidsflyt",
+        "Showcase og klient-godkjenning",
+        "Kontrakt og fakturering",
+        "Mobil",
+        "iPad",
+      ];
+    default:
+      return [
+        "CreatorHub-dashboard",
+        "Prosjekt og arbeidsflyt",
+        "Kontrakt og fakturering",
+        "Integrasjoner",
+      ];
+  }
 }
 
 export type PrototypeTesterBrregLookupResult = {
@@ -276,6 +365,10 @@ function mapOpenBrregCompany(unit: any): PrototypeTesterBrregCompany | null {
     name,
     organizationForm:
       unit.organisasjonsform?.beskrivelse || unit.enhetstype?.beskrivelse || null,
+    organizationFormCode:
+      typeof unit.organisasjonsform?.kode === "string"
+        ? unit.organisasjonsform.kode.trim().toUpperCase()
+        : null,
     primaryIndustryCode:
       typeof unit.naeringskode1?.kode === "string"
         ? unit.naeringskode1.kode.trim()
@@ -291,6 +384,38 @@ function mapOpenBrregCompany(unit: any): PrototypeTesterBrregCompany | null {
     }),
     operationalStatus,
   };
+}
+
+async function lookupOpenBrregContact(
+  organizationNumber: string,
+): Promise<{ name: string; role: string } | null> {
+  const result = await fetchBrregJson(
+    `https://data.brreg.no/enhetsregisteret/api/enheter/${organizationNumber}/roller`,
+  );
+  if (result.status === 404 || result.status === 410) return null;
+  if (result.status !== 200) {
+    throw new Error(`BRREG role lookup failed (${result.status})`);
+  }
+  const groups = Array.isArray(result.payload?.rollegrupper)
+    ? result.payload.rollegrupper
+    : [];
+  const roles = groups.flatMap((group: any) =>
+    Array.isArray(group?.roller) ? group.roller : [],
+  );
+  const holder = roles.find(
+    (role: any) =>
+      role?.type?.kode === "INNH" &&
+      role?.person?.erDoed !== true &&
+      role?.person?.navn,
+  );
+  if (!holder) return null;
+  const personName = holder.person.navn;
+  const name = [personName.fornavn, personName.mellomnavn, personName.etternavn]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean)
+    .join(" ")
+    .slice(0, MAX_NAME_LENGTH);
+  return name ? { name, role: "Innehaver" } : null;
 }
 
 async function fetchBrregJson(url: string): Promise<{ status: number; payload: any }> {
@@ -403,6 +528,19 @@ async function ensureSchema(pool: any): Promise<void> {
       receipt_email_provider      VARCHAR(80),
       receipt_email_message_id    TEXT,
       receipt_email_delivery_reason TEXT,
+      email_delivery_attempt_count INTEGER NOT NULL DEFAULT 0,
+      email_last_attempt_at        TIMESTAMPTZ,
+      account_provisioning_attempt_count INTEGER NOT NULL DEFAULT 0,
+      account_provisioning_last_attempt_at TIMESTAMPTZ,
+      account_provisioning_error   TEXT,
+      access_email_attempt_count   INTEGER NOT NULL DEFAULT 0,
+      access_email_last_attempt_at TIMESTAMPTZ,
+      access_email_sent_at         TIMESTAMPTZ,
+      access_email_provider        VARCHAR(80),
+      access_email_message_id      TEXT,
+      access_email_delivery_reason TEXT,
+      receipt_email_attempt_count  INTEGER NOT NULL DEFAULT 0,
+      receipt_email_last_attempt_at TIMESTAMPTZ,
       invited_by                  TEXT,
       expires_at                  TIMESTAMPTZ NOT NULL,
       created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -441,6 +579,19 @@ async function ensureSchema(pool: any): Promise<void> {
     `receipt_email_provider VARCHAR(80)`,
     `receipt_email_message_id TEXT`,
     `receipt_email_delivery_reason TEXT`,
+    `email_delivery_attempt_count INTEGER NOT NULL DEFAULT 0`,
+    `email_last_attempt_at TIMESTAMPTZ`,
+    `account_provisioning_attempt_count INTEGER NOT NULL DEFAULT 0`,
+    `account_provisioning_last_attempt_at TIMESTAMPTZ`,
+    `account_provisioning_error TEXT`,
+    `access_email_attempt_count INTEGER NOT NULL DEFAULT 0`,
+    `access_email_last_attempt_at TIMESTAMPTZ`,
+    `access_email_sent_at TIMESTAMPTZ`,
+    `access_email_provider VARCHAR(80)`,
+    `access_email_message_id TEXT`,
+    `access_email_delivery_reason TEXT`,
+    `receipt_email_attempt_count INTEGER NOT NULL DEFAULT 0`,
+    `receipt_email_last_attempt_at TIMESTAMPTZ`,
   ]) {
     await pool.query(`ALTER TABLE prototype_tester_invites ADD COLUMN IF NOT EXISTS ${col}`).catch(() => undefined);
   }
@@ -738,6 +889,92 @@ function rowToInvite(r: any): any {
 
 function rowToAdminInviteSummary(r: any, baseUrl: string): any {
   const invite = rowToInvite(r);
+  const lifecycleStatus = (
+    complete: boolean,
+    failed: boolean,
+  ): "complete" | "failed" | "pending" =>
+    complete ? "complete" : failed ? "failed" : "pending";
+  const lifecycle = [
+    {
+      key: "created",
+      label: "Invitasjon opprettet",
+      status: "complete",
+      at: r.created_at || null,
+    },
+    {
+      key: "invite_email",
+      label: "Invitasjon sendt",
+      status: lifecycleStatus(
+        Boolean(r.dashboard_email_sent_at || r.email_sent_at),
+        Boolean(r.email_delivery_reason),
+      ),
+      at: r.dashboard_email_sent_at || r.email_sent_at || r.email_last_attempt_at || null,
+      detail: r.email_delivery_reason || null,
+      retryStep: !r.dashboard_email_sent_at && !r.email_sent_at ? "invite_email" : null,
+    },
+    {
+      key: "opened",
+      label: "E-post åpnet",
+      status: lifecycleStatus(Boolean(r.dashboard_email_opened_at || r.email_opened_at), false),
+      at: r.dashboard_email_opened_at || r.email_opened_at || null,
+    },
+    {
+      key: "clicked",
+      label: "Invitasjonslenke åpnet",
+      status: lifecycleStatus(Boolean(r.dashboard_invite_link_clicked_at || r.invite_link_clicked_at), false),
+      at: r.dashboard_invite_link_clicked_at || r.invite_link_clicked_at || null,
+    },
+    {
+      key: "email_verified",
+      label: "E-post bekreftet med kode",
+      status: lifecycleStatus(Boolean(r.email_verified_at), false),
+      at: r.email_verified_at || null,
+    },
+    {
+      key: "agreements",
+      label: "Fire avtaler akseptert",
+      status: lifecycleStatus(Boolean(r.accepted_at), false),
+      at: r.accepted_at || null,
+    },
+    {
+      key: "account",
+      label: "Konto opprettet",
+      status: lifecycleStatus(Boolean(r.provisioned_user_id || r.provisioned_at), Boolean(r.account_provisioning_error)),
+      at: r.provisioned_at || r.account_provisioning_last_attempt_at || null,
+      detail: r.account_provisioning_error || null,
+      retryStep: r.accepted_at && !r.provisioned_user_id ? "account" : null,
+    },
+    {
+      key: "solo_pro",
+      label: "solo_pro aktiv",
+      status: lifecycleStatus(Boolean(r.solo_pro_active), Boolean(r.provisioned_user_id && !r.solo_pro_active)),
+      at: r.provisioned_at || null,
+      detail: r.provisioned_user_id && !r.solo_pro_active ? "Tilgangen mangler aktivt solo_pro-abonnement." : null,
+      retryStep: r.provisioned_user_id && !r.solo_pro_active ? "account" : null,
+    },
+    {
+      key: "access_email",
+      label: "Tilgangs-e-post sendt",
+      status: lifecycleStatus(Boolean(r.access_email_sent_at), Boolean(r.access_email_delivery_reason)),
+      at: r.access_email_sent_at || r.access_email_last_attempt_at || null,
+      detail: r.access_email_delivery_reason || null,
+      retryStep: r.provisioned_user_id && !r.access_email_sent_at ? "access_email" : null,
+    },
+    {
+      key: "receipt",
+      label: "PDF-kvittering tilgjengelig",
+      status: lifecycleStatus(Boolean(r.signing_receipt_id), false),
+      at: r.accepted_at || null,
+    },
+    {
+      key: "receipt_email",
+      label: "Kvittering sendt",
+      status: lifecycleStatus(Boolean(r.receipt_email_sent_at), Boolean(r.receipt_email_delivery_reason)),
+      at: r.receipt_email_sent_at || r.receipt_email_last_attempt_at || null,
+      detail: r.receipt_email_delivery_reason || null,
+      retryStep: r.signing_receipt_id && !r.receipt_email_sent_at ? "receipt_email" : null,
+    },
+  ];
   return {
     id: invite.id,
     email: invite.email,
@@ -775,6 +1012,19 @@ function rowToAdminInviteSummary(r: any, baseUrl: string): any {
       provider: r.receipt_email_provider || null,
       reason: r.receipt_email_delivery_reason || null,
     },
+    accessEmailDelivery: {
+      sent: Boolean(r.access_email_sent_at),
+      sentAt: r.access_email_sent_at || null,
+      provider: r.access_email_provider || null,
+      reason: r.access_email_delivery_reason || null,
+    },
+    operationalAttempts: {
+      inviteEmail: Number(r.email_delivery_attempt_count || 0),
+      account: Number(r.account_provisioning_attempt_count || 0),
+      accessEmail: Number(r.access_email_attempt_count || 0),
+      receiptEmail: Number(r.receipt_email_attempt_count || 0),
+    },
+    lifecycle,
     inviteUrl: `${baseUrl}/prototype-tester/accept-invite?token=${encodeURIComponent(r.token)}`,
   };
 }
@@ -933,6 +1183,8 @@ export async function createInviteFromApprovedRequest(
               email_provider = $3,
               email_message_id = $4,
               email_delivery_reason = $5,
+              email_delivery_attempt_count = COALESCE(email_delivery_attempt_count, 0) + 1,
+              email_last_attempt_at = NOW(),
               updated_at = NOW()
         WHERE id = $1`,
       [
@@ -974,12 +1226,14 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
     requireAdminSession,
     provisionTesterAccount,
     sendInviteEmail,
+    previewInviteEmail,
     sendAccessActivatedEmail,
     issueSigningCode,
     verifySigningCode,
     sendReceiptEmail,
     lookupBrregCompany,
     searchBrregCompanies = searchOpenBrregCompanies,
+    lookupBrregContact = lookupOpenBrregContact,
   } = deps;
 
   const requestIp = (req: any): string | null => {
@@ -1088,24 +1342,159 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         companies: companies
           .filter((company) => company.operationalStatus === "active")
           .slice(0, 10)
-          .map((company) => ({
+          .map((company) => {
+            const recommendation = recommendPrototypeTesterProfessionDetailed(company);
+            return {
             organizationNumber: company.organizationNumber,
             name: company.name,
             organizationForm: company.organizationForm,
+            organizationFormCode: company.organizationFormCode || null,
             primaryIndustryCode: company.primaryIndustryCode || null,
             primaryIndustryDescription:
               company.primaryIndustryDescription || null,
-            recommendedProfession:
-              recommendPrototypeTesterProfession(company),
+            recommendedProfession: recommendation?.profession || null,
+            professionRecommendation: recommendation,
+            suggestedTestingAreas: recommendedTestingAreas(
+              recommendation?.profession || null,
+            ),
             businessAddress: formatBrregBusinessAddress(company.businessAddress),
             operationalStatus: company.operationalStatus,
-          })),
+            };
+          }),
       });
     } catch (error) {
       console.warn("[prototype-tester-invite] BRREG search failed:", error);
       res.status(502).json({
         error: "BRREG-søket er midlertidig utilgjengelig.",
       });
+    }
+  });
+
+  // Contact suggestions are deliberately separate from the company search so
+  // a result list never fan-outs into person lookups. Only ENK holders are
+  // suggested, and the admin must explicitly apply the name in the UI.
+  app.get(
+    "/api/prototype-tester-invites/brreg/:organizationNumber/contact",
+    async (req, res) => {
+      if (!(await requireAdminSession(req, res))) return;
+      const organizationNumber = normalizeNorwegianOrganizationNumber(
+        req.params.organizationNumber,
+      );
+      if (!isValidNorwegianOrganizationNumber(organizationNumber)) {
+        return res.status(400).json({ error: "Ugyldig organisasjonsnummer" });
+      }
+      try {
+        const contact = await lookupBrregContact(organizationNumber);
+        return res.json({
+          contact: contact
+            ? {
+                name: contact.name,
+                role: contact.role,
+                source: "BRREG_ROLLER",
+                requiresConfirmation: true,
+              }
+            : null,
+        });
+      } catch (error) {
+        console.warn("[prototype-tester-invite] BRREG contact lookup failed:", error);
+        return res.status(502).json({
+          error: "BRREG-kontakten kunne ikke hentes akkurat nå.",
+        });
+      }
+    },
+  );
+
+  // Uses the exact Email Designer renderer without persisting an invitation or
+  // sending mail. The selected company is re-verified server-side first.
+  app.post("/api/prototype-tester-invites/preview", async (req, res) => {
+    if (!(await requireAdminSession(req, res))) return;
+    if (!previewInviteEmail) {
+      return res.status(503).json({ error: "E-postforhåndsvisning er ikke tilgjengelig." });
+    }
+    const body = req.body ?? {};
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    const testingAreas = Array.isArray(body.testingAreas) && body.testingAreas.every(
+      (area: unknown) => typeof area === "string",
+    )
+      ? body.testingAreas.map((area: string) => area.trim()).filter(Boolean)
+      : [];
+    const personalMessage = typeof body.personalMessage === "string" && body.personalMessage.trim()
+      ? body.personalMessage.trim()
+      : null;
+    const profession = normalizeMemberProfession(body.profession);
+
+    if (!email || email.length > MAX_EMAIL_LENGTH || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: "Gyldig e-post er påkrevd" });
+    }
+    if (name.length < 2 || name.length > MAX_NAME_LENGTH || DISALLOWED_SINGLE_LINE_CHARS.test(name)) {
+      return res.status(400).json({ error: "Navn må være mellom 2 og 200 tegn" });
+    }
+    if (
+      testingAreas.length < 1 ||
+      testingAreas.length > MAX_TESTING_AREAS ||
+      testingAreas.some((area: string) =>
+        area.length > MAX_TESTING_AREA_LENGTH || DISALLOWED_SINGLE_LINE_CHARS.test(area),
+      )
+    ) {
+      return res.status(400).json({ error: "Velg minst ett gyldig testområde" });
+    }
+    if (!profession) {
+      return res.status(400).json({ error: "Velg en gyldig profesjon" });
+    }
+    if (
+      personalMessage &&
+      (personalMessage.length > MAX_PERSONAL_MESSAGE_LENGTH || DISALLOWED_TEXT_CHARS.test(personalMessage))
+    ) {
+      return res.status(400).json({ error: "Personlig melding kan være maks 2000 tegn" });
+    }
+
+    let company = typeof body.company === "string" && body.company.trim()
+      ? body.company.trim().slice(0, MAX_COMPANY_LENGTH)
+      : null;
+    const organizationNumber = normalizeNorwegianOrganizationNumber(body.organizationNumber);
+    if (body.organizationNumber !== undefined) {
+      if (!isValidNorwegianOrganizationNumber(organizationNumber)) {
+        return res.status(400).json({ error: "Ugyldig organisasjonsnummer" });
+      }
+      if (!lookupBrregCompany) {
+        return res.status(503).json({ error: "BRREG-verifisering er ikke tilgjengelig akkurat nå." });
+      }
+      const lookup = await lookupBrregCompany(organizationNumber).catch(() => null);
+      if (
+        !lookup ||
+        lookup.lookupStatus !== "verified" ||
+        !lookup.company ||
+        lookup.company.operationalStatus !== "active" ||
+        normalizeNorwegianOrganizationNumber(lookup.company.organizationNumber) !== organizationNumber
+      ) {
+        return res.status(503).json({ error: "BRREG kunne ikke bekrefte virksomheten. Prøv igjen." });
+      }
+      company = String(lookup.company.name || "").trim().slice(0, MAX_COMPANY_LENGTH);
+    }
+
+    try {
+      const inviteUrl = `${safeAppBaseUrl(req)}/prototype-tester/accept-invite?token=forhandsvisning-ingen-utsending`;
+      const preview = await previewInviteEmail({
+        recipientEmail: email,
+        recipientName: name,
+        inviteUrl,
+        profession,
+        company,
+        testingAreas,
+        personalMessage,
+        programDurationWeeks: PROGRAM_DURATION_WEEKS,
+        inviteExpiresDays: INVITE_EXPIRES_DAYS,
+      });
+      return res.json({
+        ...preview,
+        recipientEmail: email,
+        expiresAt: new Date(Date.now() + INVITE_EXPIRES_DAYS * 86_400_000).toISOString(),
+        agreements: ["Programvilkår", "NDA", "Databehandleravtale", "Intensjonsavtale"],
+      });
+    } catch (error) {
+      console.error("POST /prototype-tester-invites/preview:", error);
+      return res.status(500).json({ error: "Kunne ikke lage e-postforhåndsvisning." });
     }
   });
 
@@ -1158,6 +1547,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         return res.status(400).json({ error: "Navn må være mellom 2 og 200 tegn" });
       }
       if (
+        rawTestingAreas.length < 1 ||
         rawTestingAreas.length > MAX_TESTING_AREAS ||
         testingAreas.length !== rawTestingAreas.length ||
         testingAreas.some(
@@ -1167,7 +1557,10 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
             DISALLOWED_SINGLE_LINE_CHARS.test(area),
         )
       ) {
-        return res.status(400).json({ error: "Ugyldige testområder" });
+        return res.status(400).json({ error: "Velg minst ett gyldig testområde" });
+      }
+      if (!memberProfession) {
+        return res.status(400).json({ error: "Velg en gyldig profesjon" });
       }
       if (
         memberCompany &&
@@ -1319,6 +1712,8 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
                 email_provider = $3,
                 email_message_id = $4,
                 email_delivery_reason = $5,
+                email_delivery_attempt_count = COALESCE(email_delivery_attempt_count, 0) + 1,
+                email_last_attempt_at = NOW(),
                 updated_at = NOW()
           WHERE id = $1`,
         [
@@ -1386,6 +1781,289 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
     } catch (err) {
       console.error("GET /prototype-tester-invites:", err);
       res.status(500).json({ error: "Kunne ikke hente prototype-invitasjoner" });
+    }
+  });
+
+  app.post("/api/prototype-tester-invites/:inviteId/retry", async (req, res) => {
+    const adminSession = await requireAdminSession(req, res);
+    if (!adminSession) return;
+    const inviteId = String(req.params.inviteId || "").trim().toLowerCase();
+    const step = String(req.body?.step || "").trim();
+    const allowedSteps = new Set(["invite_email", "account", "access_email", "receipt_email"]);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(inviteId)) {
+      return res.status(400).json({ error: "Ugyldig invitasjons-ID" });
+    }
+    if (!allowedSteps.has(step)) {
+      return res.status(400).json({ error: "Ugyldig retry-steg" });
+    }
+
+    try {
+      await ensureSchema(pool);
+      const existing = await pool.query(
+        `SELECT p.*,
+                EXISTS (
+                  SELECT 1 FROM user_subscriptions s
+                   WHERE s.user_id::text = p.provisioned_user_id::text
+                     AND s.plan_id = 'solo_pro'
+                     AND s.status IN ('active', 'trial')
+                ) AS solo_pro_active
+           FROM prototype_tester_invites p
+          WHERE p.id = $1
+          LIMIT 1`,
+        [inviteId],
+      );
+      if (!existing.rows.length) {
+        return res.status(404).json({ error: "Invitasjonen finnes ikke" });
+      }
+      const invite = existing.rows[0];
+      const retrySnapshot = parseAgreementSnapshot(
+        invite.accepted_agreements_snapshot,
+      );
+      const hasVerifiedAcceptance = Boolean(
+        invite.status === "accepted" &&
+          retrySnapshot &&
+          agreementSnapshotDigest(retrySnapshot) ===
+            String(invite.agreement_digest || ""),
+      );
+
+      // Validate that a retry is both necessary and safe before consuming an
+      // attempt or starting the short concurrency lock.
+      if (step === "invite_email") {
+        if (invite.email_sent_at) {
+          return res.status(409).json({ error: "Invitasjons-e-posten er allerede sendt." });
+        }
+        if (invite.status !== "pending" || new Date(invite.expires_at).getTime() < Date.now()) {
+          return res.status(409).json({ error: "Bare en aktiv, ventende invitasjon kan sendes på nytt." });
+        }
+      } else if (step === "account") {
+        if (!hasVerifiedAcceptance) {
+          return res.status(409).json({ error: "Konto kan bare repareres etter en verifisert avtaleaksept." });
+        }
+        if (invite.provisioned_user_id && invite.solo_pro_active) {
+          return res.status(409).json({ error: "Konto og solo_pro er allerede aktive." });
+        }
+        if (!provisionTesterAccount) {
+          return res.status(503).json({ error: "Kontooppretting er ikke tilgjengelig." });
+        }
+      } else if (step === "access_email") {
+        if (!invite.provisioned_user_id || invite.status !== "accepted") {
+          return res.status(409).json({ error: "Kontoen må være aktiv før tilgangs-e-posten kan sendes." });
+        }
+        if (invite.access_email_sent_at) {
+          return res.status(409).json({ error: "Tilgangs-e-posten er allerede sendt." });
+        }
+        if (!sendAccessActivatedEmail) {
+          return res.status(503).json({ error: "Tilgangs-e-post er ikke konfigurert." });
+        }
+      } else {
+        if (!hasVerifiedAcceptance || !invite.signing_receipt_id) {
+          return res.status(409).json({ error: "Kvitteringen kan bare sendes etter en verifisert avtaleaksept." });
+        }
+        if (invite.receipt_email_sent_at) {
+          return res.status(409).json({ error: "Kvitteringen er allerede sendt." });
+        }
+        if (!sendReceiptEmail) {
+          return res.status(503).json({ error: "Kvitterings-e-post er ikke konfigurert." });
+        }
+      }
+      const retryColumn = {
+        invite_email: ["email_delivery_attempt_count", "email_last_attempt_at"],
+        account: ["account_provisioning_attempt_count", "account_provisioning_last_attempt_at"],
+        access_email: ["access_email_attempt_count", "access_email_last_attempt_at"],
+        receipt_email: ["receipt_email_attempt_count", "receipt_email_last_attempt_at"],
+      }[step] as [string, string];
+      const claimed = await pool.query(
+        `UPDATE prototype_tester_invites
+            SET ${retryColumn[0]} = COALESCE(${retryColumn[0]}, 0) + 1,
+                ${retryColumn[1]} = NOW(),
+                updated_at = NOW()
+          WHERE id = $1
+            AND (${retryColumn[1]} IS NULL OR ${retryColumn[1]} < NOW() - INTERVAL '30 seconds')
+        RETURNING *`,
+        [inviteId],
+      );
+      if (!claimed.rows.length) {
+        res.set("Retry-After", "30");
+        return res.status(429).json({ error: "Et forsøk på dette steget kjører nylig. Vent 30 sekunder." });
+      }
+
+      const baseUrl = safeAppBaseUrl(req);
+      let delivery: PrototypeTesterEmailDelivery | null = null;
+      if (step === "invite_email") {
+        if (invite.email_sent_at) {
+          return res.status(409).json({ error: "Invitasjons-e-posten er allerede sendt." });
+        }
+        if (invite.status !== "pending" || new Date(invite.expires_at).getTime() < Date.now()) {
+          return res.status(409).json({ error: "Bare en aktiv, ventende invitasjon kan sendes på nytt." });
+        }
+        const inviteUrl = `${baseUrl}/prototype-tester/accept-invite?token=${encodeURIComponent(invite.token)}`;
+        const tracking = buildInviteTrackUrls(baseUrl, invite.token);
+        delivery = sendInviteEmail
+          ? await sendInviteEmail({
+              recipientEmail: String(invite.email),
+              recipientName: String(invite.name),
+              inviteUrl,
+              ctaUrl: tracking.clickUrl,
+              trackingPixelUrl: tracking.openPixelUrl,
+              inviteId,
+              sentByUserId:
+                typeof adminSession === "object" && adminSession && "userId" in adminSession
+                  ? String(adminSession.userId)
+                  : null,
+              profession: invite.member_profession || null,
+              company: invite.member_company || null,
+              testingAreas: Array.isArray(invite.testing_areas) ? invite.testing_areas : [],
+              personalMessage: invite.personal_message || null,
+              programDurationWeeks: Number(invite.program_duration_weeks || PROGRAM_DURATION_WEEKS),
+              inviteExpiresDays: INVITE_EXPIRES_DAYS,
+            })
+          : await deliverInviteEmail(
+              pool,
+              String(invite.email),
+              String(invite.name),
+              inviteUrl,
+              invite.personal_message || null,
+              "Du er invitert som prototype-tester i CreatorHub",
+              "prototype_tester_invite_retry",
+              null,
+              invite.invite_request_id || null,
+              tracking,
+            );
+        await pool.query(
+          `UPDATE prototype_tester_invites
+              SET email_sent_at = CASE WHEN $2::boolean THEN COALESCE(email_sent_at, NOW()) ELSE email_sent_at END,
+                  email_provider = $3,
+                  email_message_id = $4,
+                  email_delivery_reason = $5,
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [inviteId, delivery.sent, delivery.provider, delivery.messageId, delivery.reason],
+        );
+      } else if (step === "account") {
+        const snapshot = parseAgreementSnapshot(invite.accepted_agreements_snapshot);
+        if (
+          invite.status !== "accepted" ||
+          !snapshot ||
+          agreementSnapshotDigest(snapshot) !== String(invite.agreement_digest || "")
+        ) {
+          return res.status(409).json({ error: "Konto kan bare repareres etter en verifisert avtaleaksept." });
+        }
+        if (!provisionTesterAccount) {
+          return res.status(503).json({ error: "Kontooppretting er ikke tilgjengelig." });
+        }
+        let accountUserId: string | null = null;
+        try {
+          const account = await provisionTesterAccount(
+            String(invite.email),
+            String(invite.accepted_nda_name || invite.name),
+            invite.member_profession || null,
+            invite.member_company || null,
+            invite.member_organization_number || null,
+          );
+          accountUserId = account?.id ? String(account.id) : null;
+        } catch (error) {
+          console.error("[prototype-tester retry] account provisioning failed", error);
+        }
+        await pool.query(
+          `UPDATE prototype_tester_invites
+              SET provisioned_user_id = COALESCE($2, provisioned_user_id),
+                  provisioned_at = CASE WHEN $2 IS NOT NULL THEN COALESCE(provisioned_at, NOW()) ELSE provisioned_at END,
+                  account_provisioning_error = CASE WHEN $2 IS NULL THEN 'account_provisioning_failed' ELSE NULL END,
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [inviteId, accountUserId],
+        );
+        if (!accountUserId) {
+          return res.status(502).json({ error: "Konto og solo_pro kunne ikke repareres. Forsøket er loggført." });
+        }
+      } else if (step === "access_email") {
+        if (!invite.provisioned_user_id || invite.status !== "accepted") {
+          return res.status(409).json({ error: "Kontoen må være aktiv før tilgangs-e-posten kan sendes." });
+        }
+        if (invite.access_email_sent_at) {
+          return res.status(409).json({ error: "Tilgangs-e-posten er allerede sendt." });
+        }
+        if (!sendAccessActivatedEmail) {
+          return res.status(503).json({ error: "Tilgangs-e-post er ikke konfigurert." });
+        }
+        delivery = await sendAccessActivatedEmail({
+          recipientEmail: String(invite.email),
+          recipientName: String(invite.accepted_nda_name || invite.name),
+          loginUrl: `${baseUrl}/login?redirect=${encodeURIComponent(dashboardForProfession(invite.member_profession || null))}`,
+          inviteRequestId: invite.invite_request_id ? String(invite.invite_request_id) : null,
+          inviteId,
+          profession: invite.member_profession || null,
+          company: invite.member_company || null,
+          programEndsAt: invite.program_ends_at,
+        });
+        await pool.query(
+          `UPDATE prototype_tester_invites
+              SET access_email_sent_at = CASE WHEN $2::boolean THEN COALESCE(access_email_sent_at, NOW()) ELSE access_email_sent_at END,
+                  access_email_provider = $3,
+                  access_email_message_id = $4,
+                  access_email_delivery_reason = $5,
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [inviteId, delivery.sent, delivery.provider, delivery.messageId, delivery.reason],
+        );
+      } else {
+        const snapshot = parseAgreementSnapshot(invite.accepted_agreements_snapshot);
+        if (
+          invite.status !== "accepted" ||
+          !invite.signing_receipt_id ||
+          !snapshot ||
+          agreementSnapshotDigest(snapshot) !== String(invite.agreement_digest || "")
+        ) {
+          return res.status(409).json({ error: "Kvitteringen kan bare sendes etter en verifisert avtaleaksept." });
+        }
+        if (invite.receipt_email_sent_at) {
+          return res.status(409).json({ error: "Kvitteringen er allerede sendt." });
+        }
+        if (!sendReceiptEmail) {
+          return res.status(503).json({ error: "Kvitterings-e-post er ikke konfigurert." });
+        }
+        delivery = await sendReceiptEmail({
+          recipientEmail: String(invite.email),
+          recipientName: String(invite.accepted_nda_name || invite.name),
+          agreementsUrl: `${baseUrl}/login?redirect=${encodeURIComponent("/mine-avtaler")}`,
+          receiptId: String(invite.signing_receipt_id),
+          agreementDigest: String(invite.agreement_digest),
+          acceptedAt: invite.accepted_at,
+          programEndsAt: invite.program_ends_at,
+          inviteId,
+          company: invite.member_company || null,
+        });
+        await pool.query(
+          `UPDATE prototype_tester_invites
+              SET receipt_email_sent_at = CASE WHEN $2::boolean THEN COALESCE(receipt_email_sent_at, NOW()) ELSE receipt_email_sent_at END,
+                  receipt_email_provider = $3,
+                  receipt_email_message_id = $4,
+                  receipt_email_delivery_reason = $5,
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [inviteId, delivery.sent, delivery.provider, delivery.messageId, delivery.reason],
+        );
+      }
+
+      return res.json({ success: true, inviteId, step, delivery });
+    } catch (error) {
+      console.error("POST /prototype-tester-invites/:inviteId/retry:", error);
+      const failureColumn = {
+        invite_email: "email_delivery_reason",
+        account: "account_provisioning_error",
+        access_email: "access_email_delivery_reason",
+        receipt_email: "receipt_email_delivery_reason",
+      }[step];
+      if (failureColumn) {
+        await pool.query(
+          `UPDATE prototype_tester_invites
+              SET ${failureColumn} = $2,
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [inviteId, `${step}_retry_exception`],
+        ).catch(() => undefined);
+      }
+      return res.status(500).json({ error: "Steget kunne ikke prøves på nytt." });
     }
   });
 
@@ -1679,6 +2357,15 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       // faktisk har en konto med matchende e-post å logge inn med (Google OAuth /
       // e-post-match → gjenkjennes som tester). Ved feil beholdes aksepten, og tokenet kan brukes til trygg aktiveringsretry.
       let accountUserId: string | null = null;
+      await pool.query(
+        `UPDATE prototype_tester_invites
+            SET account_provisioning_attempt_count = COALESCE(account_provisioning_attempt_count, 0) + 1,
+                account_provisioning_last_attempt_at = NOW(),
+                account_provisioning_error = NULL,
+                updated_at = NOW()
+          WHERE id = $1`,
+        [acceptedInvite.id],
+      );
       if (provisionTesterAccount) {
         try {
           const acct = await provisionTesterAccount(
@@ -1695,6 +2382,13 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       }
 
       if (!accountUserId) {
+        await pool.query(
+          `UPDATE prototype_tester_invites
+              SET account_provisioning_error = 'account_provisioning_failed',
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [acceptedInvite.id],
+        ).catch(() => undefined);
         return res.status(503).json({
           error:
             "Avtalene er registrert, men kontoen kunne ikke aktiveres. Prøv igjen om litt.",
@@ -1708,6 +2402,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         `UPDATE prototype_tester_invites
             SET provisioned_user_id = $1,
                 provisioned_at = COALESCE(provisioned_at, NOW()),
+                account_provisioning_error = NULL,
                 updated_at = NOW()
           WHERE id = $2
         RETURNING *`,
@@ -1734,6 +2429,14 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       let accessActivatedEmailDelivery: PrototypeTesterEmailDelivery | null = null;
       if (accountUserId && sendAccessActivatedEmail) {
         try {
+          await pool.query(
+            `UPDATE prototype_tester_invites
+                SET access_email_attempt_count = COALESCE(access_email_attempt_count, 0) + 1,
+                    access_email_last_attempt_at = NOW(),
+                    updated_at = NOW()
+              WHERE id = $1`,
+            [acceptedInvite.id],
+          );
           accessActivatedEmailDelivery = await sendAccessActivatedEmail({
             recipientEmail: String(acceptedInvite.email || ""),
             recipientName: effectiveSignerName,
@@ -1748,11 +2451,37 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
             company: acceptedInvite.member_company || null,
             programEndsAt: acceptedInvite.program_ends_at || endsAt,
           });
+          await pool.query(
+            `UPDATE prototype_tester_invites
+                SET access_email_sent_at = CASE
+                      WHEN $2::boolean THEN COALESCE(access_email_sent_at, NOW())
+                      ELSE access_email_sent_at
+                    END,
+                    access_email_provider = $3,
+                    access_email_message_id = $4,
+                    access_email_delivery_reason = $5,
+                    updated_at = NOW()
+              WHERE id = $1`,
+            [
+              acceptedInvite.id,
+              accessActivatedEmailDelivery.sent,
+              accessActivatedEmailDelivery.provider,
+              accessActivatedEmailDelivery.messageId,
+              accessActivatedEmailDelivery.reason,
+            ],
+          );
         } catch (emailError) {
           console.error(
             "[prototype-tester accept] access-activated email failed",
             emailError,
           );
+          await pool.query(
+            `UPDATE prototype_tester_invites
+                SET access_email_delivery_reason = 'access_delivery_exception',
+                    updated_at = NOW()
+              WHERE id = $1`,
+            [acceptedInvite.id],
+          ).catch(() => undefined);
         }
       }
 
@@ -1760,6 +2489,14 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       const receiptId = String(acceptedInvite.signing_receipt_id || "");
       if (receiptId && sendReceiptEmail && !acceptedInvite.receipt_email_sent_at) {
         try {
+          await pool.query(
+            `UPDATE prototype_tester_invites
+                SET receipt_email_attempt_count = COALESCE(receipt_email_attempt_count, 0) + 1,
+                    receipt_email_last_attempt_at = NOW(),
+                    updated_at = NOW()
+              WHERE id = $1`,
+            [acceptedInvite.id],
+          );
           const agreementsUrl = `${safeAppBaseUrl(req)}/login?redirect=${encodeURIComponent("/mine-avtaler")}`;
           receiptEmailDelivery = await sendReceiptEmail({
             recipientEmail: String(acceptedInvite.email || ""),
@@ -1836,6 +2573,56 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
 
   // Innlogget avtaleoversikt. E-postmatching gjør at historiske aksepter kan
   // gjenfinnes etter at en eksisterende CreatorHub-konto blir knyttet til dem.
+  app.get("/api/prototype-tester-agreements/receipts/:receiptId/verify", async (req, res) => {
+    const receiptId = String(req.params.receiptId || "").trim().toLowerCase();
+    const digest = String(req.query?.digest || "").trim().toLowerCase();
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(receiptId) ||
+      !/^[a-f0-9]{64}$/.test(digest)
+    ) {
+      return res.status(400).json({ valid: false, error: "Ugyldig kontrollreferanse" });
+    }
+    try {
+      await ensureSchema(pool);
+      const result = await pool.query(
+        `SELECT signing_receipt_id, agreement_digest, accepted_at,
+                signature_method, email_verified_at, accepted_agreements_snapshot
+           FROM prototype_tester_invites
+          WHERE signing_receipt_id = $1
+            AND agreement_digest = $2
+            AND status = 'accepted'
+          LIMIT 1`,
+        [receiptId, digest],
+      );
+      const row = result.rows[0];
+      const snapshot = row
+        ? parseAgreementSnapshot(row.accepted_agreements_snapshot)
+        : null;
+      if (!row || !snapshot || !isPrototypeTesterReceiptSnapshotValid(snapshot, digest)) {
+        return res.status(404).json({ valid: false, error: "Kvitteringen kunne ikke verifiseres" });
+      }
+      const documents = Array.isArray(snapshot.documents) ? snapshot.documents : [];
+      return res.json({
+        valid: true,
+        receiptId,
+        acceptedAt: row.accepted_at,
+        signatureMethod: row.signature_method,
+        emailVerified: Boolean(row.email_verified_at),
+        archiveFormat: "PDF/A-2b",
+        documentCount: documents.length,
+        documents: documents.map((document: any) => ({
+          key: String(document.key || ""),
+          title: String(document.title || ""),
+          version: String(document.version || ""),
+          bindingNature: document.bindingNature === "non_binding" ? "non_binding" : "binding",
+        })),
+      });
+    } catch (error) {
+      console.error("GET /prototype-tester-agreements/receipts/:receiptId/verify:", error);
+      return res.status(500).json({ valid: false, error: "Kontrollen er midlertidig utilgjengelig" });
+    }
+  });
+
   app.get("/api/prototype-tester-agreements/me", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
@@ -1928,6 +2715,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         signatureMethod: row.signature_method || null,
         emailVerifiedAt: row.email_verified_at || null,
         programEndsAt: row.program_ends_at || null,
+        verificationUrl: `${safeAppBaseUrl(req)}/prototype-tester/verify-receipt?receipt=${encodeURIComponent(receiptId)}&digest=${encodeURIComponent(String(row.agreement_digest))}`,
       });
       res.set({
         "Content-Type": "application/pdf",

@@ -100,6 +100,7 @@ import BusinessBrandingPage from '@/pages/BusinessBrandingPage';
 import AdminInviteSystem from '@/pages/admin-invite-system';
 import AcceptTesterInvite from '@/pages/AcceptTesterInvite';
 import AcceptPrototypeTesterInvite from '@/pages/AcceptPrototypeTesterInvite';
+import VerifyPrototypeTesterReceipt from '@/pages/VerifyPrototypeTesterReceipt';
 import ClaimStudentAccess from '@/pages/ClaimStudentAccess';
 import ClaimCensorAccess from '@/pages/ClaimCensorAccess';
 import CensorView from '@/pages/CensorView';
@@ -1116,6 +1117,7 @@ function App() {
                   <Route path="/link" component={PostAgentLinkPage} />
                   <Route path="/post-agent/mockup-studio" component={MockupVideoStudioPage} />
                   <Route path="/prototype-tester/accept-invite" component={AcceptPrototypeTesterInvite} />
+                  <Route path="/prototype-tester/verify-receipt" component={VerifyPrototypeTesterReceipt} />
                   {/* <Route path="/company-profiles" component={CompanyProfilesPage} /> */}
                   {/* <Route path="/logo-integration-demo" component={LogoIntegrationDemo} /> */}
                   {/* <Route path="/logo-test-simple" component={LogoTestSimple} /> */}
