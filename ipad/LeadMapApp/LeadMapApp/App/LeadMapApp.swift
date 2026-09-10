@@ -746,9 +746,8 @@ struct MainTabView: View {
 }
 
 /// Mer-fanen på iPhone — inngangen til hovedområdene som ikke får plass i
-/// tab-baren (Team/Leadbook/Salgsledelse). Under-sidene pushes med skjult
-/// system-navbar (de har egne fulle headere); tilbake = swipe eller
-/// tab-tap.
+/// tab-baren (Team/Leadbook/Salgsledelse). Under-sidene beholder den native
+/// navigasjonslinjen på iPhone, slik at tilbakeknappen alltid er synlig.
 struct PhoneMerTab: View {
     @Environment(AppState.self) private var state
 
@@ -796,29 +795,37 @@ struct PhoneMerTab: View {
             }
             .navigationTitle("Mer")
             .navigationDestination(for: Destination.self) { dest in
-                // Team/Leadbook/Salgsledelse har egne fulle headere → skjult navbar.
                 // Leadgrid Go bruker system-navigasjon og pushes EMBEDDED (uten sin
                 // egen NavigationStack — nestet stack i push tripper SwiftUI-assertion).
                 switch dest {
                 case .team:
-                    TeamView().toolbar(.hidden, for: .navigationBar)
+                    TeamView()
+                        .navigationTitle("Team")
+                        .navigationBarTitleDisplayMode(.inline)
                 case .leadbook:
-                    LeadbookView().toolbar(.hidden, for: .navigationBar)
+                    LeadbookView()
+                        .navigationTitle("Leadbook")
+                        .navigationBarTitleDisplayMode(.inline)
                 case .salgsledelse:
                     SalgsledelseView(embeddedInStack: true)
-                        .toolbar(.hidden, for: .navigationBar)
+                        .navigationTitle("Salgsledelse")
+                        .navigationBarTitleDisplayMode(.inline)
                 case .leadgridGo:
                     LeadgridGoDashboardView(embedded: true)
-                        .toolbar(.hidden, for: .navigationBar)
+                        .navigationTitle("Leadgrid Go")
+                        .navigationBarTitleDisplayMode(.inline)
                 case .kvalitet:
                     KvalitetView(embedded: true)
-                        .toolbar(.hidden, for: .navigationBar)
+                        .navigationTitle("Kvalitet")
+                        .navigationBarTitleDisplayMode(.inline)
                 case .anbud:
                     AnbudView(embedded: true)
-                        .toolbar(.hidden, for: .navigationBar)
+                        .navigationTitle("Anbud")
+                        .navigationBarTitleDisplayMode(.inline)
                 case .canvas:
                     CanvasView()
-                        .toolbar(.hidden, for: .navigationBar)
+                        .navigationTitle("Canvas")
+                        .navigationBarTitleDisplayMode(.inline)
                 case .hub:
                     // I motsetning til søsknene bruker denne system-navbaren
                     // (tittel + org-picker-toolbar), ikke egen header —

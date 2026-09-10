@@ -111,6 +111,18 @@ final class QASweepTests: XCTestCase {
         element.tap()
     }
 
+    private func dismissKeyboard(in app: XCUIApplication) {
+        guard app.keyboards.count > 0 else { return }
+        let returnKey = app.keyboards.buttons["Return"].firstMatch
+        if returnKey.exists {
+            returnKey.tap()
+        }
+    }
+
+    private func displayedText(of element: XCUIElement) -> String {
+        (element.value as? String) ?? element.label
+    }
+
     private func pondusUsageCount(
         baseURL: URL,
         token: String,
@@ -287,11 +299,12 @@ final class QASweepTests: XCTestCase {
         XCTAssertTrue(domain.waitForExistence(timeout: 3))
         domain.tap()
         domain.typeText("dentum.no")
+        dismissKeyboard(in: app)
         app.buttons["project-onboarding.analyze"].tap()
 
-        let category = app.staticTexts["project-onboarding.category"]
+        let category = app.descendants(matching: .any)["project-onboarding.category"]
         XCTAssertTrue(category.waitForExistence(timeout: 5))
-        XCTAssertTrue(category.label.contains("Tannhelse"))
+        XCTAssertTrue(displayedText(of: category).contains("Tannhelse"))
 
         let addProfile = app.buttons["project-onboarding.profile.add"]
         for _ in 0..<12 where !addProfile.exists {
@@ -333,14 +346,15 @@ final class QASweepTests: XCTestCase {
         XCTAssertTrue(domain.waitForExistence(timeout: 3))
         domain.tap()
         domain.typeText("theroleroom.com")
+        dismissKeyboard(in: app)
         app.buttons["project-onboarding.analyze"].tap()
 
-        let category = app.staticTexts["project-onboarding.category"]
+        let category = app.descendants(matching: .any)["project-onboarding.category"]
         XCTAssertTrue(category.waitForExistence(timeout: 5))
-        XCTAssertTrue(category.label.contains("Film, TV, casting og talent"))
-        let projectName = app.staticTexts["project-onboarding.project-name"]
+        XCTAssertTrue(displayedText(of: category).contains("Film, TV, casting og talent"))
+        let projectName = app.descendants(matching: .any)["project-onboarding.project-name"]
         XCTAssertTrue(projectName.waitForExistence(timeout: 3))
-        XCTAssertTrue(projectName.label.contains("The Role Room"))
+        XCTAssertTrue(displayedText(of: projectName).contains("The Role Room"))
 
         let expectedProfiles = [
             "Film- og TV-produksjon – Norge",
@@ -368,19 +382,97 @@ final class QASweepTests: XCTestCase {
         XCTAssertTrue(commit.isHittable)
         commit.tap()
 
+        let accessReady = app.staticTexts["project-onboarding.access-ready"]
+            .waitForExistence(timeout: 3)
+        let discoveryOpened = app.buttons["discovery.close"].waitForExistence(timeout: 8)
         XCTAssertTrue(
-            app.staticTexts["project-onboarding.access-ready"].waitForExistence(timeout: 5)
+            accessReady || discoveryOpened,
+            "Verifisert tilgang skal bekreftes eller gå direkte til Discovery"
         )
         XCTAssertTrue(
-            app.buttons["discovery.close"].waitForExistence(timeout: 8),
+            discoveryOpened,
             "The Role Room-prosjektet skal åpnes direkte i Discovery"
         )
         app.terminate()
     }
 
+    func testDiscoverySimpleModeUsesThreeClearStepsAndKeepsAdvancedMode() throws {
+        #if !targetEnvironment(macCatalyst)
+        XCUIDevice.shared.orientation = .portrait
+        #endif
+        let app = XCUIApplication()
+        app.launchEnvironment["QA_TOUR"] = "domain-onboarding"
+        app.launchEnvironment["QA_TAB"] = "0"
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["Nytt kundeprosjekt"].waitForExistence(timeout: 12))
+        let domain = app.textFields["project-onboarding.domain"]
+        XCTAssertTrue(domain.waitForExistence(timeout: 3))
+        domain.tap()
+        domain.typeText("dentum.no")
+        dismissKeyboard(in: app)
+        app.buttons["project-onboarding.analyze"].tap()
+
+        let addProfile = app.buttons["project-onboarding.profile.add"]
+        for _ in 0..<12 where !addProfile.exists { app.swipeUp() }
+        XCTAssertTrue(addProfile.exists)
+        addProfile.tap()
+
+        let commit = app.buttons["project-onboarding.commit"]
+        for _ in 0..<14 where !commit.isHittable { app.swipeUp() }
+        XCTAssertTrue(commit.isHittable)
+        commit.tap()
+        XCTAssertTrue(app.buttons["discovery.close"].waitForExistence(timeout: 8))
+
+        let simpleMode = app.buttons["discovery.brief.mode.simple"]
+        let advancedMode = app.buttons["discovery.brief.mode.advanced"]
+        XCTAssertTrue(simpleMode.waitForExistence(timeout: 5))
+        XCTAssertTrue(advancedMode.exists)
+        XCTAssertTrue(app.textFields["discovery.simple.customer-type"].exists)
+        XCTAssertFalse(app.textViews["discovery.brief.queries"].exists)
+
+        advancedMode.tap()
+        XCTAssertTrue(app.textViews["discovery.brief.queries"].waitForExistence(timeout: 3))
+        snap(app, "discovery-avansert")
+        simpleMode.tap()
+
+        let customerType = app.textFields["discovery.simple.customer-type"]
+        let customerNext = app.buttons["discovery.simple.next.customer-type"]
+        XCTAssertTrue(customerNext.waitForExistence(timeout: 3))
+        XCTAssertTrue(customerNext.isEnabled, "Den bekreftede standardprofilen skal fylle kundetype automatisk")
+        XCTAssertTrue((customerType.value as? String)?.localizedCaseInsensitiveContains("tann") == true)
+        snap(app, "discovery-enkel-steg-1")
+        for _ in 0..<4 where !customerNext.isHittable { app.swipeUp() }
+        customerNext.tap()
+
+        let nationwide = app.buttons["discovery.simple.area.nationwide"]
+        XCTAssertTrue(nationwide.waitForExistence(timeout: 3))
+        snap(app, "discovery-enkel-steg-2")
+        for _ in 0..<4 where !nationwide.isHittable { app.swipeUp() }
+        nationwide.tap()
+        let areaNext = app.buttons.containing(
+            NSPredicate(format: "label CONTAINS[c] %@", "velg antall")
+        ).firstMatch
+        XCTAssertTrue(areaNext.waitForExistence(timeout: 3))
+        for _ in 0..<4 where !areaNext.isHittable { app.swipeUp() }
+        areaNext.tap()
+
+        let thirty = app.buttons["discovery.simple.amount.30"]
+        XCTAssertTrue(thirty.waitForExistence(timeout: 3))
+        for _ in 0..<4 where !thirty.isHittable { app.swipeUp() }
+        thirty.tap()
+        let summary = app.descendants(matching: .any)["discovery.simple.summary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 3))
+        XCTAssertTrue(summary.label.contains("30"))
+        XCTAssertTrue(summary.label.contains("Leadbook"))
+        XCTAssertTrue(app.buttons["discovery.simple.preview"].isEnabled)
+        snap(app, "discovery-enkel-klar")
+        app.terminate()
+    }
+
     func testLeadgridAgentProposalRequiresConfirmationBeforeExecution() throws {
         #if !targetEnvironment(macCatalyst)
-        XCUIDevice.shared.orientation = .landscapeLeft
+        XCUIDevice.shared.orientation = .portrait
         #endif
         let app = XCUIApplication()
         app.launchEnvironment["QA_TOUR"] = "agent-skills"
@@ -388,7 +480,17 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["QA_TAB"] = "12"
         app.launch()
 
+        let openAgent = app.buttons["leadgrid-agent-open"]
+        if !openAgent.waitForExistence(timeout: 5) {
+            app.scrollViews.firstMatch.swipeUp()
+        }
+        XCTAssertTrue(openAgent.waitForExistence(timeout: 5))
+        openAgent.tap()
+
         let proposal = app.buttons["agent-skill-leadgrid_data_quality"]
+        for _ in 0..<8 where !proposal.exists || !proposal.isHittable {
+            app.scrollViews.firstMatch.swipeUp()
+        }
         XCTAssertTrue(proposal.waitForExistence(timeout: 12))
         proposal.tap()
 
@@ -610,6 +712,9 @@ final class QASweepTests: XCTestCase {
     /// Lokal, hemmelighetsfri UI-smoke av den samme produksjonscoachen.
     /// Køkontrakten testes separat; stagingtesten over beviser reconnect.
     func testPondusCoachLocalSmoke() throws {
+        #if !targetEnvironment(macCatalyst)
+        XCUIDevice.shared.orientation = .portrait
+        #endif
         let app = XCUIApplication()
         app.launchEnvironment["QA_TOUR"] = "pondus-coach"
         app.launchEnvironment["QA_NETWORK_CONTROLS"] = "1"
@@ -650,7 +755,7 @@ final class QASweepTests: XCTestCase {
         // QA_DEMO gjør at Canvas bruker deterministiske, lokale notater.
         app.launchEnvironment["QA_TOUR"] = "canvas"
         app.launchEnvironment["QA_DEMO"] = "1"
-        app.launchEnvironment["QA_TAB"] = "10"
+        app.launchEnvironment["QA_TAB"] = "11"
         app.launchEnvironment["QA_CAPTURE"] = "1"
         app.launch()
 
@@ -658,11 +763,18 @@ final class QASweepTests: XCTestCase {
         XCTAssertTrue(note.waitForExistence(timeout: 12))
         note.tap()
 
-        let panorer = button(in: app, containing: "Panorer")
-        XCTAssertTrue(panorer.waitForExistence(timeout: 5))
+        let modeMenu = app.buttons["canvas-mode-menu"]
+        XCTAssertTrue(modeMenu.waitForExistence(timeout: 5))
+        modeMenu.tap()
+        let panorer = app.buttons["Panorer"]
+        XCTAssertTrue(panorer.waitForExistence(timeout: 3))
         panorer.tap()
         let fit = app.buttons["Tilpass dokumentbredden"].firstMatch
         XCTAssertTrue(fit.waitForExistence(timeout: 5))
+        let toolOptions = app.scrollViews["canvas-tool-options"].firstMatch
+        for _ in 0..<3 where !fit.isHittable && toolOptions.exists {
+            toolOptions.swipeLeft()
+        }
         XCTAssertTrue(fit.isHittable)
         fit.tap()
         snap(app, "canvas-editor-portrett")

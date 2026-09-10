@@ -55,6 +55,15 @@ struct LeadgridHubView: View {
                     }
                 }
 
+                Section("Assistent") {
+                    NavigationLink {
+                        LeadgridAgentChatView(projectId: appState.activeLeadgridProjectId)
+                    } label: {
+                        Label("Leadgrid-agent", systemImage: "sparkles")
+                    }
+                    .accessibilityIdentifier("leadgrid-agent-open")
+                }
+
                 Section("Research") {
                     if let api = appState.api {
                         NavigationLink {

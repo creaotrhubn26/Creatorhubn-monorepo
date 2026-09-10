@@ -220,9 +220,9 @@ struct OversiktView: View {
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "slider.horizontal.3")
-                    .font(.appScaled(size: 11, weight: .bold))
+                    .font(.system(size: 11, weight: .bold))
                 Text("Tilpass")
-                    .font(.appScaled(size: 12, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
             }
             .foregroundStyle(Brand.textSecondary)
             .padding(.horizontal, 11).padding(.vertical, 7)
@@ -280,7 +280,7 @@ struct OversiktView: View {
                 }
                 .padding(.horizontal, isCompact ? 16 : 28)
                 .padding(.top, 18)
-                .padding(.bottom, 24)
+                .padding(.bottom, DeviceIdiom.isPhone ? 110 : 24)
             }
             .background(Brand.bg.ignoresSafeArea())
         }

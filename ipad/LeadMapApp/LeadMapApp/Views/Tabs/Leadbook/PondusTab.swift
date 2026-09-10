@@ -172,72 +172,58 @@ struct PondusTabView: View {
     // MARK: Header
 
     private var pondusHeader: some View {
-        HStack(alignment: .top, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 9) {
-                    Text("Leadbook — Pondus")
-                        .font(.appScaled(size: 22, weight: .bold))
-                        .foregroundStyle(.white)
-                    Button { favorited.toggle() } label: {
-                        Image(systemName: favorited ? "star.fill" : "star")
-                            .font(.appScaled(size: 16, weight: .semibold))
-                            .foregroundStyle(favorited ? LBrand.yellow : LBrand.textTertiary)
-                    }.buttonStyle(.plain)
+        Group {
+            if DeviceIdiom.isPhone {
+                VStack(alignment: .leading, spacing: 12) {
+                    pondusHeaderTitle
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        pondusHeaderActions
+                            .padding(.horizontal, 1)
+                    }
                 }
-                Text("Pondus hjelper teamet med å bygge sterkere autoritet, selvtillit, tillit og salgsvekt i all utadrettet kommunikasjon og møter.")
-                    .font(.appScaled(size: 12))
-                    .foregroundStyle(LBrand.textSecondary)
-                    .lineLimit(2)
+            } else {
+                HStack(alignment: .top, spacing: 14) {
+                    pondusHeaderTitle
+                    Spacer(minLength: 12)
+                    pondusHeaderActions
+                }
             }
-            Spacer(minLength: 12)
-            HStack(spacing: 8) {
-                Button { withAnimation { showCheatNote = true } } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "doc.text.fill").font(.appScaled(size: 11, weight: .bold))
-                            .foregroundStyle(Color(red: 0.98, green: 0.78, blue: 0.20))
-                        Text("Cheat note").font(.appScaled(size: 12, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
-                    .padding(.horizontal, 12).padding(.vertical, 9)
-                    .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(red: 0.98, green: 0.78, blue: 0.20).opacity(0.35), lineWidth: 1))
-                }.buttonStyle(.plain)
-                Button { showTeamUsage = true } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "person.3.fill").font(.appScaled(size: 11, weight: .bold))
-                            .foregroundStyle(LBrand.green)
-                        Text("Teamets bruk").font(.appScaled(size: 12, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
-                    .padding(.horizontal, 12).padding(.vertical, 9)
-                    .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
-                }.buttonStyle(.plain)
-                Button { showNewMal = true } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "plus").font(.appScaled(size: 11, weight: .bold))
-                        Text("Ny mal").font(.appScaled(size: 12, weight: .semibold))
-                    }
+        }
+        .padding(.bottom, 4)
+    }
+
+    private var pondusHeaderTitle: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 9) {
+                Text("Leadbook — Pondus")
+                    .font(.appScaled(size: 22, weight: .bold))
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 12).padding(.vertical, 9)
-                    .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
+                Button { favorited.toggle() } label: {
+                    Image(systemName: favorited ? "star.fill" : "star")
+                        .font(.appScaled(size: 16, weight: .semibold))
+                        .foregroundStyle(favorited ? LBrand.yellow : LBrand.textTertiary)
                 }.buttonStyle(.plain)
-                Button { showExport = true } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "square.and.arrow.down").font(.appScaled(size: 11, weight: .bold))
-                        Text("Eksporter").font(.appScaled(size: 12, weight: .semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12).padding(.vertical, 9)
-                    .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
-                }.buttonStyle(.plain)
-                Button { showPublish = true } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "paperplane.fill").font(.appScaled(size: 11, weight: .bold))
-                        Text("Publiser").font(.appScaled(size: 13, weight: .bold))
-                    }
+            }
+            Text("Pondus hjelper teamet med å bygge sterkere autoritet, selvtillit, tillit og salgsvekt i all utadrettet kommunikasjon og møter.")
+                .font(.appScaled(size: 12))
+                .foregroundStyle(LBrand.textSecondary)
+                .axLineLimit(2, ax: 5)
+        }
+    }
+
+    private var pondusHeaderActions: some View {
+        HStack(spacing: 8) {
+            pondusHeaderButton("Cheat note", icon: "doc.text.fill", tint: LBrand.yellow) {
+                withAnimation { showCheatNote = true }
+            }
+            pondusHeaderButton("Teamets bruk", icon: "person.3.fill", tint: LBrand.green) {
+                showTeamUsage = true
+            }
+            pondusHeaderButton("Ny mal", icon: "plus") { showNewMal = true }
+            pondusHeaderButton("Eksporter", icon: "square.and.arrow.down") { showExport = true }
+            Button { showPublish = true } label: {
+                Label("Publiser", systemImage: "paperplane.fill")
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14).padding(.vertical, 9)
                     .background(
@@ -246,22 +232,49 @@ struct PondusTabView: View {
                         in: RoundedRectangle(cornerRadius: 10)
                     )
                     .shadow(color: LBrand.purple.opacity(0.45), radius: 6, y: 2)
-                }.buttonStyle(.plain)
-            }
+            }.buttonStyle(.plain)
         }
-        .padding(.bottom, 4)
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func pondusHeaderButton(
+        _ title: String,
+        icon: String,
+        tint: Color = .white,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.appScaled(size: 12, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12).padding(.vertical, 9)
+                .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(tint.opacity(0.35), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: Hovedrad
 
     private var mainRow: some View {
-        HStack(alignment: .top, spacing: 14) {
-            pondusMalerColumn
-                .frame(width: 280)
-            pondusEditorColumn
+        Group {
+            if DeviceIdiom.isPhone {
+                VStack(alignment: .leading, spacing: 14) {
+                    pondusEditorColumn
+                    pondusMalerColumn
+                    pondusAnalyseColumn
+                }
                 .frame(maxWidth: .infinity)
-            pondusAnalyseColumn
-                .frame(width: 340)
+            } else {
+                HStack(alignment: .top, spacing: 14) {
+                    pondusMalerColumn
+                        .frame(width: 280)
+                    pondusEditorColumn
+                        .frame(maxWidth: .infinity)
+                    pondusAnalyseColumn
+                        .frame(width: 340)
+                }
+            }
         }
     }
 

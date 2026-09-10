@@ -1013,10 +1013,14 @@ func configureDiscovery() async {
             self.api = APIClient(token: "qa-tour-domain-onboarding", actorUserId: "qa-super-admin")
             return
         }
-        if let qaTour = ProcessInfo.processInfo.environment["QA_TOUR"],
-           AuthClient.loadToken() == nil {
+        // QA_TOUR is an explicit DEBUG-only request for deterministic local
+        // state. It must win over credentials left in the simulator keychain
+        // by another UI test, otherwise a complete test suite becomes order-
+        // dependent even though every test passes on its own.
+        if let qaTour = ProcessInfo.processInfo.environment["QA_TOUR"] {
             self.authToken = "qa-tour-demo"
             self.userEmail = "demo@leadgrid.no"
+            self.currentUserId = "qa-tour-user"
             self.activeOrganizationId = "qa-tour-organization"
             if qaTour == "agent-skills" {
                 self.activeProjectId = "qa-agent-project"
@@ -1045,7 +1049,8 @@ func configureDiscovery() async {
                 self.roleInOrg = "salgssjef"
                 self.api = APIClient(
                     token: "qa-tour-demo",
-                    baseURL: URL(string: "http://127.0.0.1:9")!
+                    baseURL: URL(string: "http://127.0.0.1:9")!,
+                    actorUserId: "qa-tour-user"
                 )
                 self.pondusStore.seedForQACoach(organizationId: orgId)
                 self.setPondusDeepLink(

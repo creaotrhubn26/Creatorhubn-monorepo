@@ -184,7 +184,7 @@ struct AnbudView: View {
                         errorBanner(leadErrorText)
                     }
                     resultsList
-                    Color.clear.frame(height: 80)
+                    Color.clear.frame(height: DeviceIdiom.isPhone ? 120 : 80)
                 }
                 .padding(16)
             }
@@ -195,14 +195,33 @@ struct AnbudView: View {
     // MARK: Header
 
     private var header: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Anbud").font(.appScaled(size: 26, weight: .heavy)).foregroundStyle(.white)
-                Text("Offentlige anskaffelser fra Doffin — finn kontrakter før konkurrentene")
-                    .font(.appScaled(size: 12)).foregroundStyle(LBrand.textSecondary)
+        Group {
+            if DeviceIdiom.isPhone {
+                VStack(alignment: .leading, spacing: 12) {
+                    anbudHeaderTitle
+                    ScrollView(.horizontal, showsIndicators: false) { anbudHeaderActions }
+                }
+            } else {
+                HStack(alignment: .top) {
+                    anbudHeaderTitle
+                    Spacer()
+                    anbudHeaderActions
+                }
             }
-            Spacer()
-            // Pipeline (nivå 2): anbudene gjennom salgsprosessen.
+        }
+    }
+
+    private var anbudHeaderTitle: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Anbud").font(.appScaled(size: 26, weight: .heavy)).foregroundStyle(.white)
+            Text("Offentlige anskaffelser fra Doffin — finn kontrakter før konkurrentene")
+                .font(.appScaled(size: 12)).foregroundStyle(LBrand.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var anbudHeaderActions: some View {
+        HStack(spacing: 8) {
             Button {
                 showPipeline = true
                 Task { await lastPipeline() }
@@ -235,13 +254,15 @@ struct AnbudView: View {
                     .background(Color.indigo.opacity(0.35), in: Capsule())
             }.buttonStyle(.plain)
         }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     // MARK: Søk
 
     private var searchCard: some View {
         VStack(spacing: 10) {
-            HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(LBrand.textTertiary)
                 TextField("Søk (f.eks. elektriker, renhold, rammeavtale …)", text: $searchText)
                     .font(.appScaled(size: 14))
@@ -345,6 +366,8 @@ struct AnbudView: View {
                     in: Capsule()
                 )
                 .disabled(isLoading)
+                }
+                .fixedSize(horizontal: DeviceIdiom.isPhone, vertical: false)
             }
             if total > 0 {
                 HStack {

@@ -1,5 +1,7 @@
 Leadgrid 2.1
 
+• Ny enkel Discovery-flyt med tre tydelige steg, og avansertmodus for alle detaljer.
+• Bedre mobilnavigasjon, store tekststørrelser og ryddigere Leadbook, Møter, Kvalitet og Anbud.
 • Ett felles og mer oversiktlig skjema for nye leads i både Kart og Leads.
 • Feltspesifikke feilmeldinger for organisasjonsnummer, e-post, nettside og tekstlengder før lagring.
 • Mer konsistent oppførsel ved opprettelse og redigering av leads.

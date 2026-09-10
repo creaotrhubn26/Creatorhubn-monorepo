@@ -454,6 +454,7 @@ struct DayWrapper: Identifiable, Hashable {
 }
 
 struct MeetingsView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var selectedID: UUID?
     @State private var upcomingDetail: UpcomingMeetingMini?
     @State private var showAllUpcoming: Bool = false
@@ -1102,7 +1103,7 @@ struct MeetingsView: View {
                         // All møteforberedelse er flyttet til høyre sidebar (kontekst-bundet til valgt møte)
                     }
                     .padding(.horizontal, 20).padding(.top, 14)
-                    .padding(.bottom, 20)
+                    .padding(.bottom, DeviceIdiom.isPhone ? 110 : 20)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -1487,7 +1488,7 @@ struct MeetingsView: View {
                         agendaRow(m)
                             .overlay(alignment: .topTrailing) {
                                 // Etterarbeids-gjeld: synlig til møtet logges.
-                                if trengerLogg(m) {
+                                if !DeviceIdiom.isPhone && trengerLogg(m) {
                                     HStack(spacing: 3) {
                                         Image(systemName: "exclamationmark.circle.fill")
                                             .font(.appScaled(size: 9, weight: .bold))
@@ -1502,7 +1503,7 @@ struct MeetingsView: View {
                             }
                             .overlay(alignment: .bottomTrailing) {
                                 // Reisetids-vakta: du rekker ikke kjøreturen hit.
-                                if let varsel = reisetidsAdvarsler[m.id] {
+                                if !DeviceIdiom.isPhone, let varsel = reisetidsAdvarsler[m.id] {
                                     HStack(spacing: 3) {
                                         Image(systemName: "car.fill")
                                             .font(.appScaled(size: 9, weight: .bold))
@@ -1655,7 +1656,7 @@ struct MeetingsView: View {
                         Text(m.company)
                             .font(.appScaled(size: 13, weight: .bold))
                             .foregroundStyle(.white)
-                            .lineLimit(1)
+                            .axLineLimit(1, ax: 3)
                         Spacer(minLength: 6)
                         Text("\(m.startTime)–\(m.endTime)")
                             .font(.appScaled(size: 11, weight: .semibold, design: .rounded))
@@ -1663,19 +1664,30 @@ struct MeetingsView: View {
                             .monospacedDigit()
                     }
                     // Metadata: kontakt + sted + status
-                    HStack(spacing: 6) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(m.contactName)
-                                .font(.appScaled(size: 11, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .lineLimit(1)
-                            Text(m.location)
-                                .font(.appScaled(size: 10))
-                                .foregroundStyle(MtBrand.textSecondary)
-                                .lineLimit(1)
+                    Group {
+                        if dynamicTypeSize.isAccessibilitySize {
+                            VStack(alignment: .leading, spacing: 6) {
+                                meetingContact(m)
+                                statusBadge(m.status)
+                            }
+                        } else {
+                            HStack(spacing: 6) {
+                                meetingContact(m)
+                                Spacer(minLength: 6)
+                                statusBadge(m.status)
+                            }
                         }
-                        Spacer(minLength: 6)
-                        statusBadge(m.status)
+                    }
+                    if trengerLogg(m) {
+                        meetingWarning(
+                            "Ikke logget",
+                            icon: "exclamationmark.circle.fill",
+                            color: MtBrand.yellow,
+                            foreground: .black
+                        )
+                    }
+                    if let warning = reisetidsAdvarsler[m.id] {
+                        meetingWarning(warning, icon: "car.fill", color: MtBrand.orange)
                     }
                 }
             }
@@ -1689,6 +1701,34 @@ struct MeetingsView: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    private func meetingContact(_ meeting: Meeting) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(meeting.contactName)
+                .font(.appScaled(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+            Text(meeting.location)
+                .font(.appScaled(size: 10))
+                .foregroundStyle(MtBrand.textSecondary)
+                .lineLimit(1)
+        }
+    }
+
+    private func meetingWarning(
+        _ text: String,
+        icon: String,
+        color: Color,
+        foreground: Color = .white
+    ) -> some View {
+        Label(text, systemImage: icon)
+            .font(.appScaled(size: 9, weight: .bold))
+            .foregroundStyle(foreground)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(color, in: RoundedRectangle(cornerRadius: 7))
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func agendaRowFull(_ m: Meeting) -> some View {
@@ -1782,6 +1822,8 @@ struct MeetingsView: View {
     private func statusBadge(_ st: Meeting.Status) -> some View {
         Text(st.label)
             .font(.appScaled(size: 10, weight: .bold))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
             .foregroundStyle(st.color)
             .padding(.horizontal, 9).padding(.vertical, 4)
             .background(st.color.opacity(0.18), in: Capsule())

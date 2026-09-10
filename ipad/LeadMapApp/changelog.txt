@@ -1,5 +1,8 @@
 Leadgrid 2.1 gjør veien fra domene til kvalifiserte leads enklere:
 
+• «Hvem vil du finne?» har fått en enkel standardmodus med tre tydelige steg, mens alle profesjonelle filtre er bevart i avansertmodus.
+• Mobilvisningene har fått tydelig tilbakeknapp, bedre plass over fanemenyen og ryddigere layout i Leadbook, Møter, Kvalitet og Anbud.
+• Store tekststørrelser fungerer bedre i appens toppfelt, prosjektvelger og sentrale arbeidslister.
 • Opprett eller gjenbruk et kundeprosjekt ved å skrive inn domenet.
 • Discovery foreslår bransje, kundetyper, geografi og eksklusjoner, med profiler som Super Admin kan finjustere.
 • The Role Room får egne nasjonale profiler for produksjon, byråer, casting, utdanning, dans og skuespillere/talenter.

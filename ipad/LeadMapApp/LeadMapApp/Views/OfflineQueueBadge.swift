@@ -38,14 +38,14 @@ struct LeadgridSyncStatusButton: View {
                             RoundedRectangle(cornerRadius: 12)
                                 .stroke(Color.white.opacity(0.06), lineWidth: 1)
                             Image(systemName: statusIcon)
-                                .font(.appScaled(size: 14, weight: .semibold))
+                                .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(statusColor)
                         }
                         .frame(width: 44, height: 44)
 
                         if totalCount > 0 {
                             Text("\(min(totalCount, 99))")
-                                .font(.appScaled(size: 9, weight: .bold))
+                                .font(.system(size: 9, weight: .bold))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 2)

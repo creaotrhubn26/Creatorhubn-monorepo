@@ -7,6 +7,63 @@ private enum DiscoveryWorkspaceSection: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+private enum DiscoveryBriefMode: String, CaseIterable, Identifiable {
+    case simple
+    case advanced
+
+    var id: String { rawValue }
+    var title: String { self == .simple ? "Enkel" : "Avansert" }
+    var icon: String { self == .simple ? "hand.tap.fill" : "slider.horizontal.3" }
+}
+
+private enum DiscoverySimpleStep: Int, CaseIterable {
+    case customerType
+    case area
+    case amount
+
+    var number: Int { rawValue + 1 }
+    var title: String {
+        switch self {
+        case .customerType: return "Hvem vil du finne?"
+        case .area: return "Hvor skal vi lete?"
+        case .amount: return "Hvor mange forslag vil du se?"
+        }
+    }
+}
+
+private enum DiscoverySimpleArea: String, CaseIterable, Identifiable {
+    case nationwide
+    case city
+    case mapArea
+    case municipalities
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .nationwide: return "Hele Norge"
+        case .city: return "I en by"
+        case .mapArea: return "Rundt et sted"
+        case .municipalities: return "Valgte kommuner"
+        }
+    }
+    var detail: String {
+        switch self {
+        case .nationwide: return "Finn aktuelle bedrifter i hele landet"
+        case .city: return "Skriv navnet på byen du vil søke i"
+        case .mapArea: return "Bruk området rundt kartpunktet"
+        case .municipalities: return "Behold kommunene fra den valgte profilen"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .nationwide: return "map.fill"
+        case .city: return "building.2.fill"
+        case .mapArea: return "scope"
+        case .municipalities: return "checkmark.seal.fill"
+        }
+    }
+}
+
 private enum DiscoveryAreaMode: String, CaseIterable, Identifiable {
     case nationwide
     case municipalities
@@ -69,6 +126,8 @@ struct DiscoveryWorkspaceView: View {
     @State private var rejectionReason: DiscoveryV2ReasonCode = .notRelevant
     @State private var placeDetailsCandidate: DiscoveryV2Candidate?
     @State private var selectedSection: DiscoveryWorkspaceSection = .candidates
+    @State private var briefMode: DiscoveryBriefMode = .simple
+    @State private var simpleStep: DiscoverySimpleStep = .customerType
 
     var body: some View {
         NavigationStack {
@@ -214,10 +273,245 @@ struct DiscoveryWorkspaceView: View {
     }
 
     private var briefView: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                introCard
-                DiscoveryProfileManagerView(coordinator: coordinator)
+        ScrollViewReader { scrollProxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    introCard
+                    briefModePicker
+                        .id("discovery.brief.mode.anchor")
+                    if briefMode == .simple {
+                        simpleBriefView
+                            .id("discovery.simple.anchor")
+                    } else {
+                        advancedBriefView
+                    }
+                }
+                .frame(maxWidth: horizontalSizeClass == .regular ? 720 : .infinity)
+                .padding(20)
+                .padding(.bottom, DeviceIdiom.isPhone ? 72 : 0)
+                .frame(maxWidth: .infinity)
+            }
+            .onChange(of: simpleStep) { _, _ in
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    scrollProxy.scrollTo("discovery.simple.anchor", anchor: .top)
+                }
+            }
+            .onChange(of: briefMode) { _, mode in
+                guard mode == .simple else { return }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    scrollProxy.scrollTo("discovery.brief.mode.anchor", anchor: .top)
+                }
+            }
+        }
+    }
+
+    private var briefModePicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Velg hvordan du vil sette opp søket")
+                .font(.subheadline.bold())
+            HStack(spacing: 10) {
+                ForEach(DiscoveryBriefMode.allCases) { mode in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { briefMode = mode }
+                    } label: {
+                        Label(mode.title, systemImage: mode.icon)
+                            .font(.subheadline.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .foregroundStyle(briefMode == mode ? Color.white : LeadgridDiscoveryTheme.secondaryText)
+                            .background(
+                                briefMode == mode
+                                    ? LeadgridDiscoveryTheme.accent
+                                    : Color.white.opacity(0.05),
+                                in: RoundedRectangle(cornerRadius: 12)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("discovery.brief.mode.\(mode.rawValue)")
+                }
+            }
+            Text(briefMode == .simple
+                 ? "Svar på tre enkle spørsmål. Du kan endre detaljene senere."
+                 : "Bruk profiler, detaljerte filtre og egne søkeinnstillinger.")
+                .font(.caption)
+                .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+        }
+        .discoverySurface()
+    }
+
+    private var simpleBriefView: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            simpleProgress
+            switch simpleStep {
+            case .customerType:
+                simpleCustomerTypeStep
+            case .area:
+                simpleAreaStep
+            case .amount:
+                simpleAmountStep
+            }
+        }
+    }
+
+    private var simpleProgress: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Steg \(simpleStep.number) av 3")
+                .font(.caption.bold())
+                .foregroundStyle(LeadgridDiscoveryTheme.accentSoft)
+            HStack(spacing: 6) {
+                ForEach(DiscoverySimpleStep.allCases, id: \.rawValue) { step in
+                    Capsule()
+                        .fill(step.rawValue <= simpleStep.rawValue
+                              ? LeadgridDiscoveryTheme.accent
+                              : Color.white.opacity(0.1))
+                        .frame(height: 5)
+                }
+            }
+            Text(simpleStep.title)
+                .font(.title3.bold())
+        }
+    }
+
+    private var simpleCustomerTypeStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text("Skriv hva slags kunder du ønsker")
+                    .font(.headline)
+                Text("For eksempel tannklinikker, reklamebyråer eller skoler.")
+                    .font(.subheadline)
+                    .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+                TextField("Hva slags kunder?", text: simpleCustomerTypeBinding, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(1...3)
+                    .submitLabel(.next)
+                    .accessibilityIdentifier("discovery.simple.customer-type")
+            }
+
+            if let profile = coordinator.selectedProfile {
+                Label("Du bruker profilen «\(profile.name)»", systemImage: "checkmark.circle.fill")
+                    .font(.caption.bold())
+                    .foregroundStyle(LeadgridDiscoveryTheme.success)
+            }
+
+            simplePrimaryButton(
+                title: "Neste: velg område",
+                icon: "arrow.right",
+                disabled: !simpleHasCustomerType
+            ) {
+                withAnimation { simpleStep = .area }
+            }
+            .accessibilityIdentifier("discovery.simple.next.customer-type")
+        }
+        .discoverySurface()
+    }
+
+    private var simpleAreaStep: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Velg ett område")
+                .font(.headline)
+            ForEach(simpleAreaChoices) { choice in
+                simpleAreaButton(choice)
+            }
+            if simpleAreaBinding.wrappedValue == .city {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Hvilken by?")
+                        .font(.subheadline.bold())
+                    TextField("For eksempel Oslo", text: cityBinding)
+                        .textFieldStyle(.roundedBorder)
+                        .submitLabel(.next)
+                        .accessibilityIdentifier("discovery.simple.city")
+                }
+            }
+            if simpleAreaBinding.wrappedValue == .mapArea {
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Hvor stort område?")
+                            .font(.subheadline.bold())
+                        Text("\(radiusBinding.wrappedValue) kilometer rundt kartpunktet")
+                            .font(.caption)
+                            .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+                    }
+                    Spacer()
+                    Stepper("Radius", value: radiusBinding, in: 1...50)
+                        .labelsHidden()
+                }
+                .accessibilityIdentifier("discovery.simple.radius")
+            }
+            simpleNavigationButtons(nextTitle: "Neste: velg antall", nextDisabled: !simpleHasArea) {
+                withAnimation { simpleStep = .customerType }
+            } onNext: {
+                withAnimation { simpleStep = .amount }
+            }
+        }
+        .discoverySurface()
+    }
+
+    private var simpleAmountStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Hvor mange forslag vil du ha?")
+                .font(.headline)
+            HStack(spacing: 8) {
+                ForEach([10, 20, 30, 50], id: \.self) { amount in
+                    Button {
+                        coordinator.brief.targetCount = amount
+                        coordinator.brief.enrichmentCount = min(amount, coordinator.brief.enrichmentCount)
+                    } label: {
+                        Text("\(amount)")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(
+                                coordinator.brief.targetCount == amount
+                                    ? LeadgridDiscoveryTheme.accent
+                                    : Color.white.opacity(0.05),
+                                in: RoundedRectangle(cornerRadius: 10)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(amount) forslag")
+                    .accessibilityIdentifier("discovery.simple.amount.\(amount)")
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Klar til å lete", systemImage: "checkmark.circle.fill")
+                    .font(.headline)
+                    .foregroundStyle(LeadgridDiscoveryTheme.success)
+                Text("Leadgrid leter etter \(simpleCustomerSummary) \(simpleAreaSummary). Du får opptil \(coordinator.brief.targetCount) forslag.")
+                    .font(.subheadline)
+                Text("Ingenting legges i Leadbook før du godkjenner det.")
+                    .font(.caption.bold())
+                    .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+            }
+            .padding(12)
+            .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("discovery.simple.summary")
+
+            if let validationMessage = coordinator.brief.validationMessage {
+                Label(validationMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(LeadgridDiscoveryTheme.warning)
+                    .accessibilityIdentifier("discovery.brief.validation")
+            }
+
+            simpleNavigationButtons(
+                nextTitle: coordinator.isBusy ? "Gjør søket klart …" : "Se søkeplanen",
+                nextIcon: "sparkles",
+                nextDisabled: coordinator.isBusy || coordinator.brief.validationMessage != nil,
+                nextAccessibilityIdentifier: "discovery.simple.preview"
+            ) {
+                withAnimation { simpleStep = .area }
+            } onNext: {
+                Task { await coordinator.requestPreview() }
+            }
+        }
+        .discoverySurface()
+    }
+
+    private var advancedBriefView: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            DiscoveryProfileManagerView(coordinator: coordinator)
                 fieldSection("Kundetyper", detail: "Én per linje. Bruk konkrete beskrivelser markedet selv bruker.") {
                     TextEditor(text: industryQueriesBinding)
                         .frame(minHeight: 96)
@@ -334,11 +628,80 @@ struct DiscoveryWorkspaceView: View {
                 .tint(LeadgridDiscoveryTheme.accent)
                 .disabled(coordinator.isBusy || coordinator.brief.validationMessage != nil)
                 .accessibilityIdentifier("discovery.preview")
-            }
-            .frame(maxWidth: horizontalSizeClass == .regular ? 720 : .infinity)
-            .padding(20)
-            .frame(maxWidth: .infinity)
         }
+    }
+
+    private func simplePrimaryButton(
+        title: String,
+        icon: String,
+        disabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack {
+                Text(title)
+                Spacer()
+                Image(systemName: icon)
+            }
+            .font(.headline)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(LeadgridDiscoveryTheme.accent)
+        .disabled(disabled)
+    }
+
+    private func simpleNavigationButtons(
+        nextTitle: String,
+        nextIcon: String = "arrow.right",
+        nextDisabled: Bool,
+        nextAccessibilityIdentifier: String? = nil,
+        onBack: @escaping () -> Void,
+        onNext: @escaping () -> Void
+    ) -> some View {
+        VStack(spacing: 10) {
+            simplePrimaryButton(title: nextTitle, icon: nextIcon, disabled: nextDisabled, action: onNext)
+                .accessibilityIdentifier(nextAccessibilityIdentifier ?? "discovery.simple.next")
+            Button(action: onBack) {
+                Label("Tilbake", systemImage: "arrow.left")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+            .accessibilityIdentifier("discovery.simple.back")
+        }
+    }
+
+    private func simpleAreaButton(_ choice: DiscoverySimpleArea) -> some View {
+        let isSelected = simpleAreaBinding.wrappedValue == choice
+        return Button {
+            simpleAreaBinding.wrappedValue = choice
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: choice.icon)
+                    .font(.title3.bold())
+                    .frame(width: 34, height: 34)
+                    .foregroundStyle(isSelected ? Color.white : LeadgridDiscoveryTheme.accentSoft)
+                    .background(LeadgridDiscoveryTheme.accent.opacity(isSelected ? 1 : 0.16), in: Circle())
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(choice.title).font(.subheadline.bold())
+                    Text(choice.detail)
+                        .font(.caption)
+                        .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer()
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? LeadgridDiscoveryTheme.success : LeadgridDiscoveryTheme.secondaryText)
+            }
+            .padding(12)
+            .background(isSelected ? LeadgridDiscoveryTheme.accent.opacity(0.11) : Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(isSelected ? LeadgridDiscoveryTheme.accentSoft : LeadgridDiscoveryTheme.stroke))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("discovery.simple.area.\(choice.rawValue)")
     }
 
     private var introCard: some View {
@@ -897,6 +1260,83 @@ struct DiscoveryWorkspaceView: View {
         Binding(
             get: { coordinator.brief.industryQueries.joined(separator: "\n") },
             set: { coordinator.brief.industryQueries = $0.components(separatedBy: .newlines) })
+    }
+
+    private var simpleCustomerTypeBinding: Binding<String> {
+        Binding(
+            get: {
+                coordinator.brief.industryQueries
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                    .joined(separator: ", ")
+            },
+            set: { value in
+                coordinator.brief.industryQueries = value
+                    .components(separatedBy: CharacterSet(charactersIn: ",\n"))
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+            })
+    }
+
+    private var simpleHasCustomerType: Bool {
+        !coordinator.brief.normalized.industryQueries.isEmpty
+            || !coordinator.brief.normalized.organizationNameQueries.isEmpty
+    }
+
+    private var simpleCustomerSummary: String {
+        let values = coordinator.brief.normalized.industryQueries
+            + coordinator.brief.normalized.organizationNameQueries
+        guard !values.isEmpty else { return "aktuelle kunder" }
+        if values.count == 1 { return values[0] }
+        return values.prefix(3).joined(separator: ", ")
+    }
+
+    private var simpleAreaChoices: [DiscoverySimpleArea] {
+        if simpleAreaBinding.wrappedValue == .municipalities {
+            return [.nationwide, .city, .mapArea, .municipalities]
+        }
+        return [.nationwide, .city, .mapArea]
+    }
+
+    private var simpleHasArea: Bool {
+        let brief = coordinator.brief.normalized
+        return brief.countryCode == "NO"
+            || !(brief.city ?? "").isEmpty
+            || brief.geo != nil
+            || !brief.municipalityNames.isEmpty
+            || !brief.municipalityNumbers.isEmpty
+    }
+
+    private var simpleAreaSummary: String {
+        let brief = coordinator.brief.normalized
+        if brief.countryCode == "NO" { return "i hele Norge" }
+        if let city = brief.city, !city.isEmpty { return "i \(city)" }
+        if let geo = brief.geo { return "innen \(Int(geo.radiusKm)) km fra kartpunktet" }
+        let municipalityCount = brief.municipalityNames.count + brief.municipalityNumbers.count
+        if municipalityCount > 0 {
+            return municipalityCount == 1 ? "i valgt kommune" : "i \(municipalityCount) valgte kommuner"
+        }
+        return "i valgt område"
+    }
+
+    private var simpleAreaBinding: Binding<DiscoverySimpleArea> {
+        Binding(
+            get: {
+                switch areaModeBinding.wrappedValue {
+                case .nationwide: return .nationwide
+                case .municipalities: return .municipalities
+                case .mapArea: return .mapArea
+                case .city: return .city
+                }
+            },
+            set: { value in
+                switch value {
+                case .nationwide: areaModeBinding.wrappedValue = .nationwide
+                case .municipalities: areaModeBinding.wrappedValue = .municipalities
+                case .mapArea: areaModeBinding.wrappedValue = .mapArea
+                case .city: areaModeBinding.wrappedValue = .city
+                }
+            })
     }
 
     private var organizationNameQueriesBinding: Binding<String> {

@@ -132,7 +132,7 @@ struct LeadgridTabHeader<Extra: View>: View {
     var body: some View {
         GeometryReader { geo in
             let isNarrow = geo.size.width < 1100
-            HStack(alignment: .top, spacing: 14) {
+            HStack(alignment: .top, spacing: DeviceIdiom.isPhone ? 8 : 14) {
                 if !isNarrow { LeadgridHeaderMark().padding(.top, 4) }
                 // Fanetittelen er fjernet — tab-baren/sidebaren viser hvor du er.
                 if !isNarrow {
@@ -152,8 +152,13 @@ struct LeadgridTabHeader<Extra: View>: View {
                         }
                         .padding(.top, 2)
                     }
+                    // ScrollView må kunne krympe helt ned på iPhone. Uten
+                    // eksplisitt minWidth beholdt den innholdets idealbredde
+                    // ved stor Dynamic Type og skjøv avatar ut av skjermen.
+                    .frame(minWidth: 0, idealWidth: 1, maxWidth: .infinity)
+                    .layoutPriority(-1)
                 }
-                Spacer()
+                Spacer(minLength: DeviceIdiom.isPhone ? 0 : 8)
                 HStack(spacing: 8) {
                     if !DeviceIdiom.isPhone {
                         dateButton(isNarrow: isNarrow)
@@ -202,7 +207,10 @@ struct LeadgridTabHeader<Extra: View>: View {
                         .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
                     }
                 }
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
             }
+            .frame(width: geo.size.width, alignment: .trailing)
         }
         .frame(height: 60)
         // Varsel-tap (Notification-QA 2026-07-06): den delte headeren er
@@ -705,7 +713,7 @@ struct LeadgridTabHeader<Extra: View>: View {
             RoundedRectangle(cornerRadius: 12).fill(Brand.card)
             RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1)
             Image(systemName: systemName)
-                .font(.appScaled(size: size, weight: .semibold))
+                .font(.system(size: size, weight: .semibold))
                 .foregroundStyle(Brand.purpleLight)
         }
         .frame(width: 44, height: 44)
@@ -713,7 +721,7 @@ struct LeadgridTabHeader<Extra: View>: View {
 
     private func countBadge(_ n: Int, color: Color = Brand.purple) -> some View {
         Text("\(min(n, 99))")
-            .font(.appScaled(size: 9, weight: .bold))
+            .font(.system(size: 9, weight: .bold))
             .foregroundStyle(.white)
             .padding(.horizontal, 5).padding(.vertical, 2)
             .background(color, in: Capsule())
@@ -724,15 +732,15 @@ struct LeadgridTabHeader<Extra: View>: View {
     private func pickerButton(icon: String, text: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.appScaled(size: 14, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Brand.purpleLight)
             Text(text)
-                .font(.appScaled(size: 13, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
             Image(systemName: "chevron.down")
-                .font(.appScaled(size: 10, weight: .semibold))
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(Brand.textSecondary)
         }
         .padding(.horizontal, 12).padding(.vertical, 10)

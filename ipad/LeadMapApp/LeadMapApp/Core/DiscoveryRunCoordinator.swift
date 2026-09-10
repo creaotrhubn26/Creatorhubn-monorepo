@@ -827,6 +827,30 @@ final class DiscoveryRunCoordinator {
         persistSoon()
     }
 
+    /// The onboarding commit response is authoritative for the project and
+    /// profiles it just created. Applying it after the normal reload keeps the
+    /// first Discovery screen usable even if that follow-up request is briefly
+    /// unavailable or returns stale cache data.
+    func applyCommittedProfiles(
+        _ committedProfiles: [DiscoveryV2Profile],
+        forProjectId committedProjectId: String
+    ) {
+        guard projectId == committedProjectId,
+              run == nil,
+              !committedProfiles.isEmpty
+        else { return }
+        profiles = committedProfiles
+        selectedProfile = committedProfiles.first(where: \.isDefault)
+            ?? committedProfiles.first
+        if let selectedProfile {
+            brief = selectedProfile.brief
+            placesDetailsEnabled = selectedProfile.placesDetailsEnabled == true
+        }
+        preview = nil
+        errorMessage = nil
+        persistSoon()
+    }
+
     func startUnsavedProfileDraft(copyingCurrentBrief: Bool = true) {
         guard !isBusy, run == nil else { return }
         selectedProfile = nil

@@ -20,6 +20,7 @@ import UniformTypeIdentifiers
 struct CanvasView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var notater: [CanvasNotat] = []
     @State private var valgtId: String?
@@ -485,34 +486,54 @@ struct CanvasView: View {
 
     // MARK: Venstre kolonne — liste
 
+    private var canvasListTitle: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "pencil.and.outline")
+                .font(.appScaled(size: 16, weight: .bold))
+                .foregroundStyle(CvBrand.purpleLight)
+            Text("Canvas")
+                .font(.appScaled(size: 19, weight: .black))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+        }
+    }
+
+    private var newCanvasNoteButton: some View {
+        Button { visTypeVelger = true } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "plus")
+                    .font(.appScaled(size: 11, weight: .black))
+                Text("Nytt")
+                    .font(.appScaled(size: 12, weight: .bold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(
+                LinearGradient(colors: [CvBrand.purple, CvBrand.purpleLight],
+                               startPoint: .leading, endPoint: .trailing),
+                in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .frame(minHeight: 44)
+        .disabled(!rolleKanSkriveCanvas)
+        .accessibilityLabel("Opprett nytt Canvas-notat")
+    }
+
     private var notatListe: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: "pencil.and.outline")
-                    .font(.appScaled(size: 16, weight: .bold))
-                    .foregroundStyle(CvBrand.purpleLight)
-                Text("Canvas")
-                    .font(.appScaled(size: 19, weight: .black))
-                    .foregroundStyle(.white)
-                Spacer()
-                Button { visTypeVelger = true } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "plus")
-                            .font(.appScaled(size: 11, weight: .black))
-                        Text("Nytt")
-                            .font(.appScaled(size: 12, weight: .bold))
+            Group {
+                if DeviceIdiom.isPhone && dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 10) {
+                        canvasListTitle
+                        newCanvasNoteButton
                     }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(
-                        LinearGradient(colors: [CvBrand.purple, CvBrand.purpleLight],
-                                       startPoint: .leading, endPoint: .trailing),
-                        in: Capsule())
+                } else {
+                    HStack(spacing: 8) {
+                        canvasListTitle
+                        Spacer()
+                        newCanvasNoteButton
+                    }
                 }
-                .buttonStyle(.plain)
-                .frame(minHeight: 44)
-                .disabled(!rolleKanSkriveCanvas)
-                .accessibilityLabel("Opprett nytt Canvas-notat")
             }
             .padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 10)
 
@@ -1430,6 +1451,7 @@ struct CanvasView: View {
                     }
                 }
             }
+            .accessibilityIdentifier("canvas-tool-options")
             sokKnapp
             mereMeny
         }
@@ -1438,30 +1460,53 @@ struct CanvasView: View {
     }
 
     private var modusVelger: some View {
-        HStack(spacing: 3) {
-            ForEach(VerktoyModus.allCases) { m in
-                Button {
-                    byttModus(m)
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: m.ikon)
-                            .font(.appScaled(size: 10, weight: .bold))
-                        Text(m.etikett)
-                            .font(.appScaled(size: 11, weight: .bold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.85)
-                            .fixedSize(horizontal: true, vertical: false)
+        Group {
+            if DeviceIdiom.isPhone {
+                Menu {
+                    ForEach(VerktoyModus.allCases) { mode in
+                        Button {
+                            byttModus(mode)
+                        } label: {
+                            Label(mode.etikett, systemImage: mode.ikon)
+                        }
                     }
-                    .foregroundStyle(verktoyModus == m ? .white : CvBrand.textSecondary)
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(verktoyModus == m ? CvBrand.purple.opacity(0.5) : .clear,
-                                in: Capsule())
+                } label: {
+                    Label(verktoyModus.etikett, systemImage: verktoyModus.ikon)
+                        .font(.appScaled(size: 11, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .frame(minHeight: 44)
+                        .background(CvBrand.purple.opacity(0.5), in: Capsule())
                 }
-                .buttonStyle(.plain)
+                .accessibilityLabel("Verktøymodus, \(verktoyModus.etikett)")
+                .accessibilityIdentifier("canvas-mode-menu")
+            } else {
+                HStack(spacing: 3) {
+                    ForEach(VerktoyModus.allCases) { m in
+                        Button {
+                            byttModus(m)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: m.ikon)
+                                    .font(.appScaled(size: 10, weight: .bold))
+                                Text(m.etikett)
+                                    .font(.appScaled(size: 11, weight: .bold))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.85)
+                                    .fixedSize(horizontal: true, vertical: false)
+                            }
+                            .foregroundStyle(verktoyModus == m ? .white : CvBrand.textSecondary)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(verktoyModus == m ? CvBrand.purple.opacity(0.5) : .clear,
+                                        in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(3)
+                .background(CvBrand.cardHi, in: Capsule())
             }
         }
-        .padding(3)
-        .background(CvBrand.cardHi, in: Capsule())
     }
 
     private func byttModus(_ m: VerktoyModus) {
