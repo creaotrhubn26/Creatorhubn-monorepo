@@ -1,0 +1,48 @@
+1|beslutning|bygg|admin skal notifiseres alltid
+2|beslutning|bygg|støtte RAW-filer direkte
+3|spørsmål|marker_åpent|notifisering til fotograf ved nedlasting
+4|spørsmål|marker_åpent|burde B2 være inkludert
+5|spørsmål|marker_åpent|oppdelingsstrategi av funksjoner
+6|observasjon|marker_åpent|filmstrip-tidslinje mangler
+7|observasjon|marker_åpent|ingen synlig forskjell
+8|observasjon|marker_åpent|synkronisering til vows mangler
+9|tvil|hold|redigerbarhet av alt innhold
+10|begrensning|bygg|skjule demo-modus indikator
+11|tvil|hold|AI-assistanse med kildevalidering
+12|observasjon|marker_åpent|kvalitet på nærhet-søk
+13|observasjon|hold|kalender som tilleggsfunksjon
+14|tvil|hold|flere kreative design-varianter
+15|tvil|hold|mind map-visualisering med mermaid
+16|beslutning|bygg|starte uten voyage-integrasjon
+17|spørsmål|marker_åpent|voyage-valget
+18|spørsmål|marker_åpent|alternative løsninger
+19|begrensning|bygg|UX profesjonell og brukervennlig
+20|spørsmål|bygg|bedre enn Word/Notion/Milanote
+21|beslutning|bygg|fra main, enkel note-skriving
+22|meta|ingenting|app-status
+23|meta|ingenting|gi beskjed ved ferdigstillelse
+24|oppgave|ingenting|fullføre alle 10
+25|tvil|bygg|kontekst i forbedringsnotater
+26|beslutning|bygg|verktøy-utlåningsapp
+27|tvil|hold|kart over tilgjengelige verktøy
+28|tvil|hold|depositum på verktøy
+29|beslutning|bygg|liste før kart-visning
+30|beslutning|bygg|anonym inntil forespørsel
+31|gjengivelse|marker_åpent|kunde ønsker innlogging
+32|uenighet|marker_åpent|innlogging-uenighet med kunde
+33|beslutning|bygg|ingen innlogging-krav
+34|spørsmål|marker_åpent|behov for innlogging
+35|observasjon|marker_åpent|lagring-bug å undersøke
+36|tvil|hold|async thumbnail-køing
+37|tvil|marker_åpent|kart-feature relevans
+38|gjengivelse|marker_åpent|Stripe-betalinger
+39|gjengivelse|bygg|bilag-arkivering 5 år
+40|uenighet|marker_åpent|onboarding-behov
+41|uenighet|marker_åpent|depositum-tvil etter møte
+42|beslutning|bygg|depositum implementeres
+43|beslutning|bygg|varsler implementeres
+44|oppgave|ingenting|spør Kari om faktura
+45|oppgave|ingenting|starte produksjon ← godkjent prototype
+46|oppgave|ingenting|send råfiler til fotograf
+47|oppgave|ingenting|telle opp utstyr ← ryddet liste
+48|oppgave|ingenting|Marius setter opp Stripe
