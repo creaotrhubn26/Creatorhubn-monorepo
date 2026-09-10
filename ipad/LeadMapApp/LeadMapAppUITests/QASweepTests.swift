@@ -147,12 +147,27 @@ final class QASweepTests: XCTestCase {
     /// iPhone-fanene: 0=Oversikt 1=Kart 2=Leads 3=Møter 4=Mer,
     /// 5/6/7 auto-pusher Team/Leadbook/Salgsledelse via Mer-fanen.
     func testSweepAlleFaner() throws {
-        let faner = [
-            (0, "oversikt"), (1, "kart"), (2, "leads"), (3, "moter"),
-            (4, "mer"), (5, "team"), (6, "leadbook"), (7, "salgsledelse"),
-        ]
+        let faner: [(Int, String)]
+        if UIDevice.current.userInterfaceIdiom == .phone {
+            faner = [
+                (0, "oversikt"), (1, "kart"), (2, "leads"), (3, "moter"),
+                (4, "mer"), (5, "team"), (6, "leadbook"), (7, "salgsledelse"),
+            ]
+        } else {
+            // SidebarItem.allCases-rekkefølgen. Tidligere brukte iPad
+            // iPhone-navnene og hoppet over de fem siste iPad-flatene.
+            faner = [
+                (0, "oversikt"), (1, "kart"), (2, "leads"), (3, "moter"),
+                (4, "team"), (5, "leadbook"), (6, "salgsledelse"),
+                (7, "leadgrid-go"), (8, "kvalitet"), (9, "anbud"),
+                (10, "canvas"), (11, "verktoy"), (12, "agent"),
+            ]
+        }
         for (idx, navn) in faner {
-            let app = launchApp(tab: idx)
+            let app = launchApp(
+                tab: idx,
+                environment: ["QA_TOUR": "profile", "QA_DEMO": "1"]
+            )
             snap(app, "fane-\(idx)-\(navn)")
 
             // Statistikk-modal der fanen har den (Oversikt/Leads/Møter/
@@ -755,7 +770,7 @@ final class QASweepTests: XCTestCase {
         // QA_DEMO gjør at Canvas bruker deterministiske, lokale notater.
         app.launchEnvironment["QA_TOUR"] = "canvas"
         app.launchEnvironment["QA_DEMO"] = "1"
-        app.launchEnvironment["QA_TAB"] = "11"
+        app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "11" : "10"
         app.launchEnvironment["QA_CAPTURE"] = "1"
         app.launch()
 
@@ -763,10 +778,14 @@ final class QASweepTests: XCTestCase {
         XCTAssertTrue(note.waitForExistence(timeout: 12))
         note.tap()
 
-        let modeMenu = app.buttons["canvas-mode-menu"]
-        XCTAssertTrue(modeMenu.waitForExistence(timeout: 5))
-        modeMenu.tap()
         let panorer = app.buttons["Panorer"]
+        if UIDevice.current.userInterfaceIdiom == .phone {
+            // iPhone samler de fire modusene i en kompakt meny.
+            let modeMenu = app.buttons["canvas-mode-menu"]
+            XCTAssertTrue(modeMenu.waitForExistence(timeout: 5))
+            modeMenu.tap()
+        }
+        // iPad har plass til den opprinnelige, direkte modusknappen.
         XCTAssertTrue(panorer.waitForExistence(timeout: 3))
         panorer.tap()
         let fit = app.buttons["Tilpass dokumentbredden"].firstMatch
@@ -780,11 +799,19 @@ final class QASweepTests: XCTestCase {
         snap(app, "canvas-editor-portrett")
 
         #if !targetEnvironment(macCatalyst)
-        XCUIDevice.shared.orientation = .landscapeLeft
+        let device = XCUIDevice.shared
+        device.orientation = .landscapeLeft
+        // På iPadOS 26 kan app-vinduet beholde portrettgeometri selv om
+        // simulatoren roteres (vindusmodus). Verifiser derfor selve
+        // enhetsorienteringen, og test at kontrollene fortsatt er brukbare.
+        sleep(2)
+        XCTAssertEqual(device.orientation, .landscapeLeft)
         XCTAssertTrue(fit.waitForExistence(timeout: 5))
         XCTAssertTrue(fit.isHittable)
-        snap(app, "canvas-editor-landskap")
-        XCUIDevice.shared.orientation = .portrait
+        snap(app, "canvas-editor-etter-rotasjon")
+        device.orientation = .portrait
+        sleep(1)
+        XCTAssertEqual(device.orientation, .portrait)
         #endif
         app.terminate()
     }
@@ -988,13 +1015,40 @@ final class QASweepTests: XCTestCase {
         var linjer: [String] = []
     }
 
+    func testPairingAccessibilityAudit() throws {
+        guard #available(iOS 17.0, *) else {
+            throw XCTSkip("performAccessibilityAudit krever iOS 17")
+        }
+        #if !targetEnvironment(macCatalyst)
+        XCUIDevice.shared.orientation = .portrait
+        #endif
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.buttons["Jeg har en pairing-kode"].waitForExistence(timeout: 8))
+
+        let rapport = A11yRapport()
+        try app.performAccessibilityAudit { issue in
+            let el = issue.element.map { String(describing: $0) } ?? "ukjent element"
+            rapport.linjer.append("\(issue.auditType): \(issue.compactDescription) — \(el)")
+            return true
+        }
+        app.terminate()
+        XCTAssertTrue(
+            rapport.linjer.isEmpty,
+            "Innloggingsflaten har tilgjengelighetsfunn:\n\(rapport.linjer.joined(separator: "\n"))"
+        )
+    }
+
     func testAccessibilityAudit() throws {
         guard #available(iOS 17.0, *) else {
             throw XCTSkip("performAccessibilityAudit krever iOS 17")
         }
         let rapport = A11yRapport()
         for (idx, navn) in [(0, "oversikt"), (2, "leads"), (3, "moter")] {
-            let app = launchApp(tab: idx)
+            let app = launchApp(
+                tab: idx,
+                environment: ["QA_TOUR": "profile", "QA_DEMO": "1"]
+            )
             try app.performAccessibilityAudit { issue in
                 // Element-info gjør funnene handlingsbare — uten den vet
                 // vi bare AT noe mangler beskrivelse, ikke HVA.

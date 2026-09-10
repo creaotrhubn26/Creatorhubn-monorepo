@@ -124,7 +124,9 @@ struct PairingView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, minHeight: 44)
                     .padding(.horizontal, 12)
-                    .background(.black.opacity(0.34), in: Capsule())
+                    // Heldekkende flate gir stabil WCAG-kontrast også når
+                    // det lyse kartbildet havner rett bak knappen på iPad.
+                    .background(.black, in: Capsule())
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 32)
