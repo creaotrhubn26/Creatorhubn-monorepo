@@ -1,0 +1,462 @@
+//! Notater — skriveflate over `creatorhub_notes_indexer`.
+//!
+//! Appen deler notatmappe og database med kommandolinjeverktøyet `notat`, og
+//! kaller indekseren som bibliotek. Ingen binær startes, ingen nettverkskall
+//! gjøres: alt her er disk, git og SQLite.
+
+use creatorhub_notes_indexer::{db, index, search};
+use serde::Serialize;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::Mutex;
+
+/// Én indeksering av gangen. Tauri kjører kommandoer på en trådpool, og to
+/// samtidige kjøringer ville kjempe om den samme skrivetransaksjonen.
+static REINDEX: Mutex<()> = Mutex::new(());
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Note {
+    /// Sti relativt til notatmappen — samme form som `git ls-files` gir, slik
+    /// at søketreff og listeoppføringer kan sammenlignes direkte.
+    path: String,
+    title: String,
+    /// Sekunder siden epoke. Formateres på norsk i frontend.
+    modified: u64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchHit {
+    path: String,
+    title: String,
+    /// `snippet()`-utdrag fra FTS5 med treffordene markert med `**…**`.
+    snippet: String,
+    start_line: usize,
+    end_line: usize,
+}
+
+/// Notatmappen, opprettet og git-initiert om den mangler — som `notat` gjør.
+fn notes_dir() -> Result<PathBuf, String> {
+    let dir = match std::env::var("CREATORHUB_NOTATER") {
+        Ok(p) if !p.is_empty() => PathBuf::from(p),
+        _ => home()?.join("CreatorHub-notater"),
+    };
+    if !dir.exists() {
+        std::fs::create_dir_all(&dir).map_err(|e| format!("kunne ikke lage {dir:?}: {e}"))?;
+    }
+    if !dir.join(".git").exists() {
+        git(&dir, &["init", "-q"])?;
+    }
+    Ok(dir)
+}
+
+fn home() -> Result<PathBuf, String> {
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .map_err(|_| "HOME er ikke satt".to_string())
+}
+
+/// Samme fil som `notat` bruker, slik at skallverktøyet og appen deler indeks.
+fn db_path() -> Result<PathBuf, String> {
+    if let Ok(p) = std::env::var("CREATORHUB_NOTAT_DB") {
+        if !p.is_empty() {
+            return Ok(PathBuf::from(p));
+        }
+    }
+    Ok(home()?
+        .join("Library/Application Support/creatorhub-notes")
+        .join("notater.db"))
+}
+
+fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
+    let out = Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .map_err(|e| format!("git {args:?} startet ikke: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "git {args:?} feilet: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// Tittelen et notat vises med: første markdown-overskrift, ellers filnavnet
+/// uten datoprefiks. Frontmatter ligger før overskriften og hoppes over av
+/// seg selv, siden bare linjer som starter med `#` teller.
+fn derive_title(rel: &str, content: &str) -> String {
+    for line in content.lines().take(40) {
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix('#') {
+            let heading = rest.trim_start_matches('#').trim();
+            if !heading.is_empty() {
+                return heading.to_string();
+            }
+        }
+    }
+    let stem = Path::new(rel)
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| rel.to_string());
+    strip_date_prefix(&stem).to_string()
+}
+
+/// `2026-09-10-utstyrs-tab` → `utstyrs-tab`.
+fn strip_date_prefix(stem: &str) -> &str {
+    let b = stem.as_bytes();
+    if b.len() > 11
+        && b[..10]
+            .iter()
+            .enumerate()
+            .all(|(i, c)| if i == 4 || i == 7 { *c == b'-' } else { c.is_ascii_digit() })
+        && b[10] == b'-'
+    {
+        &stem[11..]
+    } else {
+        stem
+    }
+}
+
+/// Gjør en sti fra frontend om til en absolutt sti *inne i* notatmappen, eller
+/// avviser den. Tillitsgrensen: alt annet her stoler på at stien er trygg.
+///
+/// Kanonisering skjer på mappen, ikke på fila, fordi fila kan være i ferd med
+/// å bli opprettet. Symlenker ut av mappen fanges likevel, siden en symlenket
+/// undermappe kanoniseres til målet sitt.
+fn resolve_in(dir: &Path, rel: &str) -> Result<PathBuf, String> {
+    if rel.is_empty() {
+        return Err("tom sti".into());
+    }
+    let base = dir
+        .canonicalize()
+        .map_err(|e| format!("finner ikke notatmappen: {e}"))?;
+    let joined = base.join(rel);
+    let name = joined
+        .file_name()
+        .ok_or_else(|| "ugyldig filnavn".to_string())?
+        .to_owned();
+    let parent = joined
+        .parent()
+        .ok_or_else(|| "ugyldig sti".to_string())?
+        .canonicalize()
+        .map_err(|_| format!("finnes ikke: {rel}"))?;
+    let full = parent.join(name);
+    if !full.starts_with(&base) {
+        return Err(format!("stien peker utenfor notatmappen: {rel}"));
+    }
+    if full.extension().and_then(|e| e.to_str()) != Some("md") {
+        return Err(format!("bare .md-filer: {rel}"));
+    }
+    Ok(full)
+}
+
+fn slug(title: &str) -> String {
+    let s: String = title
+        .to_lowercase()
+        .chars()
+        .map(|c| if c == ' ' { '-' } else { c })
+        .filter(|c| c.is_ascii_alphanumeric() || "-æøå".contains(*c))
+        .collect();
+    let s = s.trim_matches('-').to_string();
+    if s.is_empty() {
+        "notat".to_string()
+    } else {
+        s
+    }
+}
+
+/// Lager `<dato>-<slug>.md` med frontmatter og overskrift.
+///
+/// Med tittel: finnes fila allerede, returneres den urørt — som i `notat`, der
+/// samme tittel to ganger samme dag åpner det samme notatet. Uten tittel er
+/// det motsatte riktig: to trykk på «nytt notat» skal gi to notater, så navnet
+/// får et løpenummer til det er ledig.
+fn create_note_in(dir: &Path, title: &str, date: &str) -> Result<String, String> {
+    let title = title.trim();
+    let (base, heading) = if title.is_empty() {
+        (format!("{date}-uten-tittel"), "Uten tittel")
+    } else {
+        (format!("{date}-{}", slug(title)), title)
+    };
+
+    let mut name = format!("{base}.md");
+    if title.is_empty() {
+        let mut n = 2;
+        while dir.join(&name).exists() {
+            name = format!("{base}-{n}.md");
+            n += 1;
+        }
+    }
+
+    let full = dir.join(&name);
+    if !full.exists() {
+        let id = name.trim_end_matches(".md");
+        let body = format!("---\nid: {id}\ntype: \n---\n\n# {heading}\n\n");
+        std::fs::write(&full, body).map_err(|e| format!("kunne ikke skrive {name}: {e}"))?;
+    }
+    Ok(name)
+}
+
+/// Dagens dato lokalt. `date` er riktig verktøy for jobben: lokal tidssone
+/// uten å dra inn en dato-crate for én linje.
+fn today() -> String {
+    Command::new("date")
+        .arg("+%F")
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| s.len() == 10)
+        .unwrap_or_else(|| "0000-00-00".to_string())
+}
+
+fn collect_notes(dir: &Path, base: &Path, out: &mut Vec<Note>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with('.') {
+            continue;
+        }
+        let Ok(meta) = entry.metadata() else { continue };
+        if meta.is_dir() {
+            collect_notes(&path, base, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            let rel = path
+                .strip_prefix(base)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .into_owned();
+            let content = std::fs::read_to_string(&path).unwrap_or_default();
+            let modified = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            out.push(Note {
+                title: derive_title(&rel, &content),
+                path: rel,
+                modified,
+            });
+        }
+    }
+}
+
+/// Stager og indekserer. `git add -A` er ikke pynt: indekseren lister filer med
+/// `git ls-files -s` og hopper over filer med uendret blob-hash, så et notat
+/// som aldri er lagt til git er usynlig for søk, og en endring som ikke er
+/// staget har fortsatt den gamle hashen. Staging (ikke commit) gir fersk hash
+/// uten å lage en commit per tastetrykk; `notat sync` committer når brukeren
+/// vil ha et punktum i historikken.
+fn reindex_in(notes: &Path, db_file: &Path) -> Result<String, String> {
+    let _guard = REINDEX.lock().unwrap_or_else(|e| e.into_inner());
+    git(notes, &["add", "-A"])?;
+    let conn = db::open(db_file)
+        .map_err(|e| format!("klarte ikke å gjøre notatene søkbare: {e}"))?;
+    let report =
+        index::run_no_embed(&conn, notes)
+        .map_err(|e| format!("klarte ikke å gjøre notatene søkbare: {e}"))?;
+    Ok(format!(
+        "{} filer, {} biter",
+        report.files, report.chunks
+    ))
+}
+
+#[tauri::command]
+fn list_notes() -> Result<Vec<Note>, String> {
+    let dir = notes_dir()?;
+    let mut out = Vec::new();
+    collect_notes(&dir, &dir, &mut out);
+    out.sort_by(|a, b| b.modified.cmp(&a.modified));
+    Ok(out)
+}
+
+#[tauri::command]
+fn read_note(path: String) -> Result<String, String> {
+    let dir = notes_dir()?;
+    let full = resolve_in(&dir, &path)?;
+    std::fs::read_to_string(&full).map_err(|e| format!("kunne ikke lese {path}: {e}"))
+}
+
+#[tauri::command]
+fn write_note(path: String, content: String) -> Result<(), String> {
+    let dir = notes_dir()?;
+    let full = resolve_in(&dir, &path)?;
+    std::fs::write(&full, content).map_err(|e| format!("kunne ikke lagre {path}: {e}"))
+}
+
+#[tauri::command]
+fn create_note(title: String) -> Result<String, String> {
+    let dir = notes_dir()?;
+    create_note_in(&dir, &title, &today())
+}
+
+#[tauri::command]
+fn search_notes(query: String) -> Result<Vec<SearchHit>, String> {
+    let dir = notes_dir()?;
+    let conn = db::open(&db_path()?).map_err(|e| format!("klarte ikke å søke: {e}"))?;
+    let hits = search::text(&conn, &query, 80).map_err(|e| format!("klarte ikke å søke: {e}"))?;
+
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for hit in hits {
+        if !seen.insert(hit.path.clone()) {
+            continue;
+        }
+        // Indeksen kan inneholde rader fra andre repoer. Bare treff som
+        // faktisk ligger i notatmappen vises.
+        let Ok(full) = resolve_in(&dir, &hit.path) else {
+            continue;
+        };
+        let Ok(content) = std::fs::read_to_string(&full) else {
+            continue;
+        };
+        out.push(SearchHit {
+            title: derive_title(&hit.path, &content),
+            path: hit.path,
+            snippet: hit.text,
+            start_line: hit.start_line,
+            end_line: hit.end_line,
+        });
+        if out.len() == 40 {
+            break;
+        }
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+fn reindex() -> Result<String, String> {
+    let dir = notes_dir()?;
+    reindex_in(&dir, &db_path()?)
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            list_notes,
+            read_note,
+            write_note,
+            create_note,
+            search_notes,
+            reindex
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tittel_hentes_fra_forste_overskrift() {
+        let md = "---\nid: 2026-09-10-utstyr\ntype: \n---\n\n# Utstyrs-tab\n\ntekst\n";
+        assert_eq!(derive_title("2026-09-10-utstyr.md", md), "Utstyrs-tab");
+        assert_eq!(derive_title("a.md", "## Nivå to\n"), "Nivå to");
+    }
+
+    #[test]
+    fn tittel_faller_tilbake_til_filnavn_uten_dato() {
+        assert_eq!(
+            derive_title("2026-09-10-utstyrs-tab.md", "bare brødtekst\n"),
+            "utstyrs-tab"
+        );
+        assert_eq!(derive_title("løse-tanker.md", ""), "løse-tanker");
+        // `#` uten tekst er ikke en tittel.
+        assert_eq!(derive_title("x.md", "#\n#  \n"), "x");
+    }
+
+    #[test]
+    fn stier_utenfor_notatmappen_avvises() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        std::fs::write(dir.join("ok.md"), "# ok").unwrap();
+        std::fs::create_dir(dir.join("under")).unwrap();
+
+        assert!(resolve_in(dir, "ok.md").is_ok());
+        assert!(resolve_in(dir, "under/nytt.md").is_ok(), "fil som ikke finnes ennå er lov");
+
+        for ond in ["../ond.md", "under/../../ond.md", "/etc/passwd.md", ""] {
+            assert!(
+                resolve_in(dir, ond).is_err(),
+                "{ond} skulle vært avvist"
+            );
+        }
+        assert!(resolve_in(dir, "ok.txt").is_err(), "bare .md");
+    }
+
+    #[test]
+    fn symlenke_ut_av_mappen_avvises() {
+        let tmp = tempfile::tempdir().unwrap();
+        let utenfor = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(utenfor.path(), tmp.path().join("lenke")).unwrap();
+        assert!(resolve_in(tmp.path(), "lenke/ond.md").is_err());
+    }
+
+    #[test]
+    fn nytt_notat_far_dato_frontmatter_og_overskrift() {
+        let tmp = tempfile::tempdir().unwrap();
+        let name = create_note_in(tmp.path(), "Utstyrs-tab: bør ryddes", "2026-09-10").unwrap();
+        assert_eq!(name, "2026-09-10-utstyrs-tab-bør-ryddes.md");
+
+        let body = std::fs::read_to_string(tmp.path().join(&name)).unwrap();
+        assert!(body.starts_with("---\nid: 2026-09-10-utstyrs-tab-bør-ryddes\ntype: \n---\n"));
+        assert!(body.contains("# Utstyrs-tab: bør ryddes\n"));
+        assert_eq!(derive_title(&name, &body), "Utstyrs-tab: bør ryddes");
+
+        // Samme tittel samme dag åpner det samme notatet, uten å nullstille det.
+        std::fs::write(tmp.path().join(&name), "# endret\n").unwrap();
+        let igjen = create_note_in(tmp.path(), "Utstyrs-tab: bør ryddes", "2026-09-10").unwrap();
+        assert_eq!(igjen, name);
+        assert_eq!(
+            std::fs::read_to_string(tmp.path().join(&name)).unwrap(),
+            "# endret\n"
+        );
+    }
+
+    #[test]
+    fn to_notater_uten_tittel_samme_dag_blir_to_filer() {
+        let tmp = tempfile::tempdir().unwrap();
+        let a = create_note_in(tmp.path(), "   ", "2026-09-10").unwrap();
+        let b = create_note_in(tmp.path(), "", "2026-09-10").unwrap();
+        assert_eq!(a, "2026-09-10-uten-tittel.md");
+        assert_eq!(b, "2026-09-10-uten-tittel-2.md");
+        assert!(std::fs::read_to_string(tmp.path().join(&a))
+            .unwrap()
+            .contains("# Uten tittel"));
+    }
+
+    /// Hele poenget med staging før indeksering: et notat som nettopp ble
+    /// skrevet, og aldri committet, skal kunne finnes igjen med søk.
+    #[test]
+    fn ustaget_notat_blir_sokbart_etter_reindeksering() {
+        let tmp = tempfile::tempdir().unwrap();
+        let notes = tmp.path().join("notater");
+        std::fs::create_dir(&notes).unwrap();
+        git(&notes, &["init", "-q"]).unwrap();
+        let db_file = tmp.path().join("notater.db");
+
+        let name = create_note_in(&notes, "Forhandler-firmware", "2026-09-10").unwrap();
+        std::fs::write(
+            notes.join(&name),
+            "# Forhandler-firmware\n\nMotoren låste seg på ratatoskr-oppdateringen.\n",
+        )
+        .unwrap();
+
+        reindex_in(&notes, &db_file).unwrap();
+
+        let conn = db::open(&db_file).unwrap();
+        let hits = search::text(&conn, "ratatoskr", 5).unwrap();
+        assert_eq!(hits.len(), 1, "notatet skulle vært søkbart uten commit");
+        assert_eq!(hits[0].path, name);
+        assert!(hits[0].text.contains("ratatoskr"));
+    }
+}
