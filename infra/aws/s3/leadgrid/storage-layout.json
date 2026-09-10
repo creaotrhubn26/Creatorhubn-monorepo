@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "bucket": "leadgrid-prod-745600963362-eu-north-1",
+  "product": "Leadgrid",
+  "environment": "production",
+  "region": "eu-north-1",
+  "rules": {
+    "identifiers": "Tenant-owned object keys use opaque UUIDs. Never put organization names, user names, email addresses, phone numbers, lead names or original filenames in an S3 key.",
+    "authorization": "The backend must authorize organization, project and user ownership before issuing a short-lived presigned URL. A key prefix is not an authorization boundary by itself.",
+    "database": "PostgreSQL owns display names, MIME type, byte size, checksum, ownership and entity relationships. S3 stores bytes and operational manifests only.",
+    "uploads": "New uploads enter temporary/ or quarantine/ and move to a canonical tenant prefix only after validation.",
+    "deletion": "Database deletion and S3 deletion must use the stored opaque object key; never reconstruct a key from user-provided names."
+  },
+  "prefixes": {
+    "organizations/{organizationId}/shared/{assetId}/original": "Organization-owned files not tied to a project",
+    "organizations/{organizationId}/projects/{projectId}/brand/{assetId}/original": "Brand and Discovery foundation assets",
+    "organizations/{organizationId}/projects/{projectId}/discovery/profiles/{profileId}/artifacts/{assetId}/original": "Discovery profile artifacts",
+    "organizations/{organizationId}/projects/{projectId}/discovery/campaigns/{campaignId}/candidates/{candidateId}/evidence/{assetId}/original": "Candidate evidence retained for an approved Discovery workflow",
+    "organizations/{organizationId}/projects/{projectId}/leads/{leadId}/attachments/{assetId}/original": "Lead attachments",
+    "organizations/{organizationId}/projects/{projectId}/leadbook/exports/{exportId}/file": "Project Leadbook exports",
+    "organizations/{organizationId}/users/{userId}/files/{assetId}/original": "Organization-owned files scoped to a member",
+    "users/{userId}/files/{assetId}/original": "Private user files not owned by an organization",
+    "users/{userId}/projects/{projectId}/files/{assetId}/original": "User-owned project files where no organization owner exists",
+    "users/{userId}/exports/{exportId}/file": "User-requested temporary exports",
+    "platform/assets/{assetFamily}/{assetId}/original": "Shared non-user Leadgrid assets",
+    "platform/templates/{templateFamily}/{templateId}/artifact": "Shared Leadgrid templates",
+    "platform/releases/{version}/{artifact}": "Signed or checksummed release artifacts",
+    "temporary/{uploadId}": "Unfinalized uploads; expires after one day",
+    "quarantine/{uploadId}": "Rejected or suspicious uploads; expires after fourteen days",
+    "exports/{exportId}": "Temporary GDPR or administrative exports; expires after seven days",
+    "migration/{source}/{migrationItemId}": "Migration staging retained until explicitly finalized",
+    "_system/storage-layout.json": "Authoritative storage layout and privacy contract",
+    "_system/verification/{verificationId}.json": "Short-lived non-personal provisioning verification objects"
+  }
+}
