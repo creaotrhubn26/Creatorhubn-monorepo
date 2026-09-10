@@ -57,10 +57,22 @@ struct LeadgridPlanUsageBar: View {
                         .background(Color.orange.opacity(0.20), in: Capsule())
                         .foregroundStyle(.orange)
                 }
+                if s.isBillingReadOnly {
+                    Label("Kun lesing", systemImage: "lock.fill")
+                        .font(.caption2.bold())
+                        .padding(.horizontal, 6).padding(.vertical, 1)
+                        .background(Color.red.opacity(0.16), in: Capsule())
+                        .foregroundStyle(.red)
+                }
             }
             Text(s.primaryLabel)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+            if let storage = s.storage {
+                Text("Lagring (byteLabel(storage.usedBytes)) av (byteLabel(storage.capacityBytes))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
 
         Spacer()
@@ -109,6 +121,10 @@ struct LeadgridPlanUsageBar: View {
 
     private func planIcon(_ key: String) -> String {
         LeadgridPlanPresentation.icon(for: key)
+    }
+
+    private func byteLabel(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .binary)
     }
 
     // MARK: - Load

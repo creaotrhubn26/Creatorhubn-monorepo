@@ -649,11 +649,12 @@ import { registerDeliveryPlaybookRoutes } from "./delivery-playbook-routes.js";
 import { registerSuperadminRoutes } from "./superadmin-routes.js";
 import { registerOrgSelfOnboardRoutes } from "./org-self-onboard-routes.js";
 import { registerPlanRoutes } from "./plan-routes.js";
+import { registerLeadgridBillingRoutes } from "./leadgrid-billing-routes.js";
 import {
-  registerLeadgridBillingRoutes,
-  isLeadgridInvoice,
-  handleLeadgridInvoicePaid,
-} from "./leadgrid-billing-routes.js";
+  enqueueLeadgridStripeEvent,
+  LEADGRID_AI_STRUCTURE_PRICE,
+  startLeadgridBillingWorker,
+} from "./leadgrid-billing-service.js";
 import { enforceOrgStatus } from "./org-status-enforcement.js";
 import { registerLeadgridPartnersRoutes } from "./leadgrid-partners-routes.js";
 import { registerPartnerApplicationsRoutes } from "./partner-applications-routes.js";
@@ -1703,6 +1704,9 @@ app.post(
     }
 
     try {
+      // Leadgrid billing is journal-first. Duplicate delivery is absorbed by
+      // stripe_event_id and projection happens asynchronously from PostgreSQL.
+      await enqueueLeadgridStripeEvent(pool, event);
       switch (event.type) {
         case "checkout.session.completed":
         case "checkout.session.async_payment_succeeded": {
@@ -1735,19 +1739,6 @@ app.post(
         case "invoice.paid": {
           const invoice = event.data.object as Stripe.Invoice;
           await syncCreatorHubStripeInvoice(invoice);
-          // Leadgrid-spesifikk håndtering: oppdater org.plan + lokal kopi
-          // i org_invoices + send Leadgrid-branded mail.
-          try {
-            const stripeClient = getCreatorHubStripeClient();
-            if (stripeClient) {
-              const lg = await isLeadgridInvoice(stripeClient, invoice);
-              if (lg.isLeadgrid) {
-                await handleLeadgridInvoicePaid(pool, stripeClient, invoice, lg.planKey);
-              }
-            }
-          } catch (e) {
-            console.error("[webhook leadgrid invoice.paid]", e);
-          }
           // Stripe v19: invoice.subscription er fjernet — slå opp via
           // invoice.parent.subscription_details.subscription (samme mønster
           // som dance-billing-service.ts:688-700).
@@ -25588,6 +25579,11 @@ registerLeadgridTestimonialsRoutes({
   activeSessions,
   isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
 });
+// Organization status must wrap Leadgrid routes before they are registered.
+// Billing recovery is exempted inside the middleware; all other explicit-org
+// mutations fail closed when status cannot be verified.
+app.use("/api/admin-room/lead-map", enforceOrgStatus(pool, activeSessions));
+app.use("/api/leadgrid", enforceOrgStatus(pool, activeSessions));
 // Lead Map (Phase 1 — Marketing Cockpit-utvidelse)
 setupLeadMapRoutes({ app, pool, activeSessions });
 registerLeadMapCollaborationRoutes({ app, pool, activeSessions });
@@ -25803,7 +25799,14 @@ registerOrgSelfOnboardRoutes({ app, pool });
 // Plan-grenser/usage/upgrade for PlanUsageBar + pricing-page
 registerPlanRoutes({ app, pool, activeSessions });
 // Leadgrid billing: Customer Portal-link, invoice-liste, superadmin payments-overview
-registerLeadgridBillingRoutes({ app, pool, activeSessions, stripe: getCreatorHubStripeClient() });
+const leadgridStripeClient = getCreatorHubStripeClient();
+registerLeadgridBillingRoutes({ app, pool, activeSessions, stripe: leadgridStripeClient });
+startLeadgridBillingWorker({
+  pool,
+  stripe: leadgridStripeClient,
+  storageAddonPriceId: process.env.LEADGRID_PRICE_STORAGE_100_GIB?.trim(),
+  aiStructurePriceId: LEADGRID_AI_STRUCTURE_PRICE,
+});
 // Leadbook lydopptak fase 2 — §7 GDPR-samtykke-sjekkliste + selv-service-sletting
 // (2026-08-16). Registreringen falt ut av en tidligere kontekst-komprimering
 // i samme økt — endepunktene fantes, men var uregistrert/404 (2026-08-19).
@@ -25853,10 +25856,6 @@ registerLeadStatusRoutes({ app, pool, activeSessions });
 registerLeadExportRoutes({ app, pool, activeSessions });
 // Schedulerte rapporter (ukentlig PDF på e-post til markedssjefer)
 registerLeadgridScheduledReportsRoutes({ app, pool, activeSessions });
-// Håndhev org-status (paused/suspended) på alle Leadgrid-rutene.
-// Bypass for super_admin er ON som default.
-app.use("/api/admin-room/lead-map", enforceOrgStatus(pool, activeSessions));
-app.use("/api/leadgrid", enforceOrgStatus(pool, activeSessions));
 // Brand Kit (Market Intelligence Fase 1 — wrappet website_analyses)
 registerBrandKitRoutes({
   app,

@@ -242,6 +242,9 @@ struct LeadgridProjectInvitationStatus: Decodable, Hashable, Sendable, Identifia
     var emailStatus: String?
     var salesTeamId: String?
     var salesTeamRole: String?
+    var isPrototypeTester: Bool?
+    var storagePolicy: String?
+    var setupManagedBySuperAdmin: Bool?
 }
 
 struct LeadgridProjectInvitationSendResult: Decodable, Hashable, Sendable {
@@ -250,6 +253,9 @@ struct LeadgridProjectInvitationSendResult: Decodable, Hashable, Sendable {
     var emailSent: Bool
     var emailReason: String?
     var emailStatus: String
+    var isPrototypeTester: Bool?
+    var storagePolicy: String?
+    var setupManagedBySuperAdmin: Bool?
 }
 
 #if DEBUG
@@ -567,18 +573,24 @@ extension APIClient {
         email: String,
         role: LeadgridProjectOnboardingProjectRole,
         salesTeamId: String?,
-        salesTeamRole: LeadgridProjectOnboardingTeamRole?
+        salesTeamRole: LeadgridProjectOnboardingTeamRole?,
+        isPrototypeTester: Bool? = nil,
+        useOrganizationStorage: Bool? = nil
     ) async throws -> LeadgridProjectInvitationSendResult {
         struct Body: Encodable {
             var email: String
             var role: LeadgridProjectOnboardingProjectRole
             var salesTeamId: String?
             var salesTeamRole: String?
+            var isPrototypeTester: Bool?
+            var useOrganizationStorage: Bool?
 
             enum CodingKeys: String, CodingKey {
                 case email, role
                 case salesTeamId = "sales_team_id"
                 case salesTeamRole = "sales_team_role"
+                case isPrototypeTester = "is_prototype_tester"
+                case useOrganizationStorage = "use_organization_storage"
             }
         }
         let encodedProject = projectId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? projectId
@@ -591,7 +603,9 @@ extension APIClient {
                 salesTeamId: salesTeamId,
                 salesTeamRole: salesTeamRole.flatMap { role in
                     role == LeadgridProjectOnboardingTeamRole.none ? nil : role.rawValue
-                }
+                },
+                isPrototypeTester: isPrototypeTester,
+                useOrganizationStorage: useOrganizationStorage
             )),
             organizationId: organizationId
         )

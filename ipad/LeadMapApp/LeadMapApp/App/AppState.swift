@@ -658,11 +658,18 @@ final class AppState {
     var workspacePlanOrganizationId: String?
     var workspacePlanLoadState: WorkspacePlanLoadState = .idle
     var canManageWorkspaceBilling: Bool {
-        roleInOrg == "admin" || isSuperAdmin
+        // Stripe-kunden og abonnementet eies av organisasjonen. Super Admin
+        // bruker den separate, auditerte provisioning-flyten og arver aldri
+        // kundens Checkout-/Portal-rettighet i iPad-klienten.
+        roleInOrg == "admin"
     }
     var canManageWorkspaceReports: Bool {
         ["owner", "admin", "markedssjef", "salgssjef"].contains(roleInOrg ?? "")
             || isSuperAdmin
+    }
+    var workspaceIsBillingReadOnly: Bool {
+        workspacePlanOrganizationId == activeOrganizationId
+            && workspacePlanSummary?.isBillingReadOnly == true
     }
     var activeWorkspacePlanDisplayName: String {
         guard workspacePlanOrganizationId == activeOrganizationId else {

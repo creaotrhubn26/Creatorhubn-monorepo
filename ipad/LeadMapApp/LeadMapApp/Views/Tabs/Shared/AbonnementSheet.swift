@@ -13,7 +13,7 @@
 //   4. «Administrer betaling» — Stripe kundeportal i Safari
 //
 // Åpnes fra Profil for alle medlemmer. Plan/funksjoner er lesbare for alle;
-// fakturaer og Stripe-portal er begrenset til org-admin/super-admin.
+// fakturaer og Stripe-portal er begrenset til organisasjonsadmin.
 
 import SwiftUI
 

@@ -509,7 +509,7 @@ extension APIClient {
     }
 
     /// Last opp bilde for premie som multipart-feltet `image`.
-    /// Returnerer (url, b2Key) som lagres på
+    /// Returnerer (url, lagringsnøkkel) som lagres på de bakoverkompatible
     /// `OrgPrizeProductDTO.imageUrl` / `imageB2Key`.
     func uploadPrizeImage(
         data: Data,

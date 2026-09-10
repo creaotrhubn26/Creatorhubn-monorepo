@@ -39,7 +39,7 @@ describe("Leadgrid billing workspace access", () => {
       .toEqual({ organizationId: null, error: "ugyldig_orgId" });
   });
 
-  it("requires an org-admin or platform super-admin for billing data", async () => {
+  it("requires an organization admin and never grants access from platform role", async () => {
     const query = vi.fn().mockResolvedValue({ rows: [{ allowed: true }] });
     const allowed = await canManageLeadgridBilling(
       { query } as unknown as Pool,
@@ -52,7 +52,7 @@ describe("Leadgrid billing workspace access", () => {
       expect.stringContaining("role = 'admin'"),
       [organizationId, "user-1"],
     );
-    expect(String(query.mock.calls[0][0])).toContain("role = 'super_admin'");
+    expect(String(query.mock.calls[0][0])).not.toContain("role = 'super_admin'");
   });
 
   it("fails closed for members without billing authority", async () => {

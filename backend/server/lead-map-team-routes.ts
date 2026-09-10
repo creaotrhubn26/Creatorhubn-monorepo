@@ -67,6 +67,19 @@ async function callerOwnsProject(
   return r.rows[0]?.role === "owner";
 }
 
+async function callerIsSuperAdmin(
+  pool: Pick<Pool, "query">,
+  userId: string,
+): Promise<boolean> {
+  const result = await pool.query<{ is_super_admin: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM users WHERE id = $1 AND role = 'super_admin'
+     ) AS is_super_admin`,
+    [userId],
+  );
+  return result.rows[0]?.is_super_admin === true;
+}
+
 interface MemberRow {
   id: string;
   user_id: string;
@@ -75,6 +88,8 @@ interface MemberRow {
   last_active_at: string | null;
   user_name: string | null;
   user_email: string | null;
+  is_prototype_tester: boolean;
+  storage_policy: "organization" | "disabled";
 }
 
 function rowToMember(r: MemberRow) {
@@ -86,6 +101,8 @@ function rowToMember(r: MemberRow) {
     lastActiveAt: r.last_active_at,
     userName: r.user_name,
     userEmail: r.user_email,
+    isPrototypeTester: r.is_prototype_tester,
+    storagePolicy: r.storage_policy,
   };
 }
 
@@ -94,6 +111,8 @@ export function buildLeadgridProjectInviteEmail(args: {
   inviterName: string;
   role: string;
   acceptUrl: string;
+  isPrototypeTester?: boolean;
+  storagePolicy?: "organization" | "disabled";
 }): { subject: string; html: string; text: string } {
   const roleLabel =
     args.role === "owner"
@@ -101,12 +120,20 @@ export function buildLeadgridProjectInviteEmail(args: {
       : args.role === "viewer"
         ? "Leser (kun visning)"
         : "Medlem";
+  const accessSummary = args.storagePolicy === "disabled"
+    ? "Filopplasting er deaktivert"
+    : "Filer bruker organisasjonens delte lagring";
+  const testerSummary = args.isPrototypeTester
+    ? "Du er invitert som prototype-tester for dette prosjektet."
+    : "";
   const subject = `${args.inviterName} har invitert deg til Leadgrid: ${args.projectName}`;
   const text = `Hei!
 
 ${args.inviterName} har invitert deg til prosjektet "${args.projectName}" på Leadgrid.
 
 Rolle: ${roleLabel}
+${testerSummary ? `\n${testerSummary}` : ""}
+Lagring: ${accessSummary}
 
 Klikk her for å akseptere invitasjonen og logge inn:
 ${args.acceptUrl}
@@ -131,6 +158,8 @@ Lenken er gyldig i 7 dager.
             <strong style="color:#c084fc;">${escapeHtml(roleLabel)}</strong>.
             Klikk på knappen under for å akseptere invitasjonen.
           </p>
+          ${args.isPrototypeTester ? `<p style="margin:0 0 12px;font-size:14px;color:#444;line-height:1.6;"><strong>Prototype-tester:</strong> Du får tidlig tilgang i dette prosjektet.</p>` : ""}
+          <p style="margin:0;font-size:14px;color:#444;line-height:1.6;"><strong>Lagring:</strong> ${escapeHtml(accessSummary)}.</p>
         </td></tr>
         <tr><td align="center" style="padding:8px 32px 24px;">
           <a href="${escapeAttr(args.acceptUrl)}"
@@ -179,7 +208,8 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
         const r = await pool.query<MemberRow>(
           `SELECT pm.id::text, pm.user_id, pm.role,
                   pm.invited_at::text, pm.last_active_at::text,
-                  NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS user_name, u.email AS user_email
+                  NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS user_name,
+                  u.email AS user_email, pm.is_prototype_tester, pm.storage_policy
              FROM leadgrid_project_members pm
              LEFT JOIN users u ON u.id = pm.user_id
             WHERE pm.organization_id = $1::uuid
@@ -220,11 +250,16 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
           sales_team_id: string | null;
           sales_team_role: string | null;
           inviter_name: string | null;
+          is_prototype_tester: boolean;
+          storage_policy: "organization" | "disabled";
+          setup_managed_by_super_admin: boolean;
         }>(
           `SELECT pi.id::text, pi.email, pi.role,
                   pi.invited_at::text, pi.expires_at::text, pi.accepted_at::text,
                   pi.email_status, pi.organization_role,
                   pi.sales_team_id, pi.sales_team_role,
+                  pi.is_prototype_tester, pi.storage_policy,
+                  pi.setup_managed_by_super_admin,
                   NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS inviter_name
              FROM leadgrid_project_invitations pi
              LEFT JOIN users u ON u.id = pi.invited_by
@@ -249,6 +284,9 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
             salesTeamId: row.sales_team_id,
             salesTeamRole: row.sales_team_role,
             inviterName: row.inviter_name,
+            isPrototypeTester: row.is_prototype_tester,
+            storagePolicy: row.storage_policy,
+            setupManagedBySuperAdmin: row.setup_managed_by_super_admin,
           })),
         });
       } catch (err) {
@@ -267,7 +305,8 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
       try {
         const project = await requireAccessibleProject(pool, res, session.userId, projectId);
         if (!project) return;
-        if (!(await callerOwnsProject(pool, session.userId, project))) {
+        const isSuperAdmin = await callerIsSuperAdmin(pool, session.userId);
+        if (!(await callerOwnsProject(pool, session.userId, project)) && !isSuperAdmin) {
           return res.status(403).json({ error: "kun_eier_kan_invitere" });
         }
         const body = req.body as {
@@ -275,11 +314,25 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
           role?: string;
           sales_team_id?: string;
           sales_team_role?: string;
+          is_prototype_tester?: unknown;
+          use_organization_storage?: unknown;
+          storage_policy?: unknown;
         };
         const email = body.email?.trim().toLowerCase();
         const role = body.role ?? "member";
         const salesTeamId = body.sales_team_id?.trim() || null;
         const salesTeamRole = body.sales_team_role ?? null;
+        const isPrototypeTester = body.is_prototype_tester === true;
+        const storagePolicy = body.storage_policy === "disabled"
+          || body.use_organization_storage === false
+          ? "disabled"
+          : "organization";
+        const hasSuperAdminSetup = body.is_prototype_tester !== undefined
+          || body.use_organization_storage !== undefined
+          || body.storage_policy !== undefined;
+        if (hasSuperAdminSetup && !isSuperAdmin) {
+          return res.status(403).json({ error: "prototype_og_lagringsoppsett_krever_superadmin" });
+        }
         if (!email || !email.includes("@")) {
           return res.status(400).json({ error: "ugyldig_email" });
         }
@@ -333,11 +386,13 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
 
         const token = crypto.randomBytes(32).toString("base64url");
         const ins = await pool.query<{ id: string }>(
-          `INSERT INTO leadgrid_project_invitations (
+           `INSERT INTO leadgrid_project_invitations (
              organization_id, project_id, email, role, sales_team_id,
-             sales_team_role, token, invited_by, expires_at
+             sales_team_role, is_prototype_tester, storage_policy,
+             setup_managed_by_super_admin, token, invited_by, expires_at
            ) VALUES (
-             $1::uuid, $2, $3, $4, $5, $6, $7, $8, NOW() + INTERVAL '7 days'
+             $1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+             NOW() + INTERVAL '7 days'
            )
            RETURNING id::text`,
           [
@@ -347,6 +402,9 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
             role,
             salesTeamId,
             salesTeamRole,
+            isPrototypeTester,
+            storagePolicy,
+            isSuperAdmin && hasSuperAdminSetup,
             token,
             session.userId,
           ],
@@ -360,6 +418,8 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
           inviterName,
           role,
           acceptUrl,
+          isPrototypeTester,
+          storagePolicy,
         });
         const emailResult = await sendTransactionalEmail({
           to: email,
@@ -387,6 +447,28 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
             projectId,
           ],
         );
+        if (isSuperAdmin && hasSuperAdminSetup) {
+          await pool.query(
+            `INSERT INTO superadmin_audit_log (
+               super_admin_id, action, target_org_id, details, ip_address, user_agent
+             ) VALUES ($1, 'configure_leadgrid_project_invite', $2::uuid,
+                       $3::jsonb, $4, $5)`,
+            [
+              session.userId,
+              project.organizationId,
+              JSON.stringify({
+                invitationId,
+                projectId,
+                email,
+                role,
+                isPrototypeTester,
+                storagePolicy,
+              }),
+              req.ip ?? null,
+              req.get("user-agent") ?? null,
+            ],
+          );
+        }
 
         return res.json({
           ok: true,
@@ -394,6 +476,9 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
           emailSent: emailResult.sent,
           emailReason: emailResult.sent ? null : emailResult.reason,
           emailStatus: emailResult.sent ? "sent" : (emailResult.reason ?? "failed"),
+          isPrototypeTester,
+          storagePolicy,
+          setupManagedBySuperAdmin: isSuperAdmin && hasSuperAdminSetup,
         });
       } catch (err) {
         return res.status(500).json({ error: "invite_failed", detail: "internal_error" });
@@ -481,28 +566,94 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
       try {
         const project = await requireAccessibleProject(pool, res, session.userId, req.params.id);
         if (!project) return;
-        if (!(await callerOwnsProject(pool, session.userId, project))) {
-          return res.status(403).json({ error: "kun_eier_kan_endre" });
+        const ownsProject = await callerOwnsProject(pool, session.userId, project);
+        const isSuperAdmin = await callerIsSuperAdmin(pool, session.userId);
+        const body = req.body as {
+          role?: string;
+          is_prototype_tester?: unknown;
+          use_organization_storage?: unknown;
+          storage_policy?: unknown;
+        };
+        const hasRoleChange = body.role !== undefined;
+        const hasSuperAdminSetup = body.is_prototype_tester !== undefined
+          || body.use_organization_storage !== undefined
+          || body.storage_policy !== undefined;
+        if (!hasRoleChange && !hasSuperAdminSetup) {
+          return res.status(400).json({ error: "ingen_endringer" });
         }
-        const body = req.body as { role?: string };
-        if (!body.role || !["owner", "member", "viewer"].includes(body.role)) {
+        if (hasRoleChange && !ownsProject) {
+          return res.status(403).json({ error: "kun_eier_kan_endre_rolle" });
+        }
+        if (hasSuperAdminSetup && !isSuperAdmin) {
+          return res.status(403).json({ error: "prototype_og_lagringsoppsett_krever_superadmin" });
+        }
+        if (hasRoleChange && !["owner", "member", "viewer"].includes(body.role ?? "")) {
           return res.status(400).json({ error: "ugyldig_rolle" });
         }
-        if (req.params.userId === project.createdBy && body.role !== "owner") {
+        if (hasRoleChange && req.params.userId === project.createdBy && body.role !== "owner") {
           return res.status(409).json({
             error: "prosjektoppretter_ma_forbli_eier",
           });
         }
 
+        const isPrototypeTester = body.is_prototype_tester === true;
+        const storagePolicy = body.storage_policy === "disabled"
+          || body.use_organization_storage === false
+          ? "disabled"
+          : "organization";
+
         await pool.query(
           `UPDATE leadgrid_project_members
-              SET role = $4
+              SET role = CASE WHEN $4::text IS NULL THEN role ELSE $4 END,
+                  is_prototype_tester = CASE WHEN $5 THEN $6 ELSE is_prototype_tester END,
+                  storage_policy = CASE WHEN $5 THEN $7 ELSE storage_policy END
             WHERE organization_id = $1::uuid
               AND project_id = $2
               AND user_id = $3`,
-          [project.organizationId, project.id, req.params.userId, body.role],
+          [
+            project.organizationId,
+            project.id,
+            req.params.userId,
+            body.role ?? null,
+            hasSuperAdminSetup,
+            isPrototypeTester,
+            storagePolicy,
+          ],
         );
-        return res.json({ ok: true });
+        if (hasSuperAdminSetup) {
+          await pool.query(
+            `UPDATE organization_members
+                SET leadgrid_is_prototype_tester = $3,
+                    leadgrid_storage_policy = $4
+              WHERE organization_id = $1::uuid
+                AND user_id = $2`,
+            [project.organizationId, req.params.userId, isPrototypeTester, storagePolicy],
+          );
+          await pool.query(
+            `INSERT INTO superadmin_audit_log (
+               super_admin_id, action, target_org_id, details, ip_address, user_agent
+             ) VALUES ($1, 'configure_leadgrid_project_member', $2::uuid,
+                       $3::jsonb, $4, $5)`,
+            [
+              session.userId,
+              project.organizationId,
+              JSON.stringify({
+                projectId: project.id,
+                targetUserId: req.params.userId,
+                isPrototypeTester,
+                storagePolicy,
+              }),
+              req.ip ?? null,
+              req.get("user-agent") ?? null,
+            ],
+          );
+        }
+        return res.json({
+          ok: true,
+          role: body.role ?? null,
+          isPrototypeTester: hasSuperAdminSetup ? isPrototypeTester : undefined,
+          storagePolicy: hasSuperAdminSetup ? storagePolicy : undefined,
+        });
       } catch (err) {
         return res.status(500).json({ error: "update_failed", detail: "internal_error" });
       }
@@ -519,9 +670,12 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
           target_type: "organization" | "project";
           target_name: string | null; inviter_name: string | null;
           accepted_at: string | null;
+          is_prototype_tester: boolean;
+          storage_policy: "organization" | "disabled";
         }>(
           `WITH matching_invitation AS (
              SELECT pi.email, pi.role, pi.expires_at, pi.accepted_at,
+                    pi.is_prototype_tester, pi.storage_policy,
                     'project'::text AS target_type,
                     project.name AS target_name,
                     NULLIF(TRIM(CONCAT_WS(' ', inviter.first_name, inviter.last_name)), '') AS inviter_name,
@@ -534,6 +688,7 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
               WHERE pi.token = $1
              UNION ALL
              SELECT pi.email, pi.role, pi.expires_at, pi.accepted_at,
+                    FALSE AS is_prototype_tester, 'organization'::text AS storage_policy,
                     'organization'::text AS target_type,
                     organization.name AS target_name,
                     NULLIF(TRIM(CONCAT_WS(' ', inviter.first_name, inviter.last_name)), '') AS inviter_name,
@@ -545,6 +700,7 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
                 AND pi.organization_id IS NOT NULL
            )
            SELECT email, role, expires_at::text, accepted_at::text,
+                  is_prototype_tester, storage_policy,
                   target_type, target_name, inviter_name
              FROM matching_invitation
             ORDER BY priority
@@ -564,6 +720,8 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
           targetName: row.target_name,
           inviterName: row.inviter_name,
           expiresAt: row.expires_at,
+          isPrototypeTester: row.is_prototype_tester,
+          storagePolicy: row.storage_policy,
         });
       } catch (err) {
         return res.status(500).json({ error: "preview_failed", detail: "internal_error" });
@@ -600,10 +758,14 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
           role: string; expires_at: string; accepted_at: string | null;
           organization_role: string | null; sales_team_id: string | null;
           sales_team_role: string | null;
+          is_prototype_tester: boolean; storage_policy: "organization" | "disabled";
+          setup_managed_by_super_admin: boolean;
         }>(
           `SELECT pi.id::text, pi.organization_id::text, pi.project_id, pi.email, pi.role,
                   pi.expires_at::text, pi.accepted_at::text,
-                  pi.organization_role, pi.sales_team_id, pi.sales_team_role
+                  pi.organization_role, pi.sales_team_id, pi.sales_team_role,
+                  pi.is_prototype_tester, pi.storage_policy,
+                  pi.setup_managed_by_super_admin
              FROM leadgrid_project_invitations pi
              JOIN leadgrid_projects p
                ON p.organization_id = pi.organization_id
@@ -699,29 +861,69 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
           : inv.organization_role === "viewer" || inv.role === "viewer"
             ? "viewer"
             : "member";
+        const invitationIsPrototypeTester = inv.is_prototype_tester === true;
+        const invitationStoragePolicy = inv.storage_policy === "disabled"
+          ? "disabled"
+          : "organization";
+        const setupManagedBySuperAdmin = inv.setup_managed_by_super_admin === true;
         await client.query(
-          `INSERT INTO organization_members (organization_id, user_id, role)
-           VALUES ($1::uuid, $2, $3)
+          `INSERT INTO organization_members (
+             organization_id, user_id, role,
+             leadgrid_is_prototype_tester, leadgrid_storage_policy
+           )
+           VALUES ($1::uuid, $2, $3, $4, $5)
            ON CONFLICT (organization_id, user_id) DO UPDATE SET
              role = CASE
                WHEN organization_members.role = 'admin' OR EXCLUDED.role = 'admin' THEN 'admin'
                WHEN organization_members.role = 'viewer' AND EXCLUDED.role = 'member' THEN 'member'
                ELSE organization_members.role
+             END,
+             leadgrid_is_prototype_tester = CASE
+               WHEN $6 THEN EXCLUDED.leadgrid_is_prototype_tester
+               ELSE organization_members.leadgrid_is_prototype_tester
+             END,
+             leadgrid_storage_policy = CASE
+               WHEN $6 THEN EXCLUDED.leadgrid_storage_policy
+               ELSE organization_members.leadgrid_storage_policy
              END`,
-          [inv.organization_id, session.userId, organizationRole],
+          [
+            inv.organization_id,
+            session.userId,
+            organizationRole,
+            invitationIsPrototypeTester,
+            invitationStoragePolicy,
+            setupManagedBySuperAdmin,
+          ],
         );
 
         const membership = await client.query<{ role: string }>(
           `INSERT INTO leadgrid_project_members
-             (organization_id, project_id, user_id, role, invited_by)
-           VALUES ($1::uuid, $2, $3, $4, NULL)
+             (organization_id, project_id, user_id, role, invited_by,
+              is_prototype_tester, storage_policy)
+           VALUES ($1::uuid, $2, $3, $4, NULL, $5, $6)
            ON CONFLICT (organization_id, project_id, user_id) DO UPDATE
              SET role = CASE
                WHEN leadgrid_project_members.role = 'owner' THEN 'owner'
                ELSE EXCLUDED.role
-             END
+             END,
+                 is_prototype_tester = CASE
+                   WHEN $7 THEN EXCLUDED.is_prototype_tester
+                   ELSE leadgrid_project_members.is_prototype_tester
+                 END,
+                 storage_policy = CASE
+                   WHEN $7 THEN EXCLUDED.storage_policy
+                   ELSE leadgrid_project_members.storage_policy
+                 END
            RETURNING role`,
-          [inv.organization_id, inv.project_id, session.userId, inv.role],
+          [
+            inv.organization_id,
+            inv.project_id,
+            session.userId,
+            inv.role,
+            invitationIsPrototypeTester,
+            invitationStoragePolicy,
+            setupManagedBySuperAdmin,
+          ],
         );
         if (inv.sales_team_id && inv.sales_team_role === "leader") {
           await client.query(
@@ -788,6 +990,9 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
           organizationRole,
           salesTeamId: inv.sales_team_id,
           salesTeamRole: inv.sales_team_role,
+          isPrototypeTester: invitationIsPrototypeTester,
+          storagePolicy: invitationStoragePolicy,
+          setupManagedBySuperAdmin,
         });
       } catch (err) {
         if (client) await client.query("ROLLBACK").catch(() => undefined);
