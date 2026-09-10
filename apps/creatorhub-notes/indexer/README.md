@@ -26,6 +26,26 @@ tokenforbruk til stderr. Blir kjøringen avbrutt, kjør den samme kommandoen på
 nytt: pakkene som allerede er committet står, og bare de gjenstående filene
 embeddes. Senere kjøringer leser kun filer der git-blob-hashen har endret seg.
 
+## Uten Voyage: nøkkelordsøk
+
+Notater trenger ikke semantisk søk — noen dusin notater er lite nok til at
+enkelt nøkkelordsøk finner det du lette etter. Denne stien krever ingen
+`VOYAGE_API_KEY` og gjør ingen nettverkskall:
+
+    cargo run --release -- index --no-embed /sti/til/notater
+    cargo run --release -- search --text "søknad skatt"
+
+`--no-embed` skriver `chunks` og `path_state` som vanlig, men lar
+`chunk_vec` stå tom. Fulltekstindeksen (SQLite FTS5, `chunk_fts`) fylles
+automatisk av triggere på `chunks` — den koster ingen ekstra avhengighet,
+FTS5 er allerede kompilert inn i den bundlede SQLite-en. `search --text`
+rangerer med FTS5s `bm25()`.
+
+Når Voyage er tilgjengelig igjen, kjør vanlig `index` (uten `--no-embed`) på
+det samme repoet: kjøringen finner biter som allerede har tekst men mangler
+vektor, og embedder dem der de står — ingen migrering, ingen ny database, og
+teksten blir ikke re-indeksert. De samme radene får bare vektorer i tillegg.
+
 ## Norsk Ordbank
 
 Brukes fra og med språkfasen, lastes allerede nå. Last ned Bokmål-utgaven fra
