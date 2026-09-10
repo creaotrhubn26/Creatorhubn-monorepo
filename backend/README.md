@@ -136,6 +136,17 @@ until a user approves them. Runs use a fenced database queue, single-use
 WebSocket tickets, per-organization monthly capacity, a maximum of five active
 automatic profiles, and schedules no more frequent than once daily.
 
+Person-oriented profiles, such as The Role Room's actor/talent profile, still
+use public BRREG business identities. Approval creates a CRM lead plus a
+`leadgrid_customer_contacts` talent prospect; it never creates or activates a
+The Role Room talent account and never records consent by inference. The
+contact is marked `notice_required` before outreach. If no privacy review has
+resolved it within 90 days, the bounded daily retention job changes the CRM
+lead to `do_not_contact` and the prospect to `expired`. An explicit CRM
+`do_not_contact` change synchronizes to the talent prospect immediately. This
+workflow is a technical safeguard, not a substitute for the customer's legal
+assessment of purpose, notice and lawful basis.
+
 The persisted BRREG `source_cursor_map` resumes at an exact raw-row offset
 for each query fingerprint, so local caps and mid-page filtering do not discard
 the remaining rows while the upstream ordering is stable. BRREG offset pages
@@ -185,7 +196,9 @@ key in the iOS app or configure it as a browser-referrer key.
 Apply `0522_leadgrid_discovery_profile_targeting.sql` before enabling the
 adapter. Apply `0556_leadgrid_discovery_place_confirmation_retention.sql`
 before deploying the retention-aware backend so cleanup is index-backed across
-both consumed and unconsumed attestations.
+both consumed and unconsumed attestations. Apply
+`0566_leadgrid_discovery_profile_templates_and_talent_privacy.sql` before
+deploying Role Room template reconciliation or person-oriented profiles.
 
 ### Leadgrid Discovery campaign runs
 

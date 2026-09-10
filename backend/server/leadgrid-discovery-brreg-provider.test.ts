@@ -34,7 +34,7 @@ function brregUnit(
 ) {
   return {
     organisasjonsnummer: organizationNumber,
-    navn: `Firma ${organizationNumber}`,
+    navn: `Klinikk Acme Firma ${organizationNumber}`,
     organisasjonsform: { kode: "AS", beskrivelse: "Aksjeselskap" },
     forretningsadresse: {
       adresse: ["Testgata 1"],
@@ -439,6 +439,93 @@ describe("Discovery BRREG provider", () => {
     ).toBe(false);
   });
 
+  it("supports an explicit Norway-wide search without adding a fake city filter", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        _embedded: {
+          enheter: [
+            brregUnit("999999997", {
+              navn: "CAMPING SØRLANDET SA",
+              naeringskode1: {
+                kode: "55.300",
+                beskrivelse: "Drift av campingplasser",
+              },
+            }),
+            brregUnit("999999996", {
+              navn: "COMMUNITY BROADCASTING NORWAY AS",
+              naeringskode1: {
+                kode: "60.200",
+                beskrivelse: "Fjernsynskringkasting",
+              },
+            }),
+            brregUnit("999999998", {
+              navn: "ARKIVET CASTING AS",
+              naeringskode1: {
+                kode: "59.110",
+                beskrivelse: "Produksjon av film, video og fjernsynsprogrammer",
+              },
+            }),
+          ],
+        },
+        page: { totalPages: 1 },
+      }),
+    );
+    const provider = createDiscoveryRegistryProvider({
+      fetchImpl: fetchImpl as typeof fetch,
+      maxAttempts: 1,
+    });
+
+    const result = await provider.search({
+      query: "casting",
+      queryMode: "organization_name",
+      countryCode: "NO",
+      maxResults: 20,
+    });
+
+    expect(result.resolution).toBe("organization_name");
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]?.name).toBe("ARKIVET CASTING AS");
+    expect(result.companyFilteredResults).toBe(2);
+    const brregUrl = new URL(String(fetchImpl.mock.calls[0][0]));
+    expect(brregUrl.searchParams.get("navn")).toBe("casting");
+    expect(brregUrl.searchParams.has("forretningsadresse.poststed")).toBe(false);
+    expect(brregUrl.searchParams.has("kommunenummer")).toBe(false);
+  });
+
+  it("does not reinterpret casting as the general recruitment industry", async () => {
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      if (url.hostname === "data.ssb.no") {
+        return jsonResponse({
+          _embedded: {
+            codes: [
+              {
+                code: "78.100",
+                level: 5,
+                name: "Rekruttering og formidling av arbeidskraft",
+              },
+              {
+                code: "59.110",
+                level: 5,
+                name: "Produksjon av film, video og fjernsynsprogrammer",
+              },
+            ],
+          },
+        });
+      }
+      throw new Error(`BRREG must not be called: ${url}`);
+    });
+    const provider = createDiscoveryRegistryProvider({
+      fetchImpl: fetchImpl as typeof fetch,
+      maxAttempts: 1,
+    });
+
+    await expect(
+      provider.search({ query: "castingbyrå", countryCode: "NO" }),
+    ).rejects.toMatchObject({ code: "classification_resolution_failed" });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it("uses explicit municipalities as an exact OR filter and forwards official company filters", async () => {
     const fetchImpl = vi.fn(async (input: string | URL | Request) => {
       const url = new URL(String(input));
@@ -658,6 +745,63 @@ describe("Discovery BRREG provider", () => {
       status: "unknown",
       score: null,
       reason: "not_selected_for_assessment",
+    });
+  });
+
+  it("qualifies candidates from bounded visible website text and ignores script content", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        _embedded: {
+          enheter: [
+            brregUnit("999999960", {
+              navn: "Oslo Filmskole AS",
+              hjemmeside: "https://role-room-qualification.example",
+            }),
+          ],
+        },
+        page: { totalPages: 1 },
+      }),
+    );
+    const websiteFetch = vi.fn(
+      async (
+        rawUrl: string,
+        _init?: RequestInit,
+        _maxRedirects?: number,
+        beforeRequest?: (url: string, hop: number) => void | Promise<void>,
+      ) => {
+        await beforeRequest?.(rawUrl, 0);
+        return {
+          response: new Response(
+            '<html><head><title>Filmskolen</title></head><body><script>"casting"</script><main>Praktisk film og medieproduksjon for studenter. Vi samarbeider med contractors.</main></body></html>',
+            { status: 200, headers: { "Content-Type": "text/html" } },
+          ),
+          finalUrl: rawUrl,
+          redirectCount: 0,
+          requestCount: 1,
+        };
+      },
+    );
+    const provider = createDiscoveryRegistryProvider({
+      fetchImpl: fetchImpl as typeof fetch,
+      websiteFetch,
+      maxAttempts: 1,
+    });
+
+    const result = await provider.search({
+      query: "filmskole",
+      queryMode: "organization_name",
+      countryCode: "NO",
+      qualificationTerms: ["film", "medieproduksjon", "casting", "actor"],
+      websiteAssessmentLimit: 1,
+    });
+
+    expect(websiteFetch).toHaveBeenCalledOnce();
+    expect(result.candidates[0].websiteQuality).toMatchObject({
+      status: "assessed",
+      qualification: {
+        requestedTerms: ["film", "medieproduksjon", "casting", "actor"],
+        matchedTerms: ["film", "medieproduksjon"],
+      },
     });
   });
 

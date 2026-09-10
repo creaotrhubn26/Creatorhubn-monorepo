@@ -10,6 +10,10 @@ import type {
   ProjectTemplate,
   ProjectTemplateIndex,
   Registry,
+  ResolveMcpSkillDefinition,
+  ResolveMcpIntelligence,
+  ResolveMcpStatus,
+  ResolveMcpWorkflowPlan,
   RunSummary,
   ScriptEvent,
   WorkflowMap,
@@ -47,6 +51,55 @@ export async function listLookPacks(): Promise<LookPackIndex> {
 
 export async function runHealthCheck(): Promise<RunSummary> {
   return invoke<RunSummary>("run_health_check");
+}
+
+export async function getResolveMcpStatus(): Promise<ResolveMcpStatus> {
+  return invoke<ResolveMcpStatus>("get_resolve_mcp_status");
+}
+
+export async function listResolveMcpSkills(): Promise<ResolveMcpSkillDefinition[]> {
+  return invoke<ResolveMcpSkillDefinition[]>("list_resolve_mcp_skills");
+}
+
+export async function runResolveMcpSkill(skillId: string): Promise<RunSummary> {
+  return invoke<RunSummary>("run_resolve_mcp_skill", { skillId });
+}
+
+export async function runResolveMcpProjectDoctor(): Promise<RunSummary> {
+  return invoke<RunSummary>("run_resolve_mcp_project_doctor");
+}
+
+export async function getResolveMcpIntelligence(): Promise<ResolveMcpIntelligence> {
+  return invoke<ResolveMcpIntelligence>("get_resolve_mcp_intelligence");
+}
+
+export async function createResolveMcpPlan(
+  skillId: string,
+  input: Record<string, unknown> = {},
+): Promise<ResolveMcpWorkflowPlan> {
+  return invoke<ResolveMcpWorkflowPlan>("create_resolve_mcp_plan", { skillId, input });
+}
+
+export async function applyResolveMcpPlan(
+  planId: string,
+  confirmationToken: string,
+): Promise<ResolveMcpWorkflowPlan> {
+  return invoke<ResolveMcpWorkflowPlan>("apply_resolve_mcp_plan", { planId, confirmationToken });
+}
+
+export async function rollbackResolveMcpPlan(
+  planId: string,
+  confirmationToken: string,
+): Promise<ResolveMcpWorkflowPlan> {
+  return invoke<ResolveMcpWorkflowPlan>("rollback_resolve_mcp_plan", { planId, confirmationToken });
+}
+
+export async function getResolveMcpPlan(planId: string): Promise<ResolveMcpWorkflowPlan> {
+  return invoke<ResolveMcpWorkflowPlan>("get_resolve_mcp_plan", { planId });
+}
+
+export async function getLatestResolveMcpPlan(): Promise<ResolveMcpWorkflowPlan | null> {
+  return invoke<ResolveMcpWorkflowPlan | null>("get_latest_resolve_mcp_plan");
 }
 
 // ── Fase 4: Playwright-opptak (kjør generert .mjs lokalt + ta opp video) ──
@@ -180,6 +233,11 @@ export async function demoWriteText(path: string, contents: string): Promise<str
 /** Skriv binærfil (f.eks. PNG) fra base64/dataURL til en sti. Returnerer stien. */
 export async function demoWriteBinary(path: string, base64Data: string): Promise<string> {
   return invoke<string>("demo_write_binary", { path, base64Data });
+}
+
+/** Les en lokal bildefil via native kode som en canvas-sikker data-URL. */
+export async function readImageB64(path: string): Promise<string> {
+  return invoke<string>("read_image_b64", { path });
 }
 
 /** Åpne manus-HTML i et print-vindu (→ «Lagre som PDF»). */

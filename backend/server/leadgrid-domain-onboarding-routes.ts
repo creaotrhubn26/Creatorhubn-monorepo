@@ -13,6 +13,7 @@ import {
   normalizeProjectOnboardingWebsite,
   storeProjectOnboardingPreview,
   type ProjectOnboardingAccessSetup,
+  type ProjectOnboardingBrandOverrides,
   type ProjectOnboardingInvitationDispatch,
   type ProjectOnboardingProfilePlan,
   type ProjectOnboardingResult,
@@ -56,6 +57,13 @@ const accessOptionsSchema = z.object({
 
 const editableProfileSchema = z
   .object({
+    template_key: z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9]+(?:[._-][a-z0-9]+)*$/)
+      .max(120)
+      .optional(),
+    template_version: z.number().int().positive().optional(),
     name: z.string().trim().min(1).max(120),
     is_default: z.boolean().default(false),
     status: z.literal("active").default("active"),
@@ -67,6 +75,13 @@ const editableProfileSchema = z
     schedule_timezone: z.string().trim().min(1).max(80).default("Europe/Oslo"),
   })
   .strict();
+
+const brandOverridesSchema = z.object({
+  project_name: z.string().trim().min(1).max(200).optional(),
+  project_description: z.string().trim().max(1_000).optional(),
+  category: z.string().trim().min(1).max(120).optional(),
+  target_audience: z.string().trim().max(1_000).optional(),
+}).strict();
 
 const organizationSelectionSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("current") }).strict(),
@@ -109,6 +124,7 @@ const commitSchema = z
     organization_id: z.string().uuid(),
     preview_id: z.string().uuid(),
     profiles: z.array(editableProfileSchema).min(1).max(10).optional(),
+    brand_overrides: brandOverridesSchema.optional(),
     access_setup: accessSetupSchema.optional(),
   })
   .strict()
@@ -544,11 +560,22 @@ export function registerLeadgridDomainOnboardingRoutes({
           );
           return;
         }
+        if (body.brand_overrides && !scope.isSuperAdmin) {
+          sendError(
+            res,
+            403,
+            "brand_overrides_super_admin_only",
+            "Bare Super Admin kan endre merkegrunnlaget i denne veiviseren.",
+            "brand_overrides",
+          );
+          return;
+        }
         const serviceResult = await commitProjectOnboarding(pool, {
           previewId: body.preview_id,
           organizationId: scope.organizationId,
           userId: scope.userId,
           editedProfiles: body.profiles as ProjectOnboardingProfilePlan[] | undefined,
+          brandOverrides: body.brand_overrides as ProjectOnboardingBrandOverrides | undefined,
           accessSetup: body.access_setup as ProjectOnboardingAccessSetup | undefined,
         });
         const { invitation_dispatches: dispatches, ...result } = serviceResult;

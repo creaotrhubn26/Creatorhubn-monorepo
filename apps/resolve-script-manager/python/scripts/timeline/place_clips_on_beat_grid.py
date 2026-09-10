@@ -30,6 +30,75 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 import bridge
 
 
+APP_DATA_DIR = os.path.expanduser(
+    "~/Library/Application Support/no.creatorhubn.roleroom-post-agent"
+)
+
+
+def _safe_file_component(value: str) -> str:
+    safe = "".join(ch if ch.isalnum() or ch in " _-" else "_" for ch in value).strip()
+    return (safe or "music-video")[:80]
+
+
+def _unique_timeline_name(project, requested: str) -> str:
+    existing = set()
+    try:
+        for index in range(1, int(project.GetTimelineCount() or 0) + 1):
+            timeline = project.GetTimelineByIndex(index)
+            if timeline:
+                existing.add(timeline.GetName() or "")
+    except Exception:  # noqa: BLE001
+        return requested
+    if requested not in existing:
+        return requested
+    suffix = 2
+    while f"{requested} ({suffix})" in existing:
+        suffix += 1
+    return f"{requested} ({suffix})"
+
+
+def _record_build_manifest(
+    operation_id: str,
+    project_id: str,
+    project_name: str,
+    timeline_id: str,
+    timeline_name: str,
+    variant_id: str,
+) -> str | None:
+    if not operation_id or not project_id or not timeline_id:
+        return None
+    import time as _time
+    os.makedirs(APP_DATA_DIR, exist_ok=True)
+    manifest_path = os.path.join(APP_DATA_DIR, "last_music_video_build.json")
+    manifest: dict = {}
+    if os.path.isfile(manifest_path):
+        try:
+            with open(manifest_path) as source:
+                manifest = json.load(source)
+        except (OSError, json.JSONDecodeError):
+            manifest = {}
+    if manifest.get("operationId") != operation_id or manifest.get("projectId") != project_id:
+        manifest = {
+            "schemaVersion": 1,
+            "operationId": operation_id,
+            "projectId": project_id,
+            "projectName": project_name,
+            "createdAt": _time.time(),
+            "timelines": [],
+        }
+    timelines = manifest.setdefault("timelines", [])
+    if not any(entry.get("uniqueId") == timeline_id for entry in timelines):
+        timelines.append({
+            "uniqueId": timeline_id,
+            "name": timeline_name,
+            "variantId": variant_id,
+        })
+    manifest["updatedAt"] = _time.time()
+    with open(manifest_path, "w") as target:
+        json.dump(manifest, target, indent=2)
+    return manifest_path
+
+
 def _seconds_to_frames(seconds: float, fps: float) -> int:
     return int(round(seconds * fps))
 
@@ -136,11 +205,12 @@ def _probe_audio_track_count(video_path: str) -> int:
 
 def _seconds_to_clip_frames(
     media_item,
-    segment_dur_sec: float,
+    source_dur_sec: float,
     fps: float,
     clip_path: str = "",
     energy_demand: float | None = None,
     ffmpeg: str = "",
+    preferred_start_sec: float | None = None,
 ) -> tuple[int, int]:
     """Return (start_frame, end_frame) inside the source clip.
 
@@ -152,9 +222,17 @@ def _seconds_to_clip_frames(
         clip_total = int(media_item.GetClipProperty("Frames") or 0)
     except Exception:  # noqa: BLE001
         clip_total = 0
-    needed = _seconds_to_frames(segment_dur_sec, fps)
+    needed = _seconds_to_frames(source_dur_sec, fps)
     if clip_total > 0 and needed > clip_total:
         return (0, max(0, clip_total - 1))
+
+    if preferred_start_sec is not None:
+        start_f = max(0, _seconds_to_frames(preferred_start_sec, fps))
+        end_f = start_f + max(1, needed) - 1
+        if clip_total > 0 and end_f >= clip_total:
+            end_f = clip_total - 1
+            start_f = max(0, end_f - max(1, needed) + 1)
+        return (start_f, max(start_f, end_f))
 
     if energy_demand is None or not ffmpeg or not clip_path:
         return (0, max(0, needed - 1))
@@ -163,7 +241,7 @@ def _seconds_to_clip_frames(
     if not profile:
         return (0, max(0, needed - 1))
 
-    window_seconds = max(1, int(round(segment_dur_sec)))
+    window_seconds = max(1, int(round(source_dur_sec)))
     best_start_sec = _best_window_for_demand(profile, window_seconds, energy_demand)
     start_f = int(round(best_start_sec * fps))
     end_f = start_f + needed - 1
@@ -211,8 +289,17 @@ def _load_cached_music_path() -> str:
 def run(params: dict[str, Any], dry_run: bool) -> None:
     segments = params.get("segments") or []
     music_path = params.get("musicPath") or params.get("musicFile") or ""
-    timeline_name = params.get("timelineName") or "Beat_Cut_V01"
+    requested_timeline_name = str(params.get("timelineName") or "Beat_Cut_V01").strip()[:100]
+    timeline_name = requested_timeline_name
     target_fps = float(params.get("targetFps") or 25)
+    expected_project_id = str(params.get("projectId") or "").strip()
+    operation_id = str(params.get("operationId") or "").strip()[:120]
+    variant_id = str(params.get("variantId") or "narrative").strip()[:40]
+    enable_transitions = bool(params.get("enableTransitions", True))
+    enable_speed_accents = bool(params.get("enableSpeedAccents", True))
+    music_duration_sec = max(0.0, float(params.get("musicDurationSec") or 0))
+    music_source_start_sec = max(0.0, float(params.get("musicSourceStartSec") or 0))
+    aspect = str(params.get("aspect") or "16:9")
 
     if not segments:
         segments = _load_cached_assignments()
@@ -240,6 +327,17 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             "wouldCreateTimeline": timeline_name,
             "segmentCount": len(segments),
             "musicAttached": bool(music_path),
+            "transitionCount": len([
+                segment for segment in segments
+                if enable_transitions and segment.get("transition") == "cross_dissolve"
+            ]),
+            "speedAccentCount": len([
+                segment for segment in segments
+                if enable_speed_accents and float(segment.get("speedPct") or 100) != 100
+            ]),
+            "aspect": aspect,
+            "musicSourceStartSec": music_source_start_sec,
+            "musicDurationSec": music_duration_sec,
         })
         return
 
@@ -249,6 +347,21 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
 
     media_pool = conn.media_pool
     project = conn.project
+    project_id = ""
+    try:
+        project_id = project.GetUniqueId() or ""
+    except Exception:  # noqa: BLE001
+        pass
+    if expected_project_id and project_id != expected_project_id:
+        bridge.error(
+            f"Aktivt prosjekt har ID '{project_id}', men godkjent plan tilhører "
+            f"'{expected_project_id}'. Ingen timeline ble opprettet."
+        )
+        sys.exit(1)
+
+    timeline_name = _unique_timeline_name(project, requested_timeline_name)
+    if timeline_name != requested_timeline_name:
+        bridge.log(f"Timeline-navnet finnes allerede — bruker '{timeline_name}'")
 
     # Map clipPath → MediaPoolItem (search across all bins recursively)
     clip_paths = {s["clipPath"] for s in segments if s.get("clipPath")}
@@ -287,7 +400,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     missing = [p for p in clip_paths if p not in media_index]
     if missing:
         bridge.log(f"Importing {len(missing)} clips that weren't in Media Pool")
-        new_items = media_pool.ImportMedia(missing) or []
+        new_items = media_pool.ImportMedia([{"FilePath": path} for path in missing]) or []
         for item in new_items:
             try:
                 path = item.GetClipProperty("File Path") or ""
@@ -302,6 +415,19 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         bridge.error(f"CreateEmptyTimeline('{timeline_name}') returned None — name may already exist")
         sys.exit(1)
     project.SetCurrentTimeline(timeline)
+
+    if aspect == "9:16":
+        try:
+            if timeline.SetSettings({
+                "useCustomSettings": "1",
+                "timelineResolutionWidth": "1080",
+                "timelineResolutionHeight": "1920",
+            }):
+                bridge.log("Applied native 1080x1920 settings for social variant")
+            else:
+                bridge.warn("Resolve rejected 9:16 timeline settings; set resolution manually")
+        except Exception as exc:  # noqa: BLE001
+            bridge.warn(f"Could not apply 9:16 timeline settings: {exc}")
 
     # CRITICAL: use the timeline's actual fps for recordFrame math.
     try:
@@ -355,6 +481,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     # Without recordFrame, AppendToTimeline puts clips sequentially, so any
     # rounding error or duration drift means the cuts no longer land on beats.
     append_specs: list[dict] = []
+    placed_segments: list[dict] = []
     skipped = 0
     for i, seg in enumerate(segments):
         bridge.progress(i, len(segments), f"Building segment {i + 1}/{len(segments)}")
@@ -366,12 +493,20 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             continue
         seg_dur = seg.get("durationSec") or 0
         start_sec = seg.get("startSec") or 0
+        speed_pct = max(50.0, min(200.0, float(seg.get("speedPct") or 100)))
+        source_dur = seg_dur * (speed_pct / 100.0) if enable_speed_accents else seg_dur
+        preferred_start = seg.get("sourceStartSec")
+        try:
+            preferred_start = max(0.0, float(preferred_start)) if preferred_start is not None else None
+        except (TypeError, ValueError):
+            preferred_start = None
         energy_demand = seg.get("energyDemand")  # set by assign_clips_to_beats curve
         start_f, end_f = _seconds_to_clip_frames(
-            media_item, seg_dur, target_fps,
+            media_item, source_dur, target_fps,
             clip_path=clip_path,
             energy_demand=energy_demand,
             ffmpeg=_resolve_ffmpeg_path(),
+            preferred_start_sec=preferred_start,
         )
         # Offset by timeline start (Resolve timelines start at SMPTE 01:00:00:00)
         record_frame = timeline_start_frame + int(round(start_sec * target_fps))
@@ -385,6 +520,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             "trackIndex": 1,       # V1 — linked audio auto-flows to A1..A_N
             "recordFrame": record_frame,
         })
+        placed_segments.append(seg)
 
     if not append_specs:
         bridge.error("No clips could be matched to media-pool items.")
@@ -454,6 +590,52 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
 
     bridge.log(f"Placed {placed_count} clips on V1")
 
+    # Resolve 21.1-native treatment. SetSpeed and AddTransition are documented
+    # TimelineItem APIs; each operation is constrained by explicit segment metadata.
+    speed_changes_applied = 0
+    transitions_added = 0
+    treatment_errors: list[str] = []
+    if isinstance(placed_items, list):
+        for index, item in enumerate(placed_items):
+            if index >= len(placed_segments):
+                break
+            segment = placed_segments[index]
+            speed_pct = max(50.0, min(200.0, float(segment.get("speedPct") or 100)))
+            if enable_speed_accents and abs(speed_pct - 100.0) > 0.01:
+                try:
+                    if item.SetSpeed({
+                        "Percentage": speed_pct,
+                        "PitchCorrection": False,
+                        "StretchKeyframesToFit": False,
+                        "RippleTimeline": False,
+                    }):
+                        speed_changes_applied += 1
+                    else:
+                        treatment_errors.append(f"segment {index}: SetSpeed returned false")
+                except Exception as exc:  # noqa: BLE001
+                    treatment_errors.append(f"segment {index}: SetSpeed failed: {exc}")
+            if enable_transitions and index > 0 and segment.get("transition") == "cross_dissolve":
+                try:
+                    duration_frames = max(
+                        2,
+                        min(8, int(round(float(segment.get("durationSec") or 0) * target_fps / 4))),
+                    )
+                    transition = item.AddTransition({
+                        "type": "Cross Dissolve",
+                        "category": "simple",
+                        "position": "start",
+                        "alignment": "center",
+                        "duration": duration_frames,
+                    })
+                    if transition:
+                        transitions_added += 1
+                    else:
+                        treatment_errors.append(f"segment {index}: AddTransition returned None")
+                except Exception as exc:  # noqa: BLE001
+                    treatment_errors.append(f"segment {index}: AddTransition failed: {exc}")
+    if treatment_errors:
+        bridge.warn(f"{len(treatment_errors)} motion treatment(s) could not be applied")
+
     # Music goes on the track AFTER all the linked-audio tracks from video
     # clips. If video has 2 audio streams, linked-audio = A1+A2, music = A3.
     music_track = max_audio_streams + 1
@@ -465,7 +647,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     music_count = 0
     if music_path and os.path.isfile(music_path):
         bridge.log(f"Importing music: {os.path.basename(music_path)}")
-        music_items = media_pool.ImportMedia([music_path]) or []
+        music_items = media_pool.ImportMedia([{"FilePath": music_path}]) or []
         if music_items:
             # Ensure music_track exists
             try:
@@ -488,6 +670,12 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
                 "trackIndex": music_track,
                 "recordFrame": timeline_start_frame,
             }]
+            if music_duration_sec > 0:
+                music_spec[0]["startFrame"] = _seconds_to_frames(music_source_start_sec, target_fps)
+                music_spec[0]["endFrame"] = max(
+                    music_spec[0]["startFrame"],
+                    _seconds_to_frames(music_source_start_sec + music_duration_sec, target_fps) - 1,
+                )
             music_placed = media_pool.AppendToTimeline(music_spec)
             music_count = len(music_placed) if isinstance(music_placed, list) else 0
 
@@ -545,6 +733,12 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         else:
             bridge.warn("SetTrackEnable returned falsy for all linked-audio tracks — mute manually via M button")
 
+    timeline_id = ""
+    try:
+        timeline_id = timeline.GetUniqueId() or ""
+    except Exception:  # noqa: BLE001
+        pass
+
     # Snapshot the auto-placement so 'Learn from my edit' can later diff
     # what the user actually shipped against what we suggested.
     try:
@@ -552,6 +746,10 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         snapshot = {
             "savedAt": _time.time(),
             "timelineName": timeline_name,
+            "timelineUniqueId": timeline_id or None,
+            "projectUniqueId": project_id,
+            "operationId": operation_id or None,
+            "variantId": variant_id,
             "projectName": project.GetName(),
             "musicPath": music_path,
             "musicTrack": music_track if music_added else None,
@@ -566,6 +764,10 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
                     "durationSec": seg.get("durationSec"),
                     "clipPath": seg.get("clipPath"),
                     "clipName": seg.get("clipName"),
+                    "sourceStartSec": seg.get("sourceStartSec"),
+                    "matchConfidence": seg.get("matchConfidence"),
+                    "transition": seg.get("transition"),
+                    "speedPct": seg.get("speedPct"),
                     "energyDemand": seg.get("energyDemand"),
                     "motionScore": seg.get("motionScore"),
                     "highlightScore": seg.get("highlightScore"),
@@ -574,9 +776,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
                 for i, seg in enumerate(segments)
             ],
         }
-        cache_dir = os.path.expanduser(
-            "~/Library/Application Support/no.creatorhubn.roleroom-post-agent"
-        )
+        cache_dir = APP_DATA_DIR
         os.makedirs(cache_dir, exist_ok=True)
         with open(os.path.join(cache_dir, "last_auto_placement.json"), "w") as f:
             json.dump(snapshot, f, indent=2)
@@ -585,7 +785,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         os.makedirs(history_dir, exist_ok=True)
         history_path = os.path.join(
             history_dir,
-            f"{timeline_name}_{int(_time.time())}.json",
+            f"{_safe_file_component(timeline_name)}_{int(_time.time())}.json",
         )
         with open(history_path, "w") as f:
             json.dump(snapshot, f, indent=2)
@@ -593,17 +793,39 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     except OSError as exc:
         bridge.warn(f"Could not write auto-placement snapshot: {exc}")
 
+    manifest_path = None
+    try:
+        manifest_path = _record_build_manifest(
+            operation_id,
+            project_id,
+            project.GetName() or "",
+            timeline_id,
+            timeline_name,
+            variant_id,
+        )
+    except OSError as exc:
+        bridge.warn(f"Could not write rollback manifest: {exc}")
+
     bridge.result({
         "timelineCreated": True,
         "timelineName": timeline_name,
+        "timelineUniqueId": timeline_id or None,
+        "projectUniqueId": project_id or None,
+        "operationId": operation_id or None,
+        "variantId": variant_id,
+        "aspect": aspect,
         "segmentsAttempted": len(append_specs),
         "segmentsPlaced": placed_count,
         "segmentsSkipped": skipped,
+        "transitionsAdded": transitions_added,
+        "speedChangesApplied": speed_changes_applied,
+        "treatmentErrors": treatment_errors[:10],
         "sourceAudioStreams": max_audio_streams,
         "musicAdded": music_added,
         "musicItemCount": music_count,
         "musicTrack": f"A{music_track}",
         "mutedTracks": [f"A{t}" for t in muted_tracks],
+        "rollbackManifest": manifest_path,
     })
 
 

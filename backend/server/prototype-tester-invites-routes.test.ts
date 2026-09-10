@@ -80,6 +80,273 @@ describe("prototype tester invitation delivery", () => {
     expect(sendInviteEmail).not.toHaveBeenCalled();
   });
 
+  it("exposes an admin-protected BRREG company search without forwarding session data", async () => {
+    const searchBrregCompanies = vi.fn().mockResolvedValue([
+      {
+        organizationNumber: "937518684",
+        name: "CREATORHUB AS",
+        organizationForm: "Aksjeselskap",
+        primaryIndustryCode: "62.100",
+        primaryIndustryDescription: "Programmeringstjenester",
+        businessAddress: {
+          adresse: "Søsterveien 11",
+          postnummer: "1474",
+          poststed: "LØRENSKOG",
+        },
+        operationalStatus: "active",
+      },
+    ]);
+    const app = express();
+    setupPrototypeTesterInvitesRoutes({
+      app,
+      pool: { query: vi.fn() },
+      getPricingUserId: () => "",
+      requireUserSession: () => true,
+      requireAdminSession: async () => ({ userId: "verified-admin-id" }),
+      searchBrregCompanies,
+    });
+
+    const response = await request(app)
+      .get("/api/prototype-tester-invites/brreg/search")
+      .query({ q: "Creatorhub" })
+      .set("Cookie", "session=must-not-be-forwarded");
+
+    expect(response.status).toBe(200);
+    expect(searchBrregCompanies).toHaveBeenCalledWith("Creatorhub");
+    expect(response.body).toEqual({
+      companies: [
+        {
+          organizationNumber: "937518684",
+          name: "CREATORHUB AS",
+          organizationForm: "Aksjeselskap",
+          primaryIndustryCode: "62.100",
+          primaryIndustryDescription: "Programmeringstjenester",
+          recommendedProfession: null,
+          businessAddress: "Søsterveien 11, 1474 LØRENSKOG",
+          operationalStatus: "active",
+        },
+      ],
+    });
+  });
+
+  it("recommends music producer from Estremo's BRREG industry code", async () => {
+    const app = express();
+    setupPrototypeTesterInvitesRoutes({
+      app,
+      pool: { query: vi.fn() },
+      getPricingUserId: () => "",
+      requireUserSession: () => true,
+      requireAdminSession: async () => ({ userId: "verified-admin-id" }),
+      searchBrregCompanies: vi.fn().mockResolvedValue([
+        {
+          organizationNumber: "998989159",
+          name: "ESTREMO RECORDING STUDIOS JENS MICHAEL PETERS NIELSEN",
+          organizationForm: "Enkeltpersonforetak",
+          primaryIndustryCode: "59.200",
+          primaryIndustryDescription:
+            "Produksjon og utgivelse av musikk- og lydopptak",
+          businessAddress: "Styrilia 16, 2080 EIDSVOLL",
+          operationalStatus: "active",
+        },
+      ]),
+    });
+
+    const response = await request(app)
+      .get("/api/prototype-tester-invites/brreg/search")
+      .query({ q: "Estremo Records" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.companies[0]).toMatchObject({
+      organizationNumber: "998989159",
+      primaryIndustryCode: "59.200",
+      recommendedProfession: "music_producer",
+    });
+  });
+
+  it("omits non-active companies from BRREG search results", async () => {
+    const app = express();
+    setupPrototypeTesterInvitesRoutes({
+      app,
+      pool: { query: vi.fn() },
+      getPricingUserId: () => "",
+      requireUserSession: () => true,
+      requireAdminSession: async () => ({ userId: "verified-admin-id" }),
+      searchBrregCompanies: vi.fn().mockResolvedValue([
+        {
+          organizationNumber: "937518684",
+          name: "ACTIVE AS",
+          organizationForm: "Aksjeselskap",
+          businessAddress: null,
+          operationalStatus: "active",
+        },
+        {
+          organizationNumber: "937518684",
+          name: "UNDER AVVIKLING AS",
+          organizationForm: "Aksjeselskap",
+          businessAddress: null,
+          operationalStatus: "liquidation",
+        },
+      ]),
+    });
+
+    const response = await request(app)
+      .get("/api/prototype-tester-invites/brreg/search")
+      .query({ q: "active" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.companies).toHaveLength(1);
+    expect(response.body.companies[0].name).toBe("ACTIVE AS");
+  });
+
+  it("persists only the BRREG-verified legal identity for a direct invite", async () => {
+    const query = vi.fn().mockImplementation(async (statement: unknown) => {
+      if (String(statement).includes("INSERT INTO prototype_tester_invites")) {
+        return {
+          rows: [{
+            id: "verified-invite-id",
+            token: "verified-token",
+            expires_at: new Date("2027-02-14T12:00:00.000Z"),
+            created_at: new Date("2027-01-31T12:00:00.000Z"),
+          }],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    const lookupBrregCompany = vi.fn().mockResolvedValue({
+      lookupStatus: "verified",
+      company: {
+        organizationNumber: "937518684",
+        name: "CREATORHUB AS",
+        organizationForm: "Aksjeselskap",
+        businessAddress: {
+          adresse: "Søsterveien 11",
+          postnummer: "1474",
+          poststed: "LØRENSKOG",
+        },
+        operationalStatus: "active",
+      },
+    });
+    const sendInviteEmail = vi.fn().mockResolvedValue({
+      sent: true,
+      provider: "resend",
+      reason: null,
+      messageId: "verified-email-id",
+    });
+    const app = express();
+    app.use(express.json());
+    setupPrototypeTesterInvitesRoutes({
+      app,
+      pool: { query },
+      getPricingUserId: () => "",
+      requireUserSession: () => true,
+      requireAdminSession: async () => ({ userId: "verified-admin-id" }),
+      lookupBrregCompany,
+      sendInviteEmail,
+    });
+
+    const response = await request(app)
+      .post("/api/prototype-tester-invites")
+      .send({
+        email: "tester@example.com",
+        name: "Test Tester",
+        company: "Forfalsket navn AS",
+        organizationNumber: "937 518 684",
+        businessAddress: "Forfalsket adresse 1",
+        testingAreas: ["CreatorHub-dashboard"],
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.verifiedCompany).toEqual({
+      name: "CREATORHUB AS",
+      organizationNumber: "937518684",
+      businessAddress: "Søsterveien 11, 1474 LØRENSKOG",
+    });
+    expect(lookupBrregCompany).toHaveBeenCalledWith("937518684");
+    const insertCall = query.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO prototype_tester_invites"),
+    );
+    expect(insertCall?.[1]).toEqual(expect.arrayContaining([
+      "CREATORHUB AS",
+      "937518684",
+      "Søsterveien 11, 1474 LØRENSKOG",
+    ]));
+    expect(sendInviteEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ company: "CREATORHUB AS" }),
+    );
+  });
+
+  it("fails closed before persistence when BRREG cannot verify the company", async () => {
+    const query = vi.fn();
+    const sendInviteEmail = vi.fn();
+    const app = express();
+    app.use(express.json());
+    setupPrototypeTesterInvitesRoutes({
+      app,
+      pool: { query },
+      getPricingUserId: () => "",
+      requireUserSession: () => true,
+      requireAdminSession: async () => ({ userId: "verified-admin-id" }),
+      lookupBrregCompany: vi.fn().mockResolvedValue({
+        lookupStatus: "fallback",
+        company: null,
+      }),
+      sendInviteEmail,
+    });
+
+    const response = await request(app)
+      .post("/api/prototype-tester-invites")
+      .send({
+        email: "tester@example.com",
+        name: "Test Tester",
+        organizationNumber: "937518684",
+        testingAreas: ["CreatorHub-dashboard"],
+      });
+
+    expect(response.status).toBe(503);
+    expect(query).not.toHaveBeenCalled();
+    expect(sendInviteEmail).not.toHaveBeenCalled();
+  });
+
+  it("rejects a verified company that is not operationally active", async () => {
+    const query = vi.fn();
+    const sendInviteEmail = vi.fn();
+    const app = express();
+    app.use(express.json());
+    setupPrototypeTesterInvitesRoutes({
+      app,
+      pool: { query },
+      getPricingUserId: () => "",
+      requireUserSession: () => true,
+      requireAdminSession: async () => ({ userId: "verified-admin-id" }),
+      lookupBrregCompany: vi.fn().mockResolvedValue({
+        lookupStatus: "verified",
+        company: {
+          organizationNumber: "937518684",
+          name: "UNDER AVVIKLING AS",
+          organizationForm: "Aksjeselskap",
+          businessAddress: null,
+          operationalStatus: "liquidation",
+        },
+      }),
+      sendInviteEmail,
+    });
+
+    const response = await request(app)
+      .post("/api/prototype-tester-invites")
+      .send({
+        email: "tester@example.com",
+        name: "Test Tester",
+        organizationNumber: "937518684",
+        testingAreas: ["CreatorHub-dashboard"],
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("ikke aktiv");
+    expect(query).not.toHaveBeenCalled();
+    expect(sendInviteEmail).not.toHaveBeenCalled();
+  });
+
   it("sends a manual admin invite through the CreatorHub Email Designer sender", async () => {
     const query = vi.fn().mockImplementation(async (statement: unknown) => {
       if (String(statement).includes("INSERT INTO prototype_tester_invites")) {
@@ -190,6 +457,11 @@ describe("prototype tester invitation delivery", () => {
               email_sent_at: new Date("2027-01-31T12:00:00.000Z"),
               email_opened_at: new Date("2027-01-31T12:10:00.000Z"),
               invite_link_clicked_at: new Date("2027-01-31T12:20:00.000Z"),
+              signature_method: "email_otp_typed_name",
+              email_verified_at: new Date("2027-01-31T12:29:00.000Z"),
+              signing_receipt_id: "88888888-8888-4888-8888-888888888888",
+              receipt_email_sent_at: new Date("2027-01-31T12:31:00.000Z"),
+              receipt_email_provider: "resend",
               solo_pro_active: true,
               created_at: new Date("2027-01-31T11:59:00.000Z"),
             },
@@ -219,6 +491,10 @@ describe("prototype tester invitation delivery", () => {
       emailDelivery: { sent: true },
       emailOpenedAt: "2027-01-31T12:10:00.000Z",
       inviteLinkClickedAt: "2027-01-31T12:20:00.000Z",
+      signatureMethod: "email_otp_typed_name",
+      emailVerifiedAt: "2027-01-31T12:29:00.000Z",
+      signingReceiptId: "88888888-8888-4888-8888-888888888888",
+      receiptEmailDelivery: { sent: true, provider: "resend" },
       inviteUrl: expect.stringContaining("/prototype-tester/accept-invite?token="),
     });
     expect(
@@ -352,6 +628,8 @@ describe("prototype tester invitation delivery", () => {
       1,
       "photographer",
       "Template AS",
+      null,
+      null,
       sendApprovalEmail,
     );
 
@@ -390,6 +668,8 @@ describe("prototype tester invitation delivery", () => {
       program_ends_at: programEndsAt,
       member_profession: "videographer",
       member_company: "Activated AS",
+      signing_receipt_id: "66666666-6666-4666-8666-666666666666",
+      agreement_digest: "a".repeat(64),
       testing_areas: [],
       granted_features: [],
     };
@@ -421,6 +701,12 @@ describe("prototype tester invitation delivery", () => {
       reason: null,
       messageId: "activated-email-id",
     });
+    const sendReceiptEmail = vi.fn().mockResolvedValue({
+      sent: true,
+      provider: "resend",
+      reason: null,
+      messageId: "receipt-email-id",
+    });
     const app = express();
     app.use(express.json());
     setupPrototypeTesterInvitesRoutes({
@@ -431,6 +717,11 @@ describe("prototype tester invitation delivery", () => {
       requireAdminSession: () => true,
       provisionTesterAccount: vi.fn().mockResolvedValue({ id: "tester-user-id" }),
       sendAccessActivatedEmail,
+      sendReceiptEmail,
+      verifySigningCode: vi.fn().mockResolvedValue({
+        ok: true,
+        verifiedAt: "2026-09-09T12:00:00.000Z",
+      }),
     });
 
     const response = await request(app)
@@ -452,6 +743,7 @@ describe("prototype tester invitation delivery", () => {
           letter_of_intent: "1.0",
         },
         confirmedSigningAuthority: true,
+        verificationCode: "123456",
       });
 
     expect(response.status).toBe(200);
@@ -462,6 +754,11 @@ describe("prototype tester invitation delivery", () => {
         sent: true,
         provider: "resend",
         messageId: "activated-email-id",
+      },
+      receiptEmailDelivery: {
+        sent: true,
+        provider: "resend",
+        messageId: "receipt-email-id",
       },
     });
     expect(sendAccessActivatedEmail).toHaveBeenCalledWith({
@@ -474,5 +771,12 @@ describe("prototype tester invitation delivery", () => {
       company: acceptedRow.member_company,
       programEndsAt,
     });
+    expect(sendReceiptEmail).toHaveBeenCalledWith(expect.objectContaining({
+      recipientEmail: acceptedRow.email,
+      recipientName: "Activated Tester",
+      receiptId: acceptedRow.signing_receipt_id,
+      agreementsUrl: "https://creatorhubn.com/login?redirect=%2Fmine-avtaler",
+      inviteId: acceptedRow.id,
+    }));
   });
 });

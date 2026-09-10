@@ -109,6 +109,7 @@ export default function LeadgridPersonvern() {
               innloggingen.
             </>,
             <><strong>Lead-data:</strong> bedriftsnavn, organisasjonsnummer, adresse, kontaktperson, telefon, e-post, bransje og annen bedriftsinformasjon fra brukeren eller offentlige kilder som Brønnøysundregistrene. Google Places-resultater vises som et midlertidig detaljoppslag; bare en Place ID som brukeren uttrykkelig bekrefter kan knyttes til leadet.</>,
+            <><strong>Personprospekter:</strong> Når en kunde bruker en personrettet Discovery-profil, kan offentlig registrert næringsinformasjon om for eksempel en selvstendig skuespiller behandles som et manuelt godkjent CRM-prospekt. Godkjenningen oppretter ikke en talentkonto i The Role Room og regnes ikke som samtykke. Prospektet merkes for personverninformasjon før kontakt og får en tidsbegrenset vurderingsfrist.</>,
             <><strong>Posisjonsdata (GPS):</strong> selgerens nåværende posisjon når app-en er aktiv (for «leads i nærheten»), og automatisk koordinat-fanging ved logging av fysiske besøk. Background-sporing skjer kun for «nær-lead»-varsling og krever eksplisitt samtykke.</>,
             <><strong>Visit-logg:</strong> tidsstempel, kontaktperson, samtale-sammendrag, neste handling, oppfølgings­dato. Stemme-dikterte notater behandles på enheten av Apple Speech og lagres som transkribert tekst på vår server.</>,
             <><strong>Visittkort-skanning:</strong> kameraet brukes lokalt på enheten via Apple VisionKit. Bildet sendes ikke til oss; kun ekstrahert tekst lagres.</>,
@@ -177,6 +178,7 @@ export default function LeadgridPersonvern() {
           <Bullets items={[
             'Brukerkonti: så lenge du har et aktivt abonnement, deretter inaktiveres innen 90 dager.',
             'Lead-data: så lenge organisasjonen din opprettholder abonnementet. Du kan slette enkelt-leads umiddelbart. En uttrykkelig bekreftet Google Place ID følger leadets levetid. Midlertidige attesteringer av returnerte Place ID-er er ugyldige etter 15 minutter og slettes i avgrensede puljer av den daglige oppryddingen. Ved kø eller driftsavbrudd kan fysisk sletting skje i en senere vellykket kjøring; øvrige Place-detaljer lagres ikke av Leadgrid.',
+            'Personprospekter fra offentlig næringsdata: dersom nødvendig personverninformasjon og vurdering ikke er håndtert innen 90 dager, settes leadet automatisk til «ikke kontakt» og prospektet utløper i avgrensede puljer i den daglige oppryddingen. En tidligere innsigelse eller «ikke kontakt»-status bevares.',
             'GPS-posisjon: brukeren sin nåværende posisjon overskrives kontinuerlig; visit-koordinat lagres som del av besøks-loggen.',
             'Voice-notater: transkribert tekst lagres så lenge visit-loggen eksisterer; lyd-data lagres aldri på server.',
             'Pitch-deck-eksporter (PDF): 30 dager, deretter slettes B2-objektet automatisk.',

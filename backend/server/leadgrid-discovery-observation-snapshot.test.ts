@@ -98,7 +98,8 @@ describe("Discovery run observation snapshot read paths", () => {
     expect(discoveryService).toContain("observation.enrichment_data");
     expect(discoveryService).toContain("AS observation_origin");
     expect(discoveryService).toContain("is_approximate:");
-    expect(discoveryService).toContain("source: \"brreg_open_data\",\n          observation,");
+    expect(discoveryService).toContain("source: \"brreg_open_data\"");
+    expect(discoveryService).toContain("          observation,");
     expect(discoveryService).toContain(
       "MAX(history_rc.created_at) AS last_seen_at",
     );

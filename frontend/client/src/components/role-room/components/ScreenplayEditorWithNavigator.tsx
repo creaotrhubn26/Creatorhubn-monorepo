@@ -224,8 +224,8 @@ export interface ScreenplayEditorWithNavigatorProps {
   locations?: string[];
   roles?: Role[];
   candidates?: Candidate[];
-  onCharacterAdd?: (name: string) => void;
-  onLocationAdd?: (name: string) => void;
+  onCharacterAdd?: (name: string) => void | boolean | Promise<void | boolean>;
+  onLocationAdd?: (name: string) => void | boolean | Promise<void | boolean>;
   onCharacterProfileOpen?: (payload: { characterName: string; role: Role | null; candidate: Candidate | null }) => void;
   showLineNumbers?: boolean;
   editorKey?: string;
@@ -1111,6 +1111,9 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             key={editorKey}
             value={value}
             onChange={handleChange}
+            manuscriptId={manuscriptId}
+            cloudSaveState={headerSummary?.saveState}
+            cloudSaveLabel={headerSummary?.saveLabel}
             characters={characters}
             locations={locations}
             roles={roles}

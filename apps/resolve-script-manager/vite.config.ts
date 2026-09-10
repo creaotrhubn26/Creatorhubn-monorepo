@@ -20,7 +20,7 @@ export default defineConfig(async () => ({
     // 5001 er allowlistet backend-CORS-origin (index.ts KNOWN_ORIGINS). Dev-
     // webview-fetch mot /api/post-agent/pairing/* trenger en allowlistet origin
     // ellers «TypeError: Load failed». (1420 er nå også lagt til backend-lista.)
-    port: 5001,
+    port: Number(process.env.PLAYWRIGHT_PORT || 5001),
     strictPort: true,
     host: host || false,
     hmr: host

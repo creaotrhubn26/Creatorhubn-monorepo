@@ -133,6 +133,149 @@ final class ProjectDomainOnboardingTests: XCTestCase {
         )
     }
 
+    func testRoleRoomPreviewDecodesSixEditableNationalProfiles() throws {
+        let profileNames = [
+            "Film- og TV-produksjon – Norge",
+            "Reklame- og innholdsbyråer – Norge",
+            "Casting- og talentmiljøer – Norge",
+            "Film- og medieutdanning – Norge",
+            "Dansestudioer og danseskoler – Norge",
+            "Skuespillere og talenter – Norge",
+        ]
+        let templateKeys = [
+            "role_room.production",
+            "role_room.agencies",
+            "role_room.casting",
+            "role_room.education",
+            "role_room.dance",
+            "role_room.talents",
+        ]
+        let qualificationTerms = [
+            ["filmproduksjon", "tv-produksjon", "postproduksjon", "produksjonsselskap"],
+            ["reklame", "innholdsproduksjon", "film", "casting"],
+            ["casting", "skuespiller", "talent", "self-tape", "film", "tv"],
+            ["film", "medieproduksjon", "scenekunst", "skuespill", "tv-produksjon", "audiovisuell"],
+            ["dans", "dance", "ballett", "koreografi"],
+            ["skuespiller", "actor", "talent", "film", "scene"],
+        ]
+        let profilePayloads: [[String: Any]] = profileNames.enumerated().map { index, name in
+            let castingProfile = index == 2
+            let educationProfile = index == 3
+            let danceProfile = index == 4
+            let talentProfile = index == 5
+            return [
+                "name": name,
+                "is_default": index == 0,
+                "status": "active",
+                "template_key": templateKeys[index],
+                "template_version": 1,
+                "brief": [
+                    "industry_queries": castingProfile || educationProfile || danceProfile || talentProfile
+                        ? []
+                        : ["59.110"],
+                    "organization_name_queries": castingProfile
+                        ? ["casting"]
+                        : educationProfile
+                            ? ["filmskule", "universitet", "høgskole", "høyskole", "fagskole"]
+                            : danceProfile
+                                ? ["dansestudio", "danseskole", "ballettskole", "dance studio"]
+                                : talentProfile ? ["skuespiller", "actor"] : [],
+                    "exclusion_terms": castingProfile ? ["støperi"] : [],
+                    "country_code": "NO",
+                    "city": NSNull(),
+                    "geo": NSNull(),
+                    "target_count": castingProfile ? 40 : educationProfile ? 50 : 60,
+                    "enrichment_count": 30,
+                    "minimum_fit_score": castingProfile ? 70 : 65,
+                    "subject_kind": talentProfile ? "person" : "organization",
+                    "qualification_terms": qualificationTerms[index],
+                    "qualification_requirement": index == 0 ? "preferred" : "required",
+                ],
+                "approval_mode": "manual",
+                "places_details_enabled": false,
+                "auto_discover_enabled": false,
+                "schedule_cron": "0 6 * * *",
+                "schedule_timezone": "Europe/Oslo",
+            ]
+        }
+        let payload: [String: Any] = [
+            "id": "22222222-2222-4222-8222-222222222222",
+            "website_url": "https://theroleroom.com",
+            "website_domain": "theroleroom.com",
+            "project_name": "The Role Room",
+            "project_description": "Produksjonsflate for film, TV og innholdsproduksjon.",
+            "category": "Film, TV, casting og talent",
+            "category_confidence": "high",
+            "classification_reasons": ["Domenet er verifisert som The Role Room."],
+            "recommended_profiles": profilePayloads,
+            "skills": [],
+            "expires_at": "2026-09-09T12:00:00.000Z",
+            "can_manage_multiple_profiles": true,
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload)
+
+        let preview = try JSONDecoder().decode(
+            LeadgridProjectOnboardingPreview.self,
+            from: data
+        )
+
+        XCTAssertEqual(preview.projectName, "The Role Room")
+        XCTAssertEqual(preview.recommendedProfiles.map(\.name), profileNames)
+        XCTAssertEqual(preview.recommendedProfiles.compactMap(\.templateKey), templateKeys)
+        XCTAssertTrue(preview.recommendedProfiles.allSatisfy { $0.templateVersion == 1 })
+        XCTAssertTrue(preview.recommendedProfiles.allSatisfy {
+            $0.brief.countryCode == "NO"
+                && $0.brief.areaSummary == "Hele Norge"
+                && $0.brief.validationMessage == nil
+        })
+        XCTAssertEqual(
+            preview.recommendedProfiles[2].brief.organizationNameQueries,
+            ["casting"]
+        )
+        XCTAssertEqual(preview.recommendedProfiles[2].brief.industryQueries, [])
+        XCTAssertEqual(
+            preview.recommendedProfiles[3].brief.organizationNameQueries,
+            ["filmskule", "universitet", "høgskole", "høyskole", "fagskole"]
+        )
+        XCTAssertEqual(preview.recommendedProfiles[3].brief.industryQueries, [])
+        XCTAssertEqual(
+            preview.recommendedProfiles[4].brief.organizationNameQueries,
+            ["dansestudio", "danseskole", "ballettskole", "dance studio"]
+        )
+        XCTAssertEqual(
+            preview.recommendedProfiles[5].brief.organizationNameQueries,
+            ["skuespiller", "actor"]
+        )
+        XCTAssertEqual(preview.recommendedProfiles[5].brief.subjectKind, .person)
+        XCTAssertEqual(preview.recommendedProfiles[3].brief.qualificationRequirement, .required)
+        XCTAssertEqual(
+            preview.recommendedProfiles[3].brief.qualificationTerms,
+            qualificationTerms[3]
+        )
+    }
+
+    func testBrandOverridesEncodeTheEditableFoundationWithCanonicalKeys() throws {
+        let overrides = LeadgridProjectOnboardingBrandOverrides(
+            projectName: "The Role Room Norge",
+            projectDescription: "Produksjon, casting, utdanning og talenter.",
+            category: "Film, TV, casting og talent",
+            targetAudience: "Produksjonsselskap, byråer, skoler, dansestudioer og skuespillere"
+        )
+
+        let data = try JSONEncoder().encode(overrides)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        XCTAssertEqual(json["project_name"] as? String, "The Role Room Norge")
+        XCTAssertEqual(
+            json["project_description"] as? String,
+            "Produksjon, casting, utdanning og talenter.")
+        XCTAssertEqual(json["category"] as? String, "Film, TV, casting og talent")
+        XCTAssertEqual(
+            json["target_audience"] as? String,
+            "Produksjonsselskap, byråer, skoler, dansestudioer og skuespillere")
+        XCTAssertNil(json["targetAudience"])
+    }
+
     func testCommitResponseReusesExistingDentumProjectWithoutDuplicateLeadState() throws {
         let data = Data(#"""
         {

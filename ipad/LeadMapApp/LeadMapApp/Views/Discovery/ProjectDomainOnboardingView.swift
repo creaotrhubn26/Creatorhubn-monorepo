@@ -24,6 +24,10 @@ struct ProjectDomainOnboardingView: View {
     @State private var completionResult: LeadgridProjectOnboardingResult?
     @State private var organizationOptions: [LeadgridProjectOnboardingAccessOptions.Organization] = []
     @State private var availableTeams: [LeadgridProjectOnboardingAccessOptions.Team] = []
+    @State private var editedProjectName = ""
+    @State private var editedProjectDescription = ""
+    @State private var editedCategory = ""
+    @State private var editedTargetAudience = ""
 
     private var trimmedWebsite: String {
         website.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -44,10 +48,33 @@ struct ProjectDomainOnboardingView: View {
             $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         }
         if normalizedNames.contains("") { return "Alle profiler må ha et navn." }
+        if profiles.contains(where: {
+            $0.name.trimmingCharacters(in: .whitespacesAndNewlines).count > 120
+        }) {
+            return "Profilnavn kan være opptil 120 tegn."
+        }
         if Set(normalizedNames).count != normalizedNames.count {
             return "Profilene må ha unike navn."
         }
+        if profiles.filter(\.isDefault).count > 1 {
+            return "Bare én Discovery-profil kan være standardprofil."
+        }
         return profiles.compactMap { $0.brief.validationMessage }.first
+    }
+
+    private var brandError: String? {
+        guard preview?.canManageMultipleProfiles == true else { return nil }
+        if editedProjectName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Prosjektnavn må fylles ut."
+        }
+        if editedProjectName.count > 200 { return "Prosjektnavnet er for langt." }
+        if editedProjectDescription.count > 1_000 { return "Prosjektbeskrivelsen er for lang." }
+        if editedCategory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Kategori må fylles ut."
+        }
+        if editedCategory.count > 120 { return "Kategorien er for lang." }
+        if editedTargetAudience.count > 1_000 { return "Målgruppen er for lang." }
+        return nil
     }
 
     private var accessError: String? {
@@ -114,16 +141,37 @@ struct ProjectDomainOnboardingView: View {
 
                 if let preview {
                     Section("Foreslått prosjekt") {
-                        LabeledContent("Navn", value: preview.projectName)
-                            .accessibilityIdentifier("project-onboarding.project-name")
-                        LabeledContent("Kategori", value: preview.category)
-                            .accessibilityIdentifier("project-onboarding.category")
-                        LabeledContent("Domene", value: preview.websiteDomain)
-                        if !preview.projectDescription.isEmpty {
-                            Text(preview.projectDescription)
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
+                        if preview.canManageMultipleProfiles {
+                            TextField("Prosjektnavn", text: $editedProjectName)
+                                .accessibilityIdentifier("project-onboarding.project-name")
+                            TextField("Kategori", text: $editedCategory)
+                                .accessibilityIdentifier("project-onboarding.category")
+                            TextField(
+                                "Prosjektbeskrivelse",
+                                text: $editedProjectDescription,
+                                axis: .vertical
+                            )
+                            .lineLimit(2...5)
+                            .accessibilityIdentifier("project-onboarding.project-description")
+                            TextField(
+                                "Målgruppe",
+                                text: $editedTargetAudience,
+                                axis: .vertical
+                            )
+                            .lineLimit(2...5)
+                            .accessibilityIdentifier("project-onboarding.target-audience")
+                        } else {
+                            LabeledContent("Navn", value: preview.projectName)
+                                .accessibilityIdentifier("project-onboarding.project-name")
+                            LabeledContent("Kategori", value: preview.category)
+                                .accessibilityIdentifier("project-onboarding.category")
+                            if !preview.projectDescription.isEmpty {
+                                Text(preview.projectDescription)
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
+                        LabeledContent("Domene", value: preview.websiteDomain)
                         ForEach(preview.classificationReasons, id: \.self) { reason in
                             Label(reason, systemImage: "checkmark.seal")
                                 .font(.caption)
@@ -212,7 +260,10 @@ struct ProjectDomainOnboardingView: View {
                             }
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(isSaving || profileError != nil || accessError != nil)
+                        .disabled(
+                            isSaving || profileError != nil || accessError != nil
+                                || brandError != nil
+                        )
                         .accessibilityIdentifier("project-onboarding.commit")
                     }
                 }
@@ -410,6 +461,10 @@ struct ProjectDomainOnboardingView: View {
             )
             preview = result
             profiles = result.recommendedProfiles
+            editedProjectName = result.projectName
+            editedProjectDescription = result.projectDescription
+            editedCategory = result.category
+            editedTargetAudience = result.brandProfile?.targetAudience ?? ""
             website = result.websiteDomain
             if companyName.isEmpty { companyName = result.projectName }
             if administratorEmail.isEmpty { administratorEmail = defaultAdministratorEmail }
@@ -470,7 +525,10 @@ struct ProjectDomainOnboardingView: View {
                 previewId: preview.id,
                 organizationId: organizationId,
                 profiles: preview.canManageMultipleProfiles ? profiles : nil,
-                accessSetup: preview.canManageMultipleProfiles ? makeAccessSetup() : nil
+                accessSetup: preview.canManageMultipleProfiles ? makeAccessSetup() : nil,
+                brandOverrides: preview.canManageMultipleProfiles
+                    ? makeBrandOverrides()
+                    : nil
             )
             isSaving = false
             if preview.canManageMultipleProfiles,
@@ -519,6 +577,15 @@ struct ProjectDomainOnboardingView: View {
         )
     }
 
+    private func makeBrandOverrides() -> LeadgridProjectOnboardingBrandOverrides {
+        .init(
+            projectName: editedProjectName.trimmingCharacters(in: .whitespacesAndNewlines),
+            projectDescription: editedProjectDescription.trimmingCharacters(in: .whitespacesAndNewlines),
+            category: editedCategory.trimmingCharacters(in: .whitespacesAndNewlines),
+            targetAudience: editedTargetAudience.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+    }
+
     private static func isValidEmail(_ value: String) -> Bool {
         let email = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard email.count <= 200,
@@ -553,9 +620,37 @@ private struct OnboardingDiscoveryProfileEditor: View {
                 if canEdit {
                     TextField("Profilnavn", text: $profile.name)
                         .accessibilityIdentifier("project-onboarding.profile.\(profileIndex).name")
-                    TextField("Kundetyper, kommaseparert", text: stringList(\.industryQueries))
+                    TextField("Bransjer eller NACE-koder, kommaseparert", text: stringList(\.industryQueries))
+                    TextField("Organisasjonsnavn-søk, kommaseparert", text: stringList(\.organizationNameQueries))
                     TextField("Eksklusjoner, kommaseparert", text: stringList(\.exclusionTerms))
-                    TextField("By eller område", text: optionalText(\.city))
+                    Picker("Leadtype", selection: $profile.brief.subjectKind) {
+                        ForEach(DiscoveryV2SubjectKind.allCases, id: \.self) { kind in
+                            Text(kind.title).tag(kind)
+                        }
+                    }
+                    TextField(
+                        "Kvalifiseringstema, kommaseparert",
+                        text: stringList(\.qualificationTerms)
+                    )
+                    Picker(
+                        "Innholdskvalifisering",
+                        selection: $profile.brief.qualificationRequirement
+                    ) {
+                        ForEach(DiscoveryV2QualificationRequirement.allCases, id: \.self) { requirement in
+                            Text(requirement.title).tag(requirement)
+                        }
+                    }
+
+                    Picker("Geografi", selection: areaMode) {
+                        Text("Hele Norge").tag(OnboardingAreaMode.nationwide)
+                        Text("By eller område").tag(OnboardingAreaMode.local)
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("project-onboarding.profile.\(profileIndex).area-mode")
+                    if areaMode.wrappedValue == .local {
+                        TextField("By eller område", text: cityText)
+                            .accessibilityIdentifier("project-onboarding.profile.\(profileIndex).city")
+                    }
 
                     Stepper("Kandidater: \(profile.brief.targetCount)", value: $profile.brief.targetCount, in: 1...60)
                     Stepper("Nettsidevurderinger: \(profile.brief.enrichmentCount)", value: $profile.brief.enrichmentCount, in: 1...profile.brief.targetCount)
@@ -602,7 +697,7 @@ private struct OnboardingDiscoveryProfileEditor: View {
                         Button("Fjern profil", role: .destructive, action: onDelete)
                     }
                 } else {
-                    LabeledContent("Kundetyper", value: profile.brief.industryQueries.joined(separator: ", "))
+                    LabeledContent("Søk", value: querySummary)
                     LabeledContent("Område", value: profile.brief.areaSummary)
                     LabeledContent("Kandidater", value: String(profile.brief.targetCount))
                     LabeledContent("Minste fit-score", value: String(profile.brief.minimumFitScore))
@@ -621,8 +716,10 @@ private struct OnboardingDiscoveryProfileEditor: View {
         } label: {
             HStack {
                 VStack(alignment: .leading) {
-                    Text(profile.name).fontWeight(.semibold)
-                    Text(profile.brief.industryQueries.joined(separator: ", "))
+                    Text(profile.name)
+                        .fontWeight(.semibold)
+                        .accessibilityIdentifier("project-onboarding.profile.\(profileIndex).title")
+                    Text(querySummary)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -651,6 +748,12 @@ private struct OnboardingDiscoveryProfileEditor: View {
         )
     }
 
+    private var querySummary: String {
+        let industries = profile.brief.industryQueries
+        let organizationNames = profile.brief.organizationNameQueries.map { "navn: \($0)" }
+        return (industries + organizationNames).joined(separator: ", ")
+    }
+
     private func optionalText(
         _ keyPath: WritableKeyPath<DiscoveryV2Brief, String?>
     ) -> Binding<String> {
@@ -659,6 +762,43 @@ private struct OnboardingDiscoveryProfileEditor: View {
             set: { value in
                 let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
                 profile.brief[keyPath: keyPath] = trimmed.isEmpty ? nil : trimmed
+            }
+        )
+    }
+
+    private var areaMode: Binding<OnboardingAreaMode> {
+        Binding(
+            get: { profile.brief.countryCode == "NO" ? .nationwide : .local },
+            set: { mode in
+                switch mode {
+                case .nationwide:
+                    profile.brief.countryCode = "NO"
+                    profile.brief.city = nil
+                    profile.brief.geo = nil
+                    profile.brief.municipalityNumbers = []
+                    profile.brief.municipalityNames = []
+                case .local:
+                    profile.brief.countryCode = nil
+                    if profile.brief.city == nil,
+                       profile.brief.geo == nil,
+                       profile.brief.municipalityNumbers.isEmpty,
+                       profile.brief.municipalityNames.isEmpty {
+                        profile.brief.city = "Oslo"
+                    }
+                }
+            }
+        )
+    }
+
+    private var cityText: Binding<String> {
+        Binding(
+            get: { profile.brief.city ?? "" },
+            set: { value in
+                profile.brief.countryCode = nil
+                profile.brief.city = value.isEmpty ? nil : value
+                profile.brief.geo = nil
+                profile.brief.municipalityNumbers = []
+                profile.brief.municipalityNames = []
             }
         )
     }
@@ -705,6 +845,11 @@ private struct OnboardingDiscoveryProfileEditor: View {
             set: { profile.brief.commercialSignals.registeredInVatRegister = $0.boolValue }
         )
     }
+}
+
+private enum OnboardingAreaMode: String {
+    case nationwide
+    case local
 }
 
 private enum OnboardingTriState: String, CaseIterable, Identifiable {

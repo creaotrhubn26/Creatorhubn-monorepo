@@ -89,6 +89,150 @@ export interface RunSummary {
   dry_run: boolean;
 }
 
+export interface ResolveMcpStatus {
+  installed: boolean;
+  available: boolean;
+  binaryPath: string | null;
+  protocolVersion: string | null;
+  serverVersion: string | null;
+  toolCount: number;
+  toolNames: string[];
+  resolveReachable: boolean;
+  resolveStatus?: unknown;
+  message: string;
+}
+
+export type ResolveMcpSkillAccess = "read-only" | "approval-required";
+export type ResolveMcpSkillStatus = "available" | "planned";
+
+export interface ResolveMcpSkillDefinition {
+  id: string;
+  name: string;
+  description: string;
+  access: ResolveMcpSkillAccess;
+  status: ResolveMcpSkillStatus;
+  readOnly: boolean;
+  requiresTimeline: boolean;
+  supportsPlan: boolean;
+  supportsApply: boolean;
+}
+
+export interface ResolveMcpPlanTarget {
+  projectId: string;
+  projectName: string;
+  timelineId: string | null;
+  timelineName: string | null;
+}
+
+export interface ResolveMcpPlanStep {
+  id: string;
+  label: string;
+  detail: string;
+  risk: "none" | "low" | "medium" | "high";
+  reversible: boolean;
+}
+
+export interface ResolveMcpPlanPreviewItem {
+  id?: string;
+  label?: string;
+  before?: string;
+  after?: string;
+  format?: string;
+  extension?: string;
+  codec?: string;
+  resolution?: string;
+  outputName?: string;
+  startFrame?: number;
+}
+
+export interface ResolveMcpPlanPreview {
+  kind: "render-jobs" | "rename-v1" | string;
+  destination?: string;
+  items: ResolveMcpPlanPreviewItem[];
+}
+
+export interface ResolveMcpWorkflowPlan {
+  schemaVersion: number;
+  planId: string;
+  skillId: string;
+  state: "planned" | "applying" | "applied" | "rolling-back" | "rolled-back";
+  createdAt: string;
+  expiresAt: string;
+  target: ResolveMcpPlanTarget;
+  preflight: ResolveMcpSkillReport;
+  steps: ResolveMcpPlanStep[];
+  executable: boolean;
+  rollbackAvailable: boolean;
+  confirmationToken: string;
+  operationSummary: string;
+  warnings: string[];
+  preview: ResolveMcpPlanPreview | null;
+  result: Record<string, unknown> | null;
+  verification: { ok?: boolean; checkedAt?: string; source?: string } | null;
+  rollbackResult: Record<string, unknown> | null;
+}
+
+export interface ResolveMcpIntelligence {
+  schemaVersion: number;
+  resolveVersion: string | null;
+  toolNames: string[];
+  whatsNewSince21: unknown;
+  apiEvidence: Record<string, unknown>;
+  generatedAt: string;
+}
+
+export interface ResolveMcpDoctorFinding {
+  severity: "ok" | "info" | "warning" | "error";
+  code: string;
+  title: string;
+  detail: string;
+}
+
+export interface ResolveMcpSkillReport {
+  schemaVersion: number;
+  skillId: string;
+  profileId?: string;
+  readOnly: true;
+  resolve: { version: string | null; page: string | null };
+  project: { name: string | null; uniqueId: string | null } | null;
+  timeline: {
+    name: string | null;
+    uniqueId: string | null;
+    startFrame?: number;
+    endFrame?: number;
+  } | null;
+  summary: Record<string, unknown>;
+  details?: Record<string, unknown>;
+  findings: ResolveMcpDoctorFinding[];
+}
+
+export interface ResolveMcpDoctorReport {
+  schemaVersion: number;
+  skillId?: "resolve-project-doctor";
+  readOnly: true;
+  resolve: { version: string | null; page: string | null };
+  project: { name: string | null; uniqueId: string | null } | null;
+  timeline: {
+    name: string | null;
+    uniqueId: string | null;
+    startFrame: number;
+    endFrame: number;
+    durationFrames: number;
+    trackCounts: Record<"video" | "audio" | "subtitle", number>;
+    itemCounts: Record<"video" | "audio" | "subtitle", number>;
+  } | null;
+  mediaPool: { clipCount: number; folderCount: number };
+  settings: {
+    timelineResolutionWidth?: string | null;
+    timelineResolutionHeight?: string | null;
+    timelineFrameRate?: string | number | null;
+    colorScienceMode?: string | null;
+    perfProxyMediaMode?: string | null;
+    perfProxyResolutionRatio?: string | null;
+  };
+  findings: ResolveMcpDoctorFinding[];
+}
+
 export interface HealthStatus {
   pythonInstalled: boolean;
   pythonVersion: string;
@@ -96,6 +240,24 @@ export interface HealthStatus {
   scriptingModulePath: string | null;
   fusionscriptLibPath?: string | null;
   resolveRunning: boolean;
+  resolveVersion?: string | null;
+  resolveVersionParts?: number[];
+  supportsResolve21_1?: boolean;
+  mcpPackagePath?: string | null;
+  capabilities?: {
+    nativeMulticam?: boolean;
+    timelineAutoAlign?: boolean;
+    multicamSmartSwitch?: boolean;
+    mediaTranscription?: boolean;
+    audioNormalization?: boolean;
+    timelineItemAudioProperties?: boolean;
+    projectSettingsPresets?: boolean;
+    renderPresetUpdates?: boolean;
+    mediaClone?: boolean;
+    dctlValidation?: boolean;
+    keyboardPresets?: boolean;
+    builtInMcpPackage?: boolean;
+  };
   projectOpen: boolean;
   projectName: string | null;
   envResolveScriptApi: string | null;

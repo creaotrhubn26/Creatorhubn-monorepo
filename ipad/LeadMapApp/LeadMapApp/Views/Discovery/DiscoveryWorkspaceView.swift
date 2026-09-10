@@ -8,6 +8,7 @@ private enum DiscoveryWorkspaceSection: String, CaseIterable, Identifiable {
 }
 
 private enum DiscoveryAreaMode: String, CaseIterable, Identifiable {
+    case nationwide
     case municipalities
     case mapArea
     case city
@@ -15,6 +16,7 @@ private enum DiscoveryAreaMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
+        case .nationwide: return "Norge"
         case .municipalities: return "Kommuner"
         case .mapArea: return "Kart-radius"
         case .city: return "By"
@@ -225,7 +227,16 @@ struct DiscoveryWorkspaceView: View {
                         .accessibilityLabel("Kundetyper")
                         .accessibilityIdentifier("discovery.brief.queries")
                 }
-                fieldSection("Område", detail: "Kommuner er et hardt utvalg. By og kart-radius er beholdt for eldre og bredere profiler.") {
+                fieldSection("Organisasjonsnavn", detail: "Valgfritt navnesøk i Brreg. Brukes når segmentet ikke har en presis næringskode, for eksempel casting.") {
+                    TextEditor(text: organizationNameQueriesBinding)
+                        .frame(minHeight: 72)
+                        .scrollContentBackground(.hidden)
+                        .padding(10)
+                        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+                        .accessibilityLabel("Organisasjonsnavn-søk")
+                        .accessibilityIdentifier("discovery.brief.organization-name-queries")
+                }
+                fieldSection("Område", detail: "Hele Norge søker nasjonalt. Kommuner er et hardt utvalg; by og kart-radius er lokale alternativer.") {
                     Picker("Område", selection: areaModeBinding) {
                         ForEach(DiscoveryAreaMode.allCases) { mode in
                             Text(mode.title).tag(mode)
@@ -234,6 +245,12 @@ struct DiscoveryWorkspaceView: View {
                     .pickerStyle(.segmented)
 
                     switch areaModeBinding.wrappedValue {
+                    case .nationwide:
+                        Label(
+                            "Søket dekker virksomheter i hele Norge.",
+                            systemImage: "map.fill"
+                        )
+                        .foregroundStyle(LeadgridDiscoveryTheme.success)
                     case .municipalities:
                         VStack(alignment: .leading, spacing: 7) {
                             TextEditor(text: municipalitiesBinding)
@@ -882,6 +899,15 @@ struct DiscoveryWorkspaceView: View {
             set: { coordinator.brief.industryQueries = $0.components(separatedBy: .newlines) })
     }
 
+    private var organizationNameQueriesBinding: Binding<String> {
+        Binding(
+            get: { coordinator.brief.organizationNameQueries.joined(separator: "\n") },
+            set: {
+                coordinator.brief.organizationNameQueries =
+                    $0.components(separatedBy: .newlines)
+            })
+    }
+
     private var territoryCodeBinding: Binding<String> {
         Binding(
             get: { coordinator.brief.territoryCode ?? "" },
@@ -905,6 +931,7 @@ struct DiscoveryWorkspaceView: View {
             get: { coordinator.brief.city ?? "" },
             set: {
                 coordinator.brief.city = $0
+                coordinator.brief.countryCode = nil
                 coordinator.brief.geo = nil
                 coordinator.brief.municipalityNames = []
                 coordinator.brief.municipalityNumbers = []
@@ -914,6 +941,7 @@ struct DiscoveryWorkspaceView: View {
     private var areaModeBinding: Binding<DiscoveryAreaMode> {
         Binding(
             get: {
+                if coordinator.brief.countryCode == "NO" { return .nationwide }
                 if !coordinator.brief.municipalityNames.isEmpty
                     || !coordinator.brief.municipalityNumbers.isEmpty {
                     return .municipalities
@@ -923,16 +951,25 @@ struct DiscoveryWorkspaceView: View {
             },
             set: { mode in
                 switch mode {
+                case .nationwide:
+                    coordinator.brief.countryCode = "NO"
+                    coordinator.brief.geo = nil
+                    coordinator.brief.city = nil
+                    coordinator.brief.municipalityNames = []
+                    coordinator.brief.municipalityNumbers = []
                 case .municipalities:
+                    coordinator.brief.countryCode = nil
                     coordinator.brief.geo = nil
                     coordinator.brief.city = nil
                 case .mapArea:
+                    coordinator.brief.countryCode = nil
                     coordinator.brief.geo = coordinator.brief.geo
                         ?? .init(latitude: 59.9139, longitude: 10.7522, radiusKm: 10)
                     coordinator.brief.city = nil
                     coordinator.brief.municipalityNames = []
                     coordinator.brief.municipalityNumbers = []
                 case .city:
+                    coordinator.brief.countryCode = nil
                     coordinator.brief.geo = nil
                     coordinator.brief.city = coordinator.brief.city ?? ""
                     coordinator.brief.municipalityNames = []
@@ -954,6 +991,7 @@ struct DiscoveryWorkspaceView: View {
                 coordinator.brief.municipalityNumbers = municipalities.numbers
                 coordinator.brief.city = nil
                 coordinator.brief.geo = nil
+                coordinator.brief.countryCode = nil
             })
     }
 
@@ -1089,6 +1127,13 @@ struct DiscoveryCandidateRow: View {
                 Label("Treffer en eksklusjonsregel", systemImage: "nosign")
                     .font(.caption.bold()).foregroundStyle(LeadgridDiscoveryTheme.danger)
             }
+            if candidate.subjectKind == .person {
+                Label(
+                    "Personprospekt – oppretter aldri en talentkonto automatisk",
+                    systemImage: "person.crop.circle.badge.checkmark")
+                    .font(.caption.bold())
+                    .foregroundStyle(LeadgridDiscoveryTheme.accentSoft)
+            }
             clinicClassification
             if let reviewNotice = candidate.observation?.reviewNotice {
                 VStack(alignment: .leading, spacing: 3) {
@@ -1125,6 +1170,25 @@ struct DiscoveryCandidateRow: View {
                         websiteQuality.status == "assessed"
                             ? LeadgridDiscoveryTheme.accentSoft
                             : LeadgridDiscoveryTheme.secondaryText)
+            }
+            if let qualification = candidate.scoreExplanation?.contentQualification {
+                Label(
+                    qualification.presentation,
+                    systemImage: qualification.outcome == "passed"
+                        ? "checkmark.seal.fill"
+                        : "text.magnifyingglass")
+                    .font(.caption)
+                    .foregroundStyle(
+                        qualification.outcome == "passed"
+                            ? LeadgridDiscoveryTheme.success
+                            : LeadgridDiscoveryTheme.secondaryText)
+            } else if let matchedTerms = candidate.websiteQuality?.qualification?.matchedTerms,
+                      !matchedTerms.isEmpty {
+                Label(
+                    "Bekreftet innhold: \(matchedTerms.joined(separator: ", "))",
+                    systemImage: "checkmark.seal.fill")
+                    .font(.caption)
+                    .foregroundStyle(LeadgridDiscoveryTheme.success)
             }
             if let reasons = candidate.reasons, !reasons.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {

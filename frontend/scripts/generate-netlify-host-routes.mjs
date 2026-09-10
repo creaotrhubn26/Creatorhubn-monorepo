@@ -54,6 +54,16 @@ for (const [index, route] of routes.entries()) {
   }
 }
 
+const roleRoomRootRoute = routes.findIndex((route) =>
+  route.source === '/'
+  && route.hostPattern === '(www\\.)?theroleroom\\.com');
+if (roleRoomRootRoute !== 0
+  || routes[roleRoomRootRoute]?.uaPattern !== null
+  || routes[roleRoomRootRoute]?.destination !== '/role-room-index.html') {
+  console.error('generate-netlify-host-routes: The Role Room-forsiden må rutes først og for alle user-agents.');
+  process.exit(1);
+}
+
 await mkdir(dirname(outPath), { recursive: true });
 
 const routesLiteral = JSON.stringify(routes, null, 2)
