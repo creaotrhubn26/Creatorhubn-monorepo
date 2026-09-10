@@ -130,4 +130,95 @@ describe('manuscriptService.updateManuscript', () => {
     await expect(manuscriptService.updateManuscript(manuscript())).rejects.toMatchObject({ name: 'AbortError' });
     expect(settingsMocks.setSetting).not.toHaveBeenCalled();
   });
+
+  it('restores a server revision with If-Match and returns the new cloud version', async () => {
+    const restored = { ...manuscript(8), content: 'Gjenopprettet tekst' };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ status: 'healthy' }))
+      .mockResolvedValueOnce(jsonResponse(
+        { success: true, markerRevisionId: 'marker-1', manuscript: restored },
+        { headers: { ETag: 'W/"8"' } },
+      ));
+    vi.stubGlobal('fetch', fetchMock);
+    const { manuscriptService } = await import('./manuscriptService');
+
+    const result = await manuscriptService.restoreRevision(manuscript(7), {
+      id: 'revision-3',
+      manuscriptId: 'manuscript-1',
+      version: '3.0',
+      content: 'Gjenopprettet tekst',
+    });
+
+    const [url, options] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(url).toContain('/restore-revision/revision-3');
+    expect((options.headers as Record<string, string>)['If-Match']).toBe('W/"7"');
+    expect(result).toMatchObject({ cloud: true, cloudVersion: 8, retryPending: false });
+    expect(result.manuscript.content).toBe('Gjenopprettet tekst');
+  });
+
+  it('reports the active editor when a revision restore is locked', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ status: 'healthy' }))
+      .mockResolvedValueOnce(jsonResponse(
+        { error: 'locked_by_other', lockedBy: 'user-2', lockedAt: '2026-09-10T08:01:00.000Z' },
+        { status: 409 },
+      ));
+    vi.stubGlobal('fetch', fetchMock);
+    const { manuscriptService } = await import('./manuscriptService');
+
+    await expect(manuscriptService.restoreRevision(manuscript(7), {
+      id: 'revision-3',
+      manuscriptId: 'manuscript-1',
+      version: '3.0',
+      content: 'Gjenopprettet tekst',
+    })).rejects.toMatchObject({
+      code: 'manuscript_locked',
+      lockedBy: 'user-2',
+    });
+  });
+
+  it('keeps legacy nested revision content when restoring offline', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(
+      { status: 'unavailable' },
+      { status: 503 },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const { manuscriptService } = await import('./manuscriptService');
+
+    const result = await manuscriptService.restoreRevision(manuscript(7), {
+      id: 'legacy-revision',
+      manuscriptId: 'manuscript-1',
+      version: '1.0',
+      manuscript: { content: 'Historisk tekst' },
+    });
+
+    expect(result).toMatchObject({ cloud: false, local: true, retryPending: true });
+    expect(result.manuscript.content).toBe('Historisk tekst');
+    expect(settingsMocks.setSetting).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports whether a manual revision reached the cloud', async () => {
+    const revision = {
+      id: 'revision-1',
+      manuscriptId: 'manuscript-1',
+      version: 'Draft 1',
+      content: 'Snapshot',
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ status: 'healthy' }))
+      .mockResolvedValueOnce(jsonResponse(revision, { status: 201, headers: { ETag: 'W/"8"' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { manuscriptService } = await import('./manuscriptService');
+
+    const result = await manuscriptService.createRevision(revision);
+
+    expect(result).toEqual({
+      revision,
+      cloud: true,
+      local: false,
+      cloudVersion: 8,
+      retryPending: false,
+    });
+    expect(settingsMocks.setSetting).not.toHaveBeenCalled();
+  });
 });

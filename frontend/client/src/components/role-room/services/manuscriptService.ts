@@ -50,6 +50,20 @@ export interface ManuscriptUpdateOptions {
   expectedCloudVersion?: number;
 }
 
+export interface RevisionSaveResult {
+  revision: ScriptRevision;
+  local: boolean;
+  cloud: boolean;
+  cloudVersion: number | null;
+  retryPending: boolean;
+}
+
+export interface RevisionDeleteResult {
+  local: boolean;
+  cloud: boolean;
+  cloudVersion: number | null;
+}
+
 export type ManuscriptConflictError = Error & {
   code: 'manuscript_conflict';
   currentVersion: number | null;
@@ -79,6 +93,49 @@ const parseEtagVersion = (etag: string | null): number | null => {
   if (!match) return null;
   const version = Number.parseInt(match[1], 10);
   return Number.isFinite(version) ? version : null;
+};
+
+const readRevisionContent = (revision: ScriptRevision): string => {
+  if (typeof revision.content === 'string') return revision.content;
+  if (typeof revision.snapshot?.content === 'string') return revision.snapshot.content;
+  const legacyManuscript = revision.manuscript;
+  if (legacyManuscript && typeof legacyManuscript === 'object' && !Array.isArray(legacyManuscript)) {
+    const content = (legacyManuscript as { content?: unknown }).content;
+    if (typeof content === 'string') return content;
+  }
+  return '';
+};
+
+const buildManuscriptConflictError = async (
+  manuscriptId: string,
+  response: Response,
+): Promise<ManuscriptConflictError> => {
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  const currentVersion = typeof body.currentVersion === 'number'
+    ? body.currentVersion
+    : parseEtagVersion(response.headers.get('ETag'));
+  if (currentVersion !== null) cloudVersionByManuscript.set(manuscriptId, currentVersion);
+
+  let cloudManuscript: Manuscript | null = null;
+  try {
+    const cloudResponse = await fetch(`/api/casting/manuscripts/${manuscriptId}`, {
+      cache: 'no-store',
+      headers: getAuthHeaders(),
+    });
+    if (cloudResponse.ok) {
+      cloudManuscript = await cloudResponse.json() as Manuscript;
+      rememberCloudVersion(cloudManuscript);
+    }
+  } catch {
+    // The version remains actionable even if the comparison body cannot be
+    // refreshed right now.
+  }
+
+  return Object.assign(new Error('Cloud manuscript changed since it was opened'), {
+    code: 'manuscript_conflict' as const,
+    currentVersion,
+    cloudManuscript,
+  }) satisfies ManuscriptConflictError;
 };
 
 function markManuscriptApiUnavailable(reason?: string): void {
@@ -363,6 +420,15 @@ async function saveRevisionToStorage(revision: ScriptRevision): Promise<void> {
   })) || [];
   cached.push(revision);
   await settingsService.setSetting(SETTINGS_NAMESPACES.REVISIONS, cached, { projectId: manuscriptId });
+}
+
+async function deleteRevisionFromStorage(manuscriptId: string, revisionId: string): Promise<void> {
+  const cached = await getRevisionsFromStorage(manuscriptId);
+  await settingsService.setSetting(
+    SETTINGS_NAMESPACES.REVISIONS,
+    cached.filter((revision) => revision.id !== revisionId),
+    { projectId: manuscriptId },
+  );
 }
 
 async function getActsFromStorage(manuscriptId: string): Promise<Act[]> {
@@ -2075,30 +2141,7 @@ class ManuscriptService {
           if (response.status === 404) {
             markManuscriptApiUnavailable('PUT /api/casting/manuscripts/:id');
           } else if (response.status === 412) {
-            const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-            const responseVersion = typeof body.currentVersion === 'number'
-              ? body.currentVersion
-              : parseEtagVersion(response.headers.get('ETag'));
-            if (responseVersion !== null) {
-              cloudVersionByManuscript.set(manuscript.id, responseVersion);
-            }
-
-            // Fetch the authoritative payload for the visual comparison. This
-            // read is deliberately direct: the normal getter may fall back to
-            // local settings and would then present local text as "cloud".
-            let cloudManuscript: Manuscript | null = null;
-            try {
-              cloudManuscript = await this.getCloudManuscript(manuscript.id);
-            } catch {
-              // The conflict remains actionable with its version even if the
-              // comparison payload cannot be refreshed right now.
-            }
-
-            throw Object.assign(new Error('Cloud manuscript changed since it was opened'), {
-              code: 'manuscript_conflict' as const,
-              currentVersion: responseVersion,
-              cloudManuscript,
-            }) satisfies ManuscriptConflictError;
+            throw await buildManuscriptConflictError(manuscript.id, response);
           } else if (response.status === 409) {
             // Låst av en annen bruker — IKKE fall tilbake til localStorage
             // (det ville gi inntrykk av lagring uten at det er lagret).
@@ -2487,7 +2530,7 @@ class ManuscriptService {
   /**
    * Create a new revision
    */
-  async createRevision(revision: ScriptRevision): Promise<ScriptRevision> {
+  async createRevision(revision: ScriptRevision): Promise<RevisionSaveResult> {
     const isDbAvailable = await checkDatabaseAvailability();
     
     if (isDbAvailable) {
@@ -2505,7 +2548,16 @@ class ManuscriptService {
             throw new Error(`Failed to create revision: ${response.statusText}`);
           }
         } else {
-          return await response.json();
+          const storedRevision = await response.json() as ScriptRevision;
+          const cloudVersion = parseEtagVersion(response.headers.get('ETag'));
+          if (cloudVersion !== null) cloudVersionByManuscript.set(revision.manuscriptId, cloudVersion);
+          return {
+            revision: storedRevision,
+            local: false,
+            cloud: true,
+            cloudVersion,
+            retryPending: false,
+          };
         }
       } catch (error) {
         console.error('Error creating revision in database:', error);
@@ -2514,7 +2566,93 @@ class ManuscriptService {
     
     // Fallback to settings cache
     await saveRevisionToStorage(revision);
-    return revision;
+    return {
+      revision,
+      local: true,
+      cloud: false,
+      cloudVersion: cloudVersionByManuscript.get(revision.manuscriptId) ?? null,
+      retryPending: true,
+    };
+  }
+
+  async deleteRevision(manuscriptId: string, revisionId: string): Promise<RevisionDeleteResult> {
+    const isDbAvailable = await checkDatabaseAvailability();
+    if (isDbAvailable) {
+      const response = await fetch(
+        `/api/casting/manuscripts/${manuscriptId}/revisions/${revisionId}`,
+        { method: 'DELETE', headers: getAuthHeaders() },
+      );
+      if (!response.ok) {
+        throw new Error(`Failed to delete revision: ${response.status} ${response.statusText}`);
+      }
+      const cloudVersion = parseEtagVersion(response.headers.get('ETag'));
+      if (cloudVersion !== null) cloudVersionByManuscript.set(manuscriptId, cloudVersion);
+      await deleteRevisionFromStorage(manuscriptId, revisionId);
+      return { cloud: true, local: true, cloudVersion };
+    }
+
+    await deleteRevisionFromStorage(manuscriptId, revisionId);
+    return {
+      cloud: false,
+      local: true,
+      cloudVersion: cloudVersionByManuscript.get(manuscriptId) ?? null,
+    };
+  }
+
+  async restoreRevision(
+    manuscript: Manuscript,
+    revision: ScriptRevision,
+  ): Promise<ManuscriptSaveResult> {
+    const savedAt = new Date().toISOString();
+    const isDbAvailable = await checkDatabaseAvailability();
+    if (!isDbAvailable) {
+      return this.updateManuscript({
+        ...manuscript,
+        content: readRevisionContent(revision),
+        updatedAt: savedAt,
+      });
+    }
+
+    const expectedCloudVersion = cloudVersionByManuscript.get(manuscript.id)
+      ?? readCloudVersion(manuscript);
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    };
+    if (expectedCloudVersion !== null && expectedCloudVersion !== undefined) {
+      headers['If-Match'] = `W/"${expectedCloudVersion}"`;
+    }
+    const response = await fetch(
+      `/api/casting/manuscripts/${manuscript.id}/restore-revision/${revision.id}`,
+      { method: 'POST', headers },
+    );
+    if (response.status === 412) {
+      throw await buildManuscriptConflictError(manuscript.id, response);
+    }
+    if (response.status === 409) {
+      const lock = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+      throw Object.assign(new Error('Manuscript is locked by another user'), {
+        code: 'manuscript_locked' as const,
+        lockedBy: typeof lock.lockedBy === 'string' ? lock.lockedBy : null,
+        lockedAt: typeof lock.lockedAt === 'string' ? lock.lockedAt : null,
+        expiresAt: typeof lock.expiresAt === 'string' ? lock.expiresAt : null,
+      });
+    }
+    if (!response.ok) {
+      throw new Error(`Failed to restore revision: ${response.status} ${response.statusText}`);
+    }
+    const body = await response.json() as { manuscript?: Manuscript };
+    if (!body.manuscript) throw new Error('Restore response did not include a manuscript');
+    const cloudVersion = rememberCloudVersion(body.manuscript)
+      ?? parseEtagVersion(response.headers.get('ETag'));
+    return {
+      manuscript: body.manuscript,
+      local: false,
+      cloud: true,
+      cloudVersion,
+      retryPending: false,
+      savedAt,
+    };
   }
 
   /**

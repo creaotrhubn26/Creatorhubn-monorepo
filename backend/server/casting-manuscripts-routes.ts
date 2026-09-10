@@ -2,7 +2,7 @@
  * casting-manuscripts-routes.ts
  *
  * Setup-funksjon for /api/casting/manuscripts/* og deres sub-entiteter
- * (scenes, dialogue, acts, revisions). 17 endpoints totalt:
+ * (scenes, dialogue, acts, revisions).
  *
  *   Manuscripts (5):
  *     GET    /manuscripts                         — list, filtrer på projectId
@@ -20,9 +20,13 @@
  *     POST   /dialogue                            — upsert
  *     DELETE /dialogue/:dialogueId                — slett
  *
- *   Revisions (2):
+ *   Revisions:
  *     GET    /manuscripts/:manuscriptId/revisions — list
  *     POST   /revisions                           — upsert
+ *     DELETE /manuscripts/:manuscriptId/revisions/:revisionId
+ *     GET    /manuscripts/:manuscriptId/revisions/diff
+ *     GET    /manuscripts/:manuscriptId/revisions/:revisionId
+ *     POST   /manuscripts/:manuscriptId/restore-revision/:revisionId
  *
  *   Acts (5):
  *     GET    /manuscripts/:manuscriptId/acts      — list
@@ -31,7 +35,7 @@
  *     PUT    /acts/:actId                         — oppdater
  *     DELETE /acts/:actId                         — slett
  *
- * Tilgang: ÅPEN (matcher eksisterende oppførsel).
+ * Tilgang: autentisert og prosjektavgrenset for manusinnhold.
  *
  * Service-laget: `./casting-manuscripts-service.ts` (instansiert i
  * index.ts og passet via deps slik at casting-projects DELETE-handler
@@ -388,6 +392,18 @@ export function setupCastingManuscriptsRoutes(
         return sendPreconditionFailed(res, currentVersion);
       }
       const now = new Date().toISOString();
+      const contentChanged = Boolean(
+        existingRecord
+        && typeof payload.content === "string"
+        && payload.content !== existing.content,
+      );
+      if (contentChanged && existingRecord) {
+        await revisionsService.captureAutomaticSnapshot(
+          manuscriptId,
+          existingRecord,
+          { actorUserId: session.userId },
+        );
+      }
       const manuscript = {
         ...existing,
         ...payload,
@@ -925,12 +941,18 @@ export function setupCastingManuscriptsRoutes(
   );
 
   app.post("/api/casting/revisions", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const payload = req.body && typeof req.body === "object" ? req.body : {};
       const manuscriptId = readManuscriptId(payload);
       if (!manuscriptId) {
         res.status(400).json({ error: "manuscriptId is required" });
+        return;
+      }
+      const projectId = await readProjectIdOfManuscript(manuscriptId);
+      if (!projectId || !(await canAccessProject(projectId, session.userId))) {
+        res.status(404).json({ error: "not_found" });
         return;
       }
 
@@ -950,7 +972,11 @@ export function setupCastingManuscriptsRoutes(
         id: revisionId,
         manuscriptId,
         manuscript_id: manuscriptId,
-        createdAt: existing?.createdAt || payload.createdAt || now,
+        projectId,
+        project_id: projectId,
+        createdBy: existing?.createdBy || session.userId,
+        kind: existing?.kind || "manual",
+        createdAt: existing?.createdAt || now,
         updatedAt: now,
       };
       const next = [...current];
@@ -960,12 +986,36 @@ export function setupCastingManuscriptsRoutes(
         next.push(revision);
       }
       await manuscriptsService.replaceRevisions(manuscriptId, next);
+      const versionedManuscript = await manuscriptsService.getManuscript(manuscriptId);
+      if (versionedManuscript) setEtagHeader(res, versionedManuscript);
       res.status(existingIndex >= 0 ? 200 : 201).json(revision);
     } catch (error) {
       console.error("Error upserting revision:", error);
       res.status(500).json({ error: "Could not save revision" });
     }
   });
+
+  app.delete(
+    "/api/casting/manuscripts/:manuscriptId/revisions/:revisionId",
+    async (req, res) => {
+      try {
+        if (!(await ensureManuscriptOwner(req, res, req.params.manuscriptId))) return;
+        const current = await manuscriptsService.getRevisions(req.params.manuscriptId);
+        const next = current.filter((revision) => revision?.id !== req.params.revisionId);
+        if (next.length === current.length) {
+          res.status(404).json({ error: "Revision not found" });
+          return;
+        }
+        await manuscriptsService.replaceRevisions(req.params.manuscriptId, next);
+        const versionedManuscript = await manuscriptsService.getManuscript(req.params.manuscriptId);
+        if (versionedManuscript) setEtagHeader(res, versionedManuscript);
+        res.json({ ok: true });
+      } catch (error) {
+        console.error("Error deleting revision:", error);
+        res.status(500).json({ error: "Could not delete revision" });
+      }
+    },
+  );
 
   // ── Revisions: diff/restore-API (F6) ──────────────────────────────
   //
@@ -974,6 +1024,36 @@ export function setupCastingManuscriptsRoutes(
   // Fade In og WriterDuet men har ofte buggy implementasjon. Vi bruker
   // RFC 6902 JSON Patch som diff-format (standardisert, lett å rendre
   // i frontend).
+
+  // Register the static /diff route before /:revisionId. Express matches in
+  // declaration order, so the inverse order treats "diff" as a revision id.
+  app.get(
+    "/api/casting/manuscripts/:manuscriptId/revisions/diff",
+    async (req, res) => {
+      try {
+        if (!(await ensureManuscriptOwner(req, res, req.params.manuscriptId))) return;
+        const fromId = typeof req.query.from === "string" ? req.query.from.trim() : "";
+        const toId = typeof req.query.to === "string" ? req.query.to.trim() : "";
+        if (!fromId || !toId) {
+          res.status(400).json({ error: "Query params 'from' og 'to' er påkrevd." });
+          return;
+        }
+        const diff = await revisionsService.diffRevisions(
+          req.params.manuscriptId,
+          fromId,
+          toId,
+        );
+        if (!diff) {
+          res.status(404).json({ error: "En eller begge revisjoner finnes ikke." });
+          return;
+        }
+        res.json(diff);
+      } catch (error) {
+        console.error("Error diffing revisions:", error);
+        res.status(500).json({ error: "Could not compute diff" });
+      }
+    },
+  );
 
   app.get(
     "/api/casting/manuscripts/:manuscriptId/revisions/:revisionId",
@@ -996,48 +1076,40 @@ export function setupCastingManuscriptsRoutes(
     },
   );
 
-  app.get(
-    "/api/casting/manuscripts/:manuscriptId/revisions/diff",
-    async (req, res) => {
-      try {
-        if (!(await ensureManuscriptOwner(req, res, req.params.manuscriptId))) return;
-        const fromId =
-          typeof req.query.from === "string" ? req.query.from.trim() : "";
-        const toId =
-          typeof req.query.to === "string" ? req.query.to.trim() : "";
-        if (!fromId || !toId) {
-          res
-            .status(400)
-            .json({ error: "Query params 'from' og 'to' er påkrevd." });
-          return;
-        }
-        const diff = await revisionsService.diffRevisions(
-          req.params.manuscriptId,
-          fromId,
-          toId,
-        );
-        if (!diff) {
-          res
-            .status(404)
-            .json({ error: "En eller begge revisjoner finnes ikke." });
-          return;
-        }
-        res.json(diff);
-      } catch (error) {
-        console.error("Error diffing revisions:", error);
-        res.status(500).json({ error: "Could not compute diff" });
-      }
-    },
-  );
-
   app.post(
     "/api/casting/manuscripts/:manuscriptId/restore-revision/:revisionId",
     async (req, res) => {
-      if (!requireUserSession(req, res)) return;
+      const session = requireUserSession(req, res);
+      if (!session) return;
       try {
+        const projectId = await readProjectIdOfManuscript(req.params.manuscriptId);
+        if (!projectId || !(await canAccessProject(projectId, session.userId))) {
+          res.status(404).json({ error: "not_found" });
+          return;
+        }
+        const currentManuscript = await manuscriptsService.getManuscript(req.params.manuscriptId);
+        const lockState = computeManuscriptLockState(currentManuscript);
+        if (lockState.held && lockState.lockedBy !== session.userId) {
+          return res.status(409).json({
+            error: "locked_by_other",
+            lockedBy: lockState.lockedBy,
+            lockedAt: lockState.lockedAt,
+            expiresAt: lockState.expiresAt,
+          });
+        }
+        const currentVersion = currentManuscript && typeof currentManuscript.version === "number"
+          ? currentManuscript.version
+          : currentManuscript
+            ? 0
+            : undefined;
+        const ifMatchCheck = checkIfMatch(req, currentVersion);
+        if (!ifMatchCheck.matches) {
+          return sendPreconditionFailed(res, currentVersion);
+        }
         const result = await revisionsService.restoreRevision(
           req.params.manuscriptId,
           req.params.revisionId,
+          session.userId,
         );
         if (!result) {
           res.status(404).json({
@@ -1045,6 +1117,7 @@ export function setupCastingManuscriptsRoutes(
           });
           return;
         }
+        if (pool) await mirrorManuscriptToProductionTables(pool, result.manuscript);
         setEtagHeader(res, result.manuscript);
         res.json({
           success: true,

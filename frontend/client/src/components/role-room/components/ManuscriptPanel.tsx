@@ -582,6 +582,16 @@ const manuscriptCloudSaveLabel = (
 const isUnknownRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
+const revisionContent = (revision: ScriptRevision): string => {
+  if (typeof revision.content === 'string') return revision.content;
+  if (typeof revision.snapshot?.content === 'string') return revision.snapshot.content;
+  const legacyManuscript = revision.manuscript;
+  if (isUnknownRecord(legacyManuscript) && typeof legacyManuscript.content === 'string') {
+    return legacyManuscript.content;
+  }
+  return '';
+};
+
 const buildSceneAutosaveSnapshot = (scene: SceneBreakdown) => {
   const storyboardFrames = Array.isArray(scene.storyboardFrames)
     ? (scene.storyboardFrames as Array<Record<string, unknown>>).map((frame) => {
@@ -1063,7 +1073,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     }
   };
 
-  const loadRevisions = async (manuscriptId: string) => {
+  const loadRevisions = useCallback(async (manuscriptId: string) => {
     try {
       const response = await manuscriptService.getRevisions(manuscriptId);
       setRevisions(response);
@@ -1071,7 +1081,15 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       showError('Feil ved lasting av revisjoner');
       console.error(error);
     }
-  };
+  }, [showError]);
+
+  // Automatic cloud snapshots can be created while the editor tab is open.
+  // Refresh when the user enters history so the list never shows stale data.
+  useEffect(() => {
+    if (activeTab === 'revisions' && selectedManuscript?.id) {
+      void loadRevisions(selectedManuscript.id);
+    }
+  }, [activeTab, loadRevisions, selectedManuscript?.id]);
 
   // Når et AI-forslag godtas utløser serveren automatisk apply (AD-003 i
   // ai-suggestion-service.ts), så vi refetcher de berørte dataene slik at den
@@ -1485,6 +1503,19 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       setManuscriptSaveStatus('local-only');
     }
     return persisted;
+  }, []);
+
+  const applyObservedCloudVersion = useCallback((manuscriptId: string, version: number) => {
+    setLastCloudVersion(version);
+    setSelectedManuscript((current) => (
+      current?.id === manuscriptId ? { ...current, version } : current
+    ));
+    setManuscripts((current) => current.map((entry) => (
+      entry.id === manuscriptId ? { ...entry, version } : entry
+    )));
+    if (selectedManuscriptRef.current?.id === manuscriptId) {
+      selectedManuscriptRef.current = { ...selectedManuscriptRef.current, version };
+    }
   }, []);
 
   const reportUserInitiatedSave = (
@@ -3620,52 +3651,54 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                 revisions={revisions} 
                 manuscript={selectedManuscript}
                 onRevisionsChange={setRevisions}
-                onCreateRevision={async (revision) => {
-                  const nextVersion = revision.version || selectedManuscript.version;
-                  const nowIso = new Date().toISOString();
-                  const updatedManuscript: Manuscript = {
-                    ...selectedManuscript,
-                    version: nextVersion ?? selectedManuscript.version ?? '1.0',
-                    updatedAt: nowIso,
-                  };
-                  setSelectedManuscript(updatedManuscript);
-                  setManuscripts((current) =>
-                    current.map((entry) => (entry.id === updatedManuscript.id ? updatedManuscript : entry))
-                  );
-                  try {
-                    const result = await manuscriptService.updateManuscript(updatedManuscript);
-                    if (reportUserInitiatedSave(result, 'Revisjonen er synkronisert')) {
-                      onManuscriptChange?.(result.manuscript);
-                    }
-                  } catch (error) {
-                    if (!registerManuscriptVersionConflict(error, updatedManuscript)) throw error;
-                  }
+                onCloudVersionChange={(version) => {
+                  applyObservedCloudVersion(selectedManuscript.id, version);
                 }}
                 onRestoreRevision={async (revision) => {
-                  const nowIso = new Date().toISOString();
+                  const targetContent = revisionContent(revision);
                   const restoredManuscript: Manuscript = {
                     ...selectedManuscript,
-                    content: revision.content ?? '',
-                    version: revision.version || selectedManuscript.version || '1.0',
-                    updatedAt: nowIso,
+                    content: targetContent,
+                    updatedAt: new Date().toISOString(),
                   };
-
-                  setSelectedManuscript(restoredManuscript);
-                  setManuscripts((current) =>
-                    current.map((entry) => (entry.id === restoredManuscript.id ? restoredManuscript : entry))
+                  addScreenplayRecoveryPoint(
+                    selectedManuscript.id,
+                    getCurrentUserId(),
+                    isDirtyRef.current ? pendingContentRef.current : selectedManuscript.content,
+                    'before_restore',
                   );
-                  selectedManuscriptRef.current = restoredManuscript;
-                  pendingContentRef.current = revision.content ?? '';
-                  isDirtyRef.current = true;
                   try {
-                    const result = await manuscriptService.updateManuscript(restoredManuscript);
-                    if (reportUserInitiatedSave(result, 'Revisjonen er gjenopprettet og synkronisert')) {
-                      lastSavedContentRef.current = revision.content ?? '';
-                      isDirtyRef.current = false;
-                      onManuscriptChange?.(result.manuscript);
+                    const result = await manuscriptService.restoreRevision(selectedManuscript, revision);
+                    const restoredContent = result.manuscript.content ?? targetContent;
+                    const persisted = applyCloudSaveResult(result, restoredContent);
+                    selectedManuscriptRef.current = persisted;
+                    pendingContentRef.current = restoredContent;
+                    if (!result.cloud) {
+                      isDirtyRef.current = true;
+                      showWarning('Versjonen er gjenopprettet lokalt og venter på skysynkronisering.');
+                      return true;
                     }
+                    lastSavedContentRef.current = restoredContent;
+                    isDirtyRef.current = false;
+                    setRevisions(await manuscriptService.getRevisions(selectedManuscript.id));
+                    onManuscriptChange?.(persisted);
+                    return true;
                   } catch (error) {
-                    if (!registerManuscriptVersionConflict(error, restoredManuscript)) throw error;
+                    if (registerManuscriptVersionConflict(error, restoredManuscript)) return false;
+                    if (error && typeof error === 'object' && (error as { code?: unknown }).code === 'manuscript_locked') {
+                      const lockError = error as { lockedBy?: string | null; lockedAt?: string | null };
+                      setManuscriptLockConflict({
+                        lockedBy: lockError.lockedBy ?? null,
+                        lockedAt: lockError.lockedAt ?? null,
+                      });
+                      showWarning(
+                        lockError.lockedBy
+                          ? `${resolveMemberName(lockError.lockedBy)} redigerer dette manuset nå. Gjenopprettingen ble ikke utført.`
+                          : 'Manuset redigeres av en annen. Gjenopprettingen ble ikke utført.',
+                      );
+                      return false;
+                    }
+                    throw error;
                   }
                 }}
               />
@@ -6944,16 +6977,16 @@ const RevisionsTab: React.FC<{
   revisions: ScriptRevision[]; 
   manuscript: Manuscript;
   onRevisionsChange?: (revisions: ScriptRevision[]) => void;
-  onCreateRevision?: (revision: ScriptRevision) => Promise<void> | void;
-  onRestoreRevision?: (revision: ScriptRevision) => Promise<void> | void;
+  onCloudVersionChange?: (version: number) => void;
+  onRestoreRevision?: (revision: ScriptRevision) => Promise<boolean> | boolean;
 }> = ({
   revisions,
   manuscript,
   onRevisionsChange,
-  onCreateRevision,
+  onCloudVersionChange,
   onRestoreRevision,
 }) => {
-  const { showSuccess, showError } = useToast();
+  const { showSuccess, showError, showWarning } = useToast();
   const branding = useBrandingSettings();
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
@@ -7007,14 +7040,14 @@ const RevisionsTab: React.FC<{
         content: manuscript.content,
       };
 
-      const updatedRevisions = [...revisions, newRevision];
-      onRevisionsChange?.(updatedRevisions);
-      
-      // Also save to service
-      await manuscriptService.createRevision(newRevision);
-      await onCreateRevision?.(newRevision);
-      
-      showSuccess(`Revisjon "${revisionName}" opprettet`);
+      const result = await manuscriptService.createRevision(newRevision);
+      onRevisionsChange?.([...revisions, result.revision]);
+      if (result.cloudVersion !== null) onCloudVersionChange?.(result.cloudVersion);
+      if (result.cloud) {
+        showSuccess(`Revisjon "${revisionName}" er lagret i skyen`);
+      } else {
+        showWarning(`Revisjon "${revisionName}" er bare lagret lokalt`);
+      }
       setShowCreateDialog(false);
       setRevisionName('');
       setRevisionNotes('');
@@ -7029,9 +7062,12 @@ const RevisionsTab: React.FC<{
     if (!confirm('Er du sikker på at du vil slette denne revisjonen?')) return;
 
     try {
+      const result = await manuscriptService.deleteRevision(manuscript.id, revisionId);
       const updatedRevisions = revisions.filter(r => r.id !== revisionId);
       onRevisionsChange?.(updatedRevisions);
-      showSuccess('Revisjon slettet');
+      if (result.cloudVersion !== null) onCloudVersionChange?.(result.cloudVersion);
+      if (result.cloud) showSuccess('Revisjon slettet');
+      else showWarning('Revisjonen er bare fjernet fra lokal historikk');
     } catch (error) {
       showError('Feil ved sletting av revisjon');
       console.error('Kunne ikke slette revisjon:', error);
@@ -7042,7 +7078,8 @@ const RevisionsTab: React.FC<{
     if (!confirm('Vil du gjenopprette denne versjonen? Gjeldende endringer vil bli overskrevet.')) return;
     
     try {
-      await onRestoreRevision?.(revision);
+      const restored = await onRestoreRevision?.(revision);
+      if (restored === false) return;
       setSelectedRevision(revision);
       setCompareMode(true);
       showSuccess(`Revisjon ${revision.version} gjenopprettet`);
@@ -7141,7 +7178,11 @@ const RevisionsTab: React.FC<{
                   <Stack direction={isMobile ? 'column' : 'row'} justifyContent="space-between" alignItems={isMobile ? 'flex-start' : 'center'} spacing={isMobile ? 1 : 0}>
                     <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                       <Chip 
-                        label={revision.version} 
+                        label={revision.kind === 'automatic_snapshot'
+                          ? `Automatisk · ${revision.version}`
+                          : revision.kind === 'before_restore'
+                            ? 'Før gjenoppretting'
+                            : revision.version}
                         size={responsive.chipSize}
                         color={index === 0 ? 'success' : 'default'}
                         sx={{ fontSize: responsive.captionFontSize }}

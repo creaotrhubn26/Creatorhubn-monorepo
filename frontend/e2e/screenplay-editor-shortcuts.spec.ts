@@ -217,7 +217,31 @@ test.describe('ScreenplayEditor Final Draft keyboard flow', () => {
     const nora = page.getByRole('menuitem', { name: /^NORA/ });
     await expect(nora).toBeVisible();
     await expect(nora).toContainText('Rolle');
+    const whyNora = page.getByLabel(/Hvorfor vises NORA\?/);
+    await expect(whyNora).toBeVisible();
+    await whyNora.click();
+    await expect(editor).toHaveValue('');
+    await expect(nora).toBeVisible();
     await expect(page.getByText(/Canon|Autel|Apple iPad/i)).toHaveCount(0);
+  });
+
+  test('previews and applies an undoable rename across exact Character lines', async ({ page }) => {
+    const editor = page.locator('textarea');
+    const original = 'INT. STUE - DAG\n\nBOB\nHei.\n\nBOB (V.O.)\nDer er du.';
+    await editor.fill(original);
+    await setCaret(editor, 20);
+
+    await page.getByTestId('screenplay-character-rename-open').click();
+    const dialog = page.getByRole('dialog', { name: 'Endre karakternavn i manuset' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByTestId('character-rename-to').fill('ROBERT');
+    await expect(dialog).toContainText('Forhåndsvisning · 2 forekomster');
+    await dialog.getByTestId('character-rename-confirm').click();
+
+    await expect(dialog).toBeHidden();
+    await expect(editor).toHaveValue('INT. STUE - DAG\n\nROBERT\nHei.\n\nROBERT (V.O.)\nDer er du.');
+    await editor.press('Control+z');
+    await expect(editor).toHaveValue(original);
   });
 
   test('requires confirmation before a script-only character becomes a project character', async ({ page }) => {

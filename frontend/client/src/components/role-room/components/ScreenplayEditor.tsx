@@ -43,6 +43,8 @@ import {
   TextFields,
   Keyboard as KeyboardIcon,
   History as HistoryIcon,
+  DriveFileRenameOutline as RenameCharacterIcon,
+  HelpOutline as HelpOutlineIcon,
   AddCircleOutline as AddCircleOutlineIcon,
   Fullscreen as FullscreenIcon,
   FullscreenExit as FullscreenExitIcon,
@@ -51,6 +53,7 @@ import settingsService, { getCurrentUserId } from '../services/settingsService';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import ScreenplayRecoveryDialog from './screenplay/ScreenplayRecoveryDialog';
 import ScreenplayShortcutSettingsDialog from './screenplay/ScreenplayShortcutSettingsDialog';
+import ScreenplayCharacterRenameDialog from './screenplay/ScreenplayCharacterRenameDialog';
 import type { Candidate, Role } from '../models/casting';
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 import {
@@ -77,6 +80,7 @@ import {
   type ScreenplayRecoveryStore,
 } from './screenplay/screenplayRecovery';
 import {
+  buildCharacterRenamePreview,
   buildCharacterSmartTypeSuggestions,
   normalizeSmartTypeName,
   rankCharacterSmartTypeSuggestions,
@@ -519,6 +523,9 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   const [confirmedCharacterNames, setConfirmedCharacterNames] = useState<Set<string>>(() => new Set());
   const [confirmedLocationNames, setConfirmedLocationNames] = useState<Set<string>>(() => new Set());
   const [confirmingEntity, setConfirmingEntity] = useState<string | null>(null);
+  const [characterRenameDialogOpen, setCharacterRenameDialogOpen] = useState(false);
+  const [characterRenameFrom, setCharacterRenameFrom] = useState('');
+  const [characterRenameTo, setCharacterRenameTo] = useState('');
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isEditorFocused, setIsEditorFocused] = useState(false);
@@ -1688,6 +1695,55 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     return registeredLocationNames.has(normalized) ? null : name;
   }, [currentLineContext.text, currentLineContext.type, onLocationAdd, registeredLocationNames]);
 
+  const renameCharacterNames = useMemo(
+    () => Array.from(new Set(extractedCharacters.map(normalizeSmartTypeName)))
+      .filter(Boolean)
+      .sort((left, right) => left.localeCompare(right, 'nb-NO')),
+    [extractedCharacters],
+  );
+
+  const characterRenamePreview = useMemo(() => {
+    const characterLineIndexes = parsedLines
+      .map((line, index) => (
+        line.type === 'character' && normalizeSmartTypeName(line.content) === normalizeSmartTypeName(characterRenameFrom)
+          ? index
+          : -1
+      ))
+      .filter((index) => index >= 0);
+    return buildCharacterRenamePreview({
+      content: internalValue,
+      oldName: characterRenameFrom,
+      newName: characterRenameTo,
+      characterLineIndexes,
+    });
+  }, [characterRenameFrom, characterRenameTo, internalValue, parsedLines]);
+
+  const openCharacterRenameDialog = useCallback(() => {
+    const currentName = currentLineContext.type === 'character'
+      ? normalizeSmartTypeName(currentLineContext.text)
+      : '';
+    setCharacterRenameFrom(
+      renameCharacterNames.includes(currentName) ? currentName : renameCharacterNames[0] ?? '',
+    );
+    setCharacterRenameTo('');
+    setCharacterRenameDialogOpen(true);
+  }, [currentLineContext.text, currentLineContext.type, renameCharacterNames]);
+
+  const applyCharacterRename = useCallback(() => {
+    if (characterRenamePreview.occurrences.length === 0) return;
+    const activeLineIndex = Math.max(0, cursorPosition.line - 1);
+    const nextLines = characterRenamePreview.content.split('\n');
+    const nextCursor = nextLines
+      .slice(0, activeLineIndex)
+      .reduce((sum, line) => sum + line.length + 1, 0)
+      + (nextLines[activeLineIndex]?.length ?? 0);
+    commitValue(characterRenamePreview.content, nextCursor);
+    setCharacterRenameDialogOpen(false);
+    setShortcutAnnouncement(
+      `${characterRenamePreview.oldName} ble endret til ${characterRenamePreview.newName} på ${characterRenamePreview.occurrences.length} Character-linjer.`,
+    );
+  }, [characterRenamePreview, commitValue, cursorPosition.line]);
+
   const confirmProjectEntity = useCallback(async (
     type: 'character' | 'location',
     name: string,
@@ -1998,6 +2054,21 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
             </IconButton>
           </Tooltip>
 
+          <Tooltip title="Endre et karakternavn i hele manuset med forhåndsvisning">
+            <span>
+              <IconButton
+                data-testid="screenplay-character-rename-open"
+                size={responsive.buttonSize}
+                onClick={openCharacterRenameDialog}
+                aria-label="Endre karakternavn i hele manuset"
+                disabled={readOnly || renameCharacterNames.length === 0}
+                sx={{ color: '#60a5fa' }}
+              >
+                <RenameCharacterIcon sx={{ fontSize: responsive.iconSize }} />
+              </IconButton>
+            </span>
+          </Tooltip>
+
           <Tooltip title={manuscriptId ? 'Lokal gjenopprettingshistorikk' : 'Historikk krever et lagret manus'}>
             <span>
               <IconButton
@@ -2149,6 +2220,19 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
         overrides={shortcutOverrides}
         onClose={() => setShortcutSettingsOpen(false)}
         onSave={saveShortcutOverrides}
+      />
+
+      <ScreenplayCharacterRenameDialog
+        open={characterRenameDialogOpen}
+        characterNames={renameCharacterNames}
+        targetSuggestions={characterSmartTypeSuggestions.map((suggestion) => suggestion.value)}
+        oldName={characterRenameFrom}
+        newName={characterRenameTo}
+        preview={characterRenamePreview}
+        onOldNameChange={setCharacterRenameFrom}
+        onNewNameChange={setCharacterRenameTo}
+        onClose={() => setCharacterRenameDialogOpen(false)}
+        onConfirm={applyCharacterRename}
       />
 
       <ScreenplayRecoveryDialog
@@ -2438,6 +2522,27 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
                   primaryTypographyProps={{ fontSize: responsive.bodyFontSize }}
                   secondaryTypographyProps={{ fontSize: responsive.captionFontSize }}
                 />
+                {autocompleteType === 'character' && characterAutocompleteDetails[option] && (
+                  <Tooltip
+                    title={`Hvorfor vises dette? ${characterAutocompleteDetails[option].sourceLabel}. ${characterAutocompleteDetails[option].reason}.`}
+                  >
+                    <Box
+                      component="span"
+                      tabIndex={0}
+                      aria-label={`Hvorfor vises ${option}? ${characterAutocompleteDetails[option].sourceLabel}. ${characterAutocompleteDetails[option].reason}.`}
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }
+                      }}
+                      sx={{ display: 'inline-flex', ml: 1, color: 'text.secondary' }}
+                    >
+                      <HelpOutlineIcon sx={{ fontSize: responsive.iconSize - 4 }} />
+                    </Box>
+                  </Tooltip>
+                )}
                 </MenuItem>
               ))}
             </Paper>

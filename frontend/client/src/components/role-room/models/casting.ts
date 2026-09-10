@@ -1960,12 +1960,16 @@ export interface ScriptRevision {
   id: string;
   manuscriptId: string;
   version: string;
+  kind?: 'manual' | 'automatic_snapshot' | 'before_restore' | 'restore_marker';
+  sourceCloudVersion?: number;
   changeSummary?: string;
   changesSummary?: string;
   revisionNotes?: string;
   content?: string;
+  snapshot?: Partial<Manuscript>;
   createdAt?: string;
   createdBy?: string;
+  changedBy?: string;
   [key: string]: unknown;
 }
 
