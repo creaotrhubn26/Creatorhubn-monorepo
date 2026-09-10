@@ -30,8 +30,10 @@ private enum MtBrand {
     static let yellow = Color(red: 0.98, green: 0.75, blue: 0.14)
     static let green = Color(red: 0.20, green: 0.85, blue: 0.60)
     static let blue = Color(red: 0.34, green: 0.60, blue: 0.98)
-    static let textSecondary = Color.white.opacity(0.62)
-    static let textTertiary = Color.white.opacity(0.45)
+    // Tekst på de mørke kortene må også bestå når iPad dimmer innhold
+    // bak sidebaren. De gamle 62/45 %-verdiene feilet kontrastauditen.
+    static let textSecondary = Color.white.opacity(0.78)
+    static let textTertiary = Color.white.opacity(0.64)
 }
 
 // MARK: - Models
@@ -521,10 +523,18 @@ struct MeetingsView: View {
     @State private var showStatsModal = false
     @State private var bookDayOfMonth: Int?
     // Header: delt LeadgridTabHeader eier all popover/sheet-state selv.
-    // iPhone (compact): detalj-panelet vises som sheet i stedet for
-    // side-stilt 340pt-kolonne — åpnes når et møte velges.
+    // Smale innholdsvinduer (iPhone, iPad mini, Split View):
+    // detalj-panelet vises som sheet i stedet for en 340pt sidekolonne.
     @State private var phoneDetailOpen: Bool = false
+    @State private var availableContentWidth: CGFloat = 0
     @Environment(AppState.self) private var appState
+
+    /// Ytre Leadgrid-sidebar bruker en del av iPad-bredden. Idiom alene
+    /// er derfor ikke nok: iPad mini og Split View må få kompakt layout.
+    private static let inlineDetailMinimumWidth: CGFloat = 920
+    private var usesCompactMeetingLayout: Bool {
+        DeviceIdiom.isPhone || availableContentWidth < Self.inlineDetailMinimumWidth
+    }
 
     // MARK: Datakilde (uke 2-binding) — demo → mocks, ellers ekte kalender
 
@@ -1060,8 +1070,8 @@ struct MeetingsView: View {
         )) { wrap in
             BookMeetingSheet(dayOfMonth: wrap.day)
         }
-        // iPhone (compact): samme MeetingDetailSidebar som iPad viser til
-        // høyre, presentert som sheet (sidebar-en eier sine egne under-ark).
+        // Samme detaljvisning som på bred iPad, presentert som sheet når
+        // innholdsvinduet er smalt (inkludert iPad mini og Split View).
         .sheet(isPresented: $phoneDetailOpen) {
             MeetingDetailSidebar(
                 meeting: selectedMeeting, calMode: $calMode,
@@ -1069,60 +1079,82 @@ struct MeetingsView: View {
                 .background(MtBrand.bg.ignoresSafeArea())
                 .preferredColorScheme(.dark)
                 .presentationDetents([.large])
+                .accessibilityIdentifier("meeting-detail-sheet")
         }
     }
 
     /// Felles valg-handling — oppdaterer utvalget og åpner detalj-sheeten
-    /// på iPhone (der høyre-panelet ikke vises side-stilt).
+    /// når innholdsvinduet ikke har plass til høyre-panelet.
     private func selectMeeting(_ m: Meeting) {
         selectedID = m.id
-        if DeviceIdiom.isPhone { phoneDetailOpen = true }
+        if usesCompactMeetingLayout { phoneDetailOpen = true }
     }
 
     private var content: some View {
-        HStack(alignment: .top, spacing: 0) {
-            VStack(spacing: 0) {
-                header
-                    .padding(.horizontal, 20).padding(.top, 14)
-                if !erRenDorsalgOrg {
-                    kpiRow
+        GeometryReader { geo in
+            let showsInlineDetail = geo.size.width >= Self.inlineDetailMinimumWidth
+            HStack(alignment: .top, spacing: 0) {
+                VStack(spacing: 0) {
+                    header
                         .padding(.horizontal, 20).padding(.top, 14)
-                }
-
-                ScrollView {
-                    VStack(spacing: 14) {
-                        // Dørsalg: brief-møtene øverst; ren dørsalg-org ser
-                        // KUN disse (ingen lead-møter/agenda).
-                        if dorsalgAktivert {
-                            AnyView(briefCard)
-                        }
-                        if !erRenDorsalgOrg {
-                            agendaCard
-                            upcomingCard
-                        }
-                        // All møteforberedelse er flyttet til høyre sidebar (kontekst-bundet til valgt møte)
+                    if !erRenDorsalgOrg {
+                        kpiRow
+                            .padding(.horizontal, 20).padding(.top, 14)
                     }
-                    .padding(.horizontal, 20).padding(.top, 14)
-                    .padding(.bottom, DeviceIdiom.isPhone ? 110 : 20)
+
+                    ScrollView {
+                        VStack(spacing: 14) {
+                            // Dørsalg: brief-møtene øverst; ren dørsalg-org ser
+                            // KUN disse (ingen lead-møter/agenda).
+                            if dorsalgAktivert {
+                                AnyView(briefCard)
+                            }
+                            if !erRenDorsalgOrg {
+                                agendaCard
+                                upcomingCard
+                            }
+                        }
+                        .padding(.horizontal, 20).padding(.top, 14)
+                        .padding(.bottom, DeviceIdiom.isPhone ? 110 : 20)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+
+                if showsInlineDetail && !erRenDorsalgOrg {
+                    if sourceAgenda.isEmpty {
+                        MeetingDetailEmptyState()
+                            .frame(width: 340)
+                    } else {
+                        MeetingDetailSidebar(meeting: selectedMeeting, calMode: $calMode,
+                                             onReschedule: { m in reschedulingMeeting = m },
+                                             naa: naa)
+                            .frame(width: 340)
+                    }
                 }
             }
-            .frame(maxWidth: .infinity)
-
-            // Detail sidebar høyre — iPhone (compact): 340pt side-stilt
-            // kolonne får ikke plass — detaljene vises i stedet som sheet
-            // når et møte velges.
-            if !DeviceIdiom.isPhone && !erRenDorsalgOrg {
-                if sourceAgenda.isEmpty {
-                    MeetingDetailEmptyState()
-                        .frame(width: 340)
-                } else {
-                    MeetingDetailSidebar(meeting: selectedMeeting, calMode: $calMode,
-                                         onReschedule: { m in reschedulingMeeting = m },
-                                         naa: naa)
-                        .frame(width: 340)
-                }
+            // Egen QA-markør i stedet for ID på hele beholderen. En ID på
+            // forelder arves ellers av SwiftUI-knappene og ødelegger både
+            // VoiceOver-navn og presis kontroll av treffområder.
+            .background(alignment: .topLeading) {
+                meetingLayoutMarker(
+                    showsInlineDetail ? "meetings-layout-inline" : "meetings-layout-compact",
+                    label: showsInlineDetail ? "Bred møtelayout" : "Kompakt møtelayout"
+                )
+            }
+            // task kjører etter layoutpasset og unngår state-mutasjon mens
+            // SwiftUI bygger view-hierarkiet.
+            .task(id: geo.size.width) {
+                availableContentWidth = geo.size.width
             }
         }
+    }
+
+    private func meetingLayoutMarker(_ identifier: String, label: String) -> some View {
+        Color.clear
+            .frame(width: 1, height: 1)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(label)
+            .accessibilityIdentifier(identifier)
     }
 
     // MARK: Header — delt LeadgridTabHeader (fasit: Oversikt-fanen)
@@ -1178,6 +1210,7 @@ struct MeetingsView: View {
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 11).padding(.vertical, 7)
+                        .frame(minHeight: 44)
                         .background(
                             LinearGradient(colors: [MtBrand.purple, MtBrand.purpleLight],
                                            startPoint: .leading, endPoint: .trailing),
@@ -1199,6 +1232,7 @@ struct MeetingsView: View {
                             .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
                             .overlay(RoundedRectangle(cornerRadius: 8)
                                 .stroke(MtBrand.stroke, lineWidth: 1))
+                            .frame(width: 44, height: 44)
                     }
                     .buttonStyle(.plain)
                 }
@@ -1278,6 +1312,7 @@ struct MeetingsView: View {
                         .foregroundStyle(MtBrand.red.opacity(0.8))
                         .frame(width: 28, height: 28)
                         .background(MtBrand.red.opacity(0.12), in: Circle())
+                        .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
             }
@@ -1442,7 +1477,7 @@ struct MeetingsView: View {
                             Image(systemName: "chevron.left")
                                 .font(.appScaled(size: 11, weight: .bold))
                                 .foregroundStyle(MtBrand.textSecondary)
-                                .frame(width: 26, height: 26)
+                                .frame(width: 44, height: 44)
                                 .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 7))
                         }
                         .buttonStyle(.plain)
@@ -1452,6 +1487,7 @@ struct MeetingsView: View {
                                     .font(.appScaled(size: 10, weight: .bold))
                                     .foregroundStyle(MtBrand.purpleLight)
                                     .padding(.horizontal, 8).padding(.vertical, 6)
+                                    .frame(minWidth: 44, minHeight: 44)
                                     .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 7))
                             }
                             .buttonStyle(.plain)
@@ -1460,7 +1496,7 @@ struct MeetingsView: View {
                             Image(systemName: "chevron.right")
                                 .font(.appScaled(size: 11, weight: .bold))
                                 .foregroundStyle(MtBrand.textSecondary)
-                                .frame(width: 26, height: 26)
+                                .frame(width: 44, height: 44)
                                 .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 7))
                         }
                         .buttonStyle(.plain)
@@ -1488,7 +1524,7 @@ struct MeetingsView: View {
                         agendaRow(m)
                             .overlay(alignment: .topTrailing) {
                                 // Etterarbeids-gjeld: synlig til møtet logges.
-                                if !DeviceIdiom.isPhone && trengerLogg(m) {
+                                if !usesCompactMeetingLayout && trengerLogg(m) {
                                     HStack(spacing: 3) {
                                         Image(systemName: "exclamationmark.circle.fill")
                                             .font(.appScaled(size: 9, weight: .bold))
@@ -1499,11 +1535,12 @@ struct MeetingsView: View {
                                     .padding(.horizontal, 7).padding(.vertical, 3)
                                     .background(MtBrand.yellow, in: Capsule())
                                     .offset(x: -8, y: 6)
+                                    .accessibilityElement(children: .combine)
                                 }
                             }
                             .overlay(alignment: .bottomTrailing) {
                                 // Reisetids-vakta: du rekker ikke kjøreturen hit.
-                                if !DeviceIdiom.isPhone, let varsel = reisetidsAdvarsler[m.id] {
+                                if !usesCompactMeetingLayout, let varsel = reisetidsAdvarsler[m.id] {
                                     HStack(spacing: 3) {
                                         Image(systemName: "car.fill")
                                             .font(.appScaled(size: 9, weight: .bold))
@@ -1515,6 +1552,7 @@ struct MeetingsView: View {
                                     .padding(.horizontal, 7).padding(.vertical, 3)
                                     .background(MtBrand.orange, in: Capsule())
                                     .offset(x: -8, y: -6)
+                                    .accessibilityElement(children: .combine)
                                 }
                             }
                             .contextMenu {
@@ -1628,7 +1666,7 @@ struct MeetingsView: View {
     // rad i stedet for full tabellrad.
     @ViewBuilder
     private func agendaRow(_ m: Meeting) -> some View {
-        if DeviceIdiom.isPhone {
+        if usesCompactMeetingLayout {
             agendaRowCompact(m)
         } else {
             agendaRowFull(m)
@@ -1720,7 +1758,7 @@ struct MeetingsView: View {
         _ text: String,
         icon: String,
         color: Color,
-        foreground: Color = .white
+        foreground: Color = .black
     ) -> some View {
         Label(text, systemImage: icon)
             .font(.appScaled(size: 9, weight: .bold))
@@ -1901,6 +1939,8 @@ struct MeetingsView: View {
                         Text("Se alle")
                             .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(MtBrand.purpleLight)
+                            .frame(minWidth: 60, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -1908,7 +1948,7 @@ struct MeetingsView: View {
             if hasUpcoming {
                 // iPhone (compact): 4 kort side-ved-side blir uleselig smale
                 // — bruk 2-kolonne-grid i stedet.
-                if DeviceIdiom.isPhone {
+                if usesCompactMeetingLayout {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
                         ForEach(sourceUpcoming.prefix(3)) { u in
                             upcomingMini(u)
@@ -1980,7 +2020,8 @@ struct MeetingsView: View {
                         Text(u.company)
                             .font(.appScaled(size: 12, weight: .bold))
                             .foregroundStyle(.white)
-                            .lineLimit(1)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                         Text(u.location)
                             .font(.appScaled(size: 10))
                             .foregroundStyle(MtBrand.textSecondary)
@@ -1995,9 +2036,13 @@ struct MeetingsView: View {
                         Text(u.prepStatus.rawValue)
                             .font(.appScaled(size: 9, weight: .bold))
                     }
-                    .foregroundStyle(u.prepStatus.color)
+                    .foregroundStyle(u.prepStatus == .notStarted ? Color.white : u.prepStatus.color)
+                    .fixedSize(horizontal: true, vertical: true)
                     .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(u.prepStatus.color.opacity(0.18), in: Capsule())
+                    .background(
+                        u.prepStatus.color.opacity(u.prepStatus == .notStarted ? 0.55 : 0.18),
+                        in: Capsule()
+                    )
                     .overlay(Capsule().stroke(u.prepStatus.color.opacity(0.4), lineWidth: 1))
                     Spacer()
                     // Verdi
@@ -2005,6 +2050,8 @@ struct MeetingsView: View {
                         .font(.appScaled(size: 9, weight: .bold, design: .rounded))
                         .foregroundStyle(MtBrand.green)
                         .monospacedDigit()
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: true)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -2306,8 +2353,10 @@ struct MeetingDetailSidebar: View {
                             Image(systemName: favorited ? "star.fill" : "star")
                                 .font(.appScaled(size: 12))
                                 .foregroundStyle(favorited ? MtBrand.yellow : MtBrand.textTertiary)
+                                .frame(width: 44, height: 44)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel(favorited ? "Fjern favoritt" : "Legg til favoritt")
                         .disabled(savingFavorite)
                         .task(id: meeting.id) { loadFavoriteFromLead() }
                     }
@@ -2524,6 +2573,7 @@ struct MeetingDetailSidebar: View {
                     .foregroundStyle(color)
             }
             .frame(width: 28, height: 28)
+            .frame(minWidth: 44, minHeight: 44)
         }
         .buttonStyle(.plain)
     }

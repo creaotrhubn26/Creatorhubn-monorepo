@@ -22,8 +22,10 @@ enum LBrand {
     static let green = Color(red: 0.20, green: 0.85, blue: 0.60)
     static let blue = Color(red: 0.34, green: 0.60, blue: 0.98)
     static let pink = Color(red: 0.98, green: 0.35, blue: 0.65)
-    static let textSecondary = Color.white.opacity(0.62)
-    static let textTertiary = Color.white.opacity(0.45)
+    // iPad legger material/dimming over split-view-detaljen. Høyere
+    // opasitet holder sekundærtekst over WCAG-grensen også på iPad mini.
+    static let textSecondary = Color.white.opacity(0.78)
+    static let textTertiary = Color.white.opacity(0.64)
 }
 
 // MARK: - Models
@@ -294,9 +296,6 @@ struct LeadbookView: View {
     @State private var activePondusCoach: PondusTemplateDTO?
     @State private var activePondusInitialStep = 0
     @Environment(AppState.self) private var appState
-    /// iPhone-compact vs. iPad/Mac-regular. Brukes til å velge 2×2-grid
-    /// vs. 1×4-rekke for KPI-kortene og andre tetthetsvalg.
-    @Environment(\.horizontalSizeClass) private var hSize
     /// Lokalt alias for delt store — bevarer eksisterende callsteder som
     /// refererer `pondusStore.*`.
     private var pondusStore: PondusStore { appState.pondusStore }
@@ -305,10 +304,6 @@ struct LeadbookView: View {
             || ["admin", "owner", "salgssjef", "teamleder"].contains(appState.roleInOrg ?? "")
             || appState.can("pondus.manage")
     }
-
-    /// True på iPhone-portrait og trange split-view på iPad. Bruk til å
-    /// bytte til vertikal single-column layout.
-    private var isCompactLayout: Bool { hSize == .compact }
 
     var body: some View {
         // iPhone: fullScreenCover — LeadbookView er pushet inne i Mer-
@@ -341,38 +336,45 @@ struct LeadbookView: View {
             LBrand.bg.ignoresSafeArea()
             VStack(spacing: 0) {
                 DemoModeBanner()
-                ScrollView {
-                    VStack(spacing: 16) {
-                        header
-                        kpiRow
-                        subTabBar
-                        Group {
-                            switch subTab {
-                            case .oversikt:  oversiktContent
-                            case .maler:     malerContent.gated(.leadbookMaler)
-                            case .pondus:    pondusContent.gated(.leadbookPondus)
-                            case .akademi:   AcademyTabView()
-                            case .eksempler:
-                                LeadbookExamplesView(
-                                    requestedExampleId: appState.deepLinkLeadbookExampleId
-                                )
-                                .gated(.leadbookEksempler)
-                            case .innsikt:   LeadbookInnsiktView().gated(.leadbookInnsikt)
+                GeometryReader { geo in
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            header
+                            kpiRow
+                            subTabBar
+                            Group {
+                                switch subTab {
+                                case .oversikt:  oversiktContent
+                                case .maler:     malerContent.gated(.leadbookMaler)
+                                case .pondus:    pondusContent.gated(.leadbookPondus)
+                                case .akademi:   AcademyTabView()
+                                case .eksempler:
+                                    LeadbookExamplesView(
+                                        requestedExampleId: appState.deepLinkLeadbookExampleId
+                                    )
+                                    .gated(.leadbookEksempler)
+                                case .innsikt:   LeadbookInnsiktView().gated(.leadbookInnsikt)
+                                }
                             }
+                            // Telefon: den flytende tab-baren overlapper de
+                            // siste ~100pt — innhold lakk bak den (QA 2026-07-05).
+                            Color.clear.frame(height: DeviceIdiom.isPhone ? 110 : 20)
                         }
-                        // Telefon: den flytende tab-baren overlapper de
-                        // siste ~100pt — innhold lakk bak den (QA 2026-07-05).
-                        Color.clear.frame(height: DeviceIdiom.isPhone ? 110 : 20)
+                        // En vertikal ScrollView kan ellers arve idealbredden fra
+                        // en bred fane-/Pondus-rad og sentrere hele innholdet bak
+                        // iPad-sidepanelet. Lås innholdet til faktisk detaljbredde.
+                        .frame(width: max(0, geo.size.width - 40), alignment: .leading)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 14)
                     }
-                    .padding(.horizontal, 20).padding(.top, 14)
-                }
-                .refreshable {
-                    await pondusStore.load(
-                        api: appState.api,
-                        organizationId: appState.activeOrganizationId
-                    )
-                    await LeadbookLiveStore.shared.refresh()
-                    await AcademyLiveStore.shared.load()
+                    .refreshable {
+                        await pondusStore.load(
+                            api: appState.api,
+                            organizationId: appState.activeOrganizationId
+                        )
+                        await LeadbookLiveStore.shared.refresh()
+                        await AcademyLiveStore.shared.load()
+                    }
                 }
             }
         }
@@ -538,6 +540,8 @@ struct LeadbookView: View {
             .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
             .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
         }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
         .buttonStyle(.plain)
         .macCatalystHover()
     }
@@ -559,6 +563,8 @@ struct LeadbookView: View {
             .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
             .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
         }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
         .buttonStyle(.plain)
         .macCatalystHover()
     }
@@ -586,6 +592,8 @@ struct LeadbookView: View {
             .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
             .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
         }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
         .buttonStyle(.plain)
         .macCatalystHover()
     }
@@ -675,6 +683,8 @@ struct LeadbookView: View {
                             .fill(subTab == tab ? LBrand.purpleLight : .clear)
                             .frame(height: 2)
                     }
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 // Stabil id for QA-harnessen — label-CONTAINS-søk traff
@@ -684,34 +694,29 @@ struct LeadbookView: View {
         }
     }
 
-    @ViewBuilder
     private var subTabBar: some View {
-        if DeviceIdiom.isPhone {
-            // iPhone: fem faner får ikke plass side om side på compact width —
-            // horisontal scroller i stedet. Full-bleed (negativ padding
-            // opphever ytre 20pt-marg) med marg lagt inn i innholdet, slik at
-            // siste fane kan scrolles helt inn.
-            ScrollView(.horizontal, showsIndicators: false) {
-                subTabButtons
-                    .padding(.horizontal, 20)
-            }
-            .accessibilityIdentifier("leadbook-subtab-scroller")
-            .padding(.horizontal, -20)
-            .background(
-                Rectangle().fill(LBrand.stroke).frame(height: 1),
-                alignment: .bottom
-            )
-        } else {
-            // iPad/Mac: behold dagens faste rad — her er det alltid plass.
+        ViewThatFits(in: .horizontal) {
             HStack(spacing: 4) {
                 subTabButtons
                 Spacer()
             }
-            .background(
-                Rectangle().fill(LBrand.stroke).frame(height: 1),
-                alignment: .bottom
-            )
+            // Behold fast rad når detaljflaten faktisk har plass, uavhengig
+            // av om enheten er iPad, iPad mini eller ekstern skjerm.
+            .frame(minWidth: 680)
+
+            // Trange iPad-vinduer trenger samme scrollbar rad som iPhone.
+            ScrollView(.horizontal, showsIndicators: false) {
+                subTabButtons
+                    .padding(.horizontal, 20)
+            }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("leadbook-subtab-scroller")
+            .padding(.horizontal, -20)
         }
+        .background(
+            Rectangle().fill(LBrand.stroke).frame(height: 1),
+            alignment: .bottom
+        )
     }
 
     // MARK: Content per sub-tab

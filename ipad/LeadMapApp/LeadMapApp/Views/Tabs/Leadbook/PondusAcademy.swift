@@ -223,67 +223,22 @@ struct PondusAcademyBanner: View {
             currentChapter = nextChapter
             onOpen()
         } label: {
-            HStack(spacing: 14) {
-                // Mini-poster: bilde av Marit (Pondus-coach) m/ play-overlay
-                ZStack {
-                    SmartPortrait(assetName: "portrait-marit", cornerRadius: 0, cropAspect: 70.0/50.0)
-                        .frame(width: 70, height: 50)
-                    LinearGradient(
-                        colors: [nextChapter.posterTint.opacity(0.30), .clear],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    )
-                    Circle().fill(.black.opacity(0.55))
-                        .frame(width: 26, height: 26)
-                        .overlay(
-                            Image(systemName: "play.fill")
-                                .font(.appScaled(size: 10, weight: .bold))
-                                .foregroundStyle(.white)
-                                .offset(x: 1)
-                        )
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 14) {
+                    academyPoster
+                    academyProgress
+                    academyCTA
                 }
-                .frame(width: 70, height: 50)
-                .clipShape(RoundedRectangle(cornerRadius: 11))
+                .frame(minWidth: 680)
 
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 6) {
-                        Text("LÆR LEADGRID PONDUS")
-                            .font(.appScaled(size: 9, weight: .black))
-                            .foregroundStyle(LBrand.purpleLight).tracking(0.8)
-                        Text("•").foregroundStyle(LBrand.textTertiary)
-                        Text("\(watched.count) / \(PondusAcademyData.chapters.count) sett")
-                            .font(.appScaled(size: 9, weight: .bold))
-                            .foregroundStyle(LBrand.textTertiary)
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 12) {
+                        academyPoster
+                        academyProgress
                     }
-                    Text(watched.isEmpty ? "Start: «\(nextChapter.title)»" : "Fortsett: «\(nextChapter.title)»")
-                        .font(.appScaled(size: 13, weight: .bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                    // Progress bar
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(LBrand.cardHi).frame(height: 4)
-                            Capsule()
-                                .fill(LinearGradient(colors: [LBrand.purple, LBrand.purpleLight],
-                                                     startPoint: .leading, endPoint: .trailing))
-                                .frame(width: max(6, geo.size.width * progressPct), height: 4)
-                        }
-                    }
-                    .frame(height: 4)
+                    academyCTA
+                        .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                HStack(spacing: 6) {
-                    Image(systemName: "play.fill").font(.appScaled(size: 11, weight: .bold))
-                    Text("Åpne Akademi").font(.appScaled(size: 12, weight: .bold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 14).padding(.vertical, 10)
-                .background(
-                    LinearGradient(colors: [LBrand.purple, LBrand.purpleLight],
-                                   startPoint: .leading, endPoint: .trailing),
-                    in: Capsule()
-                )
-                .shadow(color: LBrand.purple.opacity(0.45), radius: 6, y: 2)
             }
             .padding(12)
             .background(LBrand.card, in: RoundedRectangle(cornerRadius: 14))
@@ -293,6 +248,74 @@ struct PondusAcademyBanner: View {
         }
         .buttonStyle(.plain)
     }
+
+    private var academyPoster: some View {
+        // Mini-poster: bilde av Marit (Pondus-coach) m/ play-overlay
+        ZStack {
+            SmartPortrait(assetName: "portrait-marit", cornerRadius: 0, cropAspect: 70.0/50.0)
+                .frame(width: 70, height: 50)
+            LinearGradient(
+                colors: [nextChapter.posterTint.opacity(0.30), .clear],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+            Circle().fill(.black.opacity(0.55))
+                .frame(width: 26, height: 26)
+                .overlay(
+                    Image(systemName: "play.fill")
+                        .font(.appScaled(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .offset(x: 1)
+                )
+        }
+        .frame(width: 70, height: 50)
+        .clipShape(RoundedRectangle(cornerRadius: 11))
+        .accessibilityHidden(true)
+    }
+
+    private var academyProgress: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("LÆR LEADGRID PONDUS · \(watched.count) / \(PondusAcademyData.chapters.count) sett")
+                .font(.appScaled(size: 9, weight: .black))
+                .foregroundStyle(LBrand.purpleLight)
+                .tracking(0.5)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(watched.isEmpty ? "Start: «\(nextChapter.title)»" : "Fortsett: «\(nextChapter.title)»")
+                .font(.appScaled(size: 13, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(LBrand.cardHi).frame(height: 4)
+                    Capsule()
+                        .fill(LinearGradient(colors: [LBrand.purple, LBrand.purpleLight],
+                                             startPoint: .leading, endPoint: .trailing))
+                        .frame(width: max(6, geo.size.width * progressPct), height: 4)
+                }
+            }
+            .frame(height: 4)
+            .accessibilityHidden(true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var academyCTA: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "play.fill").font(.appScaled(size: 11, weight: .bold))
+            Text("Åpne Akademi").font(.appScaled(size: 12, weight: .bold))
+        }
+        .foregroundStyle(.black)
+        .padding(.horizontal, 14)
+        .frame(minHeight: 44)
+        .background(
+            LinearGradient(colors: [LBrand.purple, LBrand.purpleLight],
+                           startPoint: .leading, endPoint: .trailing),
+            in: Capsule()
+        )
+        .shadow(color: LBrand.purple.opacity(0.45), radius: 6, y: 2)
+    }
+
 }
 
 // MARK: - Full-screen Akademi-modal

@@ -1106,6 +1106,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
 /// bruker fortsatt MainTabView (bottom-tabs).
 struct MainSidebarView: View {
     @Environment(AppState.self) private var state
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var visibility: NavigationSplitViewVisibility = {
         #if DEBUG
         if ProcessInfo.processInfo.environment["QA_CAPTURE"] == "1" { return .detailOnly }
@@ -1131,6 +1132,12 @@ struct MainSidebarView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .onAppear(perform: applyQATabIfNeeded)
+        .task(id: dynamicTypeSize) {
+            // NavigationSplitView må først ha fullført sitt eget layoutpass
+            // før en programmatisk kolonneendring blir respektert.
+            await Task.yield()
+            adaptSidebarForTextSize(dynamicTypeSize)
+        }
         // Nyopprettet lead skal vises der den havnet — bytt til Kart-fanen
         // (2026-08-19). iPad-landscape bruker DENNE sidebaren, ikke
         // MainTabView — samme mekanisme trengs begge steder (se MainTabView).
@@ -1158,6 +1165,15 @@ struct MainSidebarView: View {
         #endif
     }
 
+    /// På iPad mini etterlater sidebaren for lite arbeidsbredde ved de
+    /// største tekststørrelsene. Detaljen åpnes derfor først; den native
+    /// sidebar-knappen ligger fortsatt øverst og gjør navigasjonen tilgjengelig.
+    private func adaptSidebarForTextSize(_ size: DynamicTypeSize) {
+        guard size.isAccessibilitySize else { return }
+        visibility = .detailOnly
+        preferredCompactColumn = .detail
+    }
+
     @ViewBuilder
     private var sidebarList: some View {
         @Bindable var bindableState = state
@@ -1176,38 +1192,47 @@ struct MainSidebarView: View {
             }
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
-            Section("Hovedfaner") {
-                // Salgsledelse skjules for ikke-ledere (rolle-gate; viewet
-                // vakter i tillegg selv mot deep-link/persistert valg).
-                // Leads (bedrifts-CRM) skjules HELT for dørsalg-profil-orger
-                // (2026-07-18): en låst kjernefane skal ikke finnes i
-                // opplevelsen, ikke vises med lås-skjerm.
-                let visibleItems = SidebarItem.allCases.filter { item in
-                    if item == .salgsledelse {
-                        return ["admin", "salgssjef"].contains(state.roleInOrg ?? "")
-                    }
-                    if item == .leads {
-                        return EntitlementStore.shared.canUse(.leads)
-                    }
-                    if item == .canvas {
-                        return EntitlementStore.shared.canUse(.leadgridCanvas)
-                    }
-                    if item == .agent {
-                        return EntitlementStore.shared.canUse(.leads)
-                            && state.permissions.contains("leads.view")
-                    }
-                    return true
+            Text("Hovedfaner")
+                .font(.headline.weight(.bold))
+                .foregroundStyle(Color.white)
+                .textCase(nil)
+                .accessibilityAddTraits(.isHeader)
+                // Solid bakgrunn gir audit-verktøyet et entydig
+                // kontrastgrunnlag også når sidebar-materialet er transparent.
+                .listRowBackground(Color(red: 0.05, green: 0.04, blue: 0.10))
+                .listRowSeparator(.hidden)
+
+            // Salgsledelse skjules for ikke-ledere (rolle-gate; viewet
+            // vakter i tillegg selv mot deep-link/persistert valg).
+            // Leads (bedrifts-CRM) skjules HELT for dørsalg-profil-orger
+            // (2026-07-18): en låst kjernefane skal ikke finnes i
+            // opplevelsen, ikke vises med lås-skjerm.
+            let visibleItems = SidebarItem.allCases.filter { item in
+                if item == .salgsledelse {
+                    return ["admin", "salgssjef"].contains(state.roleInOrg ?? "")
                 }
-                ForEach(visibleItems) { item in
-                    sidebarRow(
-                        item,
-                        badge: item == .leads ? state.leadgridUnreadCount : 0,
-                        selection: $bindableState.selectedSidebarItem
-                    )
+                if item == .leads {
+                    return EntitlementStore.shared.canUse(.leads)
                 }
+                if item == .canvas {
+                    return EntitlementStore.shared.canUse(.leadgridCanvas)
+                }
+                if item == .agent {
+                    return EntitlementStore.shared.canUse(.leads)
+                        && state.permissions.contains("leads.view")
+                }
+                return true
+            }
+            ForEach(visibleItems) { item in
+                sidebarRow(
+                    item,
+                    badge: item == .leads ? state.leadgridUnreadCount : 0,
+                    selection: $bindableState.selectedSidebarItem
+                )
             }
         }
         .listStyle(.sidebar)
+        .preferredColorScheme(.dark)
     }
 
     /// Sidebar-rad som button (alle iOS-versjoner). Highlighter aktiv valg
@@ -1236,15 +1261,16 @@ struct MainSidebarView: View {
             }
             .padding(.vertical, 4)
             .padding(.horizontal, 6)
+            .frame(minHeight: 44)
             .background(
                 isActive
                     ? Color(red: 0.66, green: 0.32, blue: 0.99).opacity(0.20)
                     : Color.clear,
                 in: RoundedRectangle(cornerRadius: 8)
             )
-            .foregroundStyle(isActive
-                              ? Color(red: 0.66, green: 0.32, blue: 0.99)
-                              : Color.primary)
+            // Hvit tekst på den mørke system-sidebaren består også når
+            // iPadOS legger material/dimming bak NavigationSplitView.
+            .foregroundStyle(Color.white)
         }
         .buttonStyle(.plain)
         .macCatalystHover()

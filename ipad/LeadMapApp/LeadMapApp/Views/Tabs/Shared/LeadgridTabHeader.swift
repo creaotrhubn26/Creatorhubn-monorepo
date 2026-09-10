@@ -362,6 +362,8 @@ struct LeadgridTabHeader<Extra: View>: View {
             pickerButton(icon: "calendar",
                          text: isNarrow ? headerDateShort() : headerDateFull())
         }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
         .buttonStyle(.plain)
         .macCatalystHover()
         .sheet(isPresented: $headerDatePickerOpen) {
@@ -722,7 +724,8 @@ struct LeadgridTabHeader<Extra: View>: View {
     private func countBadge(_ n: Int, color: Color = Brand.purple) -> some View {
         Text("\(min(n, 99))")
             .font(.system(size: 9, weight: .bold))
-            .foregroundStyle(.white)
+            // Sort gir tilstrekkelig kontrast på både lilla og rødt badge.
+            .foregroundStyle(.black)
             .padding(.horizontal, 5).padding(.vertical, 2)
             .background(color, in: Capsule())
             .overlay(Capsule().stroke(Brand.bg, lineWidth: 1.5))

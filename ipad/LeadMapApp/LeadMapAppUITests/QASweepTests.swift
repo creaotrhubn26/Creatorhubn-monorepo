@@ -123,6 +123,24 @@ final class QASweepTests: XCTestCase {
         (element.value as? String) ?? element.label
     }
 
+    private func undersizedVisibleButtons(in app: XCUIApplication) -> [String] {
+        app.buttons.allElementsBoundByIndex.compactMap { button in
+            guard button.exists else { return nil }
+            let frame = button.frame
+            // Ikke spør isHittable for offscreen SwiftUI-elementer. XCTest
+            // kan kaste en Objective-C exception når et lazy element akkurat
+            // er frigitt. Skjæringspunkt med app-vinduet er stabilt her.
+            guard frame.intersects(app.frame),
+                  frame.width > 0, frame.height > 0,
+                  (frame.width < 44 || frame.height < 44) else { return nil }
+            let name = button.identifier.isEmpty ? button.label : button.identifier
+            // OS-eid sidebar-kontroll er 54×36 på iPadOS 26 og kan ikke
+            // styles av appen. Vi måler bare Leadgrid sine egne knapper.
+            guard name != "Hide Sidebar" else { return nil }
+            return "\(name.isEmpty ? "ukjent knapp" : name) \(Int(frame.width))×\(Int(frame.height))"
+        }
+    }
+
     private func pondusUsageCount(
         baseURL: URL,
         token: String,
@@ -759,6 +777,74 @@ final class QASweepTests: XCTestCase {
         app.terminate()
     }
 
+    // MARK: - iPad mini: smale detail-kolonner
+
+    func testIPadCompactMeetingsAndPondusLayouts() throws {
+        guard UIDevice.current.userInterfaceIdiom == .pad else {
+            throw XCTSkip("Denne testen verifiserer iPad-layout")
+        }
+
+        let meetings = launchApp(
+            tab: 3,
+            environment: ["QA_TOUR": "profile", "QA_DEMO": "1"]
+        )
+        let compactMeetings = meetings.descendants(matching: .any)["meetings-layout-compact"]
+        XCTAssertTrue(compactMeetings.waitForExistence(timeout: 5))
+        snap(meetings, "ipad-compact-moter")
+
+        #if !targetEnvironment(macCatalyst)
+        XCUIDevice.shared.orientation = .landscapeLeft
+        sleep(2)
+        let rotatedMeetingsLayout = meetings.descendants(matching: .any)["meetings-layout-compact"]
+        let rotatedMeetingsWideLayout = meetings.descendants(matching: .any)["meetings-layout-inline"]
+        XCTAssertTrue(
+            rotatedMeetingsLayout.exists || rotatedMeetingsWideLayout.exists,
+            "Møter skal velge en gyldig layout etter iPad-rotasjon"
+        )
+        snap(meetings, "ipad-moter-landskap")
+        XCUIDevice.shared.orientation = .portrait
+        sleep(2)
+        #endif
+
+        let firstMeeting = button(in: meetings, containing: "Nordic Elektro")
+        XCTAssertTrue(firstMeeting.waitForExistence(timeout: 5))
+        firstMeeting.tap()
+        let detailSheet = meetings.descendants(matching: .any)["meeting-detail-sheet"]
+        XCTAssertTrue(detailSheet.waitForExistence(timeout: 5))
+        snap(meetings, "ipad-compact-motedetalj")
+        meetings.terminate()
+
+        let leadbook = launchApp(
+            tab: 5,
+            environment: ["QA_TOUR": "profile", "QA_DEMO": "1"]
+        )
+        let compactPondus = leadbook.descendants(matching: .any)["pondus-layout-compact"]
+        XCTAssertTrue(compactPondus.waitForExistence(timeout: 8))
+        let redigerMode = leadbook.buttons["Rediger"].firstMatch
+        XCTAssertTrue(redigerMode.waitForExistence(timeout: 3))
+        XCTAssertGreaterThanOrEqual(redigerMode.frame.height, 44)
+        XCTAssertLessThanOrEqual(
+            redigerMode.frame.height, 56,
+            "Rediger skal være én lesbar linje på iPad mini"
+        )
+        snap(leadbook, "ipad-compact-pondus")
+
+        #if !targetEnvironment(macCatalyst)
+        XCUIDevice.shared.orientation = .landscapeLeft
+        sleep(2)
+        let rotatedPondusCompact = leadbook.descendants(matching: .any)["pondus-layout-compact"]
+        let rotatedPondusWide = leadbook.descendants(matching: .any)["pondus-layout-wide"]
+        XCTAssertTrue(
+            rotatedPondusCompact.exists || rotatedPondusWide.exists,
+            "Pondus skal velge en gyldig layout etter iPad-rotasjon"
+        )
+        XCTAssertTrue(button(in: leadbook, containing: "Cheat note").isHittable)
+        snap(leadbook, "ipad-pondus-landskap")
+        XCUIDevice.shared.orientation = .portrait
+        #endif
+        leadbook.terminate()
+    }
+
     // MARK: - Canvas: editor + adaptiv rotasjon
 
     func testCanvasAdaptiveEditorSmoke() throws {
@@ -821,7 +907,7 @@ final class QASweepTests: XCTestCase {
     /// Leadbook har 6 under-faner + 3 header-CTAer med egne modaler —
     /// hoved-sveipet fanger bare landingssiden (Pondus). Dette sveiper alt.
     func testLeadbookDeepSweep() throws {
-        let app = launchApp(tab: 6)
+        let app = launchApp(tab: UIDevice.current.userInterfaceIdiom == .phone ? 6 : 5)
         snap(app, "leadbook-0-landing")
 
         let appW = app.frame.width
@@ -1036,6 +1122,66 @@ final class QASweepTests: XCTestCase {
         XCTAssertTrue(
             rapport.linjer.isEmpty,
             "Innloggingsflaten har tilgjengelighetsfunn:\n\(rapport.linjer.joined(separator: "\n"))"
+        )
+    }
+
+    func testIPadMeetingsActionableAccessibilityAudit() throws {
+        guard #available(iOS 17.0, *), UIDevice.current.userInterfaceIdiom == .pad else {
+            throw XCTSkip("Denne auditen krever iPad med iOS 17 eller nyere")
+        }
+        let app = launchApp(
+            tab: 3,
+            environment: ["QA_TOUR": "profile", "QA_DEMO": "1"]
+        )
+        let rapport = A11yRapport()
+        rapport.linjer.append(contentsOf: undersizedVisibleButtons(in: app).map { "Preflight hit area: \($0)" })
+        let actionable: XCUIAccessibilityAuditType = [
+            .contrast, .hitRegion, .sufficientElementDescription, .textClipped,
+        ]
+        try app.performAccessibilityAudit(for: actionable) { issue in
+            // iPadOS 26-simulatoren returnerer også kontrast-/klippfunn
+            // uten elementreferanse for systemmaterialet rundt split view.
+            // Den brede rapport-auditen under beholder disse; denne testen
+            // feiler på konkrete Leadgrid-elementer som kan rettes.
+            if let element = issue.element {
+                rapport.linjer.append(
+                    "\(issue.auditType): \(issue.compactDescription) — \(String(describing: element))"
+                )
+            }
+            return true
+        }
+        app.terminate()
+        XCTAssertTrue(
+            rapport.linjer.isEmpty,
+            "Møter har handlingsbare tilgjengelighetsfunn:\n\(rapport.linjer.joined(separator: "\n"))"
+        )
+    }
+
+    func testIPadLeadbookActionableAccessibilityAudit() throws {
+        guard #available(iOS 17.0, *), UIDevice.current.userInterfaceIdiom == .pad else {
+            throw XCTSkip("Denne auditen krever iPad med iOS 17 eller nyere")
+        }
+        let app = launchApp(
+            tab: 5,
+            environment: ["QA_TOUR": "profile", "QA_DEMO": "1"]
+        )
+        let rapport = A11yRapport()
+        rapport.linjer.append(contentsOf: undersizedVisibleButtons(in: app).map { "Preflight hit area: \($0)" })
+        let actionable: XCUIAccessibilityAuditType = [
+            .contrast, .hitRegion, .sufficientElementDescription, .textClipped,
+        ]
+        try app.performAccessibilityAudit(for: actionable) { issue in
+            if let element = issue.element {
+                rapport.linjer.append(
+                    "\(issue.auditType): \(issue.compactDescription) — \(String(describing: element))"
+                )
+            }
+            return true
+        }
+        app.terminate()
+        XCTAssertTrue(
+            rapport.linjer.isEmpty,
+            "Leadbook har handlingsbare tilgjengelighetsfunn:\n\(rapport.linjer.joined(separator: "\n"))"
         )
     }
 

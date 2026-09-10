@@ -13,6 +13,7 @@ import SwiftUI
 
 struct PondusTabView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Binding var selected: PondusTemplate
     @State private var editorMode: EditorMode = .rediger
     @State private var period: String = "Siste 30 dager"
@@ -42,6 +43,11 @@ struct PondusTabView: View {
 
     // Anbefalt kommunikasjon (cheat-note fra høyre)
     @State private var showCheatNote = false
+    @State private var availableContentWidth: CGFloat = 0
+
+    private var usesCompactLayout: Bool {
+        availableContentWidth > 0 && availableContentWidth < 920
+    }
 
     /// Standard variabel-pool som kan settes inn med ett trykk
     private let variablePool: [String] = [
@@ -111,6 +117,14 @@ struct PondusTabView: View {
             mainRow
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            GeometryReader { geo in
+                Color.clear
+                    .task(id: geo.size.width) {
+                        availableContentWidth = geo.size.width
+                    }
+            }
+        }
         .overlay(alignment: .topTrailing) {
             // Cheat-note glir inn over høyre del — åpnes via «Cheat note»-CTA i Pondus-headeren.
             if showCheatNote {
@@ -172,21 +186,19 @@ struct PondusTabView: View {
     // MARK: Header
 
     private var pondusHeader: some View {
-        Group {
-            if DeviceIdiom.isPhone {
-                VStack(alignment: .leading, spacing: 12) {
-                    pondusHeaderTitle
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        pondusHeaderActions
-                            .padding(.horizontal, 1)
-                    }
-                }
-            } else {
-                HStack(alignment: .top, spacing: 14) {
-                    pondusHeaderTitle
-                    Spacer(minLength: 12)
-                    pondusHeaderActions
-                }
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 14) {
+                pondusHeaderTitle
+                Spacer(minLength: 12)
+                pondusHeaderActions
+            }
+            // Krever reell arbeidsbredde. På iPad mini/portrett ville den
+            // gamle idiom-sjekken ellers klemme tittelen til bokstavbredde.
+            .frame(minWidth: 820)
+
+            VStack(alignment: .leading, spacing: 12) {
+                pondusHeaderTitle
+                pondusHeaderCompactActions
             }
         }
         .padding(.bottom, 4)
@@ -202,12 +214,19 @@ struct PondusTabView: View {
                     Image(systemName: favorited ? "star.fill" : "star")
                         .font(.appScaled(size: 16, weight: .semibold))
                         .foregroundStyle(favorited ? LBrand.yellow : LBrand.textTertiary)
-                }.buttonStyle(.plain)
+                        .frame(width: 48, height: 48)
+                }
+                .frame(width: 48, height: 48)
+                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(favorited ? "Fjern fra favoritter" : "Legg til i favoritter")
             }
             Text("Pondus hjelper teamet med å bygge sterkere autoritet, selvtillit, tillit og salgsvekt i all utadrettet kommunikasjon og møter.")
                 .font(.appScaled(size: 12))
                 .foregroundStyle(LBrand.textSecondary)
-                .axLineLimit(2, ax: 5)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -221,20 +240,82 @@ struct PondusTabView: View {
             }
             pondusHeaderButton("Ny mal", icon: "plus") { showNewMal = true }
             pondusHeaderButton("Eksporter", icon: "square.and.arrow.down") { showExport = true }
-            Button { showPublish = true } label: {
-                Label("Publiser", systemImage: "paperplane.fill")
-                    .font(.appScaled(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14).padding(.vertical, 9)
-                    .background(
-                        LinearGradient(colors: [LBrand.purple, LBrand.purpleLight],
-                                       startPoint: .leading, endPoint: .trailing),
-                        in: RoundedRectangle(cornerRadius: 10)
-                    )
-                    .shadow(color: LBrand.purple.opacity(0.45), radius: 6, y: 2)
-            }.buttonStyle(.plain)
+            pondusPublishButton
         }
         .fixedSize(horizontal: true, vertical: false)
+    }
+
+    /// Smal iPad: behold de to viktigste handlingene synlige, og samle
+    /// administrasjon i én tydelig meny uten halvklipte knapper.
+    private var pondusHeaderCompactActions: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 8) {
+                    pondusHeaderButton("Cheat note", icon: "doc.text.fill", tint: LBrand.yellow) {
+                        withAnimation { showCheatNote = true }
+                    }
+                    pondusPublishButton
+                    pondusMoreMenu
+                }
+            } else {
+                HStack(spacing: 8) {
+                    pondusHeaderButton("Cheat note", icon: "doc.text.fill", tint: LBrand.yellow) {
+                        withAnimation { showCheatNote = true }
+                    }
+                    pondusPublishButton
+                    pondusMoreMenu
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var pondusMoreMenu: some View {
+        Menu {
+            Button { showTeamUsage = true } label: {
+                Label("Teamets bruk", systemImage: "person.3.fill")
+            }
+            Button { showNewMal = true } label: {
+                Label("Ny mal", systemImage: "plus")
+            }
+            Button { showExport = true } label: {
+                Label("Eksporter", systemImage: "square.and.arrow.down")
+            }
+        } label: {
+            Label("Flere", systemImage: "ellipsis")
+                .font(.appScaled(size: 12, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .padding(.horizontal, 12)
+                .frame(
+                    maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil,
+                    minHeight: 44
+                )
+                .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
+        }
+        .menuStyle(.borderlessButton)
+    }
+
+    private var pondusPublishButton: some View {
+        Button { showPublish = true } label: {
+            Label("Publiser", systemImage: "paperplane.fill")
+                .font(.appScaled(size: 13, weight: .bold))
+                .foregroundStyle(.black)
+                .lineLimit(2)
+                .padding(.horizontal, 14)
+                .frame(
+                    maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil,
+                    minHeight: 44
+                )
+                .background(
+                    LinearGradient(colors: [LBrand.purple, LBrand.purpleLight],
+                                   startPoint: .leading, endPoint: .trailing),
+                    in: RoundedRectangle(cornerRadius: 10)
+                )
+                .shadow(color: LBrand.purple.opacity(0.45), radius: 6, y: 2)
+        }
+        .buttonStyle(.plain)
     }
 
     private func pondusHeaderButton(
@@ -247,7 +328,12 @@ struct PondusTabView: View {
             Label(title, systemImage: icon)
                 .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(.white)
-                .padding(.horizontal, 12).padding(.vertical, 9)
+                .lineLimit(2)
+                .padding(.horizontal, 12)
+                .frame(
+                    maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil,
+                    minHeight: 44
+                )
                 .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(tint.opacity(0.35), lineWidth: 1))
         }
@@ -257,25 +343,40 @@ struct PondusTabView: View {
     // MARK: Hovedrad
 
     private var mainRow: some View {
-        Group {
-            if DeviceIdiom.isPhone {
-                VStack(alignment: .leading, spacing: 14) {
-                    pondusEditorColumn
-                    pondusMalerColumn
-                    pondusAnalyseColumn
-                }
-                .frame(maxWidth: .infinity)
-            } else {
-                HStack(alignment: .top, spacing: 14) {
-                    pondusMalerColumn
-                        .frame(width: 280)
-                    pondusEditorColumn
-                        .frame(maxWidth: .infinity)
-                    pondusAnalyseColumn
-                        .frame(width: 340)
-                }
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 14) {
+                pondusMalerColumn
+                    .frame(width: 280)
+                pondusEditorColumn
+                    .frame(maxWidth: .infinity)
+                pondusAnalyseColumn
+                    .frame(width: 340)
+            }
+            .frame(minWidth: 920)
+            .background(alignment: .topLeading) {
+                layoutMarker("pondus-layout-wide", label: "Bred Pondus-layout")
+            }
+
+            // Editor først: på iPad mini er dagens oppgave viktigere enn
+            // malvelger og analyse. Alt bruker full tilgjengelig bredde.
+            VStack(alignment: .leading, spacing: 14) {
+                pondusEditorColumn
+                pondusMalerColumn
+                pondusAnalyseColumn
+            }
+            .frame(maxWidth: .infinity)
+            .background(alignment: .topLeading) {
+                layoutMarker("pondus-layout-compact", label: "Kompakt Pondus-layout")
             }
         }
+    }
+
+    private func layoutMarker(_ identifier: String, label: String) -> some View {
+        Color.clear
+            .frame(width: 1, height: 1)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(label)
+            .accessibilityIdentifier(identifier)
     }
 
     // MARK: VENSTRE — Pondus-maler
@@ -377,54 +478,21 @@ struct PondusTabView: View {
 
     private var pondusEditorColumn: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) {
-                Text(selected.name)
-                    .font(.appScaled(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                Text("\(liveScore)")
-                    .font(.appScaled(size: 11, weight: .black, design: .rounded))
-                    .foregroundStyle(.white)
-                    .monospacedDigit()
-                    .padding(.horizontal, 7).padding(.vertical, 2)
-                    .background(LBrand.cardHi, in: Capsule())
-                    .overlay(Capsule().stroke(LBrand.purpleLight.opacity(0.35), lineWidth: 1))
-                if modifiedCount > 0 {
-                    HStack(spacing: 5) {
-                        Circle().fill(LBrand.orange).frame(width: 6, height: 6)
-                        Text("\(modifiedCount) usavnet")
-                            .font(.appScaled(size: 10, weight: .bold))
-                            .foregroundStyle(LBrand.orange)
-                    }
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(LBrand.orange.opacity(0.14), in: Capsule())
-                    .overlay(Capsule().stroke(LBrand.orange.opacity(0.35), lineWidth: 1))
-                }
-                Spacer()
-                if modifiedCount > 0 {
-                    Button { saveAllEdits() } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "checkmark").font(.appScaled(size: 10, weight: .black))
-                            Text("Lagre").font(.appScaled(size: 11, weight: .bold))
+            Group {
+                if usesCompactLayout {
+                    VStack(alignment: .leading, spacing: 10) {
+                        editorIdentity
+                        HStack(spacing: 8) {
+                            Spacer(minLength: 0)
+                            editorActions
                         }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 11).padding(.vertical, 7)
-                        .background(LBrand.green, in: Capsule())
-                    }.buttonStyle(.plain)
-                }
-                editorModeToggle
-                Menu {
-                    // «Dupliser» fjernet 2026-07-17: var død knapp — copyMal()
-                    // viste kun toast, ingen kopi ble opprettet.
-                    // «Del lenke» + «Eksporter PDF» + «Arkiver mal» fjernet
-                    // 2026-07-17: var døde knapper (tomme closures) — ingen
-                    // dele-/eksport-/arkiv-flate for Pondus-maler.
-                    Button { resetAllEdits() } label: { Label("Tilbakestill alt", systemImage: "arrow.uturn.backward") }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.appScaled(size: 14, weight: .bold))
-                        .foregroundStyle(LBrand.textSecondary)
-                        .frame(width: 28, height: 28)
-                        .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
+                    }
+                } else {
+                    HStack(spacing: 10) {
+                        editorIdentity
+                        Spacer(minLength: 8)
+                        editorActions
+                    }
                 }
             }
             .padding(.horizontal, 14).padding(.top, 14).padding(.bottom, 12)
@@ -440,20 +508,89 @@ struct PondusTabView: View {
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(LBrand.stroke, lineWidth: 1))
     }
 
+    private var editorIdentity: some View {
+        HStack(spacing: 10) {
+            Text(selected.name)
+                .font(.appScaled(size: 14, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .layoutPriority(1)
+            Text("\(liveScore)")
+                .font(.appScaled(size: 11, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+                .monospacedDigit()
+                .padding(.horizontal, 7).padding(.vertical, 2)
+                .background(LBrand.cardHi, in: Capsule())
+                .overlay(Capsule().stroke(LBrand.purpleLight.opacity(0.35), lineWidth: 1))
+                .fixedSize()
+            if modifiedCount > 0 {
+                HStack(spacing: 5) {
+                    Circle().fill(LBrand.orange).frame(width: 6, height: 6)
+                    Text("\(modifiedCount) usavnet")
+                        .font(.appScaled(size: 10, weight: .bold))
+                        .foregroundStyle(LBrand.orange)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(LBrand.orange.opacity(0.14), in: Capsule())
+                .overlay(Capsule().stroke(LBrand.orange.opacity(0.35), lineWidth: 1))
+                .fixedSize()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var editorActions: some View {
+        if modifiedCount > 0 {
+            Button { saveAllEdits() } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "checkmark").font(.appScaled(size: 10, weight: .black))
+                    Text("Lagre").font(.appScaled(size: 11, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 11)
+                .frame(minHeight: 44)
+                .background(LBrand.green, in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        editorModeToggle
+        Menu {
+            // «Dupliser» fjernet 2026-07-17: var død knapp — copyMal()
+            // viste kun toast, ingen kopi ble opprettet.
+            // «Del lenke» + «Eksporter PDF» + «Arkiver mal» fjernet
+            // 2026-07-17: var døde knapper (tomme closures) — ingen
+            // dele-/eksport-/arkiv-flate for Pondus-maler.
+            Button { resetAllEdits() } label: { Label("Tilbakestill alt", systemImage: "arrow.uturn.backward") }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.appScaled(size: 14, weight: .bold))
+                .foregroundStyle(LBrand.textSecondary)
+                .frame(width: 44, height: 44)
+                .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
     private var editorModeToggle: some View {
         HStack(spacing: 4) {
             ForEach(EditorMode.allCases) { mode in
                 Button { editorMode = mode } label: {
                     Text(mode.rawValue)
                         .font(.appScaled(size: 11, weight: editorMode == mode ? .bold : .semibold))
-                        .foregroundStyle(editorMode == mode ? LBrand.purpleLight : LBrand.textSecondary)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .padding(.horizontal, 10)
+                        .frame(minHeight: 44)
                         .background(
                             editorMode == mode ? LBrand.purple.opacity(0.18) : .clear,
                             in: Capsule()
                         )
                 }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+                .fixedSize(horizontal: true, vertical: false)
                 .buttonStyle(.plain)
+                .accessibilityElement(children: .combine)
             }
         }
         .padding(3)
@@ -503,7 +640,10 @@ struct PondusTabView: View {
                         Text(currentContent)
                             .font(.appScaled(size: 12))
                             .foregroundStyle(LBrand.textSecondary)
-                            .lineLimit(isExpanded ? nil : 2)
+                            // På kompakt iPad kan hele teksten stå i den
+                            // vertikalt scrollbar editoren; unngå avkuttede
+                            // salgstekster som skjuler mening for brukeren.
+                            .lineLimit(usesCompactLayout || isExpanded ? nil : 2)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
