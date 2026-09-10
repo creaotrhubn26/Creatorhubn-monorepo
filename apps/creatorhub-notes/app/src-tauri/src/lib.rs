@@ -4,6 +4,7 @@
 //! kaller indekseren som bibliotek. Ingen binær startes, ingen nettverkskall
 //! gjøres: alt her er disk, git og SQLite.
 
+mod rettelser;
 mod understand;
 
 use creatorhub_notes_indexer::{db, index, search};
@@ -342,11 +343,50 @@ fn search_notes(query: String) -> Result<Vec<SearchHit>, String> {
 /// kommer tett — som er det man vil: den andre finner arbeidet den første
 /// gjorde, i stedet for å betale for det på nytt.
 #[tauri::command]
-fn understand_note(content: String) -> Result<understand::Understanding, String> {
+fn understand_note(content: String, path: String) -> Result<understand::Understanding, String> {
     let mut memo = understand::memo().lock().unwrap_or_else(|e| e.into_inner());
-    Ok(understand::understand(&content, &understand::Cli, &mut memo)
-        .map(understand::Understanding::on)
-        .unwrap_or_else(|_| understand::Understanding::off()))
+    let Ok(mut avsnitt) = understand::understand(&content, &understand::Cli, &mut memo) else {
+        return Ok(understand::Understanding::off());
+    };
+
+    // Rettelsene er det beste vi har, men de er ikke verdt å felle panelet
+    // for: klarer vi ikke å åpne basen, står linjene der som systemet leste
+    // dem, og brukeren merker ingenting annet.
+    let mut lest_på_nytt = Vec::new();
+    if let Ok(conn) = base() {
+        // Avsnittene i teksten, ikke linjene i panelet: en linje kan mangle
+        // fordi klassifiseringen ikke fikk lest den, og da er rettelsen
+        // fortsatt god — teksten står jo der.
+        let nåværende = understand::split(&content)
+            .iter()
+            .map(|c| understand::nøkkel(&c.text))
+            .collect();
+        lest_på_nytt = rettelser::foreldede(&conn, &path, &nåværende).unwrap_or_default();
+        if let Ok(mine) = rettelser::aktive(&conn, &path) {
+            rettelser::merge(&mut avsnitt, &mine);
+        }
+    }
+    Ok(understand::Understanding::on(avsnitt, lest_på_nytt))
+}
+
+/// Basen appen allerede bruker, med rettelsestabellen på plass.
+fn base() -> Result<rusqlite::Connection, String> {
+    let conn = db::open(&db_path()?).map_err(|e| format!("fikk ikke åpnet notatbasen: {e}"))?;
+    rettelser::sørg_for_tabell(&conn).map_err(|e| format!("fikk ikke åpnet notatbasen: {e}"))?;
+    Ok(conn)
+}
+
+/// Lagrer brukerens egen retting av én linje, eller tar den bort igjen —
+/// som er det angre gjør når det ikke var noen rettelse fra før.
+#[tauri::command]
+fn rett_avsnitt(retting: rettelser::Retting) -> Result<(), String> {
+    if let Some(plass) = retting.plass.as_deref() {
+        if !rettelser::PLASSER.contains(&plass) && plass != rettelser::FJERNET {
+            return Err(format!("ukjent plass: {plass}"));
+        }
+    }
+    let conn = base()?;
+    rettelser::lagre(&conn, &retting).map_err(|e| format!("kunne ikke lagre rettelsen: {e}"))
 }
 
 #[tauri::command]
@@ -365,7 +405,8 @@ pub fn run() {
             create_note,
             search_notes,
             reindex,
-            understand_note
+            understand_note,
+            rett_avsnitt
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -451,6 +492,53 @@ mod tests {
         assert!(std::fs::read_to_string(tmp.path().join(&a))
             .unwrap()
             .contains("# Uten tittel"));
+    }
+
+    /// Rettelsene bor i den samme fila som indeksen. Tabellen skal kunne lages
+    /// på toppen av det skjemaet uten å kollidere med noe, og tåle å bli laget
+    /// igjen ved hver oppstart.
+    #[test]
+    fn rettelsestabellen_lever_side_om_side_med_indeksen() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_file = tmp.path().join("notater.db");
+        let conn = db::open(&db_file).unwrap();
+        rettelser::sørg_for_tabell(&conn).unwrap();
+        rettelser::sørg_for_tabell(&conn).unwrap();
+
+        let hash = understand::nøkkel("En tanke.");
+        rettelser::lagre(
+            &conn,
+            &rettelser::Retting {
+                sti: "notat.md".into(),
+                hash: hash.clone(),
+                tekst: "En tanke.".into(),
+                lest_type: "beslutning".into(),
+                lest_handling: "bygg".into(),
+                lest_kortform: "Noe".into(),
+                plass: Some("idé".into()),
+                kortform: Some("Noe annet".into()),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            rettelser::aktive(&conn, "notat.md").unwrap().get(&hash).unwrap().summary,
+            "Noe annet"
+        );
+    }
+
+    #[test]
+    fn en_plass_panelet_ikke_har_avvises() {
+        let ugyldig = rettelser::Retting {
+            sti: "notat.md".into(),
+            hash: "0".into(),
+            tekst: "En tanke.".into(),
+            lest_type: "beslutning".into(),
+            lest_handling: "bygg".into(),
+            lest_kortform: "Noe".into(),
+            plass: Some("marker_åpent".into()),
+            kortform: Some("Noe".into()),
+        };
+        assert!(rett_avsnitt(ugyldig).is_err(), "vokabularet vårt er ikke en plass");
     }
 
     /// Hele poenget med staging før indeksering: et notat som nettopp ble

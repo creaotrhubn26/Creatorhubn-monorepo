@@ -16,6 +16,8 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 creatorhub-notes-indexer = { path = "../../indexer" }
+# Samme versjon som indekseren, slik at det er én sqlite i binæren.
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [dev-dependencies]
 tempfile = "3"

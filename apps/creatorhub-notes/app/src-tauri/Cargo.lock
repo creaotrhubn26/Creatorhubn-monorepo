@@ -544,6 +544,7 @@ name = "creatorhub-notes-app"
 version = "0.1.0"
 dependencies = [
  "creatorhub-notes-indexer",
+ "rusqlite",
  "serde",
  "tauri",
  "tauri-build",

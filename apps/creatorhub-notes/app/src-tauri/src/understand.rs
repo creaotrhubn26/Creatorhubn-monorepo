@@ -49,12 +49,16 @@ uenighet     Tar avstand fra et standpunkt. «Kunden vil ha det, men jeg er ueni
 begrensning  Sier hvordan, ikke hva. «Det må være bestemorvennlig.»
 observasjon  Konstaterer, uten retning. «Jeg ser ikke timelinen.»
 meta         Om arbeidet, ikke innholdet. «Si ifra når det er klart.»
+oppgave      Noe som skal gjøres, av deg eller noen andre. Ikke en beslutning om hva som skal lages. «Vi må få prototypen godkjent før vi kan begynne produksjonen.»
 
 Handling — hva som bør gjøres:
 bygg          Utvid modellen. Dette er bestemt.
 hold          Noter som mulighet. Ikke rør hovedflyten.
 marker_åpent  Registrer som ubesvart spørsmål.
 ingenting     Gjør ingenting.
+
+En oppgave har alltid handlingen `ingenting`. Den noteres fordi den er nevnt, \
+ikke fordi modellen skal utvides.
 
 Å bygge på noe brukeren ikke har bestemt seg for er den dyreste feilen. Den \
 produserer arbeid ingen har bedt om, og brukeren må oppdage det selv. Motsatt \
@@ -66,10 +70,15 @@ spør om. Naken og konkret — ikke en setning om brukeren.
 «Først ser man et kart med tilgjengelig verktøy i nærheten» → Kartvisning
 «Kanskje vi burde ha depositum, men jeg er usikker» → Depositum
 
+Venter en oppgave på at noe annet skjer først, skriv det etter en venstrepil \
+sist i kortformen — kort, som en substantivfrase, uten «venter på»:
+«Vi må få prototypen godkjent før vi kan begynne produksjonen» → Starte produksjon ← godkjent prototype
+Bare oppgaver kan ha pil, og høyst én.
+
 Svar med nøyaktig én linje per avsnitt, og ingenting annet:
 <nummer>|<type>|<handling>|<kortform>";
 
-const KINDS: [&str; 8] = [
+const KINDS: [&str; 9] = [
     "beslutning",
     "spørsmål",
     "tvil",
@@ -78,6 +87,7 @@ const KINDS: [&str; 8] = [
     "begrensning",
     "observasjon",
     "meta",
+    "oppgave",
 ];
 const ACTIONS: [&str; 4] = ["bygg", "hold", "marker_åpent", "ingenting"];
 
@@ -90,9 +100,20 @@ pub struct Paragraph {
     /// æ, ø og å, og panelet ville markert feil sted.
     pub start: usize,
     pub end: usize,
+    /// Avsnittsteksten som nøkkel. Det er den rettelser henger på, og den er
+    /// stabil så lenge teksten er det — endres avsnittet, er det en ny linje.
+    pub hash: String,
+    /// Avsnittet slik det står. Panelet viser det ikke, men en rettelse
+    /// lagres sammen med teksten den gjaldt.
+    pub text: String,
     pub summary: String,
     pub kind: String,
     pub action: String,
+    /// Bare oppgaver: hva oppgaven venter på, om modellen leste det ut.
+    pub dependency: Option<String>,
+    /// Brukerens egen retting, når hun har gjort en. Den vinner over
+    /// klassifiseringen i panelet.
+    pub correction: Option<crate::rettelser::Rettelse>,
 }
 
 #[derive(Serialize)]
@@ -102,14 +123,17 @@ pub struct Understanding {
     /// rolig linje, og resten av appen merker ingenting.
     pub on: bool,
     pub paragraphs: Vec<Paragraph>,
+    /// Rettelser som gjaldt avsnitt som siden er skrevet om. Panelet sier
+    /// ifra én gang, med brukerens egne ord, at linja er lest på nytt.
+    pub reread: Vec<String>,
 }
 
 impl Understanding {
     pub fn off() -> Self {
-        Understanding { on: false, paragraphs: Vec::new() }
+        Understanding { on: false, paragraphs: Vec::new(), reread: Vec::new() }
     }
-    pub fn on(paragraphs: Vec<Paragraph>) -> Self {
-        Understanding { on: true, paragraphs }
+    pub fn on(paragraphs: Vec<Paragraph>, reread: Vec<String>) -> Self {
+        Understanding { on: true, paragraphs, reread }
     }
 }
 
@@ -119,6 +143,7 @@ pub struct Label {
     pub kind: String,
     pub action: String,
     pub summary: String,
+    pub dependency: Option<String>,
 }
 
 /// Ett avsnitt med posisjonen sin i dokumentet.
@@ -148,11 +173,18 @@ pub fn memo() -> &'static Mutex<Memo> {
     M.get_or_init(Default::default)
 }
 
+/// Nøkkelen en rettelse lagres under.
+pub fn nøkkel(tekst: &str) -> String {
+    format!("{:016x}", hash(tekst))
+}
+
 fn utf16_len(s: &str) -> usize {
     s.encode_utf16().count()
 }
 
-fn hash(s: &str) -> u64 {
+/// FNV-1a. Kort, stabil og nok til å kjenne igjen et avsnitt som ikke er
+/// endret — ikke en sikkerhetsfunksjon.
+pub fn hash(s: &str) -> u64 {
     let mut h: u64 = 1469598103934665603;
     for b in s.as_bytes() {
         h ^= *b as u64;
@@ -249,9 +281,27 @@ pub fn parse(answer: &str, count: usize) -> Vec<Option<Label>> {
         if !KINDS.contains(&kind.as_str()) || !ACTIONS.contains(&action.as_str()) {
             continue;
         }
-        out[n - 1] = Some(Label { kind, action, summary: summary.to_string() });
+        let (summary, dependency) = del_avhengighet(summary);
+        out[n - 1] = Some(Label { kind, action, summary, dependency });
     }
     out
+}
+
+/// Skiller «Starte produksjon ← godkjent prototype» i kortform og avhengighet.
+///
+/// Avhengigheten rir inne i det siste feltet, ikke i et femte felt. Det er
+/// bevisst: `parse` deler linja i nøyaktig fire, slik at en kortform selv kan
+/// inneholde `|`. Et femte felt ville tatt den friheten fra kortformen.
+fn del_avhengighet(s: &str) -> (String, Option<String>) {
+    for pil in ["←", "<-"] {
+        if let Some((kort, venter)) = s.split_once(pil) {
+            let (kort, venter) = (kort.trim(), venter.trim());
+            if !kort.is_empty() && !venter.is_empty() {
+                return (kort.to_string(), Some(venter.to_string()));
+            }
+        }
+    }
+    (s.to_string(), None)
 }
 
 /// Leser notatet. Bare avsnitt hukommelsen ikke kjenner sendes, og de sendes
@@ -295,9 +345,13 @@ pub fn understand(
             Some(Paragraph {
                 start: chunk.start,
                 end: chunk.end,
+                hash: nøkkel(&chunk.text),
                 summary: label.summary.clone(),
                 kind: label.kind.clone(),
                 action: label.action.clone(),
+                dependency: label.dependency.clone(),
+                text: chunk.text,
+                correction: None,
             })
         })
         .collect())
@@ -424,6 +478,7 @@ mod tests {
                 kind: "beslutning".into(),
                 action: "bygg".into(),
                 summary: "App for å låne verktøy mellom privatpersoner".into(),
+                dependency: None,
             })
         );
         assert_eq!(ut[1].as_ref().unwrap().action, "hold");
@@ -566,6 +621,56 @@ mod tests {
         assert_eq!(ut[0].as_ref().unwrap().action, "bygg");
         assert_ne!(ut[1].as_ref().unwrap().action, "bygg", "tvil skal ikke bygges på");
         assert_ne!(ut[2].as_ref().unwrap().action, "bygg", "uenighet skal ikke bygges på");
+    }
+
+    #[test]
+    fn oppgave_leses_med_og_uten_avhengighet() {
+        let svar = "1|oppgave|ingenting|Starte produksjon ← godkjent prototype\n\
+                    2|oppgave|ingenting|Ringe fotografen";
+        let ut = parse(svar, 2);
+        let a = ut[0].as_ref().unwrap();
+        assert_eq!(a.kind, "oppgave");
+        assert_eq!(a.summary, "Starte produksjon");
+        assert_eq!(a.dependency.as_deref(), Some("godkjent prototype"));
+        let b = ut[1].as_ref().unwrap();
+        assert_eq!(b.summary, "Ringe fotografen");
+        assert_eq!(b.dependency, None, "en oppgave uten pil venter ikke på noe");
+    }
+
+    /// Samme svar, men med alt ruskete en modell kan finne på rundt seg — og
+    /// med `<-` i stedet for pilen, som er den nærliggende varianten.
+    #[test]
+    fn oppgave_leses_også_ut_av_et_ruskete_svar() {
+        let svar = "Klart! Her kommer linjene:\n\
+                    ```\n\
+                    - 1. | Oppgave | Ingenting | Starte produksjon <- godkjent prototype\n\
+                    2|oppgave|ingenting|Sende faktura | purring hvis den ikke betales\n\
+                    ```\n";
+        let ut = parse(svar, 2);
+        let a = ut[0].as_ref().unwrap();
+        assert_eq!(a.summary, "Starte produksjon");
+        assert_eq!(a.dependency.as_deref(), Some("godkjent prototype"));
+        assert_eq!(
+            ut[1].as_ref().unwrap().summary,
+            "Sende faktura | purring hvis den ikke betales",
+            "kortformen kan fortsatt inneholde |"
+        );
+    }
+
+    #[test]
+    fn avsnitt_har_nøkkel_og_tekst_med_seg() {
+        let doc = "Første tanke her.\n\nAndre tanke her.\n";
+        let fake = Fake::new();
+        let mut memo = Memo::new();
+        let ut = understand(doc, &fake, &mut memo).unwrap();
+        assert_eq!(ut[0].text, "Første tanke her.");
+        assert_eq!(ut[0].hash, nøkkel("Første tanke her."));
+        assert_ne!(ut[0].hash, ut[1].hash);
+        assert_ne!(
+            nøkkel("Andre tanke her."),
+            nøkkel("Andre tanke her, og litt til."),
+            "endret tekst er en ny nøkkel"
+        );
     }
 
     #[test]
