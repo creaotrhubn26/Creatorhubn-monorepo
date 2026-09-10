@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   access: vi.fn(),
   createPairingCode: vi.fn(),
+  queueCompanionCommand: vi.fn(),
 }));
 
 vi.mock("./project-team-routes.js", () => ({
@@ -19,6 +20,10 @@ vi.mock("./protools-companion-persistence.js", () => ({
   enqueueEaseVerseSync: vi.fn(),
   retryEaseVerseSync: vi.fn(),
 }));
+vi.mock("./music-artifact-lineage.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./music-artifact-lineage.js")>();
+  return { ...actual, queueCompanionCommand: mocks.queueCompanionCommand };
+});
 
 import { setupProToolsCompanionRoutes } from "./protools-companion-routes.js";
 
@@ -34,6 +39,9 @@ function appWithSharedRoom() {
         return { rows: [{ id: ROOM_ID, owner_user_id: "owner-1", easeverse_track_id: TRACK_ID, workspace_project_id: WORKSPACE_ID }] };
       }
       if (sql.includes("FROM easeverse_tracks")) return { rows: [] };
+      if (sql.includes("FROM protools_companion_sessions pcs") && sql.includes("desktop_device_tokens")) {
+        return { rows: [{ id: "00000000-0000-4000-8000-000000000004", user_id: "owner-1", device_token_id: "device-1" }] };
+      }
       return { rows: [] };
     }),
   };
@@ -51,6 +59,7 @@ describe("Pro Tools Companion Workspace capabilities", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.createPairingCode.mockResolvedValue({ code: "123456", expiresInSeconds: 600 });
+    mocks.queueCompanionCommand.mockResolvedValue({ id: "command-1", status: "pending" });
   });
 
   it("allows an active editor to pair the already-linked Sound Room track", async () => {
@@ -78,5 +87,35 @@ describe("Pro Tools Companion Workspace capabilities", () => {
     expect(response.status).toBe(403);
     expect(response.body.error).toBe("workspace_project_not_editable");
     expect(mocks.createPairingCode).not.toHaveBeenCalled();
+  });
+
+  it("queues a Sound Room timeline action for the room's active device", async () => {
+    mocks.access.mockResolvedValue({ canRead: true, canEdit: true, isOwner: false });
+    const response = await request(appWithSharedRoom()).post("/api/protools/web/commands").send({
+      audioRoomId: ROOM_ID,
+      kind: "locate",
+      payload: { seconds: 12.5 },
+      dedupeKey: "comment-1:locate",
+    });
+    expect(response.status).toBe(201);
+    expect(mocks.queueCompanionCommand).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      sessionId: "00000000-0000-4000-8000-000000000004",
+      deviceTokenId: "device-1",
+      userId: "owner-1",
+      requestedBy: "editor-1",
+      kind: "locate",
+      payload: { seconds: 12.5 },
+    }));
+  });
+
+  it("does not let a read-only workspace viewer control Pro Tools", async () => {
+    mocks.access.mockResolvedValue({ canRead: true, canEdit: false, isOwner: false });
+    const response = await request(appWithSharedRoom()).post("/api/protools/web/commands").send({
+      audioRoomId: ROOM_ID,
+      kind: "locate",
+      payload: { seconds: 12.5 },
+    });
+    expect(response.status).toBe(404);
+    expect(mocks.queueCompanionCommand).not.toHaveBeenCalled();
   });
 });

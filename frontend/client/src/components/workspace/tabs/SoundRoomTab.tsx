@@ -152,6 +152,18 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     } catch (e: any) { wsAlert(e?.message || 'Kunne ikke prøve synk på nytt'); }
     finally { setPtBusy(false); }
   };
+  const sendPtCommand = async (kind: string, payload: Record<string, unknown>, dedupeKey?: string) => {
+    if (!roomId || !pt?.session?.id || ptBusy) return;
+    setPtBusy(true);
+    try {
+      await apiRequest(`/api/protools/web/commands`, {
+        method: 'POST',
+        body: { audioRoomId: roomId, sessionId: pt.session.id, kind, payload, dedupeKey },
+      });
+      loadPt();
+    } catch (e: any) { wsAlert(e?.message || 'Kunne ikke sende handlingen til Pro Tools'); }
+    finally { setPtBusy(false); }
+  };
 
   const loadEv = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/easeverse-tracks`).then((r: any) => setEv(r || null)).catch(() => {}); };
   const loadMembers = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/members`).then((r: any) => setBandMembers(r?.members || [])).catch(() => {}); };
@@ -190,7 +202,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     loadEv();
     loadMembers();
     loadPt();
-    const ptPoll = setInterval(loadPt, 7000);
+    const ptPoll = setInterval(loadPt, 60000);
     return () => { stop = true; clearInterval(ptPoll); };
   }, [projectId, isReal]);
 
@@ -204,6 +216,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     }
   }, [roomId]);
   useWorkspaceUpdate(projectId, 'sound-room.updated', () => {
+    loadPt();
     loadEv();
     loadMembers();
     if (roomId) {
@@ -462,14 +475,38 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               {(pt?.markers?.length || 0) > 0 && <WsTag label={`${pt.markers.length} markører`} tone="green" />}
               {Number(pt?.sync?.pending_count || 0) > 0 && <WsTag label={`${pt.sync.pending_count} synk venter`} tone="amber" />}
               {Number(pt?.sync?.pending_count || 0) > 0 && <Button size="small" onClick={retryPtSync} disabled={ptBusy} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700 }}>Prøv igjen</Button>}
+              {pt?.session?.ptsl_status && <WsTag label={pt.session.ptsl_status === 'connected' ? 'PTSL direkte' : pt.session.ptsl_status === 'degraded' ? 'PTSL-bro mangler' : 'Filmodus'} tone={pt.session.ptsl_status === 'connected' ? 'green' : 'neutral'} />}
+              {pt?.session?.protools_tier === 'intro' && <WsTag label={pt.session.intro_preflight?.compatible === false ? 'Intro: må forenkles' : 'Intro-klar'} tone={pt.session.intro_preflight?.compatible === false ? 'amber' : 'green'} />}
             </Stack>
+
+            {pt?.session?.protools_tier === 'intro' && pt.session.intro_preflight?.compatible === false && (
+              <Box sx={{ p: 1.25, borderRadius: `${ws.radiusSm}px`, bgcolor: 'rgba(255,176,32,0.08)', border: `1px solid ${ws.amber}44` }}>
+                <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ws.amber, mb: 0.5 }}>Pro Tools Intro preflight</Typography>
+                {(pt.session.intro_preflight.violations || []).map((v: any) => (
+                  <Typography key={v.category} sx={{ fontSize: 11, color: ws.textDim }}>{v.category}: {v.actual}/{v.limit} · {v.recommendation}</Typography>
+                ))}
+              </Box>
+            )}
+
+            {pt?.session && (
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Button size="small" variant="outlined" disabled={ptBusy} onClick={() => sendPtCommand('export_review', { fileName: `${summary?.project?.title || 'Sound Room'} Mix.wav` }, `export:${Date.now()}`)}
+                  sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 700 }}>Eksporter til review</Button>
+                {(() => {
+                  const keeper = (pt?.artifacts || []).find((a: any) => ['keeper', 'master', 'reference'].includes(a.artifact_kind));
+                  return keeper ? <Button size="small" variant="outlined" disabled={ptBusy} onClick={() => sendPtCommand('import_audio', { artifactId: keeper.id }, `import:${keeper.id}:${Date.now()}`)}
+                    sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 700 }}>Hent keeper/reference</Button> : null;
+                })()}
+              </Stack>
+            )}
 
             {(pt?.markers?.length || 0) > 0 && (
               <Box>
                 <Typography sx={{ fontSize: 11, color: ws.textFaint, mb: 0.5 }}>Markører fra Pro Tools</Typography>
                 <Stack direction="row" spacing={0.75} sx={{ overflowX: 'auto', pb: 0.5 }}>
                   {pt.markers.slice(0, 8).map((m: any, i: number) => (
-                    <Box key={i} sx={{ px: 1, py: 0.5, borderRadius: 1, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}`, flexShrink: 0 }}>
+                    <Box key={i} onClick={() => sendPtCommand('locate', { seconds: Number(m.start_seconds) || 0 }, `marker-locate:${i}:${Date.now()}`)}
+                      sx={{ px: 1, py: 0.5, borderRadius: 1, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}`, flexShrink: 0, cursor: 'pointer', '&:hover': { borderColor: ws.accentBorder } }}>
                       <Typography sx={{ fontSize: 11.5, fontWeight: 700 }} noWrap>{m.name}</Typography>
                       <Typography sx={{ fontSize: 9.5, color: ws.textFaint }}>{fmtTime(m.start_seconds)}</Typography>
                     </Box>

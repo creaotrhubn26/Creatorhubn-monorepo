@@ -22,13 +22,17 @@ describe("EaseVerse keeper to Sound Room", () => {
   function harness() {
     const query = vi.fn(async (sqlValue: unknown) => {
       const sql = String(sqlValue);
-      if (sql.includes("SELECT id FROM audio_review_projects WHERE owner_user_id")) {
-        return { rows: [{ id: "00000000-0000-4000-8000-000000000001" }], rowCount: 1 };
+      if (sql.includes("FROM audio_review_projects ar") && sql.includes("ar.owner_user_id")) {
+        return { rows: [{ id: "00000000-0000-4000-8000-000000000001", easeverse_track_id: "track-1", workspace_project_id: "workspace-1" }], rowCount: 1 };
       }
       if (sql.includes("SELECT id,version_number FROM audio_review_versions")) return { rows: [], rowCount: 0 };
       if (sql.includes("SELECT COALESCE(MAX(version_number)")) return { rows: [{ n: 3 }], rowCount: 1 };
       if (sql.includes("INSERT INTO audio_review_versions")) {
         return { rows: [{ id: "00000000-0000-4000-8000-000000000003" }], rowCount: 1 };
+      }
+      if (sql.includes("SELECT id FROM creatorhub_music_artifacts")) return { rows: [], rowCount: 0 };
+      if (sql.includes("INSERT INTO creatorhub_music_artifacts")) {
+        return { rows: [{ id: "00000000-0000-4000-8000-000000000005" }], rowCount: 1 };
       }
       return { rows: [], rowCount: 1 };
     });
@@ -58,7 +62,11 @@ describe("EaseVerse keeper to Sound Room", () => {
         url: "https://audio.example.test/take.wav", filename: "take.wav", durationSec: 12.4 });
 
     expect(response.status).toBe(201);
-    expect(response.body).toMatchObject({ applied: "created", versionNumber: 3 });
+    expect(response.body).toMatchObject({
+      applied: "created",
+      versionNumber: 3,
+      artifactId: "00000000-0000-4000-8000-000000000005",
+    });
     expect(mocks.broadcast).toHaveBeenCalledWith(pool, "00000000-0000-4000-8000-000000000001", "version");
     expect(client.release).toHaveBeenCalledOnce();
   });
