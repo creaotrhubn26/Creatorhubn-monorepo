@@ -41,3 +41,33 @@ authoritative for ownership and human-readable metadata.
 S3 is a flat object store. The slash-separated hierarchy is implemented through
 key prefixes; zero-byte root markers make the intended top-level structure
 visible in the AWS console before tenant data exists.
+
+## Render runtime identity
+
+The production backend uses the IAM service user
+`leadgrid-production-storage` with the inline policy in
+`runtime-policy.json`. It can list and manage objects only below these prefixes:
+
+```text
+organizations/
+users/
+temporary/
+exports/
+quarantine/
+```
+
+It cannot read another product's bucket, inspect bucket policy, list the bucket
+root or modify `_system/` and `platform/`. Render stores its credentials under
+four service-local environment variables:
+
+```text
+AWS_LEADGRID_ACCESS_KEY_ID
+AWS_LEADGRID_SECRET_ACCESS_KEY
+AWS_LEADGRID_BUCKET_NAME
+AWS_LEADGRID_REGION
+```
+
+Do not use the global `AWS_ACCESS_KEY_ID` fallback: unrelated R2 code in the
+shared backend recognizes that name. Rotate the IAM access key deliberately and
+update each Render key through the single-variable API endpoint, never through
+the collection replacement endpoint.
