@@ -135,25 +135,223 @@ export interface PrototypeTesterInvitesDeps {
     name: string,
     profession?: string | null,
     company?: string | null,
+    organizationNumber?: string | null,
   ) => Promise<any>;
   sendInviteEmail?: PrototypeTesterDirectInviteEmailSender;
   sendAccessActivatedEmail?: PrototypeTesterAccessActivatedEmailSender;
   issueSigningCode?: PrototypeTesterSigningCodeIssuer;
   verifySigningCode?: PrototypeTesterSigningCodeVerifier;
   sendReceiptEmail?: PrototypeTesterReceiptEmailSender;
+  lookupBrregCompany?: (
+    organizationNumber: string,
+  ) => Promise<PrototypeTesterBrregLookupResult>;
+  searchBrregCompanies?: (
+    searchTerm: string,
+  ) => Promise<PrototypeTesterBrregCompany[]>;
 }
+
+export type PrototypeTesterBrregCompany = {
+  organizationNumber: string;
+  name: string;
+  organizationForm: string | null;
+  primaryIndustryCode?: string | null;
+  primaryIndustryDescription?: string | null;
+  businessAddress: string | {
+    adresse?: string | null;
+    postnummer?: string | null;
+    poststed?: string | null;
+  } | null;
+  operationalStatus: "active" | "inactive" | "bankruptcy" | "liquidation";
+};
+
+type PrototypeTesterProfession =
+  | "photographer"
+  | "videographer"
+  | "music_producer";
+
+function recommendPrototypeTesterProfession(
+  company: PrototypeTesterBrregCompany,
+): PrototypeTesterProfession | null {
+  const industryCode = String(company.primaryIndustryCode || "").replace(
+    /[^\d]/g,
+    "",
+  );
+  const industry = String(company.primaryIndustryDescription || "")
+    .trim()
+    .toLocaleLowerCase("nb-NO");
+
+  if (
+    industryCode.startsWith("592") ||
+    industry.includes("produksjon og utgivelse av musikk") ||
+    industry.includes("lydopptak")
+  ) {
+    return "music_producer";
+  }
+  if (industryCode.startsWith("742") || industry.includes("fotografering")) {
+    return "photographer";
+  }
+  if (
+    industryCode.startsWith("5911") ||
+    industryCode.startsWith("5912") ||
+    industry.includes("film-, video-") ||
+    industry.includes("film og video")
+  ) {
+    return "videographer";
+  }
+  return null;
+}
+
+export type PrototypeTesterBrregLookupResult = {
+  lookupStatus: "verified" | "not_found" | "fallback";
+  company: PrototypeTesterBrregCompany | null;
+};
 
 const PROGRAM_DURATION_WEEKS = 12;
 const INVITE_EXPIRES_DAYS = 14;
 const SIGNING_CODE_LENGTH = 6;
 const MAX_EMAIL_LENGTH = 320;
 const MAX_NAME_LENGTH = 200;
-const MAX_COMPANY_LENGTH = 160;
+const MAX_COMPANY_LENGTH = 200;
+const MAX_BUSINESS_ADDRESS_LENGTH = 500;
 const MAX_TESTING_AREAS = 16;
 const MAX_TESTING_AREA_LENGTH = 80;
 const MAX_PERSONAL_MESSAGE_LENGTH = 2000;
 const DISALLOWED_SINGLE_LINE_CHARS = /[\u0000-\u001F\u007F]/;
 const DISALLOWED_TEXT_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
+
+function normalizeNorwegianOrganizationNumber(value: unknown): string {
+  return typeof value === "string" ? value.replace(/\D/g, "") : "";
+}
+
+function isValidNorwegianOrganizationNumber(value: string): boolean {
+  if (!/^\d{9}$/.test(value)) return false;
+  const digits = value.split("").map(Number);
+  const weights = [3, 2, 7, 6, 5, 4, 3, 2];
+  const sum = weights.reduce(
+    (total, weight, index) => total + weight * digits[index],
+    0,
+  );
+  const remainder = 11 - (sum % 11);
+  if (remainder === 11) return digits[8] === 0;
+  if (remainder === 10) return false;
+  return digits[8] === remainder;
+}
+
+function formatBrregBusinessAddress(value: PrototypeTesterBrregCompany["businessAddress"]): string | null {
+  if (!value) return null;
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized ? normalized.slice(0, MAX_BUSINESS_ADDRESS_LENGTH) : null;
+  }
+  const address = String(value.adresse || "").trim();
+  const postal = [value.postnummer, value.poststed]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean)
+    .join(" ");
+  const normalized = [address, postal].filter(Boolean).join(", ");
+  return normalized ? normalized.slice(0, MAX_BUSINESS_ADDRESS_LENGTH) : null;
+}
+
+function mapOpenBrregCompany(unit: any): PrototypeTesterBrregCompany | null {
+  const organizationNumber = normalizeNorwegianOrganizationNumber(
+    unit?.organisasjonsnummer,
+  );
+  const name = typeof unit?.navn === "string" ? unit.navn.trim() : "";
+  if (!isValidNorwegianOrganizationNumber(organizationNumber) || !name) {
+    return null;
+  }
+  const rawAddress = unit.forretningsadresse || unit.beliggenhetsadresse || null;
+  const addressLine = Array.isArray(rawAddress?.adresse)
+    ? rawAddress.adresse.filter(Boolean).join(", ")
+    : String(rawAddress?.adresse || rawAddress?.adresselinje1 || "").trim();
+  const operationalStatus = unit.slettedato
+    ? "inactive"
+    : unit.konkurs
+      ? "bankruptcy"
+      : unit.underAvvikling || unit.underTvangsavviklingEllerTvangsopplosning
+        ? "liquidation"
+        : "active";
+  return {
+    organizationNumber,
+    name,
+    organizationForm:
+      unit.organisasjonsform?.beskrivelse || unit.enhetstype?.beskrivelse || null,
+    primaryIndustryCode:
+      typeof unit.naeringskode1?.kode === "string"
+        ? unit.naeringskode1.kode.trim()
+        : null,
+    primaryIndustryDescription:
+      typeof unit.naeringskode1?.beskrivelse === "string"
+        ? unit.naeringskode1.beskrivelse.trim()
+        : null,
+    businessAddress: formatBrregBusinessAddress({
+      adresse: addressLine,
+      postnummer: rawAddress?.postnummer,
+      poststed: rawAddress?.poststed,
+    }),
+    operationalStatus,
+  };
+}
+
+async function fetchBrregJson(url: string): Promise<{ status: number; payload: any }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 7_500);
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "CreatorHub/1.0 (+https://creatorhubn.com)",
+      },
+      signal: controller.signal,
+    });
+    const payload = response.ok ? await response.json() : null;
+    return { status: response.status, payload };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function searchOpenBrregCompanies(
+  searchTerm: string,
+): Promise<PrototypeTesterBrregCompany[]> {
+  const term = searchTerm.trim();
+  const digits = normalizeNorwegianOrganizationNumber(term);
+  const isNumeric = /^[\d\s.]+$/.test(term);
+  let units: any[] = [];
+
+  if (isNumeric) {
+    if (digits.length !== 9 || !isValidNorwegianOrganizationNumber(digits)) {
+      return [];
+    }
+    const result = await fetchBrregJson(
+      `https://data.brreg.no/enhetsregisteret/api/enheter/${digits}`,
+    );
+    if (result.status === 404 || result.status === 410) return [];
+    if (result.status !== 200) {
+      throw new Error(`BRREG company lookup failed (${result.status})`);
+    }
+    units = [result.payload];
+  } else {
+    const params = new URLSearchParams({
+      navn: term,
+      navnMetodeForSoek: "FORTLOEPENDE",
+      size: "10",
+    });
+    const result = await fetchBrregJson(
+      `https://data.brreg.no/enhetsregisteret/api/enheter?${params.toString()}`,
+    );
+    if (result.status !== 200) {
+      throw new Error(`BRREG company search failed (${result.status})`);
+    }
+    units = Array.isArray(result.payload?._embedded?.enheter)
+      ? result.payload._embedded.enheter
+      : [];
+  }
+
+  return units
+    .map(mapOpenBrregCompany)
+    .filter((company): company is PrototypeTesterBrregCompany => Boolean(company));
+}
 
 async function ensureSchema(pool: any): Promise<void> {
   await pool.query(`
@@ -258,7 +456,11 @@ async function ensureSchema(pool: any): Promise<void> {
     // Firma per invitert tester: fanges ved invitasjon slik at tester-profilen
     // er forhåndsutfylt ved aksept (bare bekreft, ikke fyll på nytt). Bæres
     // videre til users.company_name → grunnlag for konvertering til kunde.
-    `member_company VARCHAR(160)`,
+    `member_company VARCHAR(200)`,
+    // Verifisert juridisk identitet fra Enhetsregisteret. Disse feltene brukes
+    // i avtalegrunnlaget og skal ikke utledes fra et fritt tekstfelt.
+    `member_organization_number VARCHAR(9)`,
+    `member_business_address VARCHAR(500)`,
   ]) {
     await pool.query(`ALTER TABLE prototype_tester_invites ADD COLUMN IF NOT EXISTS ${col}`).catch(() => undefined);
   }
@@ -434,6 +636,8 @@ function buildAgreementsForRow(r: any): PrototypeTesterAgreementDocument[] {
       testerName: String(r.name || r.email || "Tester"),
       testerEmail: String(r.email || ""),
       testerCompany: r.member_company || null,
+      testerOrganizationNumber: r.member_organization_number || null,
+      testerBusinessAddress: r.member_business_address || null,
     },
     agreementVersionsForRow(r),
   );
@@ -476,6 +680,9 @@ function buildAgreementSnapshot(
     signerName,
     signerEmail: String(row.email || ""),
     representedCompany: row.member_company || null,
+    representedCompanyOrganizationNumber:
+      row.member_organization_number || null,
+    representedCompanyBusinessAddress: row.member_business_address || null,
     confirmedSigningAuthority: true,
     signatureMethod: "email_otp_typed_name",
     emailVerifiedAt,
@@ -524,6 +731,8 @@ function rowToInvite(r: any): any {
     maxTeamSize: r.max_team_size || 1,
     memberProfession: r.member_profession || null,
     memberCompany: r.member_company || null,
+    memberOrganizationNumber: r.member_organization_number || null,
+    memberBusinessAddress: r.member_business_address || null,
   };
 }
 
@@ -543,6 +752,8 @@ function rowToAdminInviteSummary(r: any, baseUrl: string): any {
     soloProActive: Boolean(r.solo_pro_active),
     memberProfession: invite.memberProfession,
     memberCompany: invite.memberCompany,
+    memberOrganizationNumber: invite.memberOrganizationNumber,
+    memberBusinessAddress: invite.memberBusinessAddress,
     inviteRequestId: r.invite_request_id || null,
     createdAt: r.created_at,
     emailDelivery: {
@@ -616,6 +827,8 @@ export async function createInviteFromApprovedRequest(
   // tester-profil ved aksept (bare bekreft) + grunnlag for kunde-konvertering.
   memberProfession: string | null = null,
   memberCompany: string | null = null,
+  memberOrganizationNumber: string | null = null,
+  memberBusinessAddress: string | null = null,
   sendApprovalEmail?: PrototypeTesterApprovalEmailSender,
 ): Promise<{ id: string; token: string; inviteUrl: string; reused: boolean; emailDelivery: PrototypeTesterEmailDelivery | null } | null> {
   try {
@@ -647,8 +860,9 @@ export async function createInviteFromApprovedRequest(
          (token, email, name, testing_areas, invite_request_id, nda_version,
           program_terms_version, dpa_version, letter_of_intent_version,
           expires_at, invited_by, granted_plan, granted_features, team_role,
-          max_team_size, member_profession, member_company)
-       VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16, $17)
+          max_team_size, member_profession, member_company,
+          member_organization_number, member_business_address)
+       VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16, $17, $18, $19)
        RETURNING id, token`,
       [
         token,
@@ -668,7 +882,15 @@ export async function createInviteFromApprovedRequest(
         clampedTeamSize,
         normalizeMemberProfession(memberProfession),
         typeof memberCompany === "string" && memberCompany.trim()
-          ? memberCompany.trim().slice(0, 160)
+          ? memberCompany.trim().slice(0, MAX_COMPANY_LENGTH)
+          : null,
+        isValidNorwegianOrganizationNumber(
+          normalizeNorwegianOrganizationNumber(memberOrganizationNumber),
+        )
+          ? normalizeNorwegianOrganizationNumber(memberOrganizationNumber)
+          : null,
+        typeof memberBusinessAddress === "string" && memberBusinessAddress.trim()
+          ? memberBusinessAddress.trim().slice(0, MAX_BUSINESS_ADDRESS_LENGTH)
           : null,
       ],
     );
@@ -756,6 +978,8 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
     issueSigningCode,
     verifySigningCode,
     sendReceiptEmail,
+    lookupBrregCompany,
+    searchBrregCompanies = searchOpenBrregCompanies,
   } = deps;
 
   const requestIp = (req: any): string | null => {
@@ -847,6 +1071,44 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
     );
   });
 
+  // ─── GET /api/prototype-tester-invites/brreg/search ─────────
+  // Adminbeskyttet proxy mot Enhetsregisterets åpne API. Søkestrengen sendes
+  // aldri sammen med CreatorHub-cookies eller andre interne identifikatorer.
+  app.get("/api/prototype-tester-invites/brreg/search", async (req, res) => {
+    if (!(await requireAdminSession(req, res))) return;
+    const searchTerm = typeof req.query?.q === "string" ? req.query.q.trim() : "";
+    if (searchTerm.length < 2 || searchTerm.length > 180) {
+      return res.status(400).json({
+        error: "Søk med mellom 2 og 180 tegn.",
+      });
+    }
+    try {
+      const companies = await searchBrregCompanies(searchTerm);
+      res.json({
+        companies: companies
+          .filter((company) => company.operationalStatus === "active")
+          .slice(0, 10)
+          .map((company) => ({
+            organizationNumber: company.organizationNumber,
+            name: company.name,
+            organizationForm: company.organizationForm,
+            primaryIndustryCode: company.primaryIndustryCode || null,
+            primaryIndustryDescription:
+              company.primaryIndustryDescription || null,
+            recommendedProfession:
+              recommendPrototypeTesterProfession(company),
+            businessAddress: formatBrregBusinessAddress(company.businessAddress),
+            operationalStatus: company.operationalStatus,
+          })),
+      });
+    } catch (error) {
+      console.warn("[prototype-tester-invite] BRREG search failed:", error);
+      res.status(502).json({
+        error: "BRREG-søket er midlertidig utilgjengelig.",
+      });
+    }
+  });
+
   // ─── POST /api/prototype-tester-invites ─────────────────────
   // Admin oppretter invitasjon manuelt (push-modell, i tillegg til
   // auto-bro fra approval).
@@ -871,10 +1133,15 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       // Fang profesjon + firma ved invitasjon → forhåndsutfylt tester-profil
       // (bare bekreft, ikke fyll på nytt) + grunnlag for kunde-konvertering.
       const memberProfession = normalizeMemberProfession(body.profession);
-      const memberCompany =
+      let memberCompany =
         typeof body.company === "string" && body.company.trim()
           ? body.company.trim()
           : null;
+      const requestedOrganizationNumber = normalizeNorwegianOrganizationNumber(
+        body.organizationNumber,
+      );
+      let memberOrganizationNumber: string | null = null;
+      let memberBusinessAddress: string | null = null;
 
       if (
         !email ||
@@ -907,7 +1174,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         (memberCompany.length > MAX_COMPANY_LENGTH ||
           DISALLOWED_SINGLE_LINE_CHARS.test(memberCompany))
       ) {
-        return res.status(400).json({ error: "Firmanavn kan være maks 160 tegn" });
+        return res.status(400).json({ error: "Firmanavn kan være maks 200 tegn" });
       }
       if (
         personalMessage &&
@@ -917,6 +1184,69 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         return res.status(400).json({ error: "Personlig melding kan være maks 2000 tegn" });
       }
 
+      if (body.organizationNumber !== undefined) {
+        if (
+          typeof body.organizationNumber !== "string" ||
+          !isValidNorwegianOrganizationNumber(requestedOrganizationNumber)
+        ) {
+          return res.status(400).json({
+            error: "Organisasjonsnummer må være et gyldig norsk organisasjonsnummer.",
+          });
+        }
+        if (!lookupBrregCompany) {
+          return res.status(503).json({
+            error: "BRREG-verifisering er ikke tilgjengelig akkurat nå.",
+          });
+        }
+
+        let brregLookup: PrototypeTesterBrregLookupResult;
+        try {
+          brregLookup = await lookupBrregCompany(requestedOrganizationNumber);
+        } catch (lookupError) {
+          console.warn("[prototype-tester-invite] BRREG verification failed:", lookupError);
+          return res.status(503).json({
+            error: "BRREG-verifisering er midlertidig utilgjengelig. Prøv igjen.",
+          });
+        }
+        if (brregLookup.lookupStatus === "not_found") {
+          return res.status(400).json({
+            error: "Organisasjonsnummeret ble ikke funnet i Brønnøysundregistrene.",
+          });
+        }
+        if (brregLookup.lookupStatus !== "verified" || !brregLookup.company) {
+          return res.status(503).json({
+            error: "BRREG kunne ikke bekrefte virksomheten. Prøv igjen.",
+          });
+        }
+
+        const officialOrganizationNumber = normalizeNorwegianOrganizationNumber(
+          brregLookup.company.organizationNumber,
+        );
+        const officialCompanyName = String(brregLookup.company.name || "").trim();
+        if (
+          officialOrganizationNumber !== requestedOrganizationNumber ||
+          !officialCompanyName ||
+          officialCompanyName.length > MAX_COMPANY_LENGTH
+        ) {
+          return res.status(502).json({
+            error: "BRREG returnerte en ugyldig virksomhetsidentitet.",
+          });
+        }
+        if (brregLookup.company.operationalStatus !== "active") {
+          return res.status(400).json({
+            error: "Virksomheten er ikke aktiv i Brønnøysundregistrene.",
+          });
+        }
+
+        // Stol på Enhetsregisterets juridiske navn og adresse, ikke verdiene
+        // klienten sendte inn. Det hindrer at avtalegrunnlaget kan forfalskes.
+        memberCompany = officialCompanyName;
+        memberOrganizationNumber = officialOrganizationNumber;
+        memberBusinessAddress = formatBrregBusinessAddress(
+          brregLookup.company.businessAddress,
+        );
+      }
+
       await ensureSchema(pool);
       const token = crypto.randomBytes(24).toString("hex");
       const expiresAt = new Date(Date.now() + INVITE_EXPIRES_DAYS * 24 * 60 * 60 * 1000);
@@ -924,8 +1254,9 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         `INSERT INTO prototype_tester_invites
            (token, email, name, testing_areas, personal_message, nda_version,
             program_terms_version, dpa_version, letter_of_intent_version,
-            expires_at, invited_by, member_profession, member_company)
-         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            expires_at, invited_by, member_profession, member_company,
+            member_organization_number, member_business_address)
+         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
          RETURNING id, token, expires_at, created_at`,
         [
           token,
@@ -941,6 +1272,8 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
           invitedBy,
           memberProfession,
           memberCompany,
+          memberOrganizationNumber,
+          memberBusinessAddress,
         ],
       );
       const row = ins.rows[0];
@@ -1005,6 +1338,13 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         createdAt: row.created_at,
         mailerConfigured: isTransactionalEmailConfigured(),
         emailDelivery,
+        verifiedCompany: memberOrganizationNumber
+          ? {
+              name: memberCompany,
+              organizationNumber: memberOrganizationNumber,
+              businessAddress: memberBusinessAddress,
+            }
+          : null,
       });
     } catch (err: any) {
       console.error("POST /prototype-tester-invites:", err);
@@ -1346,6 +1686,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
             effectiveSignerName,
             acceptedInvite.member_profession || null,
             acceptedInvite.member_company || null,
+            acceptedInvite.member_organization_number || null,
           );
           accountUserId = acct?.id ? String(acct.id) : null;
         } catch (acctErr) {

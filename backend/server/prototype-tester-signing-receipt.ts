@@ -16,6 +16,8 @@ type ReceiptSnapshot = {
   signerName?: unknown;
   signerEmail?: unknown;
   representedCompany?: unknown;
+  representedCompanyOrganizationNumber?: unknown;
+  representedCompanyBusinessAddress?: unknown;
   confirmedSigningAuthority?: unknown;
   signatureMethod?: unknown;
   emailVerifiedAt?: unknown;
@@ -178,6 +180,18 @@ export function buildPrototypeTesterSigningReceiptPdf(
     metadataRow("Signatar", input.snapshot.signerName);
     metadataRow("E-post", input.snapshot.signerEmail);
     metadataRow("Virksomhet", input.snapshot.representedCompany || "Ikke oppgitt");
+    if (input.snapshot.representedCompanyOrganizationNumber) {
+      metadataRow(
+        "Organisasjonsnummer",
+        input.snapshot.representedCompanyOrganizationNumber,
+      );
+    }
+    if (input.snapshot.representedCompanyBusinessAddress) {
+      metadataRow(
+        "Forretningsadresse",
+        input.snapshot.representedCompanyBusinessAddress,
+      );
+    }
     metadataRow("Signert", formatReceiptTimestamp(input.snapshot.acceptedAt));
     metadataRow(
       "E-post verifisert",

@@ -11,15 +11,17 @@
  *
  * Backend-API som forventes:
  *   POST /api/prototype-tester-invites
- *     body: { email, name, profession, company, testingAreas, personalMessage }
+ *     body: { email, name, profession, company, organizationNumber,
+ *             testingAreas, personalMessage }
  *     returns: { id, token, inviteUrl, emailDelivery }
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Box,
   Button,
   Chip,
+  Autocomplete,
   Dialog,
   DialogActions,
   DialogContent,
@@ -31,6 +33,8 @@ import {
   Alert,
   CircularProgress,
   FormControl,
+  FormHelperText,
+  InputAdornment,
   InputLabel,
   MenuItem,
   Select,
@@ -40,6 +44,8 @@ import {
   Close as CloseIcon,
   Send as SendIcon,
   ContentCopy as CopyIcon,
+  Business as BusinessIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { ws, workspaceDarkTheme } from '@/components/workspace/workspaceTheme';
@@ -79,6 +85,22 @@ interface InviteResponse {
     reason?: string | null;
     messageId?: string | null;
   } | null;
+  verifiedCompany?: {
+    name: string;
+    organizationNumber: string;
+    businessAddress?: string | null;
+  } | null;
+}
+
+interface BrregCompanyOption {
+  organizationNumber: string;
+  name: string;
+  organizationForm: string | null;
+  primaryIndustryCode: string | null;
+  primaryIndustryDescription: string | null;
+  recommendedProfession: (typeof PROFESSION_OPTIONS)[number]['value'] | null;
+  businessAddress: string | null;
+  operationalStatus: 'active' | 'inactive' | 'bankruptcy' | 'liquidation';
 }
 
 export const PrototypeTesterInviteDialog = ({
@@ -89,18 +111,65 @@ export const PrototypeTesterInviteDialog = ({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [profession, setProfession] = useState('');
-  const [company, setCompany] = useState('');
+  const [autoSuggestedProfession, setAutoSuggestedProfession] = useState<string | null>(null);
+  const [companyQuery, setCompanyQuery] = useState('');
+  const [companyOptions, setCompanyOptions] = useState<BrregCompanyOption[]>([]);
+  const [selectedCompany, setSelectedCompany] = useState<BrregCompanyOption | null>(null);
+  const [companyLoading, setCompanyLoading] = useState(false);
+  const [companySearchError, setCompanySearchError] = useState<string | null>(null);
   const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
   const [personalMessage, setPersonalMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<InviteResponse | null>(null);
 
+  useEffect(() => {
+    if (!open) return;
+    const term = companyQuery.trim();
+    if (selectedCompany?.name === term || term.length < 2) {
+      setCompanyOptions([]);
+      setCompanyLoading(false);
+      setCompanySearchError(null);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setCompanyLoading(true);
+      setCompanySearchError(null);
+      void apiRequest(
+        `/api/prototype-tester-invites/brreg/search?q=${encodeURIComponent(term)}`,
+      )
+        .then((data) => {
+          if (cancelled) return;
+          setCompanyOptions(Array.isArray(data?.companies) ? data.companies : []);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setCompanyOptions([]);
+          setCompanySearchError('BRREG-søket er midlertidig utilgjengelig. Prøv igjen.');
+        })
+        .finally(() => {
+          if (!cancelled) setCompanyLoading(false);
+        });
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [companyQuery, open, selectedCompany]);
+
   const reset = () => {
     setName('');
     setEmail('');
     setProfession('');
-    setCompany('');
+    setAutoSuggestedProfession(null);
+    setCompanyQuery('');
+    setCompanyOptions([]);
+    setSelectedCompany(null);
+    setCompanyLoading(false);
+    setCompanySearchError(null);
     setSelectedAreas([]);
     setPersonalMessage('');
     setError(null);
@@ -121,6 +190,7 @@ export const PrototypeTesterInviteDialog = ({
   const canSubmit =
     name.trim().length >= 2 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) &&
+    (!companyQuery.trim() || Boolean(selectedCompany)) &&
     selectedAreas.length > 0 &&
     !submitting;
 
@@ -135,7 +205,8 @@ export const PrototypeTesterInviteDialog = ({
           email: email.trim(),
           name: name.trim(),
           profession: profession.trim() || undefined,
-          company: company.trim() || undefined,
+          company: selectedCompany?.name,
+          organizationNumber: selectedCompany?.organizationNumber,
           testingAreas: selectedAreas,
           personalMessage: personalMessage.trim() || undefined,
         },
@@ -203,6 +274,26 @@ export const PrototypeTesterInviteDialog = ({
                 ? `Invitasjon opprettet og e-post sendt til ${email}.`
                 : `Invitasjonen er opprettet, men e-posten ble ikke bekreftet sendt${result.emailDelivery?.reason ? `: ${result.emailDelivery.reason}` : '.'}`}
             </Alert>
+            {result.verifiedCompany && (
+              <Box
+                sx={{
+                  p: 1.5,
+                  bgcolor: ws.greenSoft,
+                  border: '1px solid rgba(52,211,153,0.38)',
+                  borderRadius: 1.5,
+                }}
+              >
+                <Typography variant="body2" sx={{ color: ws.text, fontWeight: 800 }}>
+                  {result.verifiedCompany.name}
+                </Typography>
+                <Typography variant="caption" sx={{ color: ws.textDim, display: 'block' }}>
+                  BRREG-verifisert · Org.nr. {result.verifiedCompany.organizationNumber}
+                  {result.verifiedCompany.businessAddress
+                    ? ` · ${result.verifiedCompany.businessAddress}`
+                    : ''}
+                </Typography>
+              </Box>
+            )}
             <Box>
               <Typography variant="caption" sx={{ color: ws.textDim, mb: 0.5, display: 'block' }}>
                 One-time-link (kopier og del manuelt om e-posten ikke kommer fram):
@@ -252,15 +343,20 @@ export const PrototypeTesterInviteDialog = ({
               size="small"
               InputProps={{ sx: { bgcolor: ws.panelInput } }}
             />
-            <Stack direction="row" spacing={2}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <FormControl fullWidth size="small">
-                <InputLabel>
+                <InputLabel id="prototype-tester-profession-label">
                   Profesjon (valgfri)
                 </InputLabel>
                 <Select
+                  id="prototype-tester-profession"
+                  labelId="prototype-tester-profession-label"
                   label="Profesjon (valgfri)"
                   value={profession}
-                  onChange={(e) => setProfession(e.target.value)}
+                  onChange={(e) => {
+                    setProfession(e.target.value);
+                    setAutoSuggestedProfession(null);
+                  }}
                   sx={{ bgcolor: ws.panelInput }}
                 >
                   <MenuItem value=""><em>Ikke valgt</em></MenuItem>
@@ -271,16 +367,143 @@ export const PrototypeTesterInviteDialog = ({
                   ))}
                 </Select>
               </FormControl>
-              <TextField
-                label="Bedrift (valgfri)"
-                value={company}
-                onChange={(e) => setCompany(e.target.value)}
+              <Autocomplete
                 fullWidth
-                size="small"
-                helperText="Tas med i avtalegrunnlaget"
-                InputProps={{ sx: { bgcolor: ws.panelInput } }}
+                options={companyOptions}
+                value={selectedCompany}
+                inputValue={companyQuery}
+                loading={companyLoading}
+                filterOptions={(options) => options}
+                isOptionEqualToValue={(option, value) =>
+                  option.organizationNumber === value.organizationNumber
+                }
+                getOptionLabel={(option) => option.name}
+                onInputChange={(_, nextValue, reason) => {
+                  setCompanyQuery(nextValue);
+                  if (reason === 'clear') setSelectedCompany(null);
+                  if (
+                    reason === 'input' &&
+                    selectedCompany &&
+                    nextValue !== selectedCompany.name
+                  ) {
+                    setSelectedCompany(null);
+                    if (autoSuggestedProfession) {
+                      setProfession('');
+                      setAutoSuggestedProfession(null);
+                    }
+                  }
+                }}
+                onChange={(_, option) => {
+                  setSelectedCompany(option);
+                  setCompanyQuery(option?.name || '');
+                  setCompanySearchError(null);
+                  if (
+                    option?.recommendedProfession &&
+                    (!profession || Boolean(autoSuggestedProfession))
+                  ) {
+                    setProfession(option.recommendedProfession);
+                    setAutoSuggestedProfession(option.recommendedProfession);
+                  } else if (!option?.recommendedProfession && autoSuggestedProfession) {
+                    setProfession('');
+                    setAutoSuggestedProfession(null);
+                  }
+                }}
+                renderOption={(props, option) => (
+                  <Box component="li" {...props} key={option.organizationNumber}>
+                    <BusinessIcon sx={{ color: ws.accent, mr: 1.25, flexShrink: 0 }} />
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="body2" sx={{ color: ws.text, fontWeight: 700 }}>
+                        {option.name}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: ws.textDim }}>
+                        Org.nr. {option.organizationNumber}
+                        {option.organizationForm ? ` · ${option.organizationForm}` : ''}
+                      </Typography>
+                      {option.primaryIndustryDescription && (
+                        <Typography variant="caption" sx={{ color: ws.textDim, display: 'block' }}>
+                          {option.primaryIndustryCode
+                            ? `${option.primaryIndustryCode} · `
+                            : ''}
+                          {option.primaryIndustryDescription}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+                )}
+                noOptionsText={
+                  companyQuery.trim().length < 2
+                    ? 'Skriv minst to tegn'
+                    : 'Ingen virksomheter funnet'
+                }
+                loadingText="Søker i Brønnøysundregistrene…"
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Søk bedrift i Brønnøysundregistrene"
+                    placeholder="Navn eller 9-sifret org.nr."
+                    size="small"
+                    error={Boolean(companySearchError)}
+                    helperText={
+                      companySearchError ||
+                      (companyQuery.trim() && !selectedCompany
+                        ? 'Velg en virksomhet fra trefflisten for å bruke den i avtalene.'
+                        : 'Valgfritt. Juridisk navn og org.nr. hentes fra BRREG.')
+                    }
+                    InputProps={{
+                      ...params.InputProps,
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon sx={{ color: ws.textDim }} />
+                        </InputAdornment>
+                      ),
+                      sx: { bgcolor: ws.panelInput },
+                    }}
+                  />
+                )}
               />
             </Stack>
+            {selectedCompany?.recommendedProfession && (
+              <FormHelperText sx={{ mt: -1.25, color: ws.textDim }}>
+                BRREG foreslår «
+                {PROFESSION_OPTIONS.find(
+                  (option) => option.value === selectedCompany.recommendedProfession,
+                )?.label}
+                » basert på næringskode
+                {selectedCompany.primaryIndustryCode
+                  ? ` ${selectedCompany.primaryIndustryCode}`
+                  : ''}
+                . Du kan endre valget.
+              </FormHelperText>
+            )}
+            {selectedCompany && (
+              <Box
+                role="status"
+                sx={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 1.25,
+                  p: 1.5,
+                  borderRadius: 1.5,
+                  bgcolor: ws.greenSoft,
+                  border: '1px solid rgba(52,211,153,0.38)',
+                }}
+              >
+                <BusinessIcon sx={{ color: ws.green, mt: 0.1 }} />
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="body2" sx={{ color: ws.text, fontWeight: 800 }}>
+                    {selectedCompany.name}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: ws.textDim, display: 'block' }}>
+                    BRREG-verifisert · Org.nr. {selectedCompany.organizationNumber}
+                  </Typography>
+                  {selectedCompany.businessAddress && (
+                    <Typography variant="caption" sx={{ color: ws.textDim, display: 'block' }}>
+                      {selectedCompany.businessAddress}
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            )}
             <Box>
               <Typography variant="caption" sx={{ color: ws.textDim, display: 'block', mb: 1 }}>
                 Områder å teste (velg minst ett)

@@ -67415,6 +67415,7 @@ setupWeddingAssistantCollabRoutes({ app, pool, requireUserSession, getPricingUse
 // Slice 9X.53 — Prototype-tester NDA + program-vilkår-flyt (adskilt fra Role Room).
 setupPrototypeTesterInvitesRoutes({
   app, pool, getPricingUserId, requireUserSession, requireAdminSession: requireResolvedAdminSession,
+  lookupBrregCompany: lookupInviteRequestBrregCompany,
   // Oppretter (gjenbruker) en brukerkonto for en tester ved aksept, så hvert
   // teammedlem faktisk har en konto (matchende e-post) å logge inn med (Google
   // OAuth / e-post-match). Gjenbruker den velprøvde upsertAdminAccountUser.
@@ -67423,6 +67424,7 @@ setupPrototypeTesterInvitesRoutes({
     name: string,
     profession?: string | null,
     company?: string | null,
+    organizationNumber?: string | null,
   ) => {
     const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
     const acct = await upsertAdminAccountUser({
@@ -67440,6 +67442,10 @@ setupPrototypeTesterInvitesRoutes({
       businessName:
         typeof company === "string" && company.trim()
           ? company.trim()
+          : undefined,
+      organizationNumber:
+        typeof organizationNumber === "string" && organizationNumber.trim()
+          ? organizationNumber.trim()
           : undefined,
       isActive: true,
     });
@@ -67527,6 +67533,8 @@ setupInviteRequestsRoutes({
     teamSize,
     memberProfession,
     memberCompany,
+    memberOrganizationNumber,
+    memberBusinessAddress,
   ) =>
     createInviteFromApprovedRequest(
       routePool,
@@ -67541,6 +67549,8 @@ setupInviteRequestsRoutes({
       teamSize,
       memberProfession,
       memberCompany,
+      memberOrganizationNumber,
+      memberBusinessAddress,
       sendCreatorHubPrototypeTesterApprovalEmail,
     ),
   sendAccessRequestReceivedEmail:

@@ -26,6 +26,8 @@ describe('PrototypeTesterAdminPanel', () => {
           id: 'invite-1',
           name: 'CreatorHub E2E Tester',
           email: 'tester@example.com',
+          memberCompany: 'CREATORHUB AS',
+          memberOrganizationNumber: '937518684',
           status: 'accepted',
           inviteRequestId: 'request-1',
           inviteUrl: 'https://creatorhubn.com/prototype-tester/accept-invite?token=redacted',
@@ -56,6 +58,9 @@ describe('PrototypeTesterAdminPanel', () => {
     const row = await screen.findByTestId('prototype-tester-invite-invite-1');
     expect(screen.getByRole('table', { name: 'Status for prototype-testere' })).toBeInTheDocument();
     expect(within(row).getByText('Søknad')).toBeInTheDocument();
+    expect(within(row).getByText(/CREATORHUB AS/)).toHaveTextContent(
+      'Org.nr. 937 518 684',
+    );
     expect(within(row).getByText('Sendt').closest('[data-state]')).toHaveAttribute('data-state', 'complete');
     expect(within(row).getByText('Åpnet')).toBeInTheDocument();
     expect(within(row).getByText('Klikket')).toBeInTheDocument();
