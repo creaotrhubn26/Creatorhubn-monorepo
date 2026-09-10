@@ -58,6 +58,33 @@ create table if not exists edges (
 );
 "#;
 
+/// Fulltekstindeks over `chunks.text`, uten embedder og uten nettverk.
+///
+/// `content='chunks', content_rowid='id'` gjør dette til en ekstern-innhold-
+/// tabell: FTS5 lagrer bare tokenindeksen, ikke en kopi av teksten. Det
+/// betyr at tabellen IKKE holder seg synkronisert av seg selv — triggerne
+/// under er det som gjør det, ikke FTS5 selv.
+///
+/// `remove_diacritics 0` er bevisst: notatene er norske, og standardverdien
+/// (1) folder æøå bort slik at «søk» og «sok» blir samme token. Med 0 forblir
+/// de distinkte.
+const FTS_SCHEMA: &str = r#"
+create virtual table if not exists chunk_fts using fts5(
+  text,
+  content='chunks',
+  content_rowid='id',
+  tokenize='unicode61 remove_diacritics 0'
+);
+
+create trigger if not exists chunks_ai_fts after insert on chunks begin
+  insert into chunk_fts(rowid, text) values (new.id, new.text);
+end;
+
+create trigger if not exists chunks_ad_fts after delete on chunks begin
+  insert into chunk_fts(chunk_fts, rowid, text) values ('delete', old.id, old.text);
+end;
+"#;
+
 /// Åpner databasen og sørger for at skjemaet finnes. Idempotent.
 pub fn open(path: &Path) -> Result<Connection> {
     crate::register_vec_extension();
@@ -71,6 +98,7 @@ pub fn open(path: &Path) -> Result<Connection> {
         "create virtual table if not exists chunk_vec using vec0(embedding float[{}]);",
         EMBEDDING_DIM
     ))?;
+    conn.execute_batch(FTS_SCHEMA)?;
     Ok(conn)
 }
 
