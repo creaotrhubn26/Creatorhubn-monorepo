@@ -1,24 +1,25 @@
 #!/usr/bin/env node
 
-import assert from 'node:assert/strict';
-import process from 'node:process';
+import assert from "node:assert/strict";
+import process from "node:process";
 
-const RENDER_API_BASE = 'https://api.render.com/v1';
+const RENDER_API_BASE = "https://api.render.com/v1";
 const FAILURE_STATUSES = new Set([
-  'build_failed',
-  'update_failed',
-  'pre_deploy_failed',
-  'canceled',
-  'cancelled',
-  'deactivated',
+  "build_failed",
+  "update_failed",
+  "pre_deploy_failed",
+  "canceled",
+  "cancelled",
+  "deactivated",
 ]);
 const DEFAULT_POLL_INTERVAL_MS = 15_000;
 const DEFAULT_DEPLOY_TIMEOUT_MS = 35 * 60_000;
 const DEFAULT_PUBLIC_TIMEOUT_MS = 10 * 60_000;
+const REQUIRED_PUBLIC_COMMIT_MATCHES = 3;
 const ALLOWED_POSTGRES_TLS_MODES = new Set([
-  'require',
-  'verify-ca',
-  'verify-full',
+  "require",
+  "verify-ca",
+  "verify-full",
 ]);
 
 function sleep(ms) {
@@ -26,14 +27,14 @@ function sleep(ms) {
 }
 
 function requiredEnv(name) {
-  const value = String(process.env[name] || '').trim();
-  if (!value) throw new Error(name + ' is required');
+  const value = String(process.env[name] || "").trim();
+  if (!value) throw new Error(name + " is required");
   return value;
 }
 
 function validateServiceId(value) {
   if (!/^srv-[a-z0-9]{20}$/.test(value)) {
-    throw new Error('RENDER_SERVICE_ID is invalid');
+    throw new Error("RENDER_SERVICE_ID is invalid");
   }
   return value;
 }
@@ -43,52 +44,52 @@ function validateBackendUrl(value) {
   try {
     parsed = new URL(value);
   } catch {
-    throw new Error('BACKEND_URL must be a valid URL');
+    throw new Error("BACKEND_URL must be a valid URL");
   }
-  if (parsed.protocol !== 'https:') {
-    throw new Error('BACKEND_URL must use HTTPS');
+  if (parsed.protocol !== "https:") {
+    throw new Error("BACKEND_URL must use HTTPS");
   }
   return parsed.origin;
 }
 
 function validateCommit(value) {
-  const normalized = String(value || '')
+  const normalized = String(value || "")
     .trim()
     .toLowerCase();
   if (!/^[0-9a-f]{40}$/.test(normalized)) {
-    throw new Error('A full 40-character Git commit SHA is required');
+    throw new Error("A full 40-character Git commit SHA is required");
   }
   return normalized;
 }
 
 function apiErrorDetail(body) {
-  if (!body || typeof body !== 'object') return 'request_failed';
+  if (!body || typeof body !== "object") return "request_failed";
   const candidate = body.message || body.error || body.status;
-  return typeof candidate === 'string'
+  return typeof candidate === "string"
     ? candidate.slice(0, 300)
-    : 'request_failed';
+    : "request_failed";
 }
 
 export function unwrapDeploy(value) {
-  if (!value || typeof value !== 'object') return null;
-  if (value.deploy && typeof value.deploy === 'object') return value.deploy;
-  return typeof value.id === 'string' ? value : null;
+  if (!value || typeof value !== "object") return null;
+  if (value.deploy && typeof value.deploy === "object") return value.deploy;
+  return typeof value.id === "string" ? value : null;
 }
 
 export function deployCommitId(deploy) {
-  if (!deploy || typeof deploy !== 'object') return '';
-  if (typeof deploy.commitId === 'string') return deploy.commitId.toLowerCase();
-  if (typeof deploy.commit?.id === 'string') {
+  if (!deploy || typeof deploy !== "object") return "";
+  if (typeof deploy.commitId === "string") return deploy.commitId.toLowerCase();
+  if (typeof deploy.commit?.id === "string") {
     return deploy.commit.id.toLowerCase();
   }
-  return '';
+  return "";
 }
 
 export function commitsMatch(actual, expected) {
-  const left = String(actual || '')
+  const left = String(actual || "")
     .trim()
     .toLowerCase();
-  const right = String(expected || '')
+  const right = String(expected || "")
     .trim()
     .toLowerCase();
   if (!/^[0-9a-f]{40}$/.test(left) || !/^[0-9a-f]{40}$/.test(right)) {
@@ -101,7 +102,7 @@ async function renderRequest(
   fetchImpl,
   apiKey,
   pathname,
-  { method = 'GET', body, attempts = 5 } = {},
+  { method = "GET", body, attempts = 5 } = {},
 ) {
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -109,9 +110,9 @@ async function renderRequest(
       const response = await fetchImpl(RENDER_API_BASE + pathname, {
         method,
         headers: {
-          Accept: 'application/json',
-          Authorization: 'Bearer ' + apiKey,
-          ...(body ? { 'Content-Type': 'application/json' } : {}),
+          Accept: "application/json",
+          Authorization: "Bearer " + apiKey,
+          ...(body ? { "Content-Type": "application/json" } : {}),
         },
         body: body ? JSON.stringify(body) : undefined,
         signal: AbortSignal.timeout(20_000),
@@ -129,13 +130,13 @@ async function renderRequest(
       if (response.ok) return parsed;
       const retryable = response.status === 429 || response.status >= 500;
       const error = new Error(
-        'Render API ' +
+        "Render API " +
           method +
-          ' ' +
+          " " +
           pathname +
-          ' returned HTTP ' +
+          " returned HTTP " +
           response.status +
-          ': ' +
+          ": " +
           apiErrorDetail(parsed),
       );
       if (!retryable) {
@@ -152,14 +153,14 @@ async function renderRequest(
     const backoffMs = Math.min(2 ** (attempt - 1) * 1_000, 10_000);
     await sleep(backoffMs + Math.floor(Math.random() * 500));
   }
-  throw lastError || new Error('Render API request failed');
+  throw lastError || new Error("Render API request failed");
 }
 
 export function isAutoDeployDisabled(service) {
   const disabled =
-    service?.autoDeploy === false || service?.autoDeploy === 'no';
+    service?.autoDeploy === false || service?.autoDeploy === "no";
   const triggerOff =
-    service?.autoDeployTrigger == null || service?.autoDeployTrigger === 'off';
+    service?.autoDeployTrigger == null || service?.autoDeployTrigger === "off";
   return disabled && triggerOff;
 }
 
@@ -171,14 +172,14 @@ export async function assertAutoDeployDisabled({
   const service = await renderRequest(
     fetchImpl,
     apiKey,
-    '/services/' + serviceId,
+    "/services/" + serviceId,
   );
   if (!isAutoDeployDisabled(service)) {
     throw new Error(
-      'Render auto-deploy must already be disabled before a release starts',
+      "Render auto-deploy must already be disabled before a release starts",
     );
   }
-  console.log('Verified that Render auto-deploy is disabled.');
+  console.log("Verified that Render auto-deploy is disabled.");
 }
 async function readRenderEnvironmentValue({
   fetchImpl,
@@ -191,15 +192,15 @@ async function readRenderEnvironmentValue({
     response = await renderRequest(
       fetchImpl,
       apiKey,
-      '/services/' + serviceId + '/env-vars/' + encodeURIComponent(key),
+      "/services/" + serviceId + "/env-vars/" + encodeURIComponent(key),
     );
   } catch {
-    throw new Error('Render environment variable is unavailable: ' + key);
+    throw new Error("Render environment variable is unavailable: " + key);
   }
   const envVar = response?.envVar ?? response;
-  if (envVar?.key !== key || typeof envVar.value !== 'string') {
+  if (envVar?.key !== key || typeof envVar.value !== "string") {
     throw new Error(
-      'Render environment variable is missing or invalid: ' + key,
+      "Render environment variable is missing or invalid: " + key,
     );
   }
   return envVar.value;
@@ -208,25 +209,25 @@ async function readRenderEnvironmentValue({
 function postgresDatabaseTarget(value) {
   let parsed;
   try {
-    parsed = new URL(String(value || ''));
+    parsed = new URL(String(value || ""));
   } catch {
     return null;
   }
-  if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') {
+  if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
     return null;
   }
   const connectionParameterValues = (parameterName) =>
     [...parsed.searchParams.entries()]
       .filter(([name]) => name.toLowerCase() === parameterName)
       .map(([, parameterValue]) => String(parameterValue).toLowerCase());
-  const sslModes = connectionParameterValues('sslmode');
+  const sslModes = connectionParameterValues("sslmode");
   if (sslModes.length !== 1 || !ALLOWED_POSTGRES_TLS_MODES.has(sslModes[0]))
     return null;
-  const channelBindings = connectionParameterValues('channel_binding');
-  if (channelBindings.length !== 1 || channelBindings[0] !== 'require')
+  const channelBindings = connectionParameterValues("channel_binding");
+  if (channelBindings.length !== 1 || channelBindings[0] !== "require")
     return null;
   const encodedDatabase = parsed.pathname.slice(1);
-  if (!encodedDatabase || encodedDatabase.includes('/')) return null;
+  if (!encodedDatabase || encodedDatabase.includes("/")) return null;
   if (!parsed.username || !parsed.password) return null;
   let username;
   let password;
@@ -240,19 +241,19 @@ function postgresDatabaseTarget(value) {
   }
   if (!username || !password || !database) return null;
   const hostname = parsed.hostname.toLowerCase();
-  const labels = hostname.split('.');
-  const pooled = labels[0]?.endsWith('-pooler') === true;
+  const labels = hostname.split(".");
+  const pooled = labels[0]?.endsWith("-pooler") === true;
   if (pooled) {
-    labels[0] = labels[0].slice(0, -'-pooler'.length);
+    labels[0] = labels[0].slice(0, -"-pooler".length);
   }
   if (
-    !hostname.endsWith('.neon.tech') ||
-    !/^ep-[a-z0-9-]+$/.test(labels[0] || '')
+    !hostname.endsWith(".neon.tech") ||
+    !/^ep-[a-z0-9-]+$/.test(labels[0] || "")
   )
     return null;
   return {
-    hostname: labels.join('.'),
-    port: parsed.port || '5432',
+    hostname: labels.join("."),
+    port: parsed.port || "5432",
     database,
     username,
     pooled,
@@ -274,13 +275,13 @@ export function databaseTargetsMatch(left, right) {
 export function isLeastPrivilegeRuntimeDatabaseUrl(value) {
   const target = postgresDatabaseTarget(value);
   return Boolean(
-    target && target.username === 'creatorhub_runtime_login' && target.pooled,
+    target && target.username === "creatorhub_runtime_login" && target.pooled,
   );
 }
 
 const LEADGRID_RUNTIME_ENVIRONMENT = Object.freeze({
-  AWS_LEADGRID_BUCKET_NAME: 'leadgrid-prod-745600963362-eu-north-1',
-  AWS_LEADGRID_REGION: 'eu-north-1',
+  AWS_LEADGRID_BUCKET_NAME: "leadgrid-prod-745600963362-eu-north-1",
+  AWS_LEADGRID_REGION: "eu-north-1",
 });
 
 /**
@@ -294,9 +295,9 @@ export async function assertLeadgridStorageRuntimeEnvironment({
   serviceId,
 }) {
   const requiredNonEmpty = [
-    'AWS_LEADGRID_ACCESS_KEY_ID',
-    'AWS_LEADGRID_SECRET_ACCESS_KEY',
-    'LEADGRID_PRICE_STORAGE_100_GIB',
+    "AWS_LEADGRID_ACCESS_KEY_ID",
+    "AWS_LEADGRID_SECRET_ACCESS_KEY",
+    "LEADGRID_PRICE_STORAGE_100_GIB",
   ];
   const invalid = [];
 
@@ -332,18 +333,18 @@ export async function assertLeadgridStorageRuntimeEnvironment({
 
   if (invalid.length > 0) {
     throw new Error(
-      'Render Leadgrid storage configuration is missing or invalid: ' +
-        [...new Set(invalid)].join(', '),
+      "Render Leadgrid storage configuration is missing or invalid: " +
+        [...new Set(invalid)].join(", "),
     );
   }
-  console.log('Verified Render Leadgrid storage configuration.');
+  console.log("Verified Render Leadgrid storage configuration.");
 }
 
 function isLeastPrivilegeMigrationDatabaseUrl(value) {
   const target = postgresDatabaseTarget(value);
   return Boolean(
     target &&
-    target.username === 'creatorhub_migration_login' &&
+    target.username === "creatorhub_migration_login" &&
     !target.pooled,
   );
 }
@@ -354,50 +355,50 @@ export async function assertRuntimeDatabaseRoles({
   serviceId,
   expectedMigrationDatabaseUrl,
   expected = {
-    DATABASE_LOGIN_ROLE: 'creatorhub_runtime_login',
-    DATABASE_OWNER_ROLE: 'creatorhub_schema_owner',
+    DATABASE_LOGIN_ROLE: "creatorhub_runtime_login",
+    DATABASE_OWNER_ROLE: "creatorhub_schema_owner",
   },
 }) {
   const databaseUrl = await readRenderEnvironmentValue({
     fetchImpl,
     apiKey,
     serviceId,
-    key: 'DATABASE_URL',
+    key: "DATABASE_URL",
   });
   const loginRole = await readRenderEnvironmentValue({
     fetchImpl,
     apiKey,
     serviceId,
-    key: 'DATABASE_LOGIN_ROLE',
+    key: "DATABASE_LOGIN_ROLE",
   });
   const ownerRole = await readRenderEnvironmentValue({
     fetchImpl,
     apiKey,
     serviceId,
-    key: 'DATABASE_OWNER_ROLE',
+    key: "DATABASE_OWNER_ROLE",
   });
 
   const mismatches = [];
   if (loginRole !== expected.DATABASE_LOGIN_ROLE) {
-    mismatches.push('DATABASE_LOGIN_ROLE');
+    mismatches.push("DATABASE_LOGIN_ROLE");
   }
   if (ownerRole !== expected.DATABASE_OWNER_ROLE) {
-    mismatches.push('DATABASE_OWNER_ROLE');
+    mismatches.push("DATABASE_OWNER_ROLE");
   }
   if (
     !isLeastPrivilegeRuntimeDatabaseUrl(databaseUrl) ||
     !isLeastPrivilegeMigrationDatabaseUrl(expectedMigrationDatabaseUrl) ||
     !databaseTargetsMatch(databaseUrl, expectedMigrationDatabaseUrl)
   ) {
-    mismatches.push('DATABASE_URL');
+    mismatches.push("DATABASE_URL");
   }
   if (mismatches.length > 0) {
     throw new Error(
-      'Render runtime database role configuration is missing or invalid: ' +
-        mismatches.join(', '),
+      "Render runtime database role configuration is missing or invalid: " +
+        mismatches.join(", "),
     );
   }
-  console.log('Verified Render runtime database role configuration.');
+  console.log("Verified Render runtime database role configuration.");
 }
 
 export async function disableAutoDeploy({
@@ -405,20 +406,20 @@ export async function disableAutoDeploy({
   apiKey,
   serviceId,
 }) {
-  await renderRequest(fetchImpl, apiKey, '/services/' + serviceId, {
-    method: 'PATCH',
-    body: { autoDeploy: 'no' },
+  await renderRequest(fetchImpl, apiKey, "/services/" + serviceId, {
+    method: "PATCH",
+    body: { autoDeploy: "no" },
   });
   const service = await renderRequest(
     fetchImpl,
     apiKey,
-    '/services/' + serviceId,
+    "/services/" + serviceId,
   );
   if (!isAutoDeployDisabled(service)) {
-    throw new Error('Render auto-deploy is still enabled after the update');
+    throw new Error("Render auto-deploy is still enabled after the update");
   }
   console.log(
-    'Render auto-deploy is disabled; use the canonical GitHub production workflow.',
+    "Render auto-deploy is disabled; use the canonical GitHub production workflow.",
   );
 }
 
@@ -427,7 +428,7 @@ async function getDeploy(fetchImpl, apiKey, serviceId, deployId) {
     await renderRequest(
       fetchImpl,
       apiKey,
-      '/services/' + serviceId + '/deploys/' + deployId,
+      "/services/" + serviceId + "/deploys/" + deployId,
     ),
   );
 }
@@ -443,44 +444,44 @@ async function waitForDeploy({
 }) {
   const deadline = Date.now() + timeoutMs;
   const deployId =
-    typeof initialDeploy?.id === 'string' ? initialDeploy.id.trim() : '';
+    typeof initialDeploy?.id === "string" ? initialDeploy.id.trim() : "";
   if (!deployId) {
-    throw new Error('Render deploy trigger did not return a deploy identity');
+    throw new Error("Render deploy trigger did not return a deploy identity");
   }
   let deploy = null;
-  let lastStatus = '';
+  let lastStatus = "";
 
   while (Date.now() < deadline) {
     deploy = await getDeploy(fetchImpl, apiKey, serviceId, deployId);
     if (!deploy || deploy.id !== deployId) {
-      throw new Error('Render deploy lookup returned an unexpected identity');
+      throw new Error("Render deploy lookup returned an unexpected identity");
     }
 
-    const status = String(deploy?.status || 'waiting');
+    const status = String(deploy?.status || "waiting");
     if (status !== lastStatus) {
-      console.log('Render deploy status: ' + status);
+      console.log("Render deploy status: " + status);
       lastStatus = status;
     }
-    if (status === 'live') {
+    if (status === "live") {
       if (!commitsMatch(deployCommitId(deploy), commit)) {
-        throw new Error('Render reported live for an unexpected commit');
+        throw new Error("Render reported live for an unexpected commit");
       }
       return deploy;
     }
     if (FAILURE_STATUSES.has(status)) {
-      throw new Error('Render deploy failed with status ' + status);
+      throw new Error("Render deploy failed with status " + status);
     }
     await sleep(pollIntervalMs);
   }
-  throw new Error('Render deploy did not become live before the timeout');
+  throw new Error("Render deploy did not become live before the timeout");
 }
 
 async function fetchPublicJson(fetchImpl, url) {
   const response = await fetchImpl(url, {
-    headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+    headers: { Accept: "application/json", "Cache-Control": "no-cache" },
     signal: AbortSignal.timeout(15_000),
   });
-  if (!response.ok) throw new Error('HTTP ' + response.status);
+  if (!response.ok) throw new Error("HTTP " + response.status);
   return response.json();
 }
 
@@ -492,46 +493,53 @@ async function verifyPublicDeployment({
   timeoutMs,
 }) {
   const deadline = Date.now() + timeoutMs;
+  let consecutiveCommitMatches = 0;
+  let publicCommitVerified = false;
   while (Date.now() < deadline) {
     try {
       const version = await fetchPublicJson(
         fetchImpl,
-        backendUrl + '/api/version?expected=' + commit,
+        backendUrl + "/api/version?expected=" + commit,
       );
-      if (commitsMatch(version?.commit, commit)) break;
+      if (commitsMatch(version?.commit, commit)) {
+        consecutiveCommitMatches += 1;
+        if (consecutiveCommitMatches >= REQUIRED_PUBLIC_COMMIT_MATCHES) {
+          publicCommitVerified = true;
+          break;
+        }
+      } else {
+        consecutiveCommitMatches = 0;
+      }
     } catch {
       // The previous instance can be reachable briefly during the rollover.
+      consecutiveCommitMatches = 0;
     }
     await sleep(pollIntervalMs);
   }
 
-  const version = await fetchPublicJson(
-    fetchImpl,
-    backendUrl + '/api/version?expected=' + commit,
-  );
-  if (!commitsMatch(version?.commit, commit)) {
-    throw new Error('Public backend did not report the deployed commit');
+  if (!publicCommitVerified) {
+    throw new Error("Public backend did not report the deployed commit");
   }
 
-  const health = await fetchPublicJson(fetchImpl, backendUrl + '/api/health');
-  if (health?.status !== 'ok') {
-    throw new Error('Backend health check is not ok');
+  const health = await fetchPublicJson(fetchImpl, backendUrl + "/api/health");
+  if (health?.status !== "ok") {
+    throw new Error("Backend health check is not ok");
   }
 
   const removedRoute = await fetchImpl(
-    backendUrl + '/api/admin-room/migrations/run',
+    backendUrl + "/api/admin-room/migrations/run",
     {
-      method: 'POST',
-      redirect: 'manual',
+      method: "POST",
+      redirect: "manual",
       signal: AbortSignal.timeout(15_000),
     },
   );
   if (removedRoute.status !== 404) {
     throw new Error(
-      'Removed migration endpoint returned HTTP ' + removedRoute.status,
+      "Removed migration endpoint returned HTTP " + removedRoute.status,
     );
   }
-  console.log('Public version, health, and removed-route smoke checks passed.');
+  console.log("Public version, health, and removed-route smoke checks passed.");
 }
 
 export async function deployAndVerify({
@@ -551,14 +559,14 @@ export async function deployAndVerify({
   const created = await renderRequest(
     fetchImpl,
     apiKey,
-    '/services/' + serviceId + '/deploys',
+    "/services/" + serviceId + "/deploys",
     {
-      method: 'POST',
-      body: { commitId: commit, clearCache: 'do_not_clear' },
+      method: "POST",
+      body: { commitId: commit, clearCache: "do_not_clear" },
       attempts: 1,
     },
   );
-  console.log('Triggered Render deploy for commit ' + commit + '.');
+  console.log("Triggered Render deploy for commit " + commit + ".");
   await waitForDeploy({
     fetchImpl,
     apiKey,
@@ -582,25 +590,25 @@ export async function deployAndVerify({
 
 async function runSelfTest() {
   assert.equal(
-    deployCommitId({ commit: { id: 'A'.repeat(40) } }),
-    'a'.repeat(40),
+    deployCommitId({ commit: { id: "A".repeat(40) } }),
+    "a".repeat(40),
   );
-  assert.equal(commitsMatch('a'.repeat(40), 'a'.repeat(40)), true);
-  assert.equal(commitsMatch('abcdef123', 'abcdef1234567890'), false);
-  assert.equal(commitsMatch('a'.repeat(40), 'a'.repeat(39) + 'b'), false);
-  assert.equal(commitsMatch('abc', 'abcdef1234567890'), false);
-  assert.deepEqual(unwrapDeploy({ deploy: { id: 'dep-test' } }), {
-    id: 'dep-test',
+  assert.equal(commitsMatch("a".repeat(40), "a".repeat(40)), true);
+  assert.equal(commitsMatch("abcdef123", "abcdef1234567890"), false);
+  assert.equal(commitsMatch("a".repeat(40), "a".repeat(39) + "b"), false);
+  assert.equal(commitsMatch("abc", "abcdef1234567890"), false);
+  assert.deepEqual(unwrapDeploy({ deploy: { id: "dep-test" } }), {
+    id: "dep-test",
   });
-  assert.equal(unwrapDeploy({ cursor: 'next' }), null);
+  assert.equal(unwrapDeploy({ cursor: "next" }), null);
   assert.equal(
-    isAutoDeployDisabled({ autoDeploy: 'no', autoDeployTrigger: 'off' }),
+    isAutoDeployDisabled({ autoDeploy: "no", autoDeployTrigger: "off" }),
     true,
   );
   assert.equal(isAutoDeployDisabled({ autoDeploy: false }), true);
-  assert.equal(isAutoDeployDisabled({ autoDeploy: 'yes' }), false);
-  assert.throws(() => validateCommit('main'), /40-character/);
-  assert.throws(() => validateBackendUrl('http://example.test'), /HTTPS/);
+  assert.equal(isAutoDeployDisabled({ autoDeploy: "yes" }), false);
+  assert.throws(() => validateCommit("main"), /40-character/);
+  assert.throws(() => validateBackendUrl("http://example.test"), /HTTPS/);
 
   const responseFor = (body) => ({
     ok: true,
@@ -613,16 +621,16 @@ async function runSelfTest() {
   let staleSameCommitLookupCalled = false;
   await assert.doesNotReject(
     assertAutoDeployDisabled({
-      fetchImpl: async () => responseFor({ autoDeploy: 'no' }),
-      apiKey: 'test-key',
-      serviceId: 'srv-' + 'a'.repeat(20),
+      fetchImpl: async () => responseFor({ autoDeploy: "no" }),
+      apiKey: "test-key",
+      serviceId: "srv-" + "a".repeat(20),
     }),
   );
   await assert.rejects(
     assertAutoDeployDisabled({
-      fetchImpl: async () => responseFor({ autoDeploy: 'yes' }),
-      apiKey: 'test-key',
-      serviceId: 'srv-' + 'a'.repeat(20),
+      fetchImpl: async () => responseFor({ autoDeploy: "yes" }),
+      apiKey: "test-key",
+      serviceId: "srv-" + "a".repeat(20),
     }),
     /must already be disabled/,
   );
@@ -633,11 +641,11 @@ async function runSelfTest() {
         return {
           ok: false,
           status: 400,
-          text: async () => JSON.stringify({ message: 'invalid request' }),
+          text: async () => JSON.stringify({ message: "invalid request" }),
         };
       },
-      apiKey: 'test-key',
-      serviceId: 'srv-' + 'a'.repeat(20),
+      apiKey: "test-key",
+      serviceId: "srv-" + "a".repeat(20),
     }),
     /HTTP 400/,
   );
@@ -645,17 +653,17 @@ async function runSelfTest() {
   await assert.rejects(
     deployAndVerify({
       fetchImpl: async (_url, options = {}) => {
-        if (options.method !== 'POST') return responseFor({ autoDeploy: 'no' });
-        if (options.method === 'POST') {
+        if (options.method !== "POST") return responseFor({ autoDeploy: "no" });
+        if (options.method === "POST") {
           ambiguousDeployPostCount += 1;
-          throw new Error('ambiguous deploy transport failure');
+          throw new Error("ambiguous deploy transport failure");
         }
-        throw new Error('unexpected request after ambiguous deploy failure');
+        throw new Error("unexpected request after ambiguous deploy failure");
       },
-      apiKey: 'test-key',
-      serviceId: 'srv-' + 'a'.repeat(20),
-      backendUrl: 'https://example.test',
-      commit: 'a'.repeat(40),
+      apiKey: "test-key",
+      serviceId: "srv-" + "a".repeat(20),
+      backendUrl: "https://example.test",
+      commit: "a".repeat(40),
       pollIntervalMs: 0,
       deployTimeoutMs: 100,
       publicTimeoutMs: 100,
@@ -666,21 +674,21 @@ async function runSelfTest() {
   await assert.rejects(
     deployAndVerify({
       fetchImpl: async (_url, options = {}) => {
-        if (options.method !== 'POST') return responseFor({ autoDeploy: 'no' });
-        if (options.method === 'POST') {
+        if (options.method !== "POST") return responseFor({ autoDeploy: "no" });
+        if (options.method === "POST") {
           ambiguousDeployServerErrorCount += 1;
           return {
             ok: false,
             status: 503,
-            text: async () => JSON.stringify({ message: 'temporarily down' }),
+            text: async () => JSON.stringify({ message: "temporarily down" }),
           };
         }
-        throw new Error('unexpected request after ambiguous deploy failure');
+        throw new Error("unexpected request after ambiguous deploy failure");
       },
-      apiKey: 'test-key',
-      serviceId: 'srv-' + 'a'.repeat(20),
-      backendUrl: 'https://example.test',
-      commit: 'a'.repeat(40),
+      apiKey: "test-key",
+      serviceId: "srv-" + "a".repeat(20),
+      backendUrl: "https://example.test",
+      commit: "a".repeat(40),
       pollIntervalMs: 0,
       deployTimeoutMs: 100,
       publicTimeoutMs: 100,
@@ -691,26 +699,26 @@ async function runSelfTest() {
   await assert.rejects(
     deployAndVerify({
       fetchImpl: async (url, options = {}) => {
-        if (options.method !== 'POST') return responseFor({ autoDeploy: 'no' });
-        if (options.method === 'POST') return responseFor({});
-        if (String(url).includes('/deploys?limit=')) {
+        if (options.method !== "POST") return responseFor({ autoDeploy: "no" });
+        if (options.method === "POST") return responseFor({});
+        if (String(url).includes("/deploys?limit=")) {
           staleSameCommitLookupCalled = true;
           return responseFor([
             {
               deploy: {
-                id: 'dep-old',
-                status: 'live',
-                commitId: 'a'.repeat(40),
+                id: "dep-old",
+                status: "live",
+                commitId: "a".repeat(40),
               },
             },
           ]);
         }
-        throw new Error('unexpected Render self-test request');
+        throw new Error("unexpected Render self-test request");
       },
-      apiKey: 'test-key',
-      serviceId: 'srv-' + 'a'.repeat(20),
-      backendUrl: 'https://example.test',
-      commit: 'a'.repeat(40),
+      apiKey: "test-key",
+      serviceId: "srv-" + "a".repeat(20),
+      backendUrl: "https://example.test",
+      commit: "a".repeat(40),
       pollIntervalMs: 0,
       deployTimeoutMs: 100,
       publicTimeoutMs: 100,
@@ -718,55 +726,62 @@ async function runSelfTest() {
     /deploy identity/,
   );
   assert.equal(staleSameCommitLookupCalled, false);
-  const successfulCommit = 'b'.repeat(40);
-  const successfulServiceId = 'srv-' + 'b'.repeat(20);
+  const successfulCommit = "b".repeat(40);
+  const successfulServiceId = "srv-" + "b".repeat(20);
   let successfulServiceStateReads = 0;
+  let successfulVersionReads = 0;
   await assert.doesNotReject(
     deployAndVerify({
       fetchImpl: async (url, options = {}) => {
         const target = String(url);
         if (
-          target === RENDER_API_BASE + '/services/' + successfulServiceId &&
-          options.method !== 'POST'
+          target === RENDER_API_BASE + "/services/" + successfulServiceId &&
+          options.method !== "POST"
         ) {
           successfulServiceStateReads += 1;
-          return responseFor({ autoDeploy: 'no' });
+          return responseFor({ autoDeploy: "no" });
         }
-        if (target.endsWith('/deploys') && options.method === 'POST') {
-          return responseFor({ id: 'dep-new' });
+        if (target.endsWith("/deploys") && options.method === "POST") {
+          return responseFor({ id: "dep-new" });
         }
-        if (target.endsWith('/deploys/dep-new')) {
+        if (target.endsWith("/deploys/dep-new")) {
           return responseFor({
-            id: 'dep-new',
-            status: 'live',
+            id: "dep-new",
+            status: "live",
             commitId: successfulCommit,
           });
         }
-        if (target.startsWith('https://example.test/api/version')) {
+        if (target.startsWith("https://example.test/api/version")) {
+          successfulVersionReads += 1;
           return {
             ok: true,
             status: 200,
-            json: async () => ({ commit: successfulCommit }),
+            json: async () => ({
+              commit:
+                successfulVersionReads === 2
+                  ? "c".repeat(40)
+                  : successfulCommit,
+            }),
           };
         }
-        if (target === 'https://example.test/api/health') {
+        if (target === "https://example.test/api/health") {
           return {
             ok: true,
             status: 200,
-            json: async () => ({ status: 'ok' }),
+            json: async () => ({ status: "ok" }),
           };
         }
         if (
-          target === 'https://example.test/api/admin-room/migrations/run' &&
-          options.method === 'POST'
+          target === "https://example.test/api/admin-room/migrations/run" &&
+          options.method === "POST"
         ) {
           return { status: 404 };
         }
-        throw new Error('unexpected successful Render self-test request');
+        throw new Error("unexpected successful Render self-test request");
       },
-      apiKey: 'test-key',
+      apiKey: "test-key",
       serviceId: successfulServiceId,
-      backendUrl: 'https://example.test',
+      backendUrl: "https://example.test",
       commit: successfulCommit,
       pollIntervalMs: 0,
       deployTimeoutMs: 100,
@@ -776,73 +791,78 @@ async function runSelfTest() {
   assert.equal(
     successfulServiceStateReads,
     2,
-    'deploy must re-read auto-deploy state immediately before and after rollout',
+    "deploy must re-read auto-deploy state immediately before and after rollout",
+  );
+  assert.equal(
+    successfulVersionReads,
+    5,
+    "public rollout verification must reset after mixed old/new instance traffic",
   );
   const runtimeDatabaseUrl =
-    'postgresql://creatorhub_runtime_login:secret@' +
-    'ep-example-pooler.eu.neon.tech/neondb?sslmode=require&channel_binding=require';
+    "postgresql://creatorhub_runtime_login:secret@" +
+    "ep-example-pooler.eu.neon.tech/neondb?sslmode=require&channel_binding=require";
   const migrationDatabaseUrl =
-    'postgresql://creatorhub_migration_login:secret@' +
-    'ep-example.eu.neon.tech/neondb?sslmode=require&channel_binding=require';
+    "postgresql://creatorhub_migration_login:secret@" +
+    "ep-example.eu.neon.tech/neondb?sslmode=require&channel_binding=require";
   const roleEnvironment = new Map([
-    ['DATABASE_URL', runtimeDatabaseUrl],
-    ['DATABASE_LOGIN_ROLE', 'creatorhub_runtime_login'],
-    ['DATABASE_OWNER_ROLE', 'creatorhub_schema_owner'],
+    ["DATABASE_URL", runtimeDatabaseUrl],
+    ["DATABASE_LOGIN_ROLE", "creatorhub_runtime_login"],
+    ["DATABASE_OWNER_ROLE", "creatorhub_schema_owner"],
   ]);
   const requestedRoleKeys = [];
   const roleFetch = async (url) => {
-    const key = decodeURIComponent(String(url).split('/').at(-1) || '');
+    const key = decodeURIComponent(String(url).split("/").at(-1) || "");
     requestedRoleKeys.push(key);
     return responseFor({ envVar: { key, value: roleEnvironment.get(key) } });
   };
   await assert.doesNotReject(
     assertRuntimeDatabaseRoles({
       fetchImpl: roleFetch,
-      apiKey: 'test-key',
-      serviceId: 'srv-' + 'a'.repeat(20),
+      apiKey: "test-key",
+      serviceId: "srv-" + "a".repeat(20),
       expectedMigrationDatabaseUrl: migrationDatabaseUrl,
     }),
   );
   assert.deepEqual(requestedRoleKeys, [
-    'DATABASE_URL',
-    'DATABASE_LOGIN_ROLE',
-    'DATABASE_OWNER_ROLE',
+    "DATABASE_URL",
+    "DATABASE_LOGIN_ROLE",
+    "DATABASE_OWNER_ROLE",
   ]);
   assert.equal(isLeastPrivilegeRuntimeDatabaseUrl(runtimeDatabaseUrl), true);
   assert.equal(
     isLeastPrivilegeRuntimeDatabaseUrl(
-      runtimeDatabaseUrl.replace('-pooler.', '.'),
+      runtimeDatabaseUrl.replace("-pooler.", "."),
     ),
     false,
   );
   assert.equal(
     isLeastPrivilegeRuntimeDatabaseUrl(
-      runtimeDatabaseUrl.replace('creatorhub_runtime_login', 'neondb_owner'),
+      runtimeDatabaseUrl.replace("creatorhub_runtime_login", "neondb_owner"),
     ),
     false,
   );
 
   assert.equal(
     isLeastPrivilegeRuntimeDatabaseUrl(
-      runtimeDatabaseUrl.replace('sslmode=require', 'sslmode=disable'),
+      runtimeDatabaseUrl.replace("sslmode=require", "sslmode=disable"),
     ),
     false,
   );
   assert.equal(
     isLeastPrivilegeRuntimeDatabaseUrl(
-      runtimeDatabaseUrl.replace(':secret@', '@'),
+      runtimeDatabaseUrl.replace(":secret@", "@"),
     ),
     false,
   );
   assert.equal(
     isLeastPrivilegeRuntimeDatabaseUrl(
-      runtimeDatabaseUrl.replace('.neon.tech', '.example.com'),
+      runtimeDatabaseUrl.replace(".neon.tech", ".example.com"),
     ),
     false,
   );
   assert.equal(
     isLeastPrivilegeRuntimeDatabaseUrl(
-      runtimeDatabaseUrl.replace('&channel_binding=require', ''),
+      runtimeDatabaseUrl.replace("&channel_binding=require", ""),
     ),
     false,
   );
@@ -853,25 +873,25 @@ async function runSelfTest() {
   assert.equal(
     databaseTargetsMatch(
       runtimeDatabaseUrl,
-      migrationDatabaseUrl.replace('/neondb?', '/other_database?'),
+      migrationDatabaseUrl.replace("/neondb?", "/other_database?"),
     ),
     false,
   );
   for (const invalidMigrationDatabaseUrl of [
-    migrationDatabaseUrl.replace('sslmode=require', 'sslmode=disable'),
-    migrationDatabaseUrl.replace('&channel_binding=require', ''),
+    migrationDatabaseUrl.replace("sslmode=require", "sslmode=disable"),
+    migrationDatabaseUrl.replace("&channel_binding=require", ""),
     migrationDatabaseUrl.replace(
-      'creatorhub_migration_login',
-      'creatorhub_migrator',
+      "creatorhub_migration_login",
+      "creatorhub_migrator",
     ),
-    migrationDatabaseUrl.replace(':secret@', '@'),
-    migrationDatabaseUrl.replace('.neon.tech', '.example.com'),
+    migrationDatabaseUrl.replace(":secret@", "@"),
+    migrationDatabaseUrl.replace(".neon.tech", ".example.com"),
   ]) {
     await assert.rejects(
       assertRuntimeDatabaseRoles({
         fetchImpl: roleFetch,
-        apiKey: 'test-key',
-        serviceId: 'srv-' + 'a'.repeat(20),
+        apiKey: "test-key",
+        serviceId: "srv-" + "a".repeat(20),
         expectedMigrationDatabaseUrl: invalidMigrationDatabaseUrl,
       }),
       /DATABASE_URL/,
@@ -880,11 +900,11 @@ async function runSelfTest() {
   await assert.rejects(
     assertRuntimeDatabaseRoles({
       fetchImpl: roleFetch,
-      apiKey: 'test-key',
-      serviceId: 'srv-' + 'a'.repeat(20),
+      apiKey: "test-key",
+      serviceId: "srv-" + "a".repeat(20),
       expectedMigrationDatabaseUrl: migrationDatabaseUrl.replace(
-        '/neondb?',
-        '/other_database?',
+        "/neondb?",
+        "/other_database?",
       ),
     }),
     /DATABASE_URL/,
@@ -892,8 +912,8 @@ async function runSelfTest() {
   await assert.rejects(
     assertRuntimeDatabaseRoles({
       fetchImpl: async (url) => {
-        const key = decodeURIComponent(String(url).split('/').at(-1) || '');
-        if (key === 'DATABASE_OWNER_ROLE') {
+        const key = decodeURIComponent(String(url).split("/").at(-1) || "");
+        if (key === "DATABASE_OWNER_ROLE") {
           return {
             ok: false,
             status: 404,
@@ -904,8 +924,8 @@ async function runSelfTest() {
           envVar: { key, value: roleEnvironment.get(key) },
         });
       },
-      apiKey: 'test-key',
-      serviceId: 'srv-' + 'a'.repeat(20),
+      apiKey: "test-key",
+      serviceId: "srv-" + "a".repeat(20),
     }),
     (error) => {
       assert.match(error.message, /DATABASE_OWNER_ROLE/);
@@ -915,47 +935,46 @@ async function runSelfTest() {
   );
 
   const leadgridEnvironment = new Map([
-    ['AWS_LEADGRID_ACCESS_KEY_ID', 'access-key'],
-    ['AWS_LEADGRID_SECRET_ACCESS_KEY', 'secret-key'],
-    [
-      'AWS_LEADGRID_BUCKET_NAME',
-      'leadgrid-prod-745600963362-eu-north-1',
-    ],
-    ['AWS_LEADGRID_REGION', 'eu-north-1'],
-    ['LEADGRID_PRICE_STORAGE_100_GIB', 'price_storage_100_gib'],
+    ["AWS_LEADGRID_ACCESS_KEY_ID", "access-key"],
+    ["AWS_LEADGRID_SECRET_ACCESS_KEY", "secret-key"],
+    ["AWS_LEADGRID_BUCKET_NAME", "leadgrid-prod-745600963362-eu-north-1"],
+    ["AWS_LEADGRID_REGION", "eu-north-1"],
+    ["LEADGRID_PRICE_STORAGE_100_GIB", "price_storage_100_gib"],
   ]);
   const requestedLeadgridKeys = [];
   const leadgridFetch = async (url) => {
-    const key = decodeURIComponent(String(url).split('/').at(-1) || '');
+    const key = decodeURIComponent(String(url).split("/").at(-1) || "");
     requestedLeadgridKeys.push(key);
-    return responseFor({ envVar: { key, value: leadgridEnvironment.get(key) } });
+    return responseFor({
+      envVar: { key, value: leadgridEnvironment.get(key) },
+    });
   };
   await assert.doesNotReject(
     assertLeadgridStorageRuntimeEnvironment({
       fetchImpl: leadgridFetch,
-      apiKey: 'test-key',
-      serviceId: 'srv-' + 'a'.repeat(20),
+      apiKey: "test-key",
+      serviceId: "srv-" + "a".repeat(20),
     }),
   );
   assert.deepEqual(requestedLeadgridKeys, [
-    'AWS_LEADGRID_ACCESS_KEY_ID',
-    'AWS_LEADGRID_SECRET_ACCESS_KEY',
-    'LEADGRID_PRICE_STORAGE_100_GIB',
-    'AWS_LEADGRID_BUCKET_NAME',
-    'AWS_LEADGRID_REGION',
+    "AWS_LEADGRID_ACCESS_KEY_ID",
+    "AWS_LEADGRID_SECRET_ACCESS_KEY",
+    "LEADGRID_PRICE_STORAGE_100_GIB",
+    "AWS_LEADGRID_BUCKET_NAME",
+    "AWS_LEADGRID_REGION",
   ]);
   await assert.rejects(
     assertLeadgridStorageRuntimeEnvironment({
       fetchImpl: async (url) => {
-        const key = decodeURIComponent(String(url).split('/').at(-1) || '');
+        const key = decodeURIComponent(String(url).split("/").at(-1) || "");
         const value =
-          key === 'AWS_LEADGRID_BUCKET_NAME'
-            ? 'another-product-bucket'
+          key === "AWS_LEADGRID_BUCKET_NAME"
+            ? "another-product-bucket"
             : leadgridEnvironment.get(key);
         return responseFor({ envVar: { key, value } });
       },
-      apiKey: 'test-key',
-      serviceId: 'srv-' + 'a'.repeat(20),
+      apiKey: "test-key",
+      serviceId: "srv-" + "a".repeat(20),
     }),
     (error) => {
       assert.match(error.message, /AWS_LEADGRID_BUCKET_NAME/);
@@ -964,29 +983,29 @@ async function runSelfTest() {
       return true;
     },
   );
-  console.log('Render backend deploy self-test passed.');
+  console.log("Render backend deploy self-test passed.");
 }
 
 async function main() {
   const command = process.argv[2];
-  if (command === '--self-test') {
+  if (command === "--self-test") {
     await runSelfTest();
     return;
   }
 
-  const apiKey = requiredEnv('RENDER_API_KEY');
-  const serviceId = validateServiceId(requiredEnv('RENDER_SERVICE_ID'));
-  if (command === 'disable-auto-deploy') {
+  const apiKey = requiredEnv("RENDER_API_KEY");
+  const serviceId = validateServiceId(requiredEnv("RENDER_SERVICE_ID"));
+  if (command === "disable-auto-deploy") {
     await disableAutoDeploy({ apiKey, serviceId });
     return;
   }
-  if (command === 'assert-auto-deploy-off') {
+  if (command === "assert-auto-deploy-off") {
     await assertAutoDeployDisabled({ apiKey, serviceId });
     return;
   }
-  if (command === 'assert-runtime-database-roles') {
+  if (command === "assert-runtime-database-roles") {
     const expectedMigrationDatabaseUrl = requiredEnv(
-      'PRODUCTION_MIGRATION_DATABASE_URL',
+      "PRODUCTION_MIGRATION_DATABASE_URL",
     );
     await assertRuntimeDatabaseRoles({
       apiKey,
@@ -995,13 +1014,13 @@ async function main() {
     });
     return;
   }
-  if (command === 'assert-leadgrid-storage-runtime') {
+  if (command === "assert-leadgrid-storage-runtime") {
     await assertLeadgridStorageRuntimeEnvironment({ apiKey, serviceId });
     return;
   }
-  if (command === 'deploy-and-verify') {
+  if (command === "deploy-and-verify") {
     const commit = validateCommit(process.argv[3]);
-    const backendUrl = validateBackendUrl(requiredEnv('BACKEND_URL'));
+    const backendUrl = validateBackendUrl(requiredEnv("BACKEND_URL"));
     await deployAndVerify({
       apiKey,
       serviceId,
@@ -1011,12 +1030,12 @@ async function main() {
     return;
   }
   throw new Error(
-    'Usage: render-backend.mjs --self-test | assert-auto-deploy-off | assert-runtime-database-roles | assert-leadgrid-storage-runtime | disable-auto-deploy | deploy-and-verify <sha>',
+    "Usage: render-backend.mjs --self-test | assert-auto-deploy-off | assert-runtime-database-roles | assert-leadgrid-storage-runtime | disable-auto-deploy | deploy-and-verify <sha>",
   );
 }
 
 main().catch((error) => {
-  const message = error instanceof Error ? error.message : 'unknown_error';
-  console.error('Render deployment gate failed: ' + message);
+  const message = error instanceof Error ? error.message : "unknown_error";
+  console.error("Render deployment gate failed: " + message);
   process.exitCode = 1;
 });
