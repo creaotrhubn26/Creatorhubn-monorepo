@@ -51,7 +51,21 @@ import {
   retryEaseVerseSync,
 } from "./protools-companion-persistence.js";
 import { broadcastSoundRoomUpdated } from "./sound-room-events.js";
-import { canAccessProject } from "./project-team-routes.js";
+import { canAccessProject, getProjectAccess } from "./project-team-routes.js";
+import { creatorHubSessionPrefix, creatorHubSoundRoomBounceKey } from "./creatorhub-storage-key.js";
+import {
+  claimCompanionCommands,
+  latestParentArtifactId,
+  queueCompanionCommand,
+  upsertMusicArtifact,
+  validateCompanionCommand,
+} from "./music-artifact-lineage.js";
+import {
+  issueUserEventsTicket,
+  USER_EVENTS_TICKET_TTL_MS,
+  USER_EVENTS_WS_PATH,
+} from "./realtime-user-events.js";
+import { USER_EVENTS_PROTOCOL_VERSION } from "../../frontend/shared/realtime-user-events-contract.js";
 
 export interface ProToolsCompanionDeps {
   app: express.Application;
@@ -63,25 +77,45 @@ export interface ProToolsCompanionDeps {
 }
 
 // ─────────────────────────── R2/B2 presign (samme mønster som coverage-take-service) ──
-interface R2Config { endpoint: string; bucket: string; region: string; accessKeyId: string; secretAccessKey: string; publicBaseUrl: string | null; }
+interface ObjectStorageConfig {
+  endpoint: string | null;
+  bucket: string;
+  region: string;
+  credentials: { accessKeyId: string; secretAccessKey: string } | null;
+  publicBaseUrl: string | null;
+}
 const UPLOAD_URL_TTL_SEC = 3600;
-function getR2Config(): R2Config | null {
+function getObjectStorageConfig(): ObjectStorageConfig | null {
+  const awsBucket = process.env.CREATORHUB_S3_BUCKET?.trim();
+  if (awsBucket) {
+    return {
+      endpoint: null,
+      bucket: awsBucket,
+      region: process.env.CREATORHUB_S3_REGION?.trim() || process.env.AWS_REGION?.trim() || "eu-north-1",
+      credentials: null,
+      publicBaseUrl: null,
+    };
+  }
   const endpoint = process.env.CAPTURE_R2_ENDPOINT ?? process.env.CLOUDFLARE_R2_ENDPOINT ?? process.env.R2_ENDPOINT;
   const bucket = process.env.CASTING_R2_BUCKET ?? process.env.CAPTURE_R2_BUCKET ?? process.env.CLOUDFLARE_R2_BUCKET ?? process.env.R2_BUCKET;
   const accessKeyId = process.env.CAPTURE_R2_ACCESS_KEY_ID ?? process.env.CLOUDFLARE_R2_ACCESS_KEY_ID ?? process.env.R2_ACCESS_KEY_ID;
   const secretAccessKey = process.env.CAPTURE_R2_SECRET_ACCESS_KEY ?? process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY ?? process.env.R2_SECRET_ACCESS_KEY;
   if (!endpoint || !bucket || !accessKeyId || !secretAccessKey) return null;
   return {
-    endpoint, bucket, region: process.env.R2_REGION ?? "auto", accessKeyId, secretAccessKey,
+    endpoint, bucket, region: process.env.R2_REGION ?? "auto", credentials: { accessKeyId, secretAccessKey },
     publicBaseUrl: process.env.CASTING_R2_PUBLIC_BASE ?? process.env.CLOUDFLARE_R2_PUBLIC_BASE ?? null,
   };
 }
-let _r2: { client: S3Client; cfg: R2Config } | null | undefined;
-function getR2(): { client: S3Client; cfg: R2Config } | null {
+let _r2: { client: S3Client; cfg: ObjectStorageConfig } | null | undefined;
+function getR2(): { client: S3Client; cfg: ObjectStorageConfig } | null {
   if (_r2 !== undefined) return _r2;
-  const cfg = getR2Config();
+  const cfg = getObjectStorageConfig();
   if (!cfg) { _r2 = null; return null; }
-  _r2 = { client: new S3Client({ region: cfg.region, endpoint: cfg.endpoint, credentials: { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey } }), cfg };
+  _r2 = { client: new S3Client({
+    region: cfg.region,
+    ...(cfg.endpoint ? { endpoint: cfg.endpoint } : {}),
+    ...(cfg.credentials ? { credentials: cfg.credentials } : {}),
+  }), cfg };
   return _r2;
 }
 function sanitizeName(v: string): string { return String(v || "bounce").replace(/[^A-Za-z0-9.\-_]/g, "_").slice(0, 120); }
@@ -89,7 +123,9 @@ function sanitizeName(v: string): string { return String(v || "bounce").replace(
 async function streamBounceObject(req: any, res: any, storageKey: string, fileName: string | null): Promise<void> {
   const r2 = getR2();
   if (!r2) { res.status(503).json({ error: "storage_not_configured" }); return; }
-  if (!storageKey.startsWith("protools-bounces/")) { res.status(404).json({ error: "not_found" }); return; }
+  if (!storageKey.startsWith("protools-bounces/") && !storageKey.startsWith("organizations/")) {
+    res.status(404).json({ error: "not_found" }); return;
+  }
 
   const requestedRange = typeof req.headers.range === "string" ? req.headers.range.trim() : "";
   if (requestedRange && !/^bytes=(?:\d+-\d*|-\d+)$/.test(requestedRange)) {
@@ -159,6 +195,57 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
   const { app, pool, requireUserSession } = deps;
   void ensureSchema(pool).catch((error) => console.error("[protools-companion] schema init:", error));
 
+  async function resolveOrganizationId(userId: string): Promise<string | null> {
+    const result = await pool.query(
+      `SELECT om.organization_id::text AS organization_id
+         FROM organization_members om
+         LEFT JOIN users u ON u.id::text=om.user_id::text
+        WHERE om.user_id::text=$1
+        ORDER BY (om.organization_id::text=COALESCE(u.meta->>'active_org_id','')) DESC,
+                 om.joined_at ASC,om.organization_id ASC
+        LIMIT 1`,
+      [userId],
+    ).catch(() => ({ rows: [] }));
+    return result.rows[0]?.organization_id ? String(result.rows[0].organization_id) : null;
+  }
+
+  async function editableWorkspace(userId: string, projectId: string | null): Promise<boolean> {
+    if (!projectId) return true;
+    return (await getProjectAccess(pool, userId, projectId)).canEdit;
+  }
+
+  async function accessibleAudioRoom(userId: string, audioRoomId: string, workspaceProjectId: string | null): Promise<any | null> {
+    const result = await pool.query(
+      `SELECT ar.id,ar.owner_user_id,ar.easeverse_track_id,par.project_id::text AS workspace_project_id
+         FROM audio_review_projects ar
+         LEFT JOIN project_audio_rooms par ON par.audio_review_project_id=ar.id
+        WHERE ar.id=$1::uuid LIMIT 1`,
+      [audioRoomId],
+    ).catch(() => ({ rows: [] }));
+    const room = result.rows[0];
+    if (!room) return null;
+    const linkedWorkspace = room.workspace_project_id ? String(room.workspace_project_id) : null;
+    if (workspaceProjectId && linkedWorkspace && linkedWorkspace !== workspaceProjectId) return null;
+    if (String(room.owner_user_id) === userId) return room;
+    if (!linkedWorkspace) return null;
+    return (await editableWorkspace(userId, linkedWorkspace)) ? room : null;
+  }
+
+  async function readableAudioRoom(userId: string, audioRoomId: string): Promise<any | null> {
+    const result = await pool.query(
+      `SELECT ar.id,ar.owner_user_id,par.project_id::text AS workspace_project_id
+         FROM audio_review_projects ar
+         LEFT JOIN project_audio_rooms par ON par.audio_review_project_id=ar.id
+        WHERE ar.id=$1::uuid LIMIT 1`,
+      [audioRoomId],
+    ).catch(() => ({ rows: [] }));
+    const room = result.rows[0];
+    if (!room) return null;
+    if (String(room.owner_user_id) === userId) return room;
+    const workspaceId = room.workspace_project_id ? String(room.workspace_project_id) : null;
+    return workspaceId && await canAccessProject(pool, userId, workspaceId) ? room : null;
+  }
+
   // ── Companion device-auth (Bearer trr_desk_…) ────────────────────────────────────
   async function deviceAuth(req: any, res: any): Promise<{ userId: string; email: string; deviceId: string } | null> {
     try { await ensureSchema(pool); }
@@ -187,11 +274,17 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
               COALESCE(s.tempo, t.bpm) AS easeverse_bpm
          FROM protools_companion_sessions s
          LEFT JOIN audio_review_projects ar ON ar.id = s.audio_review_project_id
-         LEFT JOIN easeverse_tracks t ON t.id::text = s.easeverse_track_id AND t.user_id = s.user_id
+         LEFT JOIN easeverse_tracks t ON t.id::text = s.easeverse_track_id
         WHERE s.id = $1::uuid AND s.user_id = $2 LIMIT 1`,
       [sessionId, uid],
     ).catch(() => ({ rows: [] }));
-    return r.rows[0] || null;
+    const session = r.rows[0] || null;
+    if (!session) return null;
+    const workspaceId = session.workspace_project_id ? String(session.workspace_project_id) : null;
+    if (workspaceId && !(await editableWorkspace(uid, workspaceId))) return null;
+    if (session.audio_review_project_id
+      && !(await accessibleAudioRoom(uid, String(session.audio_review_project_id), workspaceId))) return null;
+    return session;
   }
 
   async function mirrorSessionToEaseVerse(
@@ -224,6 +317,9 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
       pool,
       sessionId: String(sess.id),
       userId: String(sess.user_id),
+      ...(sess.integration_owner_user_id && String(sess.integration_owner_user_id) !== String(sess.user_id)
+        ? { integrationOwnerUserId: String(sess.integration_owner_user_id) }
+        : {}),
       eventType,
       eventId: eventId || undefined,
       payload: {
@@ -335,6 +431,29 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
     res.json({ ...r, icon: "/protools-companion-icon.png" });
   });
 
+  // Readiness target for Render/uptime monitoring. No tenant data is exposed.
+  app.get("/api/protools/worker/health", async (_req, res) => {
+    try {
+      await ensureSchema(pool);
+      const heartbeat = await pool.query(
+        `SELECT last_heartbeat_at,last_success_at,last_error,
+                last_heartbeat_at > NOW()-INTERVAL '60 seconds' AS fresh
+           FROM protools_companion_worker_heartbeat WHERE worker_name='easeverse-sync' LIMIT 1`,
+      );
+      const row = heartbeat.rows[0];
+      const ok = row?.fresh === true;
+      return res.status(ok ? 200 : 503).json({
+        ok,
+        worker: "easeverse-sync",
+        lastHeartbeatAt: row?.last_heartbeat_at || null,
+        lastSuccessAt: row?.last_success_at || null,
+        status: ok ? "healthy" : row ? "stale" : "not_started",
+      });
+    } catch {
+      return res.status(503).json({ ok: false, worker: "easeverse-sync", status: "unavailable" });
+    }
+  });
+
   // ════════════════════════ PARING ════════════════════════════════════════════════
 
   // POST /api/protools/pair/start — web (innlogget) genererer en kort paringskode.
@@ -345,34 +464,33 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
       const workspaceProjectId = strOrNull(req.body?.workspaceProjectId, 160);
       const audioReviewProjectId = strOrNull(req.body?.audioRoomId, 160);
       const easeverseTrackId = strOrNull(req.body?.easeverseTrackId, 160);
+      let canonicalTrackId = easeverseTrackId;
+      let pairedRoom: any | null = null;
       const projectName = strOrNull(req.body?.projectName, 200);
       if (workspaceProjectId) {
-        const owns = await pool.query(
-          `SELECT 1 FROM projects WHERE id::text=$1 AND user_id=$2 LIMIT 1`,
-          [workspaceProjectId, s.userId],
-        );
-        if (!owns.rows.length) return res.status(403).json({ error: "workspace_project_not_accessible" });
+        if (!(await editableWorkspace(s.userId, workspaceProjectId))) {
+          return res.status(403).json({ error: "workspace_project_not_editable" });
+        }
       }
       if (audioReviewProjectId) {
         if (!isUuid(audioReviewProjectId)) return res.status(400).json({ error: "invalid_audio_room_id" });
-        const owns = await pool.query(
-          `SELECT 1 FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`,
-          [audioReviewProjectId, s.userId],
-        );
-        if (!owns.rows.length) return res.status(403).json({ error: "audio_room_not_accessible" });
+        pairedRoom = await accessibleAudioRoom(s.userId, audioReviewProjectId, workspaceProjectId);
+        if (!pairedRoom) return res.status(403).json({ error: "audio_room_not_editable" });
+        if (easeverseTrackId && pairedRoom.easeverse_track_id && String(pairedRoom.easeverse_track_id) !== easeverseTrackId) {
+          return res.status(409).json({ error: "track_audio_room_mismatch" });
+        }
+        canonicalTrackId ||= pairedRoom.easeverse_track_id ? String(pairedRoom.easeverse_track_id) : null;
       }
       if (easeverseTrackId) {
         if (!isUuid(easeverseTrackId)) return res.status(400).json({ error: "invalid_easeverse_track_id" });
-        const owns = await pool.query(
-          `SELECT 1 FROM easeverse_tracks WHERE id=$1::uuid AND user_id=$2 LIMIT 1`,
-          [easeverseTrackId, s.userId],
-        );
-        if (!owns.rows.length) return res.status(403).json({ error: "easeverse_track_not_accessible" });
+        const owns = await pool.query(`SELECT 1 FROM easeverse_tracks WHERE id=$1::uuid AND user_id=$2 LIMIT 1`, [easeverseTrackId, s.userId]);
+        const inheritedFromRoom = pairedRoom?.easeverse_track_id && String(pairedRoom.easeverse_track_id) === easeverseTrackId;
+        if (!owns.rows.length && !inheritedFromRoom) return res.status(403).json({ error: "easeverse_track_not_accessible" });
       }
       const pairing = await createPairingCode(pool, s, {
         workspaceProjectId: workspaceProjectId || undefined,
         audioReviewProjectId: audioReviewProjectId || undefined,
-        easeverseTrackId: easeverseTrackId || undefined,
+        easeverseTrackId: canonicalTrackId || undefined,
         projectName: projectName || undefined,
       });
       res.json(pairing);
@@ -461,39 +579,45 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
     const easeverseProjectId = strOrNull(req.body?.easeverseProjectId, 160);
     try {
       if (workspaceProjectId) {
-        const owns = await pool.query(`SELECT 1 FROM projects WHERE id::text=$1 AND user_id=$2 LIMIT 1`, [workspaceProjectId, d.userId]);
-        if (!owns.rows.length) return res.status(403).json({ error: "workspace_project_not_accessible" });
+        if (!(await editableWorkspace(d.userId, workspaceProjectId))) {
+          return res.status(403).json({ error: "workspace_project_not_editable" });
+        }
       }
-      if (trackId) {
-        if (!isUuid(trackId)) return res.status(400).json({ error: "invalid_easeverse_track_id" });
-        const owns = await pool.query(`SELECT 1 FROM easeverse_tracks WHERE id=$1::uuid AND user_id=$2 LIMIT 1`, [trackId, d.userId]);
-        if (!owns.rows.length) return res.status(403).json({ error: "easeverse_track_not_accessible" });
-      }
+      if (trackId && !isUuid(trackId)) return res.status(400).json({ error: "invalid_easeverse_track_id" });
       let reviewId: string | null = null;
+      let effectiveTrackId = trackId;
+      let integrationOwnerUserId = d.userId;
       if (audioRoomId) {
         if (!isUuid(audioRoomId)) return res.status(400).json({ error: "invalid_audio_room_id" });
-        const owns = await pool.query(
-          `SELECT id,easeverse_track_id FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`,
-          [audioRoomId, d.userId],
-        );
-        if (!owns.rows.length) return res.status(403).json({ error: "audio_room_not_accessible" });
-        if (trackId && owns.rows[0].easeverse_track_id && String(owns.rows[0].easeverse_track_id) !== trackId) {
+        const room = await accessibleAudioRoom(d.userId, audioRoomId, workspaceProjectId);
+        if (!room) return res.status(403).json({ error: "audio_room_not_editable" });
+        if (trackId && room.easeverse_track_id && String(room.easeverse_track_id) !== trackId) {
           return res.status(409).json({ error: "track_audio_room_mismatch" });
         }
-        reviewId = String(owns.rows[0].id);
+        reviewId = String(room.id);
+        effectiveTrackId ||= room.easeverse_track_id ? String(room.easeverse_track_id) : null;
+        integrationOwnerUserId = String(room.owner_user_id || d.userId);
       } else if (trackId) {
+        const owns = await pool.query(`SELECT 1 FROM easeverse_tracks WHERE id=$1::uuid AND user_id=$2 LIMIT 1`, [trackId, d.userId]);
+        if (!owns.rows.length) return res.status(403).json({ error: "easeverse_track_not_accessible" });
         reviewId = await resolveReviewForTrack(d.userId, trackId);
       }
+      const organizationId = await resolveOrganizationId(d.userId);
       const sessionType = ["recording", "editing", "mixing", "mastering"].includes(String(req.body?.sessionType))
         ? String(req.body.sessionType) : "mixing";
+      const proToolsTier = ["intro", "artist", "studio", "flex"].includes(String(req.body?.proToolsTier))
+        ? String(req.body.proToolsTier) : "unknown";
+      const ptslStatus = ["unavailable", "connected", "degraded", "error"].includes(String(req.body?.ptslStatus))
+        ? String(req.body.ptslStatus) : "unavailable";
       const ins = await pool.query(
         `INSERT INTO protools_companion_sessions
            (user_id,name,session_type,easeverse_track_id,audio_review_project_id,workspace_project_id,easeverse_project_id,
-            device_token_id,sample_rate,bit_depth,session_format,ptx_path,bounce_dir)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-        [d.userId, name, sessionType, trackId, reviewId, workspaceProjectId, easeverseProjectId, d.deviceId,
+            organization_id,integration_owner_user_id,device_token_id,sample_rate,bit_depth,session_format,ptx_path,bounce_dir,
+            protools_tier,ptsl_status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
+        [d.userId, name, sessionType, effectiveTrackId, reviewId, workspaceProjectId, easeverseProjectId, organizationId, integrationOwnerUserId, d.deviceId,
          intOrNull(req.body?.sampleRate), intOrNull(req.body?.bitDepth), strOrNull(req.body?.sessionFormat, 8) || "ptx",
-         strOrNull(req.body?.ptxPath, 2000), strOrNull(req.body?.bounceDir, 2000)],
+         strOrNull(req.body?.ptxPath, 2000), strOrNull(req.body?.bounceDir, 2000), proToolsTier, ptslStatus],
       );
       res.status(201).json({ session: ins.rows[0] });
     } catch (error) {
@@ -574,6 +698,15 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
     const bitDepth = intOrNull(req.body?.bitDepth);
     const keySignature = strOrNull(req.body?.keySignature, 24);
     const timeSignature = strOrNull(req.body?.timeSignature, 12);
+    const ptslStatus = ["unavailable", "connected", "degraded", "error"].includes(String(req.body?.ptslStatus))
+      ? String(req.body.ptslStatus) : null;
+    const proToolsTier = ["unknown", "intro", "artist", "studio", "flex"].includes(String(req.body?.proToolsTier))
+      ? String(req.body.proToolsTier) : null;
+    const ptslSessionId = strOrNull(req.body?.ptslSessionId, 160);
+    const ptslHostVersion = strOrNull(req.body?.ptslHostVersion, 80);
+    const introPreflight = req.body?.introPreflight && typeof req.body.introPreflight === "object" && !Array.isArray(req.body.introPreflight)
+      ? JSON.stringify(req.body.introPreflight) : null;
+    if (introPreflight && introPreflight.length > 16_000) return res.status(413).json({ error: "intro_preflight_too_large" });
     if (tempo != null && (tempo < 20 || tempo > 400)) return res.status(400).json({ error: "invalid_tempo" });
     if (sampleRate != null && (sampleRate < 8000 || sampleRate > 768000)) return res.status(400).json({ error: "invalid_sample_rate" });
     if (bitDepth != null && (bitDepth < 8 || bitDepth > 64)) return res.status(400).json({ error: "invalid_bit_depth" });
@@ -585,10 +718,15 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
            tempo=COALESCE($2,tempo),key_signature=COALESCE($3,key_signature),time_signature=COALESCE($4,time_signature),
            sample_rate=COALESCE($5,sample_rate),bit_depth=COALESCE($6,bit_depth),
            tracks=COALESCE($7::jsonb,tracks),track_count=COALESCE($8,track_count),
+           ptsl_status=COALESCE($9,ptsl_status),protools_tier=COALESCE($10,protools_tier),
+           ptsl_session_id=COALESCE($11,ptsl_session_id),ptsl_host_version=COALESCE($12,ptsl_host_version),
+           intro_preflight=COALESCE($13::jsonb,intro_preflight),
+           last_ptsl_sync_at=CASE WHEN $9='connected' THEN NOW() ELSE last_ptsl_sync_at END,
            last_activity=NOW(),updated_at=NOW()
          WHERE id=$1::uuid`,
         [sess.id, tempo, keySignature, timeSignature, sampleRate, bitDepth,
-         tracks ? JSON.stringify(tracks) : null, tracks ? tracks.length : null],
+         tracks ? JSON.stringify(tracks) : null, tracks ? tracks.length : null,
+         ptslStatus, proToolsTier, ptslSessionId, ptslHostVersion, introPreflight],
       );
       if (sess.easeverse_track_id && (tempo != null || keySignature)) {
         await client.query(
@@ -627,6 +765,230 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
     const ph = { timecode: strOrNull(req.body?.timecode, 24), seconds: numOrNull(req.body?.seconds), isPlaying: !!req.body?.isPlaying, at: new Date().toISOString() };
     await pool.query(`UPDATE protools_companion_sessions SET playhead = $2::jsonb, last_activity = NOW() WHERE id = $1::uuid`, [sess.id, JSON.stringify(ph)]).catch(() => {});
     res.json({ ok: true });
+  });
+
+  // GET /api/protools/sessions/:id/feedback — review-innboks i Companion.
+  // Device-tokenet er bundet til sesjonseieren; ingen fri projectId aksepteres.
+  app.get("/api/protools/sessions/:id/feedback", async (req, res) => {
+    const d = await deviceAuth(req, res); if (!d) return;
+    const sess = await ownedSession(d.userId, req.params.id);
+    if (!sess) return res.status(404).json({ error: "session_not_found" });
+    if (!sess.audio_review_project_id) {
+      return res.json({ project: null, version: null, comments: [], approvals: [], tasks: [], generatedAt: new Date().toISOString() });
+    }
+    try {
+      const projectId = String(sess.audio_review_project_id);
+      const [project, version, comments, approvals, tasks] = await Promise.all([
+        pool.query(`SELECT id,title,status,updated_at FROM audio_review_projects WHERE id=$1::uuid LIMIT 1`, [projectId]),
+        pool.query(
+          `SELECT id,version_label,version_number,status,created_at
+             FROM audio_review_versions WHERE project_id=$1::uuid
+            ORDER BY (status='under_review') DESC,version_number DESC LIMIT 1`,
+          [projectId],
+        ),
+        pool.query(
+          `SELECT c.id,c.version_id,c.author,c.author_role,c.timecode_seconds,c.body,c.category,c.status,c.is_decision,c.created_at,c.updated_at,
+                  c.protools_marker_id,c.protools_sync_status,c.protools_synced_at,
+                  v.version_label,v.version_number
+             FROM audio_review_comments c
+             JOIN audio_review_versions v ON v.id=c.version_id
+            WHERE v.project_id=$1::uuid
+            ORDER BY c.created_at DESC LIMIT 100`,
+          [projectId],
+        ),
+        pool.query(
+          `SELECT a.id,a.version_id,a.approved_by,a.approval_type,a.note,a.created_at,v.version_label,v.version_number
+             FROM audio_review_approvals a
+             JOIN audio_review_versions v ON v.id=a.version_id
+            WHERE v.project_id=$1::uuid
+            ORDER BY a.created_at DESC LIMIT 30`,
+          [projectId],
+        ),
+        pool.query(
+          `SELECT id,version_id,comment_id,title,status,assignee,created_by,order_index,created_at,updated_at
+             FROM audio_review_tasks WHERE project_id=$1::uuid
+            ORDER BY (status='done') ASC,order_index ASC,created_at DESC LIMIT 100`,
+          [projectId],
+        ),
+      ]);
+      res.json({
+        project: project.rows[0] || null,
+        version: version.rows[0] || null,
+        comments: comments.rows,
+        approvals: approvals.rows,
+        tasks: tasks.rows,
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("[protools-companion] feedback inbox:", error);
+      res.status(503).json({ error: "feedback_unavailable" });
+    }
+  });
+
+  app.post("/api/protools/sessions/:id/feedback/comments/:commentId", async (req, res) => {
+    const d = await deviceAuth(req, res); if (!d) return;
+    const sess = await ownedSession(d.userId, req.params.id);
+    const commentId = String(req.params.commentId || "");
+    if (!sess?.audio_review_project_id || !isUuid(commentId)) return res.status(404).json({ error: "comment_not_found" });
+    const comment = await pool.query(
+      `SELECT c.*,v.project_id FROM audio_review_comments c JOIN audio_review_versions v ON v.id=c.version_id
+        WHERE c.id=$1::uuid AND v.project_id=$2::uuid LIMIT 1`,
+      [commentId, sess.audio_review_project_id],
+    ).catch(() => ({ rows: [] }));
+    const current = comment.rows[0];
+    if (!current) return res.status(404).json({ error: "comment_not_found" });
+    const requestedStatus = ["unresolved", "in_progress", "resolved"].includes(String(req.body?.status))
+      ? String(req.body.status) : null;
+    const replyBody = strOrNull(req.body?.body, 4000);
+    if (!requestedStatus && !replyBody) return res.status(400).json({ error: "status_or_body_required" });
+    try {
+      let updated = current;
+      let reply: any = null;
+      if (requestedStatus) {
+        const result = await pool.query(
+          `UPDATE audio_review_comments SET status=$2,updated_at=NOW() WHERE id=$1::uuid RETURNING *`,
+          [commentId, requestedStatus],
+        );
+        updated = result.rows[0];
+      }
+      if (replyBody) {
+        const result = await pool.query(
+          `INSERT INTO audio_review_comments
+             (version_id,parent_comment_id,user_id,author,author_role,timecode_seconds,body,category,status)
+           VALUES ($1::uuid,$2::uuid,$3,$4,'producer',$5,$6,$7,'unresolved') RETURNING *`,
+          [current.version_id, commentId, d.userId, d.email, current.timecode_seconds, replyBody, current.category || "general"],
+        );
+        reply = result.rows[0];
+      }
+      void broadcastSoundRoomUpdated(pool, String(sess.audio_review_project_id), "comment");
+      res.json({ comment: updated, reply });
+    } catch (error) {
+      console.error("[protools-companion] feedback action:", error);
+      res.status(503).json({ error: "feedback_action_failed" });
+    }
+  });
+
+  // Short-lived user-event ticket for the desktop app. The device token never
+  // enters a WebSocket URL or browser storage; the ticket is single-use and
+  // resolves to the same user-scoped channel Sound Room already publishes on.
+  app.post("/api/protools/sessions/:id/realtime-ticket", async (req, res) => {
+    const d = await deviceAuth(req, res); if (!d) return;
+    const sess = await ownedSession(d.userId, req.params.id);
+    if (!sess) return res.status(404).json({ error: "session_not_found" });
+    try {
+      const issued = await issueUserEventsTicket(pool, d.userId, Date.now(), {
+        clientKind: "unknown",
+        clientVersion: strOrNull(req.header("x-creatorhub-client-version"), 80),
+      });
+      res.setHeader("Cache-Control", "no-store, max-age=0");
+      res.status(201).json({
+        ...issued,
+        expiresInMs: USER_EVENTS_TICKET_TTL_MS,
+        websocketPath: USER_EVENTS_WS_PATH,
+        protocolVersion: USER_EVENTS_PROTOCOL_VERSION,
+        workspaceProjectId: sess.workspace_project_id || null,
+      });
+    } catch (error) {
+      console.error("[protools-companion] realtime ticket:", error);
+      res.status(503).json({ error: "realtime_ticket_unavailable" });
+    }
+  });
+
+  // Durable server -> desktop action queue. Claiming is atomic and scoped by
+  // session, device and owner so another paired machine cannot steal commands.
+  app.get("/api/protools/sessions/:id/commands", async (req, res) => {
+    const d = await deviceAuth(req, res); if (!d) return;
+    const sess = await ownedSession(d.userId, req.params.id);
+    if (!sess || String(sess.device_token_id || "") !== d.deviceId) {
+      return res.status(404).json({ error: "session_not_found" });
+    }
+    try {
+      const commands = await claimCompanionCommands(pool, {
+        sessionId: String(sess.id), deviceTokenId: d.deviceId, userId: d.userId,
+        limit: intOrNull(req.query?.limit) || 10,
+      });
+      res.json({ commands, generatedAt: new Date().toISOString() });
+    } catch (error) {
+      console.error("[protools-companion] claim commands:", error);
+      res.status(503).json({ error: "commands_unavailable" });
+    }
+  });
+
+  app.post("/api/protools/sessions/:id/commands/:commandId/complete", async (req, res) => {
+    const d = await deviceAuth(req, res); if (!d) return;
+    const sess = await ownedSession(d.userId, req.params.id);
+    if (!sess || String(sess.device_token_id || "") !== d.deviceId || !isUuid(String(req.params.commandId || ""))) {
+      return res.status(404).json({ error: "command_not_found" });
+    }
+    const requestedCompletionStatus = String(req.body?.status || "");
+    if (!['completed', 'failed'].includes(requestedCompletionStatus)) {
+      return res.status(400).json({ error: "completed_or_failed_status_required" });
+    }
+    const succeeded = requestedCompletionStatus === "completed";
+    const resultJson = req.body?.result && typeof req.body.result === "object" && !Array.isArray(req.body.result)
+      ? JSON.stringify(req.body.result) : null;
+    if (resultJson && Buffer.byteLength(resultJson, "utf8") > 16_384) {
+      return res.status(413).json({ error: "command_result_too_large" });
+    }
+    const errorMessage = strOrNull(req.body?.error, 1000);
+    const updated = await pool.query(
+      `UPDATE protools_companion_commands SET status=$5,completed_at=NOW(),result=$6::jsonb,last_error=$7,
+              lock_token=NULL,locked_at=NULL,updated_at=NOW()
+        WHERE id=$1::uuid AND session_id=$2::uuid AND device_token_id=$3 AND user_id=$4 AND status='processing'
+        RETURNING id,status,command_kind,payload,completed_at`,
+      [req.params.commandId, sess.id, d.deviceId, d.userId, succeeded ? "completed" : "failed", resultJson, errorMessage],
+    ).catch(() => ({ rows: [] }));
+    if (!updated.rows.length) return res.status(404).json({ error: "command_not_found" });
+    const completed = updated.rows[0];
+    const commentId = completed.payload?.commentId;
+    if (succeeded && completed.command_kind === "create_marker" && typeof commentId === "string" && isUuid(commentId)) {
+      const markerId = typeof req.body?.result?.markerId === "string" ? String(req.body.result.markerId).slice(0, 160) : null;
+      await pool.query(
+        `UPDATE audio_review_comments c SET protools_marker_id=$3,protools_sync_status='synced',protools_synced_at=NOW(),updated_at=NOW()
+          FROM audio_review_versions v
+         WHERE c.id=$1::uuid AND c.version_id=v.id AND v.project_id=$2::uuid`,
+        [commentId, sess.audio_review_project_id, markerId],
+      ).catch(() => undefined);
+    }
+    res.json({ command: updated.rows[0] });
+  });
+
+  app.get("/api/protools/sessions/:id/artifacts", async (req, res) => {
+    const d = await deviceAuth(req, res); if (!d) return;
+    const sess = await ownedSession(d.userId, req.params.id);
+    if (!sess) return res.status(404).json({ error: "session_not_found" });
+    const artifacts = await pool.query(
+      `SELECT id,parent_artifact_id,artifact_kind,source_system,source_artifact_id,file_name,
+              content_fingerprint,revision,status,metadata,review_version_id,created_at,updated_at
+         FROM creatorhub_music_artifacts
+        WHERE owner_user_id=$1 AND (companion_session_id=$2::uuid
+          OR ($3::uuid IS NOT NULL AND audio_review_project_id=$3::uuid)
+          OR ($4::text IS NOT NULL AND easeverse_track_id=$4))
+        ORDER BY created_at DESC LIMIT 100`,
+      [d.userId, sess.id, sess.audio_review_project_id || null, sess.easeverse_track_id || null],
+    ).catch(() => ({ rows: [] }));
+    res.json({ artifacts: artifacts.rows });
+  });
+
+  app.get("/api/protools/sessions/:id/artifacts/:artifactId/file", async (req, res) => {
+    const d = await deviceAuth(req, res); if (!d) return;
+    const sess = await ownedSession(d.userId, req.params.id);
+    if (!sess || !isUuid(String(req.params.artifactId || ""))) return res.status(404).json({ error: "not_found" });
+    const artifact = await pool.query(
+      `SELECT id,file_name,file_url,storage_key FROM creatorhub_music_artifacts
+        WHERE id=$1::uuid AND owner_user_id=$2
+          AND (companion_session_id=$3::uuid
+            OR ($4::uuid IS NOT NULL AND audio_review_project_id=$4::uuid)
+            OR ($5::text IS NOT NULL AND easeverse_track_id=$5)) LIMIT 1`,
+      [req.params.artifactId, d.userId, sess.id, sess.audio_review_project_id || null, sess.easeverse_track_id || null],
+    ).catch(() => ({ rows: [] }));
+    const row = artifact.rows[0];
+    if (!row) return res.status(404).json({ error: "not_found" });
+    if (row.storage_key) return streamBounceObject(req, res, String(row.storage_key), row.file_name || null);
+    const fileUrl = typeof row.file_url === "string" ? row.file_url.trim() : "";
+    if (!fileUrl.startsWith("https://")) return res.status(409).json({ error: "artifact_file_unavailable" });
+    res.setHeader("Cache-Control", "private, no-store");
+    return res.redirect(302, fileUrl);
   });
 
   // GET /api/protools/bounces/:id/file — same-origin avspilling fra privat R2.
@@ -686,11 +1048,24 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
     const d = await deviceAuth(req, res); if (!d) return;
     const sess = await ownedSession(d.userId, req.params.id); if (!sess) return res.status(404).json({ error: "session_not_found" });
     const fileName = sanitizeName(String(req.body?.fileName || "bounce.wav"));
-    const key = `protools-bounces/${d.userId}/${sess.id}/${Date.now()}-${crypto.randomUUID()}-${fileName}`;
+    const objectId = `${Date.now()}-${crypto.randomUUID()}`;
+    const key = creatorHubSoundRoomBounceKey({
+      organizationId: sess.organization_id,
+      userId: d.userId,
+      workspaceProjectId: sess.workspace_project_id,
+      audioRoomId: sess.audio_review_project_id,
+      sessionId: sess.id,
+      objectId,
+      fileName,
+    });
     const r2 = getR2();
     if (!r2) return res.status(503).json({ error: "storage_not_configured" });
     const { client, cfg } = r2;
-    const finalUrl = cfg.publicBaseUrl ? `${cfg.publicBaseUrl.replace(/\/+$/, "")}/${key}` : `${cfg.endpoint.replace(/\/+$/, "")}/${cfg.bucket}/${key}`;
+    const finalUrl = cfg.publicBaseUrl
+      ? `${cfg.publicBaseUrl.replace(/\/+$/, "")}/${key}`
+      : cfg.endpoint
+        ? `${cfg.endpoint.replace(/\/+$/, "")}/${cfg.bucket}/${key}`
+        : `https://${cfg.bucket}.s3.${cfg.region}.amazonaws.com/${key}`;
     const cmd = new PutObjectCommand({ Bucket: cfg.bucket, Key: key, ContentType: String(req.body?.mimeType || "audio/wav"), ContentLength: intOrNull(req.body?.sizeBytes) || undefined });
     const uploadUrl = await getSignedUrl(client, cmd, { expiresIn: UPLOAD_URL_TTL_SEC }).catch(() => null);
     if (!uploadUrl) return res.status(500).json({ error: "presign_failed" });
@@ -708,12 +1083,20 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
     const clientEventId = strOrNull(req.body?.clientEventId, 240);
     const contentFingerprint = strOrNull(req.body?.contentFingerprint, 400);
     const storageKey = strOrNull(req.body?.storageKey, 500);
-    if (storageKey && !storageKey.startsWith(`protools-bounces/${d.userId}/${sess.id}/`)) {
+    const newPrefix = creatorHubSessionPrefix({
+      organizationId: sess.organization_id,
+      userId: d.userId,
+      workspaceProjectId: sess.workspace_project_id,
+      audioRoomId: sess.audio_review_project_id,
+      sessionId: sess.id,
+    });
+    const legacyPrefix = `protools-bounces/${d.userId}/${sess.id}/`;
+    if (storageKey && !storageKey.startsWith(newPrefix) && !storageKey.startsWith(legacyPrefix)) {
       return res.status(403).json({ error: "invalid_storage_key" });
     }
     if (clientEventId) {
       const existing = await pool.query(
-        `SELECT b.id,b.review_version_id,v.version_number,s.audio_review_project_id
+        `SELECT b.id,b.artifact_id,b.review_version_id,v.version_number,s.audio_review_project_id
            FROM protools_companion_bounces b
            JOIN protools_companion_sessions s ON s.id=b.session_id
            LEFT JOIN audio_review_versions v ON v.id=b.review_version_id
@@ -722,6 +1105,7 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
       );
       if (existing.rows[0]) return res.json({
         bounceId: existing.rows[0].id,
+        artifactId: existing.rows[0].artifact_id,
         reviewVersionId: existing.rows[0].review_version_id,
         versionNumber: existing.rows[0].version_number,
         sectionsSynced: 0,
@@ -741,7 +1125,8 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
     try {
       await client.query("BEGIN");
       if (reviewId) {
-        await client.query(`SELECT id FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 FOR UPDATE`, [reviewId, d.userId]);
+        const locked = await client.query(`SELECT id FROM audio_review_projects WHERE id=$1::uuid FOR UPDATE`, [reviewId]);
+        if (!locked.rows.length) throw new Error("audio_room_not_found");
         await client.query(`UPDATE audio_review_versions SET status='superseded' WHERE project_id=$1::uuid AND status='under_review'`, [reviewId]);
         const next = await client.query(`SELECT COALESCE(MAX(version_number),0)+1 AS n FROM audio_review_versions WHERE project_id=$1::uuid`, [reviewId]);
         versionNumber = Number(next.rows[0]?.n || 1);
@@ -764,18 +1149,49 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
         [sess.id, fileName, fileUrl, storageKey, intOrNull(req.body?.sizeBytes),
          numOrNull(req.body?.durationSeconds), versionId, clientEventId, contentFingerprint],
       );
+      const parentArtifactId = await latestParentArtifactId(client, {
+        ownerUserId: d.userId,
+        audioReviewProjectId: reviewId,
+        easeverseTrackId: sess.easeverse_track_id || null,
+      });
+      const artifact = await upsertMusicArtifact(client, {
+        organizationId: sess.organization_id || null,
+        ownerUserId: d.userId,
+        workspaceProjectId: sess.workspace_project_id || null,
+        audioReviewProjectId: reviewId,
+        easeverseTrackId: sess.easeverse_track_id || null,
+        easeverseProjectId: sess.easeverse_project_id || null,
+        companionSessionId: String(sess.id),
+        reviewVersionId: versionId,
+        parentArtifactId,
+        kind: sess.session_type === "mastering" ? "master" : "mix",
+        sourceSystem: "protools",
+        sourceArtifactId: `bounce:${String(bounce.rows[0].id)}`,
+        fileName,
+        fileUrl,
+        storageKey,
+        contentFingerprint,
+        metadata: {
+          sampleRate: intOrNull(req.body?.sampleRate) || sess.sample_rate || null,
+          bitDepth: intOrNull(req.body?.bitDepth) || sess.bit_depth || null,
+          durationSeconds: numOrNull(req.body?.durationSeconds),
+          versionNumber,
+        },
+        createdBy: d.userId,
+      });
+      await client.query(`UPDATE protools_companion_bounces SET artifact_id=$2::uuid WHERE id=$1::uuid`, [bounce.rows[0].id, artifact.id]);
       await client.query(
         `UPDATE protools_companion_sessions SET audio_review_project_id=COALESCE($2::uuid,audio_review_project_id),last_activity=NOW(),updated_at=NOW() WHERE id=$1::uuid`,
         [sess.id, reviewId],
       );
       await client.query("COMMIT");
       if (reviewId) void broadcastSoundRoomUpdated(pool, reviewId, "version");
-      res.status(201).json({ bounceId: bounce.rows[0].id, reviewVersionId: versionId, versionNumber, sectionsSynced, linkedReview: reviewId });
+      res.status(201).json({ bounceId: bounce.rows[0].id, artifactId: artifact.id, reviewVersionId: versionId, versionNumber, sectionsSynced, linkedReview: reviewId });
     } catch (error: any) {
       await client.query("ROLLBACK").catch(() => undefined);
       if (error?.code === "23505" && clientEventId) {
-        const existing = await pool.query(`SELECT id,review_version_id FROM protools_companion_bounces WHERE session_id=$1::uuid AND client_event_id=$2 LIMIT 1`, [sess.id, clientEventId]);
-        return res.json({ bounceId: existing.rows[0]?.id, reviewVersionId: existing.rows[0]?.review_version_id, linkedReview: reviewId, idempotent: true });
+        const existing = await pool.query(`SELECT id,artifact_id,review_version_id FROM protools_companion_bounces WHERE session_id=$1::uuid AND client_event_id=$2 LIMIT 1`, [sess.id, clientEventId]);
+        return res.json({ bounceId: existing.rows[0]?.id, artifactId: existing.rows[0]?.artifact_id, reviewVersionId: existing.rows[0]?.review_version_id, linkedReview: reviewId, idempotent: true });
       }
       console.error("[protools-companion] bounce complete:", error);
       res.status(503).json({ error: "bounce_registration_failed" });
@@ -791,33 +1207,116 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
     const s = requireUserSession(req, res); if (!s) return;
     const audioRoomId = req.query?.audioRoomId ? String(req.query.audioRoomId) : null;
     if (audioRoomId && !isUuid(audioRoomId)) return res.status(400).json({ error: "invalid_audio_room_id" });
+    if (audioRoomId && !(await readableAudioRoom(s.userId, audioRoomId))) {
+      return res.status(404).json({ error: "audio_room_not_found" });
+    }
     const dev = await pool.query(
       `SELECT id, last_used_at, created_at FROM desktop_device_tokens
         WHERE user_id = $1 AND label = 'Pro Tools Companion' AND revoked_at IS NULL AND expires_at > now()
         ORDER BY created_at DESC LIMIT 10`, [s.userId],
     ).catch(() => ({ rows: [] }));
-    let session: any = null; let markers: any[] = []; let bounces: any[] = [];
+    let session: any = null; let markers: any[] = []; let bounces: any[] = []; let artifacts: any[] = []; let commands: any[] = [];
     const sq = audioRoomId
-      ? await pool.query(`SELECT * FROM protools_companion_sessions WHERE user_id = $1 AND audio_review_project_id = $2::uuid ORDER BY last_activity DESC LIMIT 1`, [s.userId, audioRoomId]).catch(() => ({ rows: [] }))
-      : await pool.query(`SELECT * FROM protools_companion_sessions WHERE user_id = $1 ORDER BY last_activity DESC LIMIT 1`, [s.userId]).catch(() => ({ rows: [] }));
+      ? await pool.query(
+        `SELECT id,user_id,name,session_type,status,audio_review_project_id,easeverse_track_id,
+                workspace_project_id,easeverse_project_id,playhead,last_activity,ptsl_status,
+                ptsl_host_version,protools_tier,intro_preflight,last_ptsl_sync_at,created_at,updated_at
+           FROM protools_companion_sessions
+          WHERE audio_review_project_id=$1::uuid ORDER BY last_activity DESC LIMIT 1`,
+        [audioRoomId],
+      ).catch(() => ({ rows: [] }))
+      : await pool.query(
+        `SELECT id,user_id,name,session_type,status,audio_review_project_id,easeverse_track_id,
+                workspace_project_id,easeverse_project_id,playhead,last_activity,ptsl_status,
+                ptsl_host_version,protools_tier,intro_preflight,last_ptsl_sync_at,created_at,updated_at
+           FROM protools_companion_sessions
+          WHERE user_id=$1 ORDER BY last_activity DESC LIMIT 1`,
+        [s.userId],
+      ).catch(() => ({ rows: [] }));
     session = sq.rows[0] || null;
     if (session) {
       markers = (await pool.query(`SELECT name, start_seconds, end_seconds, timecode, color FROM protools_companion_markers WHERE session_id = $1::uuid ORDER BY order_index ASC, start_seconds ASC`, [session.id]).catch(() => ({ rows: [] }))).rows;
-      bounces = (await pool.query(`SELECT id, file_name, file_url, duration_seconds, review_version_id, created_at FROM protools_companion_bounces WHERE session_id = $1::uuid ORDER BY created_at DESC LIMIT 10`, [session.id]).catch(() => ({ rows: [] }))).rows;
+      bounces = (await pool.query(`SELECT id, artifact_id, file_name, file_url, duration_seconds, review_version_id, created_at FROM protools_companion_bounces WHERE session_id = $1::uuid ORDER BY created_at DESC LIMIT 10`, [session.id]).catch(() => ({ rows: [] }))).rows;
+      artifacts = (await pool.query(
+        `SELECT id,parent_artifact_id,artifact_kind,source_system,file_name,revision,status,review_version_id,created_at
+           FROM creatorhub_music_artifacts WHERE owner_user_id=$1
+            AND (companion_session_id=$2::uuid OR audio_review_project_id=$3::uuid)
+           ORDER BY created_at DESC LIMIT 30`,
+        [session.user_id, session.id, session.audio_review_project_id],
+      ).catch(() => ({ rows: [] }))).rows;
+      commands = (await pool.query(
+        `SELECT id,command_kind,status,payload,last_error,created_at,completed_at
+           FROM protools_companion_commands WHERE session_id=$1::uuid
+           ORDER BY created_at DESC LIMIT 20`, [session.id],
+      ).catch(() => ({ rows: [] }))).rows;
     }
     const sync = await pool.query(
       `SELECT COUNT(*) FILTER (WHERE status='pending')::int AS pending_count,
               MAX(delivered_at) AS last_delivered_at,MAX(last_error) FILTER (WHERE status='pending') AS last_error
-         FROM protools_easeverse_sync_outbox WHERE user_id=$1`, [s.userId],
+         FROM protools_easeverse_sync_outbox WHERE user_id=$1`, [session?.user_id || s.userId],
     ).catch(() => ({ rows: [{ pending_count: 0, last_delivered_at: null, last_error: null }] }));
     res.json({
-      paired: dev.rows.length > 0,
+      paired: dev.rows.length > 0 || Boolean(session),
       device: dev.rows[0] || null,
       devices: dev.rows,
-      session, markers, bounces,
+      session, markers, bounces, artifacts, commands,
       playhead: session?.playhead || null,
       sync: sync.rows[0] || { pending_count: 0, last_delivered_at: null, last_error: null },
     });
+  });
+
+  // Sound Room -> Pro Tools. Access is checked against the linked room/workspace;
+  // callers cannot choose a device or user outside that session.
+  app.post("/api/protools/web/commands", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const audioRoomId = strOrNull(req.body?.audioRoomId, 160);
+    const requestedSessionId = strOrNull(req.body?.sessionId, 160);
+    if (!audioRoomId || !isUuid(audioRoomId)) return res.status(400).json({ error: "valid_audio_room_id_required" });
+    const room = await accessibleAudioRoom(s.userId, audioRoomId, null);
+    if (!room) return res.status(404).json({ error: "audio_room_not_found" });
+    const validated = validateCompanionCommand(req.body?.kind, req.body?.payload);
+    if (!validated) return res.status(400).json({ error: "invalid_command" });
+    const sessionResult = await pool.query(
+      `SELECT pcs.* FROM protools_companion_sessions pcs
+        JOIN desktop_device_tokens ddt ON ddt.id=pcs.device_token_id
+       WHERE pcs.audio_review_project_id=$1::uuid
+         AND ($2::uuid IS NULL OR pcs.id=$2::uuid)
+         AND ddt.revoked_at IS NULL AND ddt.expires_at>NOW()
+       ORDER BY pcs.last_activity DESC LIMIT 1`,
+      [audioRoomId, requestedSessionId && isUuid(requestedSessionId) ? requestedSessionId : null],
+    ).catch(() => ({ rows: [] }));
+    const session = sessionResult.rows[0];
+    if (!session?.device_token_id) return res.status(409).json({ error: "active_companion_session_required" });
+    if (validated.kind === "import_audio") {
+      const artifact = await pool.query(
+        `SELECT id,file_name FROM creatorhub_music_artifacts WHERE id=$1::uuid
+          AND audio_review_project_id=$2::uuid AND owner_user_id=$3 LIMIT 1`,
+        [validated.payload.artifactId, audioRoomId, session.user_id],
+      ).catch(() => ({ rows: [] }));
+      if (!artifact.rows.length) return res.status(404).json({ error: "artifact_not_found" });
+      validated.payload.fileName = artifact.rows[0].file_name || "Sound Room Reference.wav";
+    }
+    const commentId = validated.payload.commentId;
+    if ((validated.kind === "locate" || validated.kind === "create_marker") && typeof commentId === "string") {
+      if (!isUuid(commentId)) return res.status(400).json({ error: "invalid_comment_id" });
+      const comment = await pool.query(
+        `SELECT c.id FROM audio_review_comments c JOIN audio_review_versions v ON v.id=c.version_id
+          WHERE c.id=$1::uuid AND v.project_id=$2::uuid LIMIT 1`, [commentId, audioRoomId],
+      ).catch(() => ({ rows: [] }));
+      if (!comment.rows.length) return res.status(404).json({ error: "comment_not_found" });
+    }
+    try {
+      const command = await queueCompanionCommand(pool, {
+        sessionId: String(session.id), deviceTokenId: String(session.device_token_id), userId: String(session.user_id),
+        requestedBy: s.userId, kind: validated.kind, payload: validated.payload,
+        dedupeKey: strOrNull(req.body?.dedupeKey, 300),
+      });
+      void broadcastSoundRoomUpdated(pool, audioRoomId, "comment");
+      res.status(command.status === "pending" ? 201 : 200).json({ command });
+    } catch (error) {
+      console.error("[protools-companion] queue command:", error);
+      res.status(503).json({ error: "command_queue_unavailable" });
+    }
   });
 
   // POST /api/protools/web/unlink-device — revoker kun valgt companion-enhet.

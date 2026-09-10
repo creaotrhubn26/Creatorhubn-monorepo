@@ -15,6 +15,7 @@ const FAILURE_STATUSES = new Set([
 const DEFAULT_POLL_INTERVAL_MS = 15_000;
 const DEFAULT_DEPLOY_TIMEOUT_MS = 35 * 60_000;
 const DEFAULT_PUBLIC_TIMEOUT_MS = 10 * 60_000;
+const REQUIRED_PUBLIC_COMMIT_MATCHES = 3;
 const ALLOWED_POSTGRES_TLS_MODES = new Set([
   'require',
   'verify-ca',
@@ -278,6 +279,122 @@ export function isLeastPrivilegeRuntimeDatabaseUrl(value) {
   );
 }
 
+const LEADGRID_RUNTIME_ENVIRONMENT = Object.freeze({
+  AWS_LEADGRID_BUCKET_NAME: 'leadgrid-prod-745600963362-eu-north-1',
+  AWS_LEADGRID_REGION: 'eu-north-1',
+});
+const CREATORHUB_RUNTIME_ENVIRONMENT = Object.freeze({
+  CREATORHUB_S3_BUCKET: 'creatorhubn-prod-745600963362-eu-north-1',
+  CREATORHUB_S3_REGION: 'eu-north-1',
+});
+
+/**
+ * Fail closed before a Render release when Leadgrid's private object storage
+ * or fixed storage add-on is unavailable. Values are deliberately never
+ * returned or logged: failures only identify the configuration key.
+ */
+export async function assertLeadgridStorageRuntimeEnvironment({
+  fetchImpl = fetch,
+  apiKey,
+  serviceId,
+}) {
+  const requiredNonEmpty = [
+    'AWS_LEADGRID_ACCESS_KEY_ID',
+    'AWS_LEADGRID_SECRET_ACCESS_KEY',
+    'LEADGRID_PRICE_STORAGE_100_GIB',
+  ];
+  const invalid = [];
+
+  for (const key of requiredNonEmpty) {
+    try {
+      const value = await readRenderEnvironmentValue({
+        fetchImpl,
+        apiKey,
+        serviceId,
+        key,
+      });
+      if (!value.trim()) invalid.push(key);
+    } catch {
+      invalid.push(key);
+    }
+  }
+
+  for (const [key, expectedValue] of Object.entries(
+    LEADGRID_RUNTIME_ENVIRONMENT,
+  )) {
+    try {
+      const value = await readRenderEnvironmentValue({
+        fetchImpl,
+        apiKey,
+        serviceId,
+        key,
+      });
+      if (value.trim() !== expectedValue) invalid.push(key);
+    } catch {
+      invalid.push(key);
+    }
+  }
+
+  if (invalid.length > 0) {
+    throw new Error(
+      'Render Leadgrid storage configuration is missing or invalid: ' +
+        [...new Set(invalid)].join(', '),
+    );
+  }
+  console.log('Verified Render Leadgrid storage configuration.');
+}
+
+/**
+ * Keep Sound Room and Pro Tools artifacts on CreatorHub's tenant-scoped S3
+ * bucket. Secret values are never returned or included in error messages.
+ */
+export async function assertCreatorHubStorageRuntimeEnvironment({
+  fetchImpl = fetch,
+  apiKey,
+  serviceId,
+}) {
+  const requiredNonEmpty = ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'];
+  const invalid = [];
+
+  for (const key of requiredNonEmpty) {
+    try {
+      const value = await readRenderEnvironmentValue({
+        fetchImpl,
+        apiKey,
+        serviceId,
+        key,
+      });
+      if (!value.trim()) invalid.push(key);
+    } catch {
+      invalid.push(key);
+    }
+  }
+
+  for (const [key, expectedValue] of Object.entries(
+    CREATORHUB_RUNTIME_ENVIRONMENT,
+  )) {
+    try {
+      const value = await readRenderEnvironmentValue({
+        fetchImpl,
+        apiKey,
+        serviceId,
+        key,
+      });
+      if (value.trim() !== expectedValue) invalid.push(key);
+    } catch {
+      invalid.push(key);
+    }
+  }
+
+  if (invalid.length > 0) {
+    throw new Error(
+      'Render CreatorHub storage configuration is missing or invalid: ' +
+        [...new Set(invalid)].join(', '),
+    );
+  }
+  console.log('Verified Render CreatorHub storage configuration.');
+}
+
 function isLeastPrivilegeMigrationDatabaseUrl(value) {
   const target = postgresDatabaseTarget(value);
   return Boolean(
@@ -431,24 +548,31 @@ async function verifyPublicDeployment({
   timeoutMs,
 }) {
   const deadline = Date.now() + timeoutMs;
+  let consecutiveCommitMatches = 0;
+  let publicCommitVerified = false;
   while (Date.now() < deadline) {
     try {
       const version = await fetchPublicJson(
         fetchImpl,
         backendUrl + '/api/version?expected=' + commit,
       );
-      if (commitsMatch(version?.commit, commit)) break;
+      if (commitsMatch(version?.commit, commit)) {
+        consecutiveCommitMatches += 1;
+        if (consecutiveCommitMatches >= REQUIRED_PUBLIC_COMMIT_MATCHES) {
+          publicCommitVerified = true;
+          break;
+        }
+      } else {
+        consecutiveCommitMatches = 0;
+      }
     } catch {
       // The previous instance can be reachable briefly during the rollover.
+      consecutiveCommitMatches = 0;
     }
     await sleep(pollIntervalMs);
   }
 
-  const version = await fetchPublicJson(
-    fetchImpl,
-    backendUrl + '/api/version?expected=' + commit,
-  );
-  if (!commitsMatch(version?.commit, commit)) {
+  if (!publicCommitVerified) {
     throw new Error('Public backend did not report the deployed commit');
   }
 
@@ -660,6 +784,7 @@ async function runSelfTest() {
   const successfulCommit = 'b'.repeat(40);
   const successfulServiceId = 'srv-' + 'b'.repeat(20);
   let successfulServiceStateReads = 0;
+  let successfulVersionReads = 0;
   await assert.doesNotReject(
     deployAndVerify({
       fetchImpl: async (url, options = {}) => {
@@ -682,10 +807,16 @@ async function runSelfTest() {
           });
         }
         if (target.startsWith('https://example.test/api/version')) {
+          successfulVersionReads += 1;
           return {
             ok: true,
             status: 200,
-            json: async () => ({ commit: successfulCommit }),
+            json: async () => ({
+              commit:
+                successfulVersionReads === 2
+                  ? 'c'.repeat(40)
+                  : successfulCommit,
+            }),
           };
         }
         if (target === 'https://example.test/api/health') {
@@ -716,6 +847,11 @@ async function runSelfTest() {
     successfulServiceStateReads,
     2,
     'deploy must re-read auto-deploy state immediately before and after rollout',
+  );
+  assert.equal(
+    successfulVersionReads,
+    5,
+    'public rollout verification must reset after mixed old/new instance traffic',
   );
   const runtimeDatabaseUrl =
     'postgresql://creatorhub_runtime_login:secret@' +
@@ -852,6 +988,105 @@ async function runSelfTest() {
       return true;
     },
   );
+
+  const leadgridEnvironment = new Map([
+    ['AWS_LEADGRID_ACCESS_KEY_ID', 'access-key'],
+    ['AWS_LEADGRID_SECRET_ACCESS_KEY', 'secret-key'],
+    [
+      'AWS_LEADGRID_BUCKET_NAME',
+      'leadgrid-prod-745600963362-eu-north-1',
+    ],
+    ['AWS_LEADGRID_REGION', 'eu-north-1'],
+    ['LEADGRID_PRICE_STORAGE_100_GIB', 'price_storage_100_gib'],
+  ]);
+  const requestedLeadgridKeys = [];
+  const leadgridFetch = async (url) => {
+    const key = decodeURIComponent(String(url).split('/').at(-1) || '');
+    requestedLeadgridKeys.push(key);
+    return responseFor({ envVar: { key, value: leadgridEnvironment.get(key) } });
+  };
+  await assert.doesNotReject(
+    assertLeadgridStorageRuntimeEnvironment({
+      fetchImpl: leadgridFetch,
+      apiKey: 'test-key',
+      serviceId: 'srv-' + 'a'.repeat(20),
+    }),
+  );
+  assert.deepEqual(requestedLeadgridKeys, [
+    'AWS_LEADGRID_ACCESS_KEY_ID',
+    'AWS_LEADGRID_SECRET_ACCESS_KEY',
+    'LEADGRID_PRICE_STORAGE_100_GIB',
+    'AWS_LEADGRID_BUCKET_NAME',
+    'AWS_LEADGRID_REGION',
+  ]);
+  await assert.rejects(
+    assertLeadgridStorageRuntimeEnvironment({
+      fetchImpl: async (url) => {
+        const key = decodeURIComponent(String(url).split('/').at(-1) || '');
+        const value =
+          key === 'AWS_LEADGRID_BUCKET_NAME'
+            ? 'another-product-bucket'
+            : leadgridEnvironment.get(key);
+        return responseFor({ envVar: { key, value } });
+      },
+      apiKey: 'test-key',
+      serviceId: 'srv-' + 'a'.repeat(20),
+    }),
+    (error) => {
+      assert.match(error.message, /AWS_LEADGRID_BUCKET_NAME/);
+      assert.doesNotMatch(error.message, /another-product-bucket/);
+      assert.doesNotMatch(error.message, /secret-key/);
+      return true;
+    },
+  );
+
+  const creatorHubEnvironment = new Map([
+    ['AWS_ACCESS_KEY_ID', 'creatorhub-access-key'],
+    ['AWS_SECRET_ACCESS_KEY', 'creatorhub-secret-key'],
+    ['CREATORHUB_S3_BUCKET', 'creatorhubn-prod-745600963362-eu-north-1'],
+    ['CREATORHUB_S3_REGION', 'eu-north-1'],
+  ]);
+  const requestedCreatorHubKeys = [];
+  const creatorHubFetch = async (url) => {
+    const key = decodeURIComponent(String(url).split('/').at(-1) || '');
+    requestedCreatorHubKeys.push(key);
+    return responseFor({
+      envVar: { key, value: creatorHubEnvironment.get(key) },
+    });
+  };
+  await assert.doesNotReject(
+    assertCreatorHubStorageRuntimeEnvironment({
+      fetchImpl: creatorHubFetch,
+      apiKey: 'test-key',
+      serviceId: 'srv-' + 'a'.repeat(20),
+    }),
+  );
+  assert.deepEqual(requestedCreatorHubKeys, [
+    'AWS_ACCESS_KEY_ID',
+    'AWS_SECRET_ACCESS_KEY',
+    'CREATORHUB_S3_BUCKET',
+    'CREATORHUB_S3_REGION',
+  ]);
+  await assert.rejects(
+    assertCreatorHubStorageRuntimeEnvironment({
+      fetchImpl: async (url) => {
+        const key = decodeURIComponent(String(url).split('/').at(-1) || '');
+        const value =
+          key === 'CREATORHUB_S3_BUCKET'
+            ? 'another-product-bucket'
+            : creatorHubEnvironment.get(key);
+        return responseFor({ envVar: { key, value } });
+      },
+      apiKey: 'test-key',
+      serviceId: 'srv-' + 'a'.repeat(20),
+    }),
+    (error) => {
+      assert.match(error.message, /CREATORHUB_S3_BUCKET/);
+      assert.doesNotMatch(error.message, /another-product-bucket/);
+      assert.doesNotMatch(error.message, /creatorhub-secret-key/);
+      return true;
+    },
+  );
   console.log('Render backend deploy self-test passed.');
 }
 
@@ -883,6 +1118,14 @@ async function main() {
     });
     return;
   }
+  if (command === 'assert-leadgrid-storage-runtime') {
+    await assertLeadgridStorageRuntimeEnvironment({ apiKey, serviceId });
+    return;
+  }
+  if (command === 'assert-creatorhub-storage-runtime') {
+    await assertCreatorHubStorageRuntimeEnvironment({ apiKey, serviceId });
+    return;
+  }
   if (command === 'deploy-and-verify') {
     const commit = validateCommit(process.argv[3]);
     const backendUrl = validateBackendUrl(requiredEnv('BACKEND_URL'));
@@ -895,7 +1138,7 @@ async function main() {
     return;
   }
   throw new Error(
-    'Usage: render-backend.mjs --self-test | assert-auto-deploy-off | assert-runtime-database-roles | disable-auto-deploy | deploy-and-verify <sha>',
+    'Usage: render-backend.mjs --self-test | assert-auto-deploy-off | assert-runtime-database-roles | assert-leadgrid-storage-runtime | assert-creatorhub-storage-runtime | disable-auto-deploy | deploy-and-verify <sha>',
   );
 }
 

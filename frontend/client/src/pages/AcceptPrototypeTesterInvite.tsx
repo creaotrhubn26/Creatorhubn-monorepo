@@ -64,6 +64,8 @@ interface Invite {
   programDurationWeeks: number;
   memberProfession: MemberProfession;
   memberCompany: string | null;
+  memberOrganizationNumber?: string | null;
+  memberBusinessAddress?: string | null;
   agreements: PrototypeTesterAgreementDocument[];
   accountProvisioningComplete: boolean;
   agreementAcceptance?: {
@@ -447,6 +449,27 @@ const AcceptPrototypeTesterInvite: React.FC = () => {
             Hei {invite.name}. Åpne hvert dokument, les hele teksten og bekreft
             det separat før du signerer samlet.
           </Typography>
+
+          {invite.memberCompany && (
+            <Alert
+              severity="info"
+              variant="outlined"
+              sx={{ mt: 2, color: ws.text, bgcolor: ws.blueSoft }}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                Avtalepart: {invite.memberCompany}
+              </Typography>
+              <Typography variant="caption" sx={{ color: ws.textDim, display: "block" }}>
+                {invite.memberOrganizationNumber
+                  ? `BRREG-verifisert · Org.nr. ${invite.memberOrganizationNumber.replace(
+                      /(\d{3})(\d{3})(\d{3})/,
+                      "$1 $2 $3",
+                    )}`
+                  : "Virksomhetsnavn oppgitt i invitasjonen"}
+                {invite.memberBusinessAddress ? ` · ${invite.memberBusinessAddress}` : ""}
+              </Typography>
+            </Alert>
+          )}
 
           <Box sx={{ mt: 3, mb: 3 }}>
             <Stack

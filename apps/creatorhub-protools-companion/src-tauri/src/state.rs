@@ -43,6 +43,7 @@ pub struct Snapshot {
     pub audio_room_id: Option<String>,
     pub workspace_project_id: Option<String>,
     pub easeverse_project_id: Option<String>,
+    pub protools_tier: String,
 }
 
 pub fn snapshot(cfg: &SharedConfig) -> Snapshot {
@@ -57,5 +58,6 @@ pub fn snapshot(cfg: &SharedConfig) -> Snapshot {
         audio_room_id: c.audio_room_id.clone(),
         workspace_project_id: c.workspace_project_id.clone(),
         easeverse_project_id: c.easeverse_project_id.clone(),
+        protools_tier: c.protools_tier.clone(),
     }
 }

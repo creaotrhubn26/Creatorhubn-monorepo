@@ -376,6 +376,7 @@ describe("prototype-tester application flow", () => {
       profession: "prototype_tester",
       company_name: "REGISTERENHETEN I BRØNNØYSUND",
       organization_number: "974760673",
+      business_address: "Havnegata 48, 8900 BRØNNØYSUND",
       message: "[Tester-profesjon: Fotograf]\n\n[Team: 3 medlemmer]",
       selected_plan: "prototype_tester",
       plan_name: "Prototype Tester",
@@ -414,6 +415,8 @@ describe("prototype-tester application flow", () => {
       3,
       "photographer",
       row.company_name,
+      row.organization_number,
+      row.business_address,
     );
   });
 

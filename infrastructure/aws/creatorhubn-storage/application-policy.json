@@ -1,0 +1,34 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CreatorHubBucketMetadata",
+      "Effect": "Allow",
+      "Action": ["s3:GetBucketLocation", "s3:ListBucket"],
+      "Resource": "arn:aws:s3:::creatorhubn-prod-745600963362-eu-north-1",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": ["organizations/*", "temporary/*", "exports/*", "quarantine/*"]
+        }
+      }
+    },
+    {
+      "Sid": "CreatorHubObjectAccess",
+      "Effect": "Allow",
+      "Action": [
+        "s3:AbortMultipartUpload",
+        "s3:DeleteObject",
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:ListMultipartUploadParts",
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::creatorhubn-prod-745600963362-eu-north-1/organizations/*",
+        "arn:aws:s3:::creatorhubn-prod-745600963362-eu-north-1/temporary/*",
+        "arn:aws:s3:::creatorhubn-prod-745600963362-eu-north-1/exports/*",
+        "arn:aws:s3:::creatorhubn-prod-745600963362-eu-north-1/quarantine/*"
+      ]
+    }
+  ]
+}

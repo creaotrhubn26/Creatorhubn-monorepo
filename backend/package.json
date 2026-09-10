@@ -26,6 +26,8 @@
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run --config vitest.config.ts",
     "test:unit:watch": "vitest --config vitest.config.ts",
+    "test:leadgrid-s3:e2e": "tsx scripts/verify-leadgrid-s3-runtime.ts",
+    "test:leadgrid-billing-storage:e2e": "tsx scripts/verify-leadgrid-billing-storage-e2e.ts",
     "lint": "eslint . --ext .ts --fix",
     "format": "prettier --write .",
     "db:push": "npx --yes drizzle-kit push",

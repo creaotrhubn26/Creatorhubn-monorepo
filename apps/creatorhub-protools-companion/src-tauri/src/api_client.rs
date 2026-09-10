@@ -9,7 +9,10 @@ fn base(api_base: &str) -> String {
 
 fn client() -> reqwest::Client {
     reqwest::Client::builder()
-        .user_agent("CreatorHub-ProTools-Companion/0.1")
+        .user_agent(format!(
+            "CreatorHub-ProTools-Companion/{}",
+            env!("CARGO_PKG_VERSION")
+        ))
         .build()
         .unwrap_or_else(|_| reqwest::Client::new())
 }
@@ -239,4 +242,181 @@ pub async fn complete_bounce(
     resp.json()
         .await
         .map_err(|e| format!("Ugyldig svar: {}", e))
+}
+
+/// GET /api/protools/sessions/:id/feedback — kommentarer, godkjenninger og tasks.
+pub async fn get_feedback(api_base: &str, token: &str, session_id: &str) -> Result<Value, String> {
+    let resp = client()
+        .get(format!(
+            "{}/api/protools/sessions/{}/feedback",
+            base(api_base),
+            session_id
+        ))
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| format!("Nettverksfeil: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(err_body(resp).await);
+    }
+    resp.json()
+        .await
+        .map_err(|e| format!("Ugyldig svar: {}", e))
+}
+
+pub async fn feedback_action(
+    api_base: &str,
+    token: &str,
+    session_id: &str,
+    comment_id: &str,
+    payload: Value,
+) -> Result<Value, String> {
+    let resp = client()
+        .post(format!(
+            "{}/api/protools/sessions/{}/feedback/comments/{}",
+            base(api_base),
+            session_id,
+            comment_id
+        ))
+        .bearer_auth(token)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Nettverksfeil: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(err_body(resp).await);
+    }
+    resp.json()
+        .await
+        .map_err(|e| format!("Ugyldig svar: {}", e))
+}
+
+pub async fn create_realtime_ticket(
+    api_base: &str,
+    token: &str,
+    session_id: &str,
+) -> Result<Value, String> {
+    let resp = client()
+        .post(format!(
+            "{}/api/protools/sessions/{}/realtime-ticket",
+            base(api_base),
+            session_id
+        ))
+        .header("x-creatorhub-client-version", env!("CARGO_PKG_VERSION"))
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| format!("Nettverksfeil: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(err_body(resp).await);
+    }
+    resp.json()
+        .await
+        .map_err(|e| format!("Ugyldig svar: {}", e))
+}
+
+pub async fn get_commands(api_base: &str, token: &str, session_id: &str) -> Result<Value, String> {
+    let resp = client()
+        .get(format!(
+            "{}/api/protools/sessions/{}/commands",
+            base(api_base),
+            session_id
+        ))
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| format!("Nettverksfeil: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(err_body(resp).await);
+    }
+    resp.json()
+        .await
+        .map_err(|e| format!("Ugyldig svar: {}", e))
+}
+
+pub async fn complete_command(
+    api_base: &str,
+    token: &str,
+    session_id: &str,
+    command_id: &str,
+    status: &str,
+    result: Option<Value>,
+    error: Option<&str>,
+) -> Result<(), String> {
+    let resp = client()
+        .post(format!(
+            "{}/api/protools/sessions/{}/commands/{}/complete",
+            base(api_base),
+            session_id,
+            command_id
+        ))
+        .bearer_auth(token)
+        .json(&json!({ "status": status, "result": result, "error": error }))
+        .send()
+        .await
+        .map_err(|e| format!("Nettverksfeil: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(err_body(resp).await);
+    }
+    Ok(())
+}
+
+pub async fn download_artifact_to(
+    api_base: &str,
+    token: &str,
+    session_id: &str,
+    artifact_id: &str,
+    destination: &std::path::Path,
+) -> Result<u64, String> {
+    use tokio::io::AsyncWriteExt;
+
+    const MAX_ARTIFACT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+    let mut resp = client()
+        .get(format!(
+            "{}/api/protools/sessions/{}/artifacts/{}/file",
+            base(api_base),
+            session_id,
+            artifact_id
+        ))
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| format!("Nettverksfeil: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(err_body(resp).await);
+    }
+    if resp
+        .content_length()
+        .map(|size| size > MAX_ARTIFACT_BYTES)
+        .unwrap_or(false)
+    {
+        return Err("Artefakten er større enn 2 GB".into());
+    }
+    let mut file = tokio::fs::File::create(destination)
+        .await
+        .map_err(|e| format!("Kunne ikke opprette lokal artefakt: {}", e))?;
+    let mut total = 0u64;
+    while let Some(chunk) = resp
+        .chunk()
+        .await
+        .map_err(|e| format!("Kunne ikke lese artefakt: {}", e))?
+    {
+        total += chunk.len() as u64;
+        if total > MAX_ARTIFACT_BYTES {
+            drop(file);
+            let _ = tokio::fs::remove_file(destination).await;
+            return Err("Artefakten er større enn 2 GB".into());
+        }
+        file.write_all(&chunk)
+            .await
+            .map_err(|e| format!("Kunne ikke lagre artefakt: {}", e))?;
+    }
+    file.flush()
+        .await
+        .map_err(|e| format!("Kunne ikke ferdigstille artefakt: {}", e))?;
+    if total == 0 {
+        let _ = tokio::fs::remove_file(destination).await;
+        return Err("Artefakten var tom".into());
+    }
+    Ok(total)
 }

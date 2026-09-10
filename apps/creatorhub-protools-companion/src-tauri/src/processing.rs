@@ -9,6 +9,8 @@ use tauri::AppHandle;
 
 use crate::api_client;
 use crate::config;
+use crate::intro_preflight::{self, IntroPreflight};
+use crate::ptsl;
 use crate::ptx_parser;
 use crate::state::{emit_activity, snapshot, SharedConfig};
 
@@ -19,6 +21,7 @@ pub struct SyncResult {
     pub easeverse_synced: bool,
     pub sample_rate: Option<f64>,
     pub track_count: i64,
+    pub intro_preflight: IntroPreflight,
 }
 
 #[derive(Serialize, Clone)]
@@ -68,12 +71,6 @@ pub fn file_fingerprint(path: &Path) -> Result<String, String> {
     ))
 }
 
-pub fn is_bounce_uploaded(cfg: &SharedConfig, path: &Path) -> bool {
-    file_fingerprint(path)
-        .map(|fingerprint| cfg.lock().unwrap().uploaded_bounces.contains(&fingerprint))
-        .unwrap_or(false)
-}
-
 /// Les «Session Info»-tekstfila, parse markører/metadata, og push til backend.
 pub async fn sync_session_info(cfg: &SharedConfig, app: &AppHandle) -> Result<SyncResult, String> {
     let snap = snapshot(cfg);
@@ -86,6 +83,8 @@ pub async fn sync_session_info(cfg: &SharedConfig, app: &AppHandle) -> Result<Sy
         .await
         .map_err(|e| format!("Kunne ikke lese {}: {}", path, e))?;
     let parsed = ptx_parser::parse_session_info(&text);
+    let intro_preflight = intro_preflight::evaluate(parsed.track_counts.clone());
+    let ptsl_status = ptsl::probe();
 
     let marker_json: Vec<Value> = parsed
         .markers
@@ -138,9 +137,18 @@ pub async fn sync_session_info(cfg: &SharedConfig, app: &AppHandle) -> Result<Sy
             "sampleRate": parsed.sample_rate,
             "bitDepth": parsed.bit_depth,
             "tracks": tracks_json,
+            "proToolsTier": snap.protools_tier,
+            "ptslStatus": ptsl_status.state,
+            "introPreflight": intro_preflight,
         }),
     )
     .await?;
+
+    {
+        let mut current = cfg.lock().unwrap();
+        current.intro_preflight = Some(intro_preflight.clone());
+        config::save(&current)?;
+    }
 
     emit_activity(
         app,
@@ -163,6 +171,7 @@ pub async fn sync_session_info(cfg: &SharedConfig, app: &AppHandle) -> Result<Sy
         easeverse_synced,
         sample_rate: parsed.sample_rate,
         track_count: parsed.tracks.len() as i64,
+        intro_preflight,
     })
 }
 

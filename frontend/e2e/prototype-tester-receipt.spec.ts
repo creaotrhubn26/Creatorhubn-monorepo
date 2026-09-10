@@ -69,3 +69,39 @@ test("viser og laster ned etterprøvbar prototype-kvittering fra Mine avtaler", 
   );
   expect(receiptAuthorization).toBe("Bearer e2e-session-token");
 });
+
+test("verifiserer QR-referansen offentlig uten å vise personopplysninger", async ({ page }) => {
+  const digest = "a".repeat(64);
+  await page.route(
+    `**/api/prototype-tester-agreements/receipts/${receiptId}/verify?digest=${digest}`,
+    (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        valid: true,
+        receiptId,
+        acceptedAt: "2026-09-09T12:00:00.000Z",
+        signatureMethod: "email_otp_typed_name",
+        emailVerified: true,
+        archiveFormat: "PDF/A-2b",
+        documentCount: 4,
+        documents: [
+          { key: "program_terms", title: "Vilkår for prototype-testerprogrammet", version: "1.0", bindingNature: "binding" },
+          { key: "nda", title: "Konfidensialitetsavtale (NDA)", version: "1.1", bindingNature: "binding" },
+          { key: "dpa", title: "Databehandleravtale", version: "1.1", bindingNature: "binding" },
+          { key: "letter_of_intent", title: "Intensjonsavtale", version: "1.0", bindingNature: "non_binding" },
+        ],
+      }),
+    }),
+  );
+
+  await page.goto(`/prototype-tester/verify-receipt?receipt=${receiptId}&digest=${digest}`);
+  await expect(page.getByRole("heading", { name: "Kvitteringen er gyldig" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("img", { name: "CreatorHub Norge" })).toHaveAttribute("src", "/creatorhub-wordmark-light.png");
+  await expect(page.getByText("PDF/A-2b")).toBeVisible();
+  await expect(page.getByText("4 dokumenter")).toBeVisible();
+  await expect(page.getByText("Intensjonsavtale")).toBeVisible();
+  await expect(page.getByText("Ikke-bindende", { exact: false })).toBeVisible();
+  await expect(page.getByText("tester@example.com")).toHaveCount(0);
+  await expect(page.getByText("Test Tester")).toHaveCount(0);
+});

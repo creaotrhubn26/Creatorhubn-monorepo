@@ -135,6 +135,8 @@ export interface InviteRequestsRoutesDeps {
     teamSize: number,
     memberProfession?: string | null,
     memberCompany?: string | null,
+    memberOrganizationNumber?: string | null,
+    memberBusinessAddress?: string | null,
   ) => Promise<any>;
   sendAccessRequestReceivedEmail?: (input: {
     recipientEmail: string;
@@ -911,6 +913,8 @@ export function setupInviteRequestsRoutes(
               // Bær profesjon + firma fra søknaden → forhåndsutfylt tester-profil.
               normalizeTesterProfession(request.tester_profession) || parseTesterProfessionFromMessage(request.message),
               request.company_name || null,
+              request.organization_number || null,
+              request.business_address || null,
             );
           } catch (bridgeErr) {
             console.error("[invite-requests/process] prototype master-bridge failed", bridgeErr);
@@ -1170,6 +1174,8 @@ export function setupInviteRequestsRoutes(
             // Bær profesjon + firma fra søknaden → forhåndsutfylt tester-profil.
             normalizeTesterProfession(row.tester_profession) || parseTesterProfessionFromMessage(row.message),
             row.company_name || null,
+            row.organization_number || null,
+            row.business_address || null,
           );
         }
         let decisionEmailDelivery: {

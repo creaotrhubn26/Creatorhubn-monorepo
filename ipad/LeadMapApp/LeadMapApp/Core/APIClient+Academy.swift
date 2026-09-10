@@ -82,7 +82,7 @@ extension APIClient {
         )
     }
 
-    /// Presignert R2-URL for video-kapitler. Kaster/404 for kapitler uten
+    /// Presignert lagrings-URL for video-kapitler. Kaster/404 for kapitler uten
     /// video (tekst/poster-kapitler — spilleren simulerer som før).
     func academyVideoURL(chapterId: String) async throws -> URL? {
         let resp: AcademyVideoURLResponse = try await _get(
@@ -144,7 +144,7 @@ extension APIClient {
         try await _delete("/api/leadgrid/academy/chapters/\(chapterId)")
     }
 
-    /// Presignert PUT for video-opplasting. Returnerer (url, key) — last opp
+    /// Presignert S3 PUT for video-opplasting. Returnerer (url, key) — last opp
     /// rå video-data med PUT + Content-Type, deretter `academyAttachVideo`.
     func academyVideoUploadURL(
         chapterId: String,
@@ -174,7 +174,7 @@ extension APIClient {
         )
     }
 
-    /// Laster opp video-data direkte til presignert R2-URL (utenfor
+    /// Laster opp video-data direkte til presignert S3-URL (utenfor
     /// API-baseURL — egen URLSession-request med PUT).
     nonisolated func academyUploadVideoData(
         _ data: Data,

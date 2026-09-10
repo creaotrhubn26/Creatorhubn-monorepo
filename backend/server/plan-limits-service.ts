@@ -26,6 +26,7 @@ export interface PlanLimits {
   has_white_label_portal: boolean;
   has_salgshierarki: boolean;
   audit_log_retention_days: number;
+  included_storage_bytes: number;
 }
 
 export interface PlanUsage {
@@ -64,7 +65,8 @@ export async function getPlanLimits(pool: Pool, planKey: string): Promise<PlanLi
             max_playbooks_visible, max_team_members,
             has_automation_rules, has_custom_fields,
             has_pitch_deck_studio, has_white_label_portal,
-            has_salgshierarki, audit_log_retention_days
+            has_salgshierarki, audit_log_retention_days,
+            included_storage_bytes
      FROM plan_limits WHERE plan_key = $1 AND is_active = TRUE`,
     [planKey],
   );
@@ -312,7 +314,8 @@ async function getNextPlanUp(pool: Pool, currentKey: string): Promise<PlanLimits
             max_playbooks_visible, max_team_members,
             has_automation_rules, has_custom_fields,
             has_pitch_deck_studio, has_white_label_portal,
-            has_salgshierarki, audit_log_retention_days
+            has_salgshierarki, audit_log_retention_days,
+            included_storage_bytes
      FROM plan_limits
      WHERE display_order > (
        SELECT display_order FROM plan_limits WHERE plan_key = $1
@@ -370,12 +373,60 @@ export async function getPlanSummary(pool: Pool, orgId: string): Promise<{
     customers: number;     // 0-100
     auto_onboards: number; // 0-100
   };
+  billing: {
+    subscription_status: string;
+    past_due_since: string | null;
+    read_only_at: string | null;
+  };
+  storage: {
+    included_bytes: number;
+    addon_quantity: number;
+    capacity_bytes: number;
+    used_bytes: number;
+    reserved_bytes: number;
+    available_bytes: number;
+  };
 }> {
   const orgPlan = await getOrgPlan(pool, orgId);
   const limits = await getPlanLimits(pool, orgPlan.effective_plan_key);
   if (!limits) throw new Error(`Plan not found: ${orgPlan.effective_plan_key}`);
   const monthUsage = await getCurrentMonthUsage(pool, orgId);
   const customerCount = await getCustomerCount(pool, orgId);
+  const billingR = await pool.query<{
+    subscription_status: string;
+    past_due_since: string | null;
+    read_only_at: string | null;
+    storage_addon_quantity: number;
+    used_bytes: string | number;
+    reserved_bytes: string | number;
+  }>(
+    `SELECT COALESCE(billing.subscription_status, 'inactive') AS subscription_status,
+            billing.past_due_since::text,
+            billing.read_only_at::text,
+            COALESCE(billing.storage_addon_quantity, 0) AS storage_addon_quantity,
+            COALESCE(storage.used_bytes, 0) AS used_bytes,
+            COALESCE(storage.reserved_bytes, 0) AS reserved_bytes
+       FROM organizations organization
+       LEFT JOIN leadgrid_org_billing billing
+         ON billing.organization_id = organization.id
+       LEFT JOIN leadgrid_org_storage_usage storage
+         ON storage.organization_id = organization.id
+      WHERE organization.id = $1::uuid`,
+    [orgId],
+  );
+  const billing = billingR.rows[0] ?? {
+    subscription_status: "inactive",
+    past_due_since: null,
+    read_only_at: null,
+    storage_addon_quantity: 0,
+    used_bytes: 0,
+    reserved_bytes: 0,
+  };
+  const addonQuantity = Number(billing.storage_addon_quantity);
+  const capacityBytes = Number(limits.included_storage_bytes)
+    + addonQuantity * 100 * 1024 * 1024 * 1024;
+  const usedBytes = Number(billing.used_bytes);
+  const reservedBytes = Number(billing.reserved_bytes);
   const pctOf = (used: number, max: number | null) =>
     max == null ? 0 : Math.min(100, Math.round((used / max) * 100));
   return {
@@ -391,6 +442,19 @@ export async function getPlanSummary(pool: Pool, orgId: string): Promise<{
     pct: {
       customers: pctOf(customerCount, limits.max_active_customers),
       auto_onboards: pctOf(monthUsage.auto_onboards_used, limits.max_auto_onboards_per_month),
+    },
+    billing: {
+      subscription_status: billing.subscription_status,
+      past_due_since: billing.past_due_since,
+      read_only_at: billing.read_only_at,
+    },
+    storage: {
+      included_bytes: Number(limits.included_storage_bytes),
+      addon_quantity: addonQuantity,
+      capacity_bytes: capacityBytes,
+      used_bytes: usedBytes,
+      reserved_bytes: reservedBytes,
+      available_bytes: Math.max(0, capacityBytes - usedBytes - reservedBytes),
     },
   };
 }
