@@ -1960,12 +1960,16 @@ export interface ScriptRevision {
   id: string;
   manuscriptId: string;
   version: string;
+  kind?: 'manual' | 'automatic_snapshot' | 'before_restore' | 'restore_marker';
+  sourceCloudVersion?: number;
   changeSummary?: string;
   changesSummary?: string;
   revisionNotes?: string;
   content?: string;
+  snapshot?: Partial<Manuscript>;
   createdAt?: string;
   createdBy?: string;
+  changedBy?: string;
   [key: string]: unknown;
 }
 
@@ -1977,7 +1981,8 @@ export interface Manuscript {
   subtitle?: string;
   author?: string;
   status?: string;
-  version?: string;
+  /** Numeric values are the API's optimistic-concurrency revision. */
+  version?: string | number;
   format?: 'markdown' | 'fountain' | 'final-draft';
   pageCount?: number;
   wordCount?: number;
@@ -2763,4 +2768,3 @@ export interface AISuggestionFilter {
   status?: AISuggestionStatus | AISuggestionStatus[];
   minConfidence?: number;
 }
-

@@ -100,6 +100,96 @@ function buildBasicSeedProject(): CastingProject {
   } as unknown as CastingProject;
 }
 
+function buildDirectorSeedProject(): CastingProject {
+  const project = buildBasicSeedProject();
+  return {
+    ...project,
+    roles: [
+      { id: 'director-role-nora', projectId: project.id, name: 'NORA', status: 'filled', sceneIds: ['director-scene-1', 'director-scene-2'] },
+      { id: 'director-role-elias', projectId: project.id, name: 'ELIAS', status: 'filled', sceneIds: ['director-scene-2'] },
+    ],
+    sceneBreakdowns: [
+      {
+        id: 'director-scene-1',
+        manuscriptId: 'e2e-director-manuscript',
+        projectId: project.id,
+        sceneNumber: 1,
+        sceneHeading: 'INT. FJELLSTUE - DAG',
+        locationName: 'Fjellstue',
+        intExt: 'INT',
+        timeOfDay: 'DAY',
+        description: 'Nora gjør rommet klart før gjestene kommer.',
+        characters: ['NORA'],
+        propsNeeded: ['Nøkkelknippe'],
+        storyboardFrames: [{ id: 'director-frame-1', title: 'Etablering' }],
+      },
+      {
+        id: 'director-scene-2',
+        manuscriptId: 'e2e-director-manuscript',
+        projectId: project.id,
+        sceneNumber: 2,
+        sceneHeading: 'EXT. SKOG - NATT',
+        locationName: 'Skog',
+        intExt: 'EXT',
+        timeOfDay: 'NIGHT',
+        description: 'Nora og Elias følger sporene inn i tåken.',
+        characters: ['NORA', 'ELIAS'],
+      },
+    ],
+    shotLists: [{
+      id: 'director-shot-list-1',
+      projectId: project.id,
+      sceneId: 'director-scene-1',
+      shots: [{
+        id: 'director-shot-1',
+        sceneId: 'director-scene-1',
+        shotType: 'Wide',
+        cameraAngle: 'Eye Level',
+        cameraMovement: 'Static',
+        description: 'Etablering av fjellstuen',
+        status: 'completed',
+      }],
+    }],
+    productionDays: [{
+      id: 'director-production-day-1',
+      projectId: project.id,
+      date: '2026-09-11',
+      scenes: ['director-scene-1'],
+      crew: [],
+      props: [],
+      callTime: '07:30',
+      status: 'planned',
+    }],
+  } as CastingProject;
+}
+
+function buildCinematographerSeedProject(): CastingProject {
+  const project = buildDirectorSeedProject();
+  return {
+    ...project,
+    crew: [
+      { id: 'cine-dop', name: 'Dana Foto', role: 'cinematographer', status: 'confirmed' },
+      { id: 'cine-gaffer', name: 'Guro Lys', role: 'gaffer', status: 'invited' },
+    ],
+    shotLists: [{
+      id: 'cine-shot-list-1',
+      projectId: project.id,
+      sceneId: 'director-scene-1',
+      shots: [{
+        id: 'cine-shot-1',
+        sceneId: 'director-scene-1',
+        shotType: 'Wide',
+        cameraAngle: 'Eye Level',
+        cameraMovement: 'Dolly In',
+        description: 'Rolig innkjøring mot Nora ved vinduet',
+        lensRecommendation: '35 mm',
+        lightingSetup: 'Kaldt vinduslys med varm practical i bakgrunnen',
+        status: 'not_started',
+      }],
+    }],
+  } as CastingProject;
+}
+
 /**
  * Wrapper that pre-seeds a mock auth session before rendering CastingPlannerPanel.
  * This prevents the "no adminUser → redirect to /casting.html" path that fires
@@ -119,15 +209,24 @@ function SessionSeeder({ children }: { children: ReactNode }) {
       const sessionMode = searchParams.get('session');
       const seedFlag = searchParams.get('seed');
       const isContentProducerSession = sessionMode === 'content-producer';
+      const isCinematographerSession = sessionMode === 'cinematographer';
 
       // Pre-seed admin user so CastingPlannerPanel won't redirect when isStandalone=true
       await authSessionService.setAdminUser({
         id: 'e2e-test-user',
         email: 'e2e@test.local',
-        role: 'admin',
+        role: isCinematographerSession ? 'cinematographer' : 'admin',
         display_name: 'E2E Tester',
-        loginAs: isContentProducerSession ? 'content_producer' : undefined,
-        requestedRole: isContentProducerSession ? 'content_producer' : null,
+        loginAs: isContentProducerSession
+          ? 'content_producer'
+          : isCinematographerSession
+            ? 'production_team'
+            : undefined,
+        requestedRole: isContentProducerSession
+          ? 'content_producer'
+          : isCinematographerSession
+            ? 'cinematographer'
+            : null,
       });
       // Lokal backend (NODE_ENV≠production) godtar dette dev-token-et som
       // «local-admin» (getLocalDevelopmentSession) → /api/casting-ruter passerer
@@ -147,7 +246,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
       // 'photographer' ellers — vi setter begge for å være trygge.
       await settingsService.setSetting(
         'roleRoom_onboardingCompleted',
-        { photographer: true, producer: true, director: true, general: true },
+        { photographer: true, producer: true, director: true, cinematographer: true, general: true },
         { userId: 'e2e-test-user' },
       );
 
@@ -156,9 +255,13 @@ function SessionSeeder({ children }: { children: ReactNode }) {
         ? 'roleRoom_workspaceState_content_producer'
         : 'roleRoom_workspaceState_production_team';
 
-      if (seedFlag === 'basic' || seedFlag === 'demo' || seedFlag === 'story-writer') {
+      if (seedFlag === 'basic' || seedFlag === 'demo' || seedFlag === 'story-writer' || seedFlag === 'director' || seedFlag === 'cinematographer') {
         try {
-          const seedProject = buildBasicSeedProject();
+          const seedProject = seedFlag === 'director'
+            ? buildDirectorSeedProject()
+            : seedFlag === 'cinematographer'
+              ? buildCinematographerSeedProject()
+              : buildBasicSeedProject();
           await castingService.saveProject(seedProject);
 
           // Pre-seed workspace-state så panelet auto-restorer prosjektet
@@ -175,19 +278,22 @@ function SessionSeeder({ children }: { children: ReactNode }) {
             { userId: 'e2e-test-user' },
           );
 
-          if (seedFlag === 'story-writer') {
+          if (seedFlag === 'story-writer' || seedFlag === 'director' || seedFlag === 'cinematographer') {
             const now = new Date().toISOString();
+            const isDirectorSeed = seedFlag === 'director' || seedFlag === 'cinematographer';
             await settingsService.setSetting(
               'virtualStudio_manuscripts',
               [{
-                id: 'e2e-story-writer-manuscript',
+                id: isDirectorSeed ? 'e2e-director-manuscript' : 'e2e-story-writer-manuscript',
                 projectId: seedProject.id,
-                title: 'E2E Story Writer',
+                title: isDirectorSeed ? 'Siste servering' : 'E2E Story Writer',
                 subtitle: '',
                 author: 'E2E Tester',
                 version: '1.0',
                 format: 'fountain',
-                content: '',
+                content: isDirectorSeed
+                  ? 'INT. FJELLSTUE - DAG\n\nNORA gjør rommet klart.\n\nNORA\nAlt må være klart før de kommer.\n\nEXT. SKOG - NATT\n\nNORA og ELIAS følger sporene inn i tåken.'
+                  : '',
                 pageCount: 0,
                 wordCount: 0,
                 status: 'draft',

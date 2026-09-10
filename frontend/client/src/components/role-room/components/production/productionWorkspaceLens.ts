@@ -1,0 +1,12 @@
+export const ROLE_ROOM_WORKSPACE_LENSES = [
+  'full',
+  'director',
+  'cinematography',
+] as const;
+
+export type RoleRoomWorkspaceLens = (typeof ROLE_ROOM_WORKSPACE_LENSES)[number];
+
+export function isRoleRoomWorkspaceLens(value: unknown): value is RoleRoomWorkspaceLens {
+  return typeof value === 'string'
+    && ROLE_ROOM_WORKSPACE_LENSES.includes(value as RoleRoomWorkspaceLens);
+}

@@ -136,12 +136,16 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
           </Tooltip>
         </Stack>
 
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+          Viser bare formateringssignaler som kan begrunnes i manusteksten. Dramaturgiske valg og tilsiktede tids-/stedshopp vurderes ikke som feil.
+        </Typography>
+
         {/* Summary Chips */}
         <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap', gap: 1 }}>
           {totalIssues === 0 ? (
             <Chip
               icon={<CheckIcon />}
-              label="Ingen problemer funnet"
+              label="Ingen sikre avvik funnet"
               color="success"
               size="small"
             />
@@ -150,7 +154,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
               {errors > 0 && (
                 <Chip
                   icon={<ErrorIcon />}
-                  label={`${errors} feil`}
+                  label={`${errors} sikre feil`}
                   size="small"
                   sx={{ bgcolor: 'rgba(239,68,68,0.2)', color: '#ef4444' }}
                 />
@@ -158,7 +162,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
               {warnings > 0 && (
                 <Chip
                   icon={<WarningIcon />}
-                  label={`${warnings} advarsler`}
+                  label={`${warnings} mulige avvik`}
                   size="small"
                   sx={{ bgcolor: 'rgba(245,158,11,0.2)', color: '#f59e0b' }}
                 />
@@ -166,7 +170,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
               {totalIssues - errors - warnings > 0 && (
                 <Chip
                   icon={<InfoIcon />}
-                  label={`${totalIssues - errors - warnings} info`}
+                  label={`${totalIssues - errors - warnings} observasjoner`}
                   size="small"
                   sx={{ bgcolor: 'rgba(59,130,246,0.2)', color: '#3b82f6' }}
                 />
@@ -282,13 +286,13 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
               <Badge badgeContent={analysis.characterConflicts.length} color="warning">
                 <CharacterIcon color="primary" />
               </Badge>
-              <Typography variant="subtitle2">Karakternavn-konflikter</Typography>
+              <Typography variant="subtitle2">Mulige navnevarianter</Typography>
             </Stack>
           </AccordionSummary>
           <AccordionDetails sx={{ p: 0 }}>
             {analysis.characterConflicts.length === 0 ? (
               <Alert severity="success" sx={{ m: 2 }}>
-                Ingen karakternavn-konflikter funnet!
+                Ingen begrunnede navnevarianter funnet.
               </Alert>
             ) : (
               <List dense>
@@ -348,6 +352,11 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
                               {conflict.suggestion}
                             </Typography>
                           )}
+                          {conflict.evidence && (
+                            <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: 'text.secondary' }}>
+                              Grunnlag: {conflict.evidence}
+                            </Typography>
+                          )}
                         </>
                       }
                     />
@@ -373,13 +382,13 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
               <Badge badgeContent={analysis.consistencyIssues.length} color="info">
                 <TimelineIcon color="primary" />
               </Badge>
-              <Typography variant="subtitle2">Kontinuitetsproblemer</Typography>
+              <Typography variant="subtitle2">Kontinuitet og format</Typography>
             </Stack>
           </AccordionSummary>
           <AccordionDetails sx={{ p: 0 }}>
             {analysis.consistencyIssues.length === 0 ? (
               <Alert severity="success" sx={{ m: 2 }}>
-                Ingen kontinuitetsproblemer funnet!
+                Ingen verifiserbare kontinuitets- eller formatavvik funnet.
               </Alert>
             ) : (
               <List dense>
@@ -439,6 +448,11 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
                               {issue.suggestion}
                             </Typography>
                           )}
+                          {issue.evidence && (
+                            <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: 'text.secondary' }}>
+                              Grunnlag: {issue.evidence}
+                            </Typography>
+                          )}
                         </>
                       }
                     />
@@ -449,7 +463,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
           </AccordionDetails>
         </Accordion>
 
-        {/* Scene Completeness Check */}
+        {/* Descriptive scene overview — silent/short scenes are not defects. */}
         <Accordion
           expanded={expanded === 'scenes'}
           onChange={handleAccordionChange('scenes')}
@@ -462,7 +476,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
           <AccordionSummary expandIcon={<ExpandIcon />}>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ flex: 1 }}>
               <SceneIcon color="primary" />
-              <Typography variant="subtitle2">Scene-fullstendighet</Typography>
+              <Typography variant="subtitle2">Sceneoversikt</Typography>
             </Stack>
           </AccordionSummary>
           <AccordionDetails>
@@ -473,16 +487,16 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
             ) : (
               <Stack spacing={1}>
                 {analysis.beatCards.map((beat, idx) => {
-                  const isComplete = beat.characters.length > 0 && beat.beat.length > 20;
                   const hasDialogue = beat.characters.length > 0;
+                  const hasContent = beat.beat !== 'Ingen handling beskrevet';
                   
                   return (
                     <Paper
                       key={idx}
                       sx={{
                         p: 1.5,
-                        bgcolor: isComplete ? 'rgba(34,197,94,0.1)' : 'rgba(245,158,11,0.1)',
-                        borderLeft: `3px solid ${isComplete ? '#22c55e' : '#f59e0b'}`,
+                        bgcolor: hasContent ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.03)',
+                        borderLeft: `3px solid ${hasContent ? '#3b82f6' : '#6b7280'}`,
                         cursor: 'pointer',
                         '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
                       }}
@@ -492,23 +506,12 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
                         <Typography variant="subtitle2" sx={{ minWidth: 60 }}>
                           Scene {beat.sceneNumber}
                         </Typography>
-                        {isComplete ? (
-                          <Chip
-                            icon={<CheckIcon />}
-                            label="Komplett"
-                            size="small"
-                            color="success"
-                            sx={{ fontSize: '0.65rem', height: 20 }}
-                          />
-                        ) : (
-                          <Chip
-                            icon={<WarningIcon />}
-                            label={hasDialogue ? 'Kort' : 'Mangler dialog'}
-                            size="small"
-                            color="warning"
-                            sx={{ fontSize: '0.65rem', height: 20 }}
-                          />
-                        )}
+                        <Chip
+                          label={hasDialogue ? 'Dialog registrert' : hasContent ? 'Kun handling' : 'Ingen scenetekst'}
+                          size="small"
+                          color={hasDialogue ? 'primary' : 'default'}
+                          sx={{ fontSize: '0.65rem', height: 20 }}
+                        />
                         <Typography
                           variant="caption"
                           color="text.secondary"
