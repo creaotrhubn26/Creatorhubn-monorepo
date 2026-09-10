@@ -1,4 +1,4 @@
--- 0568: Leadgrid-owned AWS S3 metadata and organization usage accounting.
+-- 0570: Leadgrid-owned AWS S3 metadata and organization usage accounting.
 --
 -- PostgreSQL is authoritative for ownership and display metadata. S3 keys are
 -- opaque and never used as an authorization boundary. Existing B2-backed rows

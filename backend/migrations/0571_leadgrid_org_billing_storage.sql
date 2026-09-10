@@ -1,4 +1,4 @@
--- 0569: Organization-owned Leadgrid billing, durable Stripe events, fixed
+-- 0571: Organization-owned Leadgrid billing, durable Stripe events, fixed
 -- storage add-ons and Super Admin-controlled invitation setup.
 
 BEGIN;

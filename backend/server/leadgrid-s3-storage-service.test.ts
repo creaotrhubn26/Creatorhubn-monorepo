@@ -228,10 +228,10 @@ describe("Leadgrid S3 configuration and key contract", () => {
   });
 });
 
-describe("migration 0568", () => {
+describe("migration 0570", () => {
   it("moves Leadgrid metadata ownership away from the Role Room ledger", () => {
     const sql = readFileSync(
-      new URL("../migrations/0568_leadgrid_aws_s3_storage.sql", import.meta.url),
+      new URL("../migrations/0570_leadgrid_aws_s3_storage.sql", import.meta.url),
       "utf8",
     );
     expect(sql).toContain("CREATE TABLE IF NOT EXISTS leadgrid_storage_objects");

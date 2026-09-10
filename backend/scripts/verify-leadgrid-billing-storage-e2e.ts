@@ -181,7 +181,7 @@ async function main(): Promise<void> {
       );
     `);
     const migration = await readFile(
-      path.join(root, "migrations", "0569_leadgrid_org_billing_storage.sql"),
+      path.join(root, "migrations", "0571_leadgrid_org_billing_storage.sql"),
       "utf8",
     );
     const billingSource = await readFile(
