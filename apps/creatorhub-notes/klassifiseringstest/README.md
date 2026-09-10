@@ -32,6 +32,7 @@ Hvert avsnitt merkes med hva det **er** og hva systemet **burde gjort**.
 | `begrensning` | Sier hvordan, ikke hva | «Det må være bestemorvennlig.» |
 | `observasjon` | Konstaterer, uten retning | «Jeg ser ikke timelinen.» |
 | `meta` | Om arbeidet, ikke innholdet | «Si ifra når det er klart.» |
+| `oppgave` | Noe som skal gjøres, av deg eller noen andre | «Vi må få prototypen godkjent før vi kan begynne produksjonen.» |
 
 ### Handling
 
@@ -41,6 +42,18 @@ Hvert avsnitt merkes med hva det **er** og hva systemet **burde gjort**.
 | `hold` | Noter som mulighet. Ikke rør hovedflyten. |
 | `marker_åpent` | Registrer som ubesvart spørsmål. |
 | `ingenting` | Gjør ingenting. |
+
+En `oppgave` har alltid handlingen `ingenting`. Den er ikke en beslutning om
+hva som skal lages, så modellen skal ikke utvides på den; den noteres fordi
+den er nevnt. Svarer modellen `bygg` på en oppgave, teller det som falsk bygg,
+og det er riktig — da har den gjort noe med produktet fordi noen skulle ringe
+en fotograf.
+
+Venter oppgaven på at noe annet skjer først, skal det stå med. Formatet bærer
+det i kortformen, etter en venstrepil — «Starte produksjon ← godkjent
+prototype» — ikke i et femte felt. Et femte felt ville tatt fra kortformen
+retten til selv å inneholde `|`, som den har i dag. Fasiten holder
+avhengigheten i feltet `venter`.
 
 ## Målet som avgjør
 
@@ -59,6 +72,14 @@ uten å endre premisset.
 
 Sekundært: treffer den `type` riktig, og skiller den `tvil` fra `beslutning`?
 Det er den vanskeligste grensen, og den viktigste.
+
+## Endringer i fasiten
+
+**10. september 2026:** `oppgave` kom til som type, og fire avsnitt (45–48) ble
+lagt til, to av dem med avhengighet. Avsnitt 44, «Husk å spørre Kari om hun har
+fått fakturaen», var merket `meta` og er merket om til `oppgave` — det er noe
+som skal gjøres, ikke noe om arbeidet. Tallene i `RESULTAT.md` gjelder kjøringen
+før dette, på 44 avsnitt uten `oppgave` i taksonomien.
 
 ## Kilder til avsnittene
 

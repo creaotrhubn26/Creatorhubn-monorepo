@@ -42,3 +42,7 @@
 42. Depositum, ja. Det ble bestemt i går og vi kjører på det.
 43. Jeg tror kanskje vi skal ha varsler. Ja, vi tar det.
 44. Husk å spørre Kari om hun har fått fakturaen.
+45. Vi må få prototypen godkjent før vi kan begynne produksjonen.
+46. Jeg må sende råfilene til fotografen i morgen.
+47. Vi kan ikke telle opp utstyret før lista er ryddet.
+48. Marius skal sette opp Stripe-kontoen.
