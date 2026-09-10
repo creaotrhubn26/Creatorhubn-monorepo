@@ -21,7 +21,7 @@ import PDFDocument from "pdfkit";
 import { requireTeamAccess } from "./team-access";
 import { canAccessProject } from "./project-team-routes";
 import { broadcastSoundRoomUpdated, type SoundRoomUpdateReason } from "./sound-room-events";
-import { pushApprovedReferenceMixToEaseVerse } from "./easeverse-protools-sync.js";
+import { enqueueApprovedReferenceSync } from "./music-integration-outbox.js";
 
 // Innebygd TrueType-font (DejaVu Sans, libre) — sikrer at avtale-PDF rendres
 // identisk i alle visere (pdfkit-standardfonter rendres ikke i alle renderere).
@@ -886,7 +886,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
           WHERE id = (SELECT easeverse_track_id FROM audio_review_projects
                       WHERE id = (SELECT project_id FROM audio_review_versions WHERE id = $1::uuid))::uuid`,
         [versionId, trackStatus]).catch(() => { /* ikke koblet / annen DB-state */ });
-      let easeverseReferenceSync: Awaited<ReturnType<typeof pushApprovedReferenceMixToEaseVerse>> | undefined;
+      let easeverseReferenceSync: Awaited<ReturnType<typeof enqueueApprovedReferenceSync>> | undefined;
       if (approvalType !== "changes_requested") {
         const reference = await pool.query(
           `SELECT v.file_url,v.file_name,v.duration,p.owner_user_id,
@@ -897,10 +897,16 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         ).catch(() => ({ rows: [], rowCount: 0 }));
         const linked = reference.rows[0];
         if (linked?.external_track_id && linked?.file_url) {
-          easeverseReferenceSync = await pushApprovedReferenceMixToEaseVerse({
-            ownerUserId: String(linked.owner_user_id), externalTrackId: String(linked.external_track_id),
-            url: String(linked.file_url), name: linked.file_name ? String(linked.file_name) : null,
-            durationSec: linked.duration == null ? null : Number(linked.duration),
+          easeverseReferenceSync = await enqueueApprovedReferenceSync({
+            pool,
+            userId: s.userId,
+            sourceId: versionId,
+            eventId: `reference:${versionId}:${String(a.rows[0].id)}`,
+            payload: {
+              ownerUserId: String(linked.owner_user_id), externalTrackId: String(linked.external_track_id),
+              url: String(linked.file_url), name: linked.file_name ? String(linked.file_name) : null,
+              durationSec: linked.duration == null ? null : Number(linked.duration),
+            },
           });
         }
       }

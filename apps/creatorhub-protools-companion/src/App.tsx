@@ -10,10 +10,12 @@ import PlayArrow from "@mui/icons-material/PlayArrow";
 import Stop from "@mui/icons-material/Stop";
 import Sync from "@mui/icons-material/Sync";
 import LinkOff from "@mui/icons-material/LinkOff";
+import ForumOutlined from "@mui/icons-material/ForumOutlined";
+import TaskAlt from "@mui/icons-material/TaskAlt";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import * as api from "./api";
-import type { AppState, TrackInfo, ActivityEntry } from "./api";
+import type { AppState, TrackInfo, ActivityEntry, FeedbackInbox } from "./api";
 
 const ORANGE = "#ff8c00";
 
@@ -22,6 +24,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
+  const [feedback, setFeedback] = useState<FeedbackInbox | null>(null);
 
   // Pairing
   const [code, setCode] = useState("");
@@ -50,6 +53,19 @@ export default function App() {
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  const refreshFeedback = useCallback(async () => {
+    if (!state?.session_id || !state.audio_room_id) return;
+    try { setFeedback(await api.getFeedback()); }
+    catch (error) { logLocal("error", `Feedback kunne ikke hentes: ${error}`); }
+  }, [state?.session_id, state?.audio_room_id]);
+
+  useEffect(() => {
+    if (!state?.session_id || !state.audio_room_id) return;
+    void refreshFeedback();
+    const timer = window.setInterval(() => void refreshFeedback(), 15_000);
+    return () => window.clearInterval(timer);
+  }, [state?.session_id, state?.audio_room_id, refreshFeedback]);
 
   useEffect(() => {
     const un = listen<{ kind: ActivityEntry["kind"]; message: string }>("companion://activity", (e) => {
@@ -203,6 +219,9 @@ export default function App() {
             <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
               <Chip size="small" label={state.audio_room_id ? "Koblet til Sound Room" : "Ikke koblet til låt"} sx={{ bgcolor: state.audio_room_id ? "rgba(95,184,138,0.16)" : "rgba(255,255,255,0.06)", color: state.audio_room_id ? "#5fb88a" : "text.secondary" }} />
               <Chip size="small" label={state.watching ? "Overvåker" : "Pauset"} sx={{ bgcolor: state.watching ? "rgba(255,140,0,0.16)" : "rgba(255,255,255,0.06)", color: state.watching ? ORANGE : "text.secondary" }} />
+              {(state.pending_bounces > 0 || state.pending_session_info) && (
+                <Chip size="small" label={`${state.pending_bounces + (state.pending_session_info ? 1 : 0)} i synk-kø`} sx={{ bgcolor: "rgba(63,167,214,0.14)", color: "#3fa7d6" }} />
+              )}
             </Stack>
             <Row label="Session Info" value={state.session_info_path} />
             <Row label="Bounced Files" value={state.bounce_dir} />
@@ -215,6 +234,33 @@ export default function App() {
                 sx={{ color: ORANGE, borderColor: "rgba(255,140,0,0.5)" }}>Synk nå</Button>
             </Stack>
           </Stack>
+        </Panel>
+      )}
+
+      {state?.paired && state?.session_id && state.audio_room_id && (
+        <Panel title="Sound Room-feedback">
+          <Stack direction="row" spacing={1} sx={{ mb: 1.5, alignItems: "center" }}>
+            <ForumOutlined sx={{ color: ORANGE, fontSize: 20 }} />
+            <Typography sx={{ fontSize: 13, flex: 1 }}>
+              {feedback?.version ? `${feedback.version.version_label} · ${feedback.project?.status || feedback.version.status}` : "Ingen review-versjon ennå"}
+            </Typography>
+            <Button size="small" onClick={() => void refreshFeedback()} sx={{ color: ORANGE }}>Oppdater</Button>
+          </Stack>
+          {!feedback || (!feedback.comments.length && !feedback.approvals.length && !feedback.tasks.length) ? (
+            <Typography sx={{ fontSize: 12.5, color: "text.secondary" }}>Ingen kommentarer, godkjenninger eller oppgaver ennå.</Typography>
+          ) : (
+            <Stack spacing={1.2}>
+              {feedback.approvals.slice(0, 3).map((approval) => (
+                <FeedbackRow key={approval.id} color="#5fb88a" title={approval.approval_type.replace(/_/g, " ")} body={approval.note || `Fra ${approval.approved_by || "reviewer"}`} />
+              ))}
+              {feedback.tasks.filter((task) => task.status !== "done").slice(0, 5).map((task) => (
+                <FeedbackRow key={task.id} color="#3fa7d6" title={task.status === "in_progress" ? "Pågår" : "Oppgave"} body={task.title} icon={<TaskAlt sx={{ fontSize: 16 }} />} />
+              ))}
+              {feedback.comments.slice(0, 8).map((comment) => (
+                <FeedbackRow key={comment.id} color={comment.is_decision ? "#5fb88a" : ORANGE} title={`${formatTimecode(comment.timecode_seconds)} · ${comment.author || "Reviewer"}`} body={comment.body} />
+              ))}
+            </Stack>
+          )}
         </Panel>
       )}
 
@@ -273,4 +319,21 @@ function Row({ label, value }: { label: string; value: string | null }) {
 
 function Center({ children }: { children: React.ReactNode }) {
   return <Box sx={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", bgcolor: "background.default" }}>{children}</Box>;
+}
+
+function FeedbackRow({ color, title, body, icon }: { color: string; title: string; body: string; icon?: React.ReactNode }) {
+  return (
+    <Stack direction="row" spacing={1.1} sx={{ p: 1.1, borderRadius: 1.5, bgcolor: "rgba(255,255,255,0.025)", alignItems: "flex-start" }}>
+      <Box sx={{ color, mt: 0.1 }}>{icon || <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: color, mt: 0.7 }} />}</Box>
+      <Box sx={{ minWidth: 0 }}>
+        <Typography sx={{ fontSize: 10.5, color, textTransform: "uppercase", fontWeight: 700 }}>{title}</Typography>
+        <Typography sx={{ fontSize: 12.5, overflowWrap: "anywhere" }}>{body}</Typography>
+      </Box>
+    </Stack>
+  );
+}
+
+function formatTimecode(seconds: number): string {
+  const safe = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+  return `${Math.floor(safe / 60)}:${String(Math.floor(safe % 60)).padStart(2, "0")}`;
 }

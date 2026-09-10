@@ -1,0 +1,16 @@
+{
+  "CORSRules": [
+    {
+      "ID": "CreatorHubDirectUploads",
+      "AllowedHeaders": ["*"],
+      "AllowedMethods": ["GET", "HEAD", "PUT"],
+      "AllowedOrigins": [
+        "https://creatorhubn.com",
+        "https://www.creatorhubn.com",
+        "https://easeverse.netlify.app"
+      ],
+      "ExposeHeaders": ["ETag", "x-amz-checksum-sha256", "x-amz-request-id"],
+      "MaxAgeSeconds": 3600
+    }
+  ]
+}

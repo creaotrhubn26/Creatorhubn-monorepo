@@ -987,6 +987,7 @@ import { setupProjectTeamRoutes, canAccessProject } from "./project-team-routes"
 import { requireProjectAccess } from "./project-access";
 import { setupProjectWorkspaceRoutes } from "./project-workspace-routes";
 import { setupProToolsCompanionRoutes } from "./protools-companion-routes";
+import { startProToolsSyncWorker } from "./protools-companion-sync-worker";
 import { setupGoogleDriveSyncRoutes } from "./google-drive-sync-routes";
 import { setupChunkedUploadRoutes } from "./chunked-upload-routes";
 import { setupUploadsRoutes } from "./uploads-routes";
@@ -76679,6 +76680,8 @@ httpServer.on("close", () => {
 
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Backend server running on port ${PORT} (HTTP + WebSocket)`);
+  const proToolsSyncWorker = startProToolsSyncWorker(pool);
+  void proToolsSyncWorker;
   // iPad-bearer hydrering — last alle ikke-revokerte ipad_tokens inn i
   // activeSessions ved boot. Uten dette mister vi alle iPad-sessions ved
   // hver Render-redeploy → 401 på alle iPad-kall til Daniel re-logger.
