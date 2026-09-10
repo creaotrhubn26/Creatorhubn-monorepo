@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Editor } from "./Editor";
 import {
   createNote,
@@ -40,6 +40,39 @@ function grupper(notes: Note[]): [string, Note[]][] {
   return ut;
 }
 
+const dagMåned = new Intl.DateTimeFormat("nb-NO", { day: "numeric", month: "long" });
+const dagMånedÅr = new Intl.DateTimeFormat("nb-NO", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
+/** Toppfeltene i fila, lest for visning. Fila selv røres ikke. */
+function toppfelt(doc: string): { felt: [string, string][]; etikett: string } | null {
+  const linjer = doc.split("\n");
+  if (linjer[0]?.trim() !== "---") return null;
+  const slutt = linjer.findIndex((l, i) => i > 0 && l.trim() === "---");
+  if (slutt < 0) return null;
+
+  const felt: [string, string][] = [];
+  for (const linje of linjer.slice(1, slutt)) {
+    const skille = linje.indexOf(":");
+    if (skille > 0) felt.push([linje.slice(0, skille).trim(), linje.slice(skille + 1).trim()]);
+  }
+
+  const verdi = (navn: string) => felt.find(([k]) => k === navn)?.[1] ?? "";
+  const type = verdi("type");
+  const dato = /^(\d{4})-(\d{2})-(\d{2})/.exec(verdi("id"));
+  const deler = [type ? type[0].toUpperCase() + type.slice(1) : "Notat"];
+  if (dato) {
+    const d = new Date(Number(dato[1]), Number(dato[2]) - 1, Number(dato[3]));
+    deler.push(
+      d.getFullYear() === new Date().getFullYear() ? dagMåned.format(d) : dagMånedÅr.format(d),
+    );
+  }
+  return { felt, etikett: deler.join(" · ") };
+}
+
 /** FTS5 markerer treffordene med `**…**`. */
 function Utdrag({ tekst }: { tekst: string }) {
   return (
@@ -57,9 +90,13 @@ export default function App() {
   const [doc, setDoc] = useState("");
   const [nytt, setNytt] = useState(false);
   const [status, setStatus] = useState("");
+  const [detaljer, setDetaljer] = useState(false);
   const [feil, setFeil] = useState<string | null>(null);
 
   const søkefelt = useRef<HTMLInputElement>(null);
+  /** Lista slik den er nå, uten å binde tilbakekallene til den. */
+  const notater = useRef(notes);
+  notater.current = notes;
   const uskrevet = useRef<{ path: string; content: string } | null>(null);
   const timer = useRef<number | undefined>(undefined);
 
@@ -106,7 +143,11 @@ export default function App() {
         setNytt(ferskt);
         setDoc(tekst);
         setPath(p);
-        setStatus("");
+        setDetaljer(false);
+        // Lagringsmerket står alltid. Er ingenting endret ennå, er sannheten
+        // tidspunktet fila sist ble skrevet.
+        const rørt = notater.current.find((n) => n.path === p)?.modified;
+        setStatus(rørt ? `Lagret ${klokke.format(new Date(rørt * 1000))}` : "Lagret");
       } catch (e) {
         setFeil(String(e));
       }
@@ -179,6 +220,7 @@ export default function App() {
   }, [nyttNotat]);
 
   const tomtArkiv = notes.length === 0;
+  const topp = path ? toppfelt(doc) : null;
 
   return (
     <div className="skall">
@@ -266,7 +308,29 @@ export default function App() {
             </p>
           )}
           {path ? (
-            <Editor path={path} doc={doc} onChange={skriv} selectTitle={nytt} />
+            <>
+              {topp && (
+                <div className="notatinfo">
+                  <div className="notatlinje">
+                    <span>{topp.etikett}</span>
+                    <button onClick={() => setDetaljer(!detaljer)}>
+                      {detaljer ? "Skjul detaljer" : "Vis detaljer"}
+                    </button>
+                  </div>
+                  {detaljer && (
+                    <dl className="detaljer">
+                      {topp.felt.map(([navn, verdi]) => (
+                        <Fragment key={navn}>
+                          <dt>{navn}</dt>
+                          <dd>{verdi || "—"}</dd>
+                        </Fragment>
+                      ))}
+                    </dl>
+                  )}
+                </div>
+              )}
+              <Editor path={path} doc={doc} onChange={skriv} selectTitle={nytt} />
+            </>
           ) : (
             <div className="velkomst">
               <h1>{tomtArkiv ? "Ingen notater ennå" : "Ingen notat er åpent"}</h1>

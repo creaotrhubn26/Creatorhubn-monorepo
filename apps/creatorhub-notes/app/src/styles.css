@@ -263,17 +263,73 @@ kbd {
 
 /* ---- arket ------------------------------------------------------------ */
 
+/* min-height: 0 er ikke pynt: uten den vokser arket etter innholdet i
+   editoren i stedet for å holde seg i vinduet, og lagringsmerket havner
+   under skjermkanten der ingen ser det. */
 .ark {
   position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   background: var(--paper);
 }
 
 .editor {
   flex: 1;
   min-height: 0;
+}
+
+/* Toppfeltene er skjult i teksten. Denne linja er det de sier, lest høyt:
+   «Beslutning · 10. september». De rå feltene er ett klikk unna, for den som
+   vil se dem. Bredden følger tekstspalta, så den hører til notatet. */
+.notatinfo {
+  width: 100%;
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 14px 32px 0;
+}
+
+.notatlinje {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  color: var(--ink-soft);
+}
+
+.notatlinje button {
+  min-height: 44px;
+  margin-left: auto;
+  padding: 0 12px;
+  color: var(--ink-soft);
+  border-radius: 8px;
+}
+
+.notatlinje button:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+
+.detaljer {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  margin: 4px 0 0;
+  padding: 12px 14px;
+  font-family: var(--mono);
+  font-size: 13px;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  border-radius: 8px;
+}
+
+.detaljer dt {
+  color: var(--ink-faint);
+}
+
+.detaljer dd {
+  margin: 0;
+  color: var(--ink-soft);
 }
 
 .velkomst {
@@ -313,8 +369,11 @@ kbd {
   position: absolute;
   right: 20px;
   bottom: 14px;
+  padding: 4px 10px;
   font-size: 15px;
-  color: var(--ink-faint);
+  color: var(--ink-soft);
+  background: var(--paper);
+  border-radius: 6px;
   pointer-events: none;
 }
 

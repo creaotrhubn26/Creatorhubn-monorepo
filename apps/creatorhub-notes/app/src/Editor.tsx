@@ -1,9 +1,9 @@
 import { useEffect, useRef } from "react";
 import { EditorView, minimalSetup } from "codemirror";
 import { Decoration, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
-import { EditorState, RangeSetBuilder } from "@codemirror/state";
+import { EditorState, RangeSetBuilder, StateField } from "@codemirror/state";
 import { markdown } from "@codemirror/lang-markdown";
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 
 /// Skriveflaten. Alt som angår hvordan teksten ser ut bor her, ikke i
@@ -22,22 +22,15 @@ const skriveflate = EditorView.theme({
     fontFamily: "var(--serif)",
     lineHeight: "1.78",
     overflowY: "auto",
-    padding: "56px 0 45vh",
+    padding: "28px 0 45vh",
   },
   ".cm-content": {
-    maxWidth: "34rem",
+    maxWidth: "44rem",
     margin: "0 auto",
     padding: "0 32px",
     caretColor: "var(--accent)",
   },
   ".cm-line": { padding: "0" },
-  ".cm-toppfelt, .cm-toppfelt span": {
-    fontFamily: "var(--mono)",
-    fontSize: "12.5px",
-    fontWeight: "400",
-    lineHeight: "1.7",
-    color: "var(--ink-faint)",
-  },
   ".cm-cursor": { borderLeftWidth: "2px", borderLeftColor: "var(--accent)" },
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": {
     backgroundColor: "var(--sel)",
@@ -58,38 +51,92 @@ const markdownFarger = HighlightStyle.define([
   { tag: tags.processingInstruction, color: "var(--ink-faint)" },
 ]);
 
-/// Toppfeltene (`---` … `---`) er notatets bokføring, ikke teksten din. De
-/// blir stående — ingenting skjules — men settes i liten grå monospace så de
-/// ikke ser ut som en overskrift. Uten dette leser markdown `---` som en
-/// setext-overskrift og setter «id: …» i stor halvfet, som er direkte
-/// villedende.
-const toppfelt = Decoration.line({ class: "cm-toppfelt" });
+const skjult = Decoration.replace({});
+const skjultBlokk = Decoration.replace({ block: true });
 
-const dempToppfelt = ViewPlugin.fromClass(
+/// Slutten på toppfeltblokka (`---` … `---`), tomlinjene etter den medregnet,
+/// eller `null` når notatet ikke har noen. Posisjonen er i den *ekte* fila —
+/// ingenting fjernes fra dokumentet, det er bare visningen som hopper over
+/// den, så markør, angre og lagring peker fortsatt på riktig sted.
+function toppfeltSlutt(doc: EditorState["doc"]): number | null {
+  if (doc.lines < 2 || doc.line(1).text.trim() !== "---") return null;
+  let n = 2;
+  while (n <= doc.lines && doc.line(n).text.trim() !== "---") n++;
+  if (n > doc.lines) return null; // uavsluttet blokk: skjul heller ingenting
+  while (n < doc.lines && doc.line(n + 1).text.trim() === "") n++;
+  return doc.line(n).to;
+}
+
+/// Merkene som bare er instruks til markdown, ikke tekst: `#`, `**`, `_`.
+const merker = new Set(["HeaderMark", "EmphasisMark"]);
+
+/// Skjuler toppfeltblokka. Dette må være et StateField, ikke et ViewPlugin:
+/// CodeMirror krever at dekorasjoner som endrer den vertikale oppbygningen —
+/// altså slike som spiser linjeskift — kommer fra tilstanden, ikke fra
+/// visningen. Et plugin her gir en tom skjerm og en feil i konsollen.
+///
+/// Er det ingenting *etter* toppfeltene, skjules de ikke: et tomt vindu er
+/// verre enn tre linjer bokføring.
+const skjulToppfelt = StateField.define<DecorationSet>({
+  create: (state) => byggToppfelt(state),
+  update: (verdi, tr) => (tr.docChanged ? byggToppfelt(tr.state) : verdi),
+  provide: (f) => [
+    EditorView.decorations.from(f),
+    // Piltaster skal hoppe over det skjulte i stedet for å forsvinne inn i det.
+    EditorView.atomicRanges.of((view) => view.state.field(f)),
+  ],
+});
+
+function byggToppfelt(state: EditorState): DecorationSet {
+  const slutt = toppfeltSlutt(state.doc);
+  return slutt !== null && slutt < state.doc.length
+    ? Decoration.set([skjultBlokk.range(0, slutt)])
+    : Decoration.none;
+}
+
+/// Skjuler markdown-merkene på alle linjer markøren ikke står i. Står du på
+/// linja, kommer de tilbake, så teksten er fortsatt til å redigere — det er
+/// visningen som er ren, ikke dokumentet.
+function byggMerker(view: EditorView): DecorationSet {
+  const b = new RangeSetBuilder<Decoration>();
+  const { doc, selection } = view.state;
+
+  const redigeres = new Set<number>();
+  for (const r of selection.ranges) {
+    for (let n = doc.lineAt(r.from).number; n <= doc.lineAt(r.to).number; n++) redigeres.add(n);
+  }
+
+  syntaxTree(view.state).iterate({
+    from: toppfeltSlutt(doc) ?? 0,
+    to: doc.length,
+    enter(node) {
+      if (!merker.has(node.name)) return;
+      if (redigeres.has(doc.lineAt(node.from).number)) return;
+      // `# ` — mellomrommet etter tegnet skal vekk sammen med tegnet, ellers
+      // står overskriften rykket inn.
+      const til = doc.sliceString(node.to, node.to + 1) === " " ? node.to + 1 : node.to;
+      b.add(node.from, til, skjult);
+    },
+  });
+  return b.finish();
+}
+
+const skjulMerker = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
     constructor(view: EditorView) {
-      this.decorations = bygg(view);
+      this.decorations = byggMerker(view);
     }
     update(u: ViewUpdate) {
-      if (u.docChanged) this.decorations = bygg(u.view);
+      if (u.docChanged || u.selectionSet || u.viewportChanged) this.decorations = byggMerker(u.view);
     }
   },
-  { decorations: (v) => v.decorations },
+  {
+    decorations: (v) => v.decorations,
+    provide: (p) =>
+      EditorView.atomicRanges.of((view) => view.plugin(p)?.decorations ?? Decoration.none),
+  },
 );
-
-function bygg(view: EditorView): DecorationSet {
-  const b = new RangeSetBuilder<Decoration>();
-  const doc = view.state.doc;
-  if (doc.lines >= 2 && doc.line(1).text.trim() === "---") {
-    for (let n = 1; n <= doc.lines; n++) {
-      const linje = doc.line(n);
-      b.add(linje.from, linje.from, toppfelt);
-      if (n > 1 && linje.text.trim() === "---") break;
-    }
-  }
-  return b.finish();
-}
 
 type Props = {
   /** Byttes stien, byttes hele dokumentet. */
@@ -122,7 +169,8 @@ export function Editor({ path, doc, onChange, selectTitle }: Props) {
           minimalSetup,
           markdown(),
           syntaxHighlighting(markdownFarger),
-          dempToppfelt,
+          skjulToppfelt,
+          skjulMerker,
           skriveflate,
           EditorView.lineWrapping,
           EditorView.updateListener.of((u) => {
