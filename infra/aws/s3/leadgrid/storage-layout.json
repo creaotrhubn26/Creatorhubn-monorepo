@@ -8,7 +8,7 @@
     "identifiers": "Tenant-owned object keys use opaque UUIDs. Never put organization names, user names, email addresses, phone numbers, lead names or original filenames in an S3 key.",
     "authorization": "The backend must authorize organization, project and user ownership before issuing a short-lived presigned URL. A key prefix is not an authorization boundary by itself.",
     "database": "PostgreSQL owns display names, MIME type, byte size, checksum, ownership and entity relationships. S3 stores bytes and operational manifests only.",
-    "uploads": "New uploads enter temporary/ or quarantine/ and move to a canonical tenant prefix only after validation.",
+    "uploads": "Server-validated bounded uploads may enter a canonical tenant prefix directly. Direct-to-S3 uploads enter temporary/ or quarantine/ and move only after server-side finalization.",
     "deletion": "Database deletion and S3 deletion must use the stored opaque object key; never reconstruct a key from user-provided names."
   },
   "prefixes": {
@@ -18,6 +18,10 @@
     "organizations/{organizationId}/projects/{projectId}/discovery/campaigns/{campaignId}/candidates/{candidateId}/evidence/{assetId}/original": "Candidate evidence retained for an approved Discovery workflow",
     "organizations/{organizationId}/projects/{projectId}/leads/{leadId}/attachments/{assetId}/original": "Lead attachments",
     "organizations/{organizationId}/projects/{projectId}/leadbook/exports/{exportId}/file": "Project Leadbook exports",
+    "organizations/{organizationId}/shared/pitch-decks/{deckId}/slides/{slideId}/assets/{assetId}/original": "Organization-owned Pitch Deck images and mockups",
+    "organizations/{organizationId}/shared/partner-applications/{applicationId}/documents/{assetId}/original": "Sensitive partner verification documents owned by the applying organization",
+    "organizations/{organizationId}/shared/academy/courses/{courseId}/chapters/{chapterId}/videos/{assetId}/original": "Finalized videos for organization-owned Academy courses",
+    "organizations/{organizationId}/shared/sales-prizes/{assetId}/original": "Organization prize-catalog images",
     "organizations/{organizationId}/users/{userId}/files/{assetId}/original": "Organization-owned files scoped to a member",
     "users/{userId}/files/{assetId}/original": "Private user files not owned by an organization",
     "users/{userId}/projects/{projectId}/files/{assetId}/original": "User-owned project files where no organization owner exists",
@@ -31,5 +35,36 @@
     "migration/{source}/{migrationItemId}": "Migration staging retained until explicitly finalized",
     "_system/storage-layout.json": "Authoritative storage layout and privacy contract",
     "_system/verification/{verificationId}.json": "Short-lived non-personal provisioning verification objects"
+  },
+  "persistencePolicy": {
+    "storeInS3": [
+      "Lead attachments explicitly uploaded by an authorized organization member",
+      "Canvas PDF originals while keeping note metadata and extracted text in PostgreSQL",
+      "Pitch Deck mockups, before/after images, icons and cover logos",
+      "Partner verification documents with organization ownership",
+      "Videos uploaded to organization-owned Academy courses after temporary-object validation",
+      "Images uploaded for the organization prize catalog",
+      "Organization brand assets and approved Discovery evidence snapshots when those upload flows are introduced",
+      "Durable Leadbook exports only when the product promises later download"
+    ],
+    "doNotPersistByDefault": [
+      "Raw meeting audio after transcription",
+      "CSV or XLSX import payloads after validation and commit",
+      "Unapproved Discovery crawl bodies or third-party page copies",
+      "Generated email attachments and previews that can be reproduced",
+      "Third-party logos referenced by URL unless an authorized user explicitly imports them"
+    ],
+    "keepInPostgreSQL": [
+      "Organizations, memberships, projects, leads, activities and authorization relationships",
+      "Discovery profiles, candidate scores, BRREG facts and approved evidence metadata",
+      "Canvas drawing state, searchable text and revision metadata because they are transactional application state rather than standalone downloads",
+      "Human-readable filenames, content types, checksums, ownership and S3 object relationships",
+      "Organization-level storage usage snapshots used for plan enforcement"
+    ],
+    "separatePlatformAssets": [
+      "Leadgrid Academy official videos",
+      "Shared templates",
+      "Signed release artifacts"
+    ]
   }
 }

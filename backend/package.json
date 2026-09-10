@@ -26,6 +26,7 @@
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run --config vitest.config.ts",
     "test:unit:watch": "vitest --config vitest.config.ts",
+    "test:leadgrid-s3:e2e": "tsx scripts/verify-leadgrid-s3-runtime.ts",
     "lint": "eslint . --ext .ts --fix",
     "format": "prettier --write .",
     "db:push": "npx --yes drizzle-kit push",

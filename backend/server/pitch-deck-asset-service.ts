@@ -1,11 +1,11 @@
 /**
  * pitch-deck-asset-service.ts
  *
- * Mockup-/logo-/icon-uploads for Pitch Deck Studio. Alle uploads
- * scopes per organisasjon i B2-bucket'en (the-role-room-prod) for å
+ * Mockup-/logo-/icon-uploads for Pitch Deck Studio. Nye uploads
+ * scopes per organisasjon i Leadgrids private AWS-bucket for å
  * holde lagringen ryddig + sikre cross-org-isolasjon:
  *
- *   pitch-decks/{org_id}/{deck_id}/{slide_id}/{uuid}.{ext}
+ *   organizations/{opaque org/project/entity identifiers}/...
  *
  * Sikkerhet:
  *   - requireLeadMapPermission("pitch_deck.edit") på upload + delete
@@ -26,12 +26,16 @@ import type { Pool } from "pg";
 import crypto from "crypto";
 import {
   S3Client,
-  PutObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
+import {
+  getLeadgridObjectStorage,
+  leadgridStorageKeys,
+  type LeadgridStorageProvider,
+} from "./leadgrid-s3-storage-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -54,6 +58,23 @@ const MIME_TO_EXT: Record<string, string> = {
   "image/png": "png",
   "image/webp": "webp",
 };
+
+export function matchesImageSignature(body: Buffer, mime: string): boolean {
+  if (mime === "image/jpeg" || mime === "image/jpg") {
+    return body.length >= 3 && body[0] === 0xff && body[1] === 0xd8 && body[2] === 0xff;
+  }
+  if (mime === "image/png") {
+    return body.length >= 8 && body.subarray(0, 8).equals(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+  }
+  if (mime === "image/webp") {
+    return body.length >= 12 &&
+      body.subarray(0, 4).toString("ascii") === "RIFF" &&
+      body.subarray(8, 12).toString("ascii") === "WEBP";
+  }
+  return false;
+}
 
 function getB2(): { client: S3Client; bucket: string } | null {
   const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID;
@@ -96,6 +117,29 @@ async function loadSlideOrg(
   return r.rows[0] ?? null;
 }
 
+async function resolveSlideOrgId(_req: Request, pool: Pool, _userId: string): Promise<string | null> {
+  const slideId = _req.params.id;
+  if (!slideId) return null;
+  const result = await pool.query<{ organization_id: string }>(
+    `SELECT d.org_id::text AS organization_id
+       FROM pitch_slides s
+       JOIN pitch_decks d ON d.id = s.deck_id
+      WHERE s.id = $1 AND s.deleted_at IS NULL
+      LIMIT 1`,
+    [slideId],
+  );
+  return result.rows[0]?.organization_id ?? null;
+}
+
+async function resolveDeckOrgId(req: Request, pool: Pool, _userId: string): Promise<string | null> {
+  const result = await pool.query<{ organization_id: string }>(
+    `SELECT org_id::text AS organization_id
+       FROM pitch_decks WHERE id = $1 LIMIT 1`,
+    [req.params.id],
+  );
+  return result.rows[0]?.organization_id ?? null;
+}
+
 // ─────────────────────────────────────────────────────────────────
 // Public: bygg signed URLs for alle assets i et deck
 // Kalles av iPad-Studio etter load slik at AsyncImage får fresh
@@ -103,22 +147,34 @@ async function loadSlideOrg(
 // ─────────────────────────────────────────────────────────────────
 
 export async function buildAssetUrlMap(
-  pool: Pool, deckId: string,
+  pool: Pool, deckId: string, organizationId: string,
 ): Promise<Record<string, string>> {
   const b2 = getB2();
-  if (!b2) return {};
-  const r = await pool.query<{ id: string; b2_key: string }>(
-    `SELECT id::text, b2_key FROM pitch_deck_assets WHERE deck_id = $1`,
-    [deckId],
+  const leadgridStorage = getLeadgridObjectStorage();
+  const r = await pool.query<{
+    id: string;
+    b2_key: string;
+    storage_provider: LeadgridStorageProvider;
+  }>(
+    `SELECT a.id::text, a.b2_key, a.storage_provider
+       FROM pitch_deck_assets a
+       JOIN pitch_decks d ON d.id = a.deck_id
+      WHERE a.deck_id = $1 AND d.org_id = $2::uuid`,
+    [deckId, organizationId],
   );
   const out: Record<string, string> = {};
   for (const row of r.rows) {
     try {
-      const url = await getSignedUrl(
-        b2.client,
-        new GetObjectCommand({ Bucket: b2.bucket, Key: row.b2_key }),
-        { expiresIn: SIGNED_URL_TTL_SEC },
-      );
+      const url = row.storage_provider === "aws_s3"
+        ? await leadgridStorage?.createDownloadUrl(row.b2_key, SIGNED_URL_TTL_SEC)
+        : b2
+          ? await getSignedUrl(
+              b2.client,
+              new GetObjectCommand({ Bucket: b2.bucket, Key: row.b2_key }),
+              { expiresIn: SIGNED_URL_TTL_SEC },
+            )
+          : null;
+      if (!url) continue;
       out[row.id] = url;
     } catch { /* tystefall */ }
   }
@@ -138,11 +194,13 @@ export function registerPitchDeckAssetRoutes({
   // Body: { mime: "image/jpeg", data_base64: "...", asset_type?: "mockup" }
   app.post(
     `${ROOT}/slides/:id/mockup`,
-    requireLeadMapPermission("pitch_deck.edit", { pool, activeSessions }),
+    requireLeadMapPermission("pitch_deck.edit", {
+      pool, activeSessions, resolveOrgId: resolveSlideOrgId,
+    }),
     async (req: Request, res: Response) => {
-      const b2 = getB2();
-      if (!b2) {
-        return res.status(503).json({ error: "b2_ikke_konfigurert" });
+      const storage = getLeadgridObjectStorage();
+      if (!storage) {
+        return res.status(503).json({ error: "leadgrid_storage_not_configured" });
       }
       const session = activeSessions.get(
         (req.headers.authorization ?? "").replace("Bearer ", ""),
@@ -164,13 +222,14 @@ export function registerPitchDeckAssetRoutes({
       if (!body.data_base64 || typeof body.data_base64 !== "string") {
         return res.status(400).json({ error: "mangler_data_base64" });
       }
-      // base64-decode + size-sjekk
-      let buf: Buffer;
-      try {
-        buf = Buffer.from(body.data_base64, "base64");
-      } catch {
+      // Buffer.from(base64) er tolerant, så syntaksen må valideres først.
+      if (
+        !/^[A-Za-z0-9+/]*={0,2}$/.test(body.data_base64) ||
+        body.data_base64.length % 4 !== 0
+      ) {
         return res.status(400).json({ error: "ugyldig_base64" });
       }
+      const buf = Buffer.from(body.data_base64, "base64");
       if (buf.byteLength === 0) {
         return res.status(400).json({ error: "tom_payload" });
       }
@@ -179,6 +238,9 @@ export function registerPitchDeckAssetRoutes({
           error: "payload_for_stor",
           max_bytes: MAX_UPLOAD_BYTES,
         });
+      }
+      if (!matchesImageSignature(buf, mime)) {
+        return res.status(415).json({ error: "mime_stemmer_ikke_med_fil" });
       }
 
       // Hent slide + verifiser at caller's org matcher deck.org_id
@@ -207,41 +269,70 @@ export function registerPitchDeckAssetRoutes({
         || body.asset_type === "cover_logo"
         ? body.asset_type : "mockup";
 
-      const ext = MIME_TO_EXT[mime];
       const assetUuid = crypto.randomUUID();
-      // Org-scoped key — gir ryddig struktur + cross-org-isolasjon
-      const b2Key =
-        `pitch-decks/${slideOrg.org_id}/${slideOrg.deck_id}` +
-        `/${slideOrg.slide_id}/${assetUuid}.${ext}`;
+      const objectKey = leadgridStorageKeys.pitchDeckAsset({
+        organizationId: slideOrg.org_id,
+        deckId: slideOrg.deck_id,
+        slideId: slideOrg.slide_id,
+        assetId: assetUuid,
+      });
 
+      let uploaded;
       try {
-        await b2.client.send(new PutObjectCommand({
-          Bucket: b2.bucket,
-          Key: b2Key,
-          Body: buf,
-          ContentType: mime,
-          // Ikke offentlig — alltid signed URL on-demand
-          ACL: undefined,
-        }));
+        uploaded = await storage.putObject({
+          key: objectKey,
+          body: buf,
+          contentType: mime,
+          purpose: "pitch_deck_asset",
+        });
       } catch (err) {
         return res.status(502).json({
-          error: "b2_upload_failed",
-          detail: String(err),
+          error: "leadgrid_storage_upload_failed",
         });
       }
 
-      // Lagre asset-rad
-      const assetRes = await pool.query<{ id: string }>(
-        `INSERT INTO pitch_deck_assets
-           (deck_id, slide_id, asset_type, b2_key, mime_type, uploaded_by)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id::text`,
-        [
-          slideOrg.deck_id, slideOrg.slide_id, assetType,
-          b2Key, mime, session.userId,
-        ],
-      );
-      const assetId = assetRes.rows[0].id;
+      let assetId: string;
+      try {
+        const assetRes = await pool.query<{ id: string }>(
+          `WITH stored AS (
+             INSERT INTO leadgrid_storage_objects
+               (id, organization_id, uploaded_by, storage_provider,
+                bucket_name, object_key, purpose, display_name, size_bytes,
+                content_type, checksum_sha256, metadata)
+             VALUES
+               ($1::uuid, $2::uuid, $3, 'aws_s3', $4, $5,
+                'pitch_deck_asset', $6, $7, $8, $9, $10::jsonb)
+             RETURNING id
+           )
+           INSERT INTO pitch_deck_assets
+             (id, deck_id, slide_id, asset_type, b2_key, mime_type,
+              uploaded_by, storage_provider, storage_object_id, size_bytes,
+              checksum_sha256)
+           SELECT $1::uuid, $11::uuid, $12::uuid, $13, $5, $8,
+                  $3, 'aws_s3', id, $7, $9
+             FROM stored
+           RETURNING id::text`,
+          [
+            assetUuid,
+            slideOrg.org_id,
+            session.userId,
+            uploaded.bucket,
+            uploaded.key,
+            `${assetType}.${MIME_TO_EXT[mime]}`,
+            uploaded.sizeBytes,
+            mime,
+            uploaded.checksumSha256,
+            JSON.stringify({ deckId: slideOrg.deck_id, slideId: slideOrg.slide_id }),
+            slideOrg.deck_id,
+            slideOrg.slide_id,
+            assetType,
+          ],
+        );
+        assetId = assetRes.rows[0].id;
+      } catch (error) {
+        await storage.deleteObject(uploaded.key).catch(() => undefined);
+        throw error;
+      }
 
       // Oppdatér pitch_slides.mockup_urls — vi lagrer asset_id som
       // url-referanse + en caption (kan endres senere via PATCH).
@@ -265,11 +356,7 @@ export function registerPitchDeckAssetRoutes({
       // å re-laste decket
       let signedUrl: string | null = null;
       try {
-        signedUrl = await getSignedUrl(
-          b2.client,
-          new GetObjectCommand({ Bucket: b2.bucket, Key: b2Key }),
-          { expiresIn: SIGNED_URL_TTL_SEC },
-        );
+        signedUrl = await storage.createDownloadUrl(uploaded.key, SIGNED_URL_TTL_SEC);
       } catch { /* tystefall */ }
 
       return res.status(201).json({
@@ -287,10 +374,10 @@ export function registerPitchDeckAssetRoutes({
   // ─── DELETE /slides/:id/mockups/:asset_id ──────────────────────
   app.delete(
     `${ROOT}/slides/:id/mockups/:asset_id`,
-    requireLeadMapPermission("pitch_deck.edit", { pool, activeSessions }),
+    requireLeadMapPermission("pitch_deck.edit", {
+      pool, activeSessions, resolveOrgId: resolveSlideOrgId,
+    }),
     async (req: Request, res: Response) => {
-      const b2 = getB2();
-      if (!b2) return res.status(503).json({ error: "b2_ikke_konfigurert" });
       const session = activeSessions.get(
         (req.headers.authorization ?? "").replace("Bearer ", ""),
       );
@@ -298,10 +385,16 @@ export function registerPitchDeckAssetRoutes({
 
       // Hent asset + verifiser org-match
       const assetRes = await pool.query<{
-        deck_id: string; slide_id: string; b2_key: string; org_id: string;
+        deck_id: string;
+        slide_id: string;
+        b2_key: string;
+        org_id: string;
+        storage_provider: LeadgridStorageProvider;
+        storage_object_id: string | null;
       }>(
         `SELECT a.deck_id::text, a.slide_id::text, a.b2_key,
-                d.org_id::text
+                d.org_id::text, a.storage_provider,
+                a.storage_object_id::text
            FROM pitch_deck_assets a
            JOIN pitch_decks d ON d.id = a.deck_id
           WHERE a.id = $1 AND a.slide_id = $2`,
@@ -321,19 +414,54 @@ export function registerPitchDeckAssetRoutes({
         return res.status(403).json({ error: "feil_org_for_asset" });
       }
 
-      // Slett B2-objekt (best-effort — DB-raden er sannheten)
-      try {
-        await b2.client.send(new DeleteObjectCommand({
-          Bucket: b2.bucket,
-          Key: asset.b2_key,
-        }));
-      } catch { /* tystefall — vi sletter raden likevel */ }
+      if (asset.storage_provider === "aws_s3") {
+        const storage = getLeadgridObjectStorage();
+        if (!storage) {
+          return res.status(503).json({ error: "leadgrid_storage_not_configured" });
+        }
+        if (asset.storage_object_id) {
+          await pool.query(
+            `UPDATE leadgrid_storage_objects SET deleted_at = NOW()
+              WHERE id = $1::uuid AND deleted_at IS NULL`,
+            [asset.storage_object_id],
+          );
+        }
+        try {
+          await storage.deleteObject(asset.b2_key);
+        } catch {
+          if (asset.storage_object_id) {
+            await pool.query(
+              `UPDATE leadgrid_storage_objects SET deleted_at = NULL
+                WHERE id = $1::uuid AND deleted_at IS NOT NULL`,
+              [asset.storage_object_id],
+            ).catch(() => undefined);
+          }
+          return res.status(502).json({ error: "leadgrid_storage_delete_failed" });
+        }
+      } else {
+        const b2 = getB2();
+        if (!b2) return res.status(503).json({ error: "b2_ikke_konfigurert" });
+        try {
+          await b2.client.send(new DeleteObjectCommand({
+            Bucket: b2.bucket,
+            Key: asset.b2_key,
+          }));
+        } catch {
+          return res.status(502).json({ error: "b2_delete_failed" });
+        }
+      }
 
       // Slett asset-rad
       await pool.query(
         `DELETE FROM pitch_deck_assets WHERE id = $1`,
         [req.params.asset_id],
       );
+      if (asset.storage_object_id) {
+        await pool.query(
+          `DELETE FROM leadgrid_storage_objects WHERE id = $1::uuid`,
+          [asset.storage_object_id],
+        );
+      }
 
       // Fjern asset://-referansen fra slide.mockup_urls
       const slideRes = await pool.query<{ mockup_urls: unknown }>(
@@ -360,10 +488,14 @@ export function registerPitchDeckAssetRoutes({
   // UI bytter `asset://{id}`-referanser i mockup_urls med disse URL-ene.
   app.get(
     `${ROOT}/decks/:id/asset-urls`,
-    requireLeadMapPermission("pitch_deck.access", { pool, activeSessions }),
+    requireLeadMapPermission("pitch_deck.access", {
+      pool, activeSessions, resolveOrgId: resolveDeckOrgId,
+    }),
     async (req: Request, res: Response) => {
       try {
-        const urls = await buildAssetUrlMap(pool, req.params.id);
+        const organizationId = await resolveDeckOrgId(req, pool, "");
+        if (!organizationId) return res.status(404).json({ error: "deck_not_found" });
+        const urls = await buildAssetUrlMap(pool, req.params.id, organizationId);
         return res.json({ urls });
       } catch (err) {
         return res.status(500).json({

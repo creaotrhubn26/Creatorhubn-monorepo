@@ -11,6 +11,10 @@ import type { Pool } from "pg";
 import { randomUUID } from "crypto";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 import { assertAnyEntitled, LEADGRID_CANVAS_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
+import {
+  getLeadgridObjectStorage,
+  leadgridStorageKeys,
+} from "./leadgrid-s3-storage-service.js";
 
 // Strukturen (Daniel 2026-08-05): Møte/Lead/Befaring/Salgsplan/Prosjekt/
 // Rute — gamle verdier beholdes så eksisterende notater dekoder.
@@ -111,6 +115,14 @@ async function ensureSchema(pool: Pool): Promise<void> {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_canvas_dokumenter_notat
       ON leadgrid_canvas_dokumenter (notat_id)`);
+  await pool.query(`
+    ALTER TABLE leadgrid_canvas_dokumenter
+      ADD COLUMN IF NOT EXISTS storage_provider TEXT NOT NULL DEFAULT 'database',
+      ADD COLUMN IF NOT EXISTS storage_object_id UUID,
+      ADD COLUMN IF NOT EXISTS storage_key TEXT,
+      ADD COLUMN IF NOT EXISTS size_bytes BIGINT,
+      ADD COLUMN IF NOT EXISTS mime_type TEXT,
+      ADD COLUMN IF NOT EXISTS checksum_sha256 CHAR(64)`);
   // Org-delt element-bibliotek (Daniel 2026-08-05): gjenbrukbare
   // elementer synkes til backend — «delt» gjør dem synlige for hele
   // org-en (salgssjefen deler standard-elementer med teamet).
@@ -402,6 +414,9 @@ export function registerLeadgridCanvasRoutes(deps: {
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
+      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      if (!orgId) { res.status(403).json({ error: "ingen_org" }); return; }
       await ensureSchema(pool);
       if (req.query.permanent === "1") {
         const r = await pool.query(
@@ -451,13 +466,154 @@ export function registerLeadgridCanvasRoutes(deps: {
           WHERE id = $1 AND organization_id = $2 AND user_id = $3`,
         [req.params.id, orgId, session.userId]);
       if (eier.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
-      await pool.query(
-        `INSERT INTO leadgrid_canvas_dokumenter
-           (id, notat_id, organization_id, user_id, navn, base64)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (id) DO UPDATE SET navn = EXCLUDED.navn,
-                                        base64 = EXCLUDED.base64`,
-        [dokId, req.params.id, orgId, session.userId, navn, base64]);
+
+      const existing = await pool.query<{
+        user_id: string;
+        organization_id: string;
+        notat_id: string;
+        storage_provider: string;
+        storage_object_id: string | null;
+        storage_key: string | null;
+      }>(
+        `SELECT user_id, organization_id::text, notat_id::text,
+                storage_provider, storage_object_id::text, storage_key
+           FROM leadgrid_canvas_dokumenter
+          WHERE id = $1`,
+        [dokId],
+      );
+      if (
+        existing.rows[0] &&
+        (
+          existing.rows[0].user_id !== session.userId ||
+          existing.rows[0].organization_id !== orgId ||
+          existing.rows[0].notat_id !== req.params.id
+        )
+      ) {
+        res.status(404).json({ error: "not_found" });
+        return;
+      }
+
+      const storage = getLeadgridObjectStorage();
+      if (!storage) {
+        res.status(503).json({ error: "leadgrid_storage_not_configured" });
+        return;
+      }
+      if (!/^[A-Za-z0-9+/]*={0,2}$/.test(base64) || base64.length % 4 !== 0) {
+        res.status(400).json({ error: "ugyldig_pdf_base64" });
+        return;
+      }
+      const pdf = Buffer.from(base64, "base64");
+      if (pdf.length === 0 || pdf.length > 20 * 1024 * 1024) {
+        res.status(pdf.length === 0 ? 400 : 413).json({
+          error: pdf.length === 0 ? "tomt_dokument" : "dokument_for_stort",
+        });
+        return;
+      }
+      if (pdf.subarray(0, 5).toString("ascii") !== "%PDF-") {
+        res.status(415).json({ error: "kun_pdf_tillatt" });
+        return;
+      }
+
+      const storageObjectId = randomUUID();
+      const objectKey = leadgridStorageKeys.canvasDocument({
+        organizationId: orgId,
+        userId: session.userId,
+        assetId: storageObjectId,
+      });
+      let uploaded;
+      try {
+        uploaded = await storage.putObject({
+          key: objectKey,
+          body: pdf,
+          contentType: "application/pdf",
+          purpose: "canvas_document",
+        });
+      } catch (error) {
+        console.error("[canvas] S3 document upload failed", error);
+        res.status(502).json({ error: "leadgrid_storage_upload_failed" });
+        return;
+      }
+
+      try {
+        await pool.query(
+          `WITH stored AS (
+             INSERT INTO leadgrid_storage_objects
+               (id, organization_id, uploaded_by, storage_provider,
+                bucket_name, object_key, purpose, display_name, size_bytes,
+                content_type, checksum_sha256, metadata)
+             VALUES
+               ($1::uuid, $2::uuid, $3, 'aws_s3', $4, $5,
+                'canvas_document', $6, $7, 'application/pdf', $8, $9::jsonb)
+             RETURNING id
+           )
+           INSERT INTO leadgrid_canvas_dokumenter
+             (id, notat_id, organization_id, user_id, navn, base64,
+              storage_provider, storage_object_id, storage_key, size_bytes,
+              mime_type, checksum_sha256)
+           SELECT $10, $11::uuid, $2, $3, $6, '', 'aws_s3', id, $5, $7,
+                  'application/pdf', $8
+             FROM stored
+           ON CONFLICT (id) DO UPDATE SET
+             navn = EXCLUDED.navn,
+             base64 = '',
+             storage_provider = EXCLUDED.storage_provider,
+             storage_object_id = EXCLUDED.storage_object_id,
+             storage_key = EXCLUDED.storage_key,
+             size_bytes = EXCLUDED.size_bytes,
+             mime_type = EXCLUDED.mime_type,
+             checksum_sha256 = EXCLUDED.checksum_sha256
+           WHERE leadgrid_canvas_dokumenter.user_id = $3
+             AND leadgrid_canvas_dokumenter.organization_id = $2
+             AND leadgrid_canvas_dokumenter.notat_id = $11::uuid`,
+          [
+            storageObjectId,
+            orgId,
+            session.userId,
+            uploaded.bucket,
+            uploaded.key,
+            navn,
+            uploaded.sizeBytes,
+            uploaded.checksumSha256,
+            JSON.stringify({ noteId: req.params.id, documentId: dokId }),
+            dokId,
+            req.params.id,
+          ],
+        );
+      } catch (error) {
+        await storage.deleteObject(uploaded.key).catch(() => undefined);
+        throw error;
+      }
+
+      const previous = existing.rows[0];
+      if (
+        previous?.storage_provider === "aws_s3" &&
+        previous.storage_key &&
+        previous.storage_object_id
+      ) {
+        try {
+          await pool.query(
+            `UPDATE leadgrid_storage_objects SET deleted_at = NOW()
+              WHERE id = $1::uuid AND deleted_at IS NULL`,
+            [previous.storage_object_id],
+          );
+          await storage.deleteObject(previous.storage_key);
+        } catch (error) {
+          await pool.query(
+            `UPDATE leadgrid_storage_objects SET deleted_at = NULL
+              WHERE id = $1::uuid AND deleted_at IS NOT NULL`,
+            [previous.storage_object_id],
+          ).catch(() => undefined);
+          console.error("[canvas] previous S3 document cleanup failed", error);
+          res.json({ ok: true, id: dokId });
+          return;
+        }
+        await pool.query(
+          `DELETE FROM leadgrid_storage_objects WHERE id = $1::uuid`,
+          [previous.storage_object_id],
+        ).catch((error) => {
+          console.error("[canvas] previous storage metadata cleanup failed", error);
+        });
+      }
       res.json({ ok: true, id: dokId });
     } catch (e) {
       console.error("[canvas] dokument-opplasting failed:", e);
@@ -474,8 +630,14 @@ export function registerLeadgridCanvasRoutes(deps: {
       const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
       if (!orgId) { res.status(403).json({ error: "ingen_org" }); return; }
       await ensureSchema(pool);
-      const r = await pool.query(
-        `SELECT d.id, d.navn, d.base64
+      const r = await pool.query<{
+        id: string;
+        navn: string;
+        base64: string;
+        storage_provider: string;
+        storage_key: string | null;
+      }>(
+        `SELECT d.id, d.navn, d.base64, d.storage_provider, d.storage_key
            FROM leadgrid_canvas_dokumenter d
            JOIN leadgrid_canvas_notater n ON n.id = d.notat_id
           WHERE d.id = $1 AND n.organization_id = $2
@@ -483,6 +645,31 @@ export function registerLeadgridCanvasRoutes(deps: {
         [req.params.dokId, orgId, session.userId]);
       const rad = r.rows[0];
       if (!rad) { res.status(404).json({ error: "not_found" }); return; }
+      if (rad.storage_provider === "aws_s3") {
+        const storage = getLeadgridObjectStorage();
+        if (!storage || !rad.storage_key) {
+          res.status(503).json({ error: "leadgrid_storage_not_configured" });
+          return;
+        }
+        try {
+          const bytes = await storage.getObjectBuffer(
+            rad.storage_key,
+            20 * 1024 * 1024,
+          );
+          res.json({
+            dokument: {
+              id: rad.id,
+              navn: rad.navn,
+              base64: bytes.toString("base64"),
+            },
+          });
+          return;
+        } catch (error) {
+          console.error("[canvas] S3 document read failed", error);
+          res.status(502).json({ error: "leadgrid_storage_download_failed" });
+          return;
+        }
+      }
       res.json({ dokument: { id: rad.id, navn: rad.navn, base64: rad.base64 } });
     } catch (e) {
       console.error("[canvas] dokument-henting failed:", e);
@@ -495,12 +682,61 @@ export function registerLeadgridCanvasRoutes(deps: {
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
+      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      if (!orgId) { res.status(403).json({ error: "ingen_org" }); return; }
       await ensureSchema(pool);
-      const r = await pool.query(
+      const existing = await pool.query<{
+        storage_provider: string;
+        storage_key: string | null;
+        storage_object_id: string | null;
+      }>(
+        `SELECT d.storage_provider, d.storage_key, d.storage_object_id::text
+           FROM leadgrid_canvas_dokumenter d
+           JOIN leadgrid_canvas_notater n ON n.id = d.notat_id
+          WHERE d.id = $1 AND d.user_id = $2
+            AND d.organization_id = $3 AND n.organization_id = $3`,
+        [req.params.dokId, session.userId, orgId]);
+      const document = existing.rows[0];
+      if (!document) { res.status(404).json({ error: "not_found" }); return; }
+      if (document.storage_provider === "aws_s3") {
+        const storage = getLeadgridObjectStorage();
+        if (!storage || !document.storage_key) {
+          res.status(503).json({ error: "leadgrid_storage_not_configured" });
+          return;
+        }
+        if (document.storage_object_id) {
+          await pool.query(
+            `UPDATE leadgrid_storage_objects SET deleted_at = NOW()
+              WHERE id = $1::uuid AND deleted_at IS NULL`,
+            [document.storage_object_id],
+          );
+        }
+        try {
+          await storage.deleteObject(document.storage_key);
+        } catch (error) {
+          if (document.storage_object_id) {
+            await pool.query(
+              `UPDATE leadgrid_storage_objects SET deleted_at = NULL
+                WHERE id = $1::uuid AND deleted_at IS NOT NULL`,
+              [document.storage_object_id],
+            ).catch(() => undefined);
+          }
+          console.error("[canvas] S3 document delete failed", error);
+          res.status(502).json({ error: "leadgrid_storage_delete_failed" });
+          return;
+        }
+      }
+      await pool.query(
         `DELETE FROM leadgrid_canvas_dokumenter
-          WHERE id = $1 AND user_id = $2`,
-        [req.params.dokId, session.userId]);
-      if (r.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
+          WHERE id = $1 AND user_id = $2 AND organization_id = $3`,
+        [req.params.dokId, session.userId, orgId]);
+      if (document.storage_object_id) {
+        await pool.query(
+          `DELETE FROM leadgrid_storage_objects WHERE id = $1::uuid`,
+          [document.storage_object_id],
+        );
+      }
       res.json({ ok: true });
     } catch (e) {
       console.error("[canvas] dokument-sletting failed:", e);

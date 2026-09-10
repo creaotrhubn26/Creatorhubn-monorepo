@@ -13,7 +13,7 @@
  *        brukerens org (via resolveOrgIdForUser). Inkluderer brukerens
  *        progresjon per kapittel (watched/position_seconds).
  *   POST /academy/progress             → upsert { chapter_id, watched, position_seconds }
- *   GET  /academy/chapters/:id/video-url → { url } (presignert R2-GET) |
+ *   GET  /academy/chapters/:id/video-url → { url } (presignert storage-GET) |
  *        404 hvis kapittelet ikke har video (tekst/poster-kapittel).
  *
  * Fase 2 — org-egne kurs (admin-gated: global admin/super_admin eller
@@ -24,7 +24,7 @@
  *   POST   /academy/courses/:id/chapters         → nytt kapittel (auto-nummer)
  *   PATCH  /academy/chapters/:id                 → felt-oppdatering
  *   DELETE /academy/chapters/:id
- *   POST   /academy/chapters/:id/video-upload-url → presignert R2-PUT (15 min)
+ *   POST   /academy/chapters/:id/video-upload-url → presignert AWS S3-PUT (15 min)
  *   POST   /academy/chapters/:id/video-attach    → sett video_r2_key etter PUT
  *
  * Kun scope='org'-kurs i egen org kan endres — offisielle kurs er read-only
@@ -36,18 +36,32 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import crypto from "node:crypto";
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
+import {
+  getLeadgridObjectStorage,
+  leadgridStorageKeys,
+  type LeadgridStorageProvider,
+} from "./leadgrid-s3-storage-service.js";
 
-// ── Backblaze B2 (S3-kompatibel) ─────────────────────────────────────
-// Samme oppsett som admin-academy-b2-routes.ts — Academy-video lagres på
-// B2 (Daniels beslutning 2026-07-04: B2, ikke R2). Nøkkel-prefix:
-// leadgrid-academy/<orgId>/<chapterId>/…
+// Legacy Backblaze B2 reader. Existing and platform-owned videos stay readable
+// while every new organization-owned upload uses AWS_LEADGRID_* below.
 const B2_REGION = process.env.B2_REGION || "us-west-001";
 const B2_ENDPOINT = `https://s3.${B2_REGION}.backblazeb2.com`;
 const UPLOAD_URL_TTL_SECONDS = 15 * 60;
 const PLAYBACK_URL_TTL_SECONDS = 30 * 60;
+const MAX_ACADEMY_VIDEO_BYTES = 2 * 1024 * 1024 * 1024;
+const ACADEMY_VIDEO_CONTENT_TYPES = [
+  "video/mp4",
+  "video/quicktime",
+  "video/x-m4v",
+] as const;
+
+function hasIsoBaseMediaSignature(prefix: Buffer): boolean {
+  return prefix.length >= 12 && prefix.subarray(4, 8).toString("ascii") === "ftyp";
+}
 
 function getB2Config(): { bucketName: string; client: S3Client } | null {
   const keyId = process.env.B2_APPLICATION_KEY_ID;
@@ -381,6 +395,39 @@ export function registerLeadgridAcademyRoutes(deps: AcademyRoutesDeps): void {
     return r.rows.length > 0;
   }
 
+  async function loadOwnedChapter(chapterId: string, orgId: string): Promise<{
+    chapterId: string;
+    courseId: string;
+    videoKey: string | null;
+    storageProvider: LeadgridStorageProvider;
+    storageObjectId: string | null;
+  } | null> {
+    const r = await pool.query<{
+      chapter_id: string;
+      course_id: string;
+      video_r2_key: string | null;
+      video_storage_provider: LeadgridStorageProvider;
+      video_storage_object_id: string | null;
+    }>(
+      `SELECT ch.id::text AS chapter_id, ch.course_id::text,
+              ch.video_r2_key, ch.video_storage_provider,
+              ch.video_storage_object_id::text
+         FROM leadgrid_academy_chapters ch
+         JOIN leadgrid_academy_courses c ON c.id = ch.course_id
+        WHERE ch.id = $1::uuid AND c.scope = 'org'
+          AND c.organization_id = $2`,
+      [chapterId, orgId],
+    );
+    const row = r.rows[0];
+    return row ? {
+      chapterId: row.chapter_id,
+      courseId: row.course_id,
+      videoKey: row.video_r2_key,
+      storageProvider: row.video_storage_provider,
+      storageObjectId: row.video_storage_object_id,
+    } : null;
+  }
+
   // ── PATCH /api/leadgrid/academy/chapters/:id ──────────────────────
   app.patch(
     "/api/leadgrid/academy/chapters/:id",
@@ -459,27 +506,31 @@ export function registerLeadgridAcademyRoutes(deps: AcademyRoutesDeps): void {
       }
       const session = requireUserSession(req, res);
       if (!session) return;
-      const contentType = String((req.body ?? {}).content_type ?? "video/mp4");
-      if (!/^video\/[a-z0-9.+-]+$/i.test(contentType)) {
+      const contentType = String((req.body ?? {}).content_type ?? "video/mp4").toLowerCase();
+      if (!ACADEMY_VIDEO_CONTENT_TYPES.includes(contentType as typeof ACADEMY_VIDEO_CONTENT_TYPES[number])) {
         return res.status(400).json({ error: "ugyldig_content_type" });
       }
       try {
         const orgId = await resolveOrgIdForUser(pool, session.userId);
-        if (!(await isAcademyAdmin(session, orgId)) || !(await ownedChapter(req.params.id, orgId))) {
+        const chapter = await loadOwnedChapter(req.params.id, orgId);
+        if (!(await isAcademyAdmin(session, orgId)) || !chapter) {
           return res.status(403).json({ error: "krever_org_admin" });
         }
-        const b2 = getB2Config();
-        if (!b2) {
+        const storage = getLeadgridObjectStorage();
+        if (!storage) {
           return res.status(503).json({ error: "lagring_ikke_konfigurert" });
         }
-        const ext = contentType.includes("quicktime") ? "mov" : "mp4";
-        const key = `leadgrid-academy/${orgId}/${req.params.id}/video-${Date.now()}.${ext}`;
-        const url = await getSignedUrl(
-          b2.client,
-          new PutObjectCommand({ Bucket: b2.bucketName, Key: key, ContentType: contentType }),
-          { expiresIn: UPLOAD_URL_TTL_SECONDS },
-        );
-        return res.json({ url, key });
+        const key = leadgridStorageKeys.temporaryAcademyVideo({
+          organizationId: orgId,
+          chapterId: chapter.chapterId,
+          uploadId: crypto.randomUUID(),
+        });
+        const url = await storage.createUploadUrl({
+          key,
+          contentType,
+          ttlSeconds: UPLOAD_URL_TTL_SECONDS,
+        });
+        return res.json({ url, key, storage_provider: "aws_s3" });
       } catch (err) {
         console.error("[leadgrid-academy] upload-url feilet:", err);
         return res.status(500).json({ error: "academy_upload_url_failed" });
@@ -499,27 +550,122 @@ export function registerLeadgridAcademyRoutes(deps: AcademyRoutesDeps): void {
       const body = (req.body ?? {}) as { key?: string; duration_seconds?: number };
       try {
         const orgId = await resolveOrgIdForUser(pool, session.userId);
-        if (!(await isAcademyAdmin(session, orgId)) || !(await ownedChapter(req.params.id, orgId))) {
+        const chapter = await loadOwnedChapter(req.params.id, orgId);
+        if (!(await isAcademyAdmin(session, orgId)) || !chapter) {
           return res.status(403).json({ error: "krever_org_admin" });
         }
-        // Nøkkelen må ligge under kapittelets egen prefix — hindrer at en
-        // org peker på andres objekter.
-        const expectedPrefix = `leadgrid-academy/${orgId}/${req.params.id}/`;
-        if (!body.key || !body.key.startsWith(expectedPrefix)) {
+        const expectedPrefix =
+          `temporary/organizations/${orgId.toLowerCase()}` +
+          `/academy/chapters/${req.params.id.toLowerCase()}/uploads/`;
+        const uploadSuffix = body.key?.slice(expectedPrefix.length) ?? "";
+        const uploadParts = uploadSuffix.split("/");
+        if (
+          !body.key?.startsWith(expectedPrefix) ||
+          uploadParts.length !== 2 ||
+          !UUID_RE.test(uploadParts[0]) ||
+          uploadParts[1] !== "original"
+        ) {
           return res.status(400).json({ error: "ugyldig_key" });
         }
-        await pool.query(
-          `UPDATE leadgrid_academy_chapters SET
-             video_r2_key = $2,
-             duration_seconds = COALESCE($3, duration_seconds),
-             updated_at = NOW()
-           WHERE id = $1::uuid`,
-          [
-            req.params.id, body.key,
-            typeof body.duration_seconds === "number" && body.duration_seconds > 0
-              ? Math.min(body.duration_seconds, 24 * 3600) : null,
-          ],
-        );
+        const storage = getLeadgridObjectStorage();
+        if (!storage) {
+          return res.status(503).json({ error: "lagring_ikke_konfigurert" });
+        }
+        const storageObjectId = crypto.randomUUID();
+        const finalKey = leadgridStorageKeys.academyVideo({
+          organizationId: orgId,
+          courseId: chapter.courseId,
+          chapterId: chapter.chapterId,
+          assetId: storageObjectId,
+        });
+        let finalized;
+        try {
+          finalized = await storage.finalizeTemporaryObject({
+            temporaryKey: body.key,
+            finalKey,
+            allowedContentTypes: ACADEMY_VIDEO_CONTENT_TYPES,
+            maxBytes: MAX_ACADEMY_VIDEO_BYTES,
+            purpose: "academy_video",
+            validatePrefix: hasIsoBaseMediaSignature,
+          });
+        } catch (error) {
+          console.error("[leadgrid-academy] video-finalisering feilet:", error);
+          return res.status(422).json({ error: "academy_video_validation_failed" });
+        }
+        try {
+          const saved = await pool.query(
+            `WITH stored AS (
+               INSERT INTO leadgrid_storage_objects
+                 (id, organization_id, uploaded_by, storage_provider,
+                  bucket_name, object_key, purpose, display_name, size_bytes,
+                  content_type, checksum_sha256, metadata)
+               VALUES
+                 ($1::uuid, $2::uuid, $3, 'aws_s3', $4, $5,
+                  'academy_video', 'Academy-video', $6, $7, $8, $9::jsonb)
+               RETURNING id
+             )
+             UPDATE leadgrid_academy_chapters ch SET
+               video_r2_key = $5,
+               video_storage_provider = 'aws_s3',
+               video_storage_object_id = stored.id,
+               video_size_bytes = $6,
+               video_content_type = $7,
+               video_checksum_sha256 = $8,
+               duration_seconds = COALESCE($10, ch.duration_seconds),
+               updated_at = NOW()
+             FROM stored, leadgrid_academy_courses c
+             WHERE ch.id = $11::uuid AND c.id = ch.course_id
+               AND c.scope = 'org' AND c.organization_id = $2
+             RETURNING ch.id`,
+            [
+              storageObjectId,
+              orgId,
+              session.userId,
+              finalized.bucket,
+              finalized.key,
+              finalized.sizeBytes,
+              finalized.contentType,
+              finalized.checksumSha256,
+              JSON.stringify({ courseId: chapter.courseId, chapterId: chapter.chapterId }),
+              typeof body.duration_seconds === "number" && body.duration_seconds > 0
+                ? Math.min(body.duration_seconds, 24 * 3600) : null,
+              req.params.id,
+            ],
+          );
+          if (!saved.rowCount) throw new Error("Academy-kapittelet ble ikke oppdatert");
+        } catch (error) {
+          await storage.deleteObject(finalized.key).catch(() => undefined);
+          throw error;
+        }
+
+        if (
+          chapter.storageProvider === "aws_s3" &&
+          chapter.videoKey &&
+          chapter.storageObjectId
+        ) {
+          try {
+            await pool.query(
+              `UPDATE leadgrid_storage_objects SET deleted_at = NOW()
+                WHERE id = $1::uuid AND deleted_at IS NULL`,
+              [chapter.storageObjectId],
+            );
+            await storage.deleteObject(chapter.videoKey);
+          } catch (error) {
+            await pool.query(
+              `UPDATE leadgrid_storage_objects SET deleted_at = NULL
+                WHERE id = $1::uuid AND deleted_at IS NOT NULL`,
+              [chapter.storageObjectId],
+            ).catch(() => undefined);
+            console.error("[leadgrid-academy] gammel video-opprydding feilet:", error);
+            return res.json({ ok: true });
+          }
+          await pool.query(
+            `DELETE FROM leadgrid_storage_objects WHERE id = $1::uuid`,
+            [chapter.storageObjectId],
+          ).catch((error) => {
+            console.error("[leadgrid-academy] gammel videometadata-opprydding feilet:", error);
+          });
+        }
         return res.json({ ok: true });
       } catch (err) {
         console.error("[leadgrid-academy] video-attach feilet:", err);
@@ -540,8 +686,11 @@ export function registerLeadgridAcademyRoutes(deps: AcademyRoutesDeps): void {
       try {
         const orgId = await resolveOrgIdForUser(pool, session.userId);
         // Synlighets-sjekk: kapittelets kurs må være offisielt eller org-ens eget.
-        const r = await pool.query<{ video_r2_key: string | null }>(
-          `SELECT ch.video_r2_key
+        const r = await pool.query<{
+          video_r2_key: string | null;
+          video_storage_provider: LeadgridStorageProvider;
+        }>(
+          `SELECT ch.video_r2_key, ch.video_storage_provider
              FROM leadgrid_academy_chapters ch
              JOIN leadgrid_academy_courses c ON c.id = ch.course_id
             WHERE ch.id = $1::uuid AND c.is_published = TRUE
@@ -551,13 +700,20 @@ export function registerLeadgridAcademyRoutes(deps: AcademyRoutesDeps): void {
         const key = r.rows[0]?.video_r2_key ?? null;
         if (!r.rows.length) return res.status(404).json({ error: "not_found" });
         if (!key) return res.status(404).json({ error: "ingen_video" });
-        const b2 = getB2Config();
-        if (!b2) return res.status(503).json({ error: "lagring_ikke_konfigurert" });
-        const url = await getSignedUrl(
-          b2.client,
-          new GetObjectCommand({ Bucket: b2.bucketName, Key: key }),
-          { expiresIn: PLAYBACK_URL_TTL_SECONDS },
-        );
+        let url: string;
+        if (r.rows[0].video_storage_provider === "aws_s3") {
+          const storage = getLeadgridObjectStorage();
+          if (!storage) return res.status(503).json({ error: "lagring_ikke_konfigurert" });
+          url = await storage.createDownloadUrl(key, PLAYBACK_URL_TTL_SECONDS);
+        } else {
+          const b2 = getB2Config();
+          if (!b2) return res.status(503).json({ error: "lagring_ikke_konfigurert" });
+          url = await getSignedUrl(
+            b2.client,
+            new GetObjectCommand({ Bucket: b2.bucketName, Key: key }),
+            { expiresIn: PLAYBACK_URL_TTL_SECONDS },
+          );
+        }
         return res.json({ url });
       } catch (err) {
         console.error("[leadgrid-academy] video-url feilet:", err);

@@ -38,9 +38,57 @@ lead names or original filenames into an object key. The backend must perform
 authorization before issuing a short-lived presigned URL. PostgreSQL remains
 authoritative for ownership and human-readable metadata.
 
+Project and user IDs are historically free-form text in parts of Leadgrid.
+The runtime maps those values deterministically to opaque UUID-shaped prefix
+segments before creating a key. The original identifier stays in PostgreSQL
+and is never exposed in S3.
+
 S3 is a flat object store. The slash-separated hierarchy is implemented through
 key prefixes; zero-byte root markers make the intended top-level structure
 visible in the AWS console before tenant data exists.
+
+## What Leadgrid stores here
+
+The application runtime sends these organization-owned uploads to this bucket
+through the `AWS_LEADGRID_*` contract:
+
+- lead attachments
+- Canvas PDF originals
+- Pitch Deck images and mockups
+- partner verification documents
+- videos for organization-owned Academy courses
+- sales prize-catalog images
+
+PostgreSQL stores the organization/project/entity relationship, uploader,
+display name, MIME type, byte size and SHA-256. S3 stores only the bytes and a
+non-personal purpose marker. Signed URLs are generated only after backend
+authorization.
+
+Raw meeting audio, completed CSV/XLSX import payloads, reproducible previews
+and unapproved Discovery crawl bodies are deliberately not retained. Official
+Academy media and global templates are platform assets and are not charged to
+a customer organization. Existing B2 Academy videos remain readable; new video
+uploads for organization-owned courses use temporary S3 objects that are
+validated and finalized before they are registered. Profile images keep their
+legacy provider until their stable signed-delivery migration is complete;
+mixing a private S3 key into a public URL column would create expired or broken
+images across non-Leadgrid products that also consume the shared user profile.
+
+The live object-path verification is available as:
+
+```bash
+cd backend
+LEADGRID_S3_E2E=1 npm run test:leadgrid-s3:e2e
+```
+
+It performs server PUT, signed GET, byte comparison and DELETE, followed by a
+direct temporary PUT, header/signature validation, server-side finalization,
+SHA-256 verification and cleanup. It requires the four production-style
+`AWS_LEADGRID_*` variables; local short-lived AWS sessions may additionally
+provide `LEADGRID_S3_E2E_SESSION_TOKEN` without changing the Render contract.
+
+The machine-readable inventory and exact prefixes live in
+`storage-layout.json`.
 
 ## Render runtime identity
 

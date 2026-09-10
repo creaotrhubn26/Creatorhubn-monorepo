@@ -53,12 +53,16 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import multer from "multer";
 import crypto from "node:crypto";
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { sendEmail } from "./casting-reminder-sender.js";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 import { canManageLeadgridSales } from "./leadgrid-sales-management-auth.js";
 import { getCommissionEarnings, getTeamLeaderboard } from "./leadgrid-sales-management-data.js";
 import { refreshContestParticipants } from "./sales-leadership-engine.js";
+import {
+  getLeadgridObjectStorage,
+  leadgridStorageKeys,
+} from "./leadgrid-s3-storage-service.js";
+import { hydrateLeadgridPrizeImageUrls } from "./leadgrid-prize-image-service.js";
 
 type SessionUser = {
   userId: string;
@@ -86,23 +90,20 @@ const prizeImageUpload = multer({
   },
 });
 
-const B2_REGION = process.env.B2_REGION || "eu-central-003";
-const B2_ENDPOINT = `https://s3.${B2_REGION}.backblazeb2.com`;
+const PRIZE_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
-function getB2Client(): { client: S3Client; bucket: string } | null {
-  const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID;
-  const appKey = process.env.B2_ROLE_ROOM_APPLICATION_KEY;
-  const bucket = process.env.B2_ROLE_ROOM_BUCKET_NAME;
-  if (!keyId || !appKey || !bucket) return null;
-  return {
-    client: new S3Client({
-      region: B2_REGION,
-      endpoint: B2_ENDPOINT,
-      credentials: { accessKeyId: keyId, secretAccessKey: appKey },
-      forcePathStyle: true,
-    }),
-    bucket,
-  };
+function validPrizeImageSignature(body: Buffer, contentType: string): boolean {
+  if (contentType === "image/jpeg") {
+    return body.length >= 3 && body[0] === 0xff && body[1] === 0xd8 && body[2] === 0xff;
+  }
+  if (contentType === "image/png") {
+    return body.length >= 8 && body.subarray(0, 8).equals(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+  }
+  return contentType === "image/webp" && body.length >= 12 &&
+    body.subarray(0, 4).toString("ascii") === "RIFF" &&
+    body.subarray(8, 12).toString("ascii") === "WEBP";
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -396,14 +397,15 @@ export function registerSalesLeadershipRoutes(
     try {
       const r = await pool.query(
         `SELECT id, title, description, category, estimated_value_nok,
-                fulfillment_type, image_url, image_b2_key, metadata,
+                fulfillment_type, image_url, image_b2_key,
+                image_storage_provider, metadata,
                 created_by, created_at, updated_at, archived
            FROM sales_prize_catalog
           WHERE organization_id = $1 AND archived = FALSE
           ORDER BY created_at DESC`,
         [orgId],
       );
-      return res.json({ prizes: r.rows });
+      return res.json({ prizes: await hydrateLeadgridPrizeImageUrls(r.rows) });
     } catch (err) {
       console.error("[sales-leadership] prize-catalog GET failed:", err);
       return res.status(500).json({ error: "prize_catalog_failed", detail: "internal_error" });
@@ -544,10 +546,12 @@ export function registerSalesLeadershipRoutes(
             fulfillment_type, image_url, image_b2_key, metadata, created_by, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, NOW(), NOW())
          RETURNING id, title, description, category, estimated_value_nok,
-                   fulfillment_type, image_url, image_b2_key, metadata, created_at`,
+                   fulfillment_type, image_url, image_b2_key,
+                   image_storage_provider, metadata, created_at`,
         [orgId, title, description, category, value, fulfillmentType, imageUrl, imageKey, JSON.stringify(metadata), session.userId],
       );
-      return res.status(201).json(r.rows[0]);
+      const [product] = await hydrateLeadgridPrizeImageUrls(r.rows);
+      return res.status(201).json(product);
     } catch (err) {
       console.error("[sales-leadership] prize-catalog POST failed:", err);
       return res.status(500).json({ error: "prize_create_failed", detail: "internal_error" });
@@ -586,11 +590,13 @@ export function registerSalesLeadershipRoutes(
         `UPDATE sales_prize_catalog SET ${sets.join(", ")}
           WHERE id = $${vals.length - 1} AND organization_id = $${vals.length}
           RETURNING id, title, description, category, estimated_value_nok,
-                    fulfillment_type, image_url, image_b2_key, metadata, updated_at`,
+                    fulfillment_type, image_url, image_b2_key,
+                    image_storage_provider, metadata, updated_at`,
         vals,
       );
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
-      return res.json(r.rows[0]);
+      const [product] = await hydrateLeadgridPrizeImageUrls(r.rows);
+      return res.json(product);
     } catch (err) {
       console.error("[sales-leadership] prize-catalog PATCH failed:", err);
       return res.status(500).json({ error: "prize_update_failed", detail: "internal_error" });
@@ -627,33 +633,50 @@ export function registerSalesLeadershipRoutes(
       const orgId = await resolveOrgIdForUser(pool, session.userId);
       const file = (req as any).file as { buffer: Buffer; originalname: string; mimetype: string } | undefined;
       if (!file) return res.status(400).json({ error: "missing_image_field" });
-      const ct = file.mimetype || "application/octet-stream";
-      if (!ct.startsWith("image/")) {
+      const ct = (file.mimetype || "application/octet-stream").toLowerCase();
+      if (!PRIZE_IMAGE_TYPES.has(ct) || !validPrizeImageSignature(file.buffer, ct)) {
         return res.status(400).json({ error: "invalid_image_type", detail: ct });
       }
-      const config = getB2Client();
-      if (!config) return res.status(503).json({ error: "b2_not_configured" });
+      const storage = getLeadgridObjectStorage();
+      if (!storage) return res.status(503).json({ error: "leadgrid_storage_not_configured" });
       const fileId = crypto.randomUUID();
-      const safeName = (file.originalname || "prize")
-        .replace(/[^a-zA-Z0-9._-]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-        .slice(0, 120) || "prize";
-      const b2Key = `sales-leadership/${orgId}/prizes/${fileId}-${safeName}`;
+      const objectKey = leadgridStorageKeys.prizeImage({
+        organizationId: orgId,
+        assetId: fileId,
+      });
+      let stored;
       try {
-        await config.client.send(
-          new PutObjectCommand({
-            Bucket: config.bucket,
-            Key: b2Key,
-            Body: file.buffer,
-            ContentType: ct,
-          }),
+        stored = await storage.putObject({
+          key: objectKey,
+          body: file.buffer,
+          contentType: ct,
+          purpose: "sales_prize_image",
+        });
+        await pool.query(
+          `INSERT INTO leadgrid_storage_objects
+             (id, organization_id, uploaded_by, storage_provider,
+              bucket_name, object_key, purpose, display_name, size_bytes,
+              content_type, checksum_sha256, metadata)
+           VALUES
+             ($1::uuid, $2::uuid, $3, 'aws_s3', $4, $5,
+              'sales_prize_image', 'Premiebilde', $6, $7, $8, '{}'::jsonb)`,
+          [
+            fileId, orgId, session.userId, stored.bucket, stored.key,
+            stored.sizeBytes, ct, stored.checksumSha256,
+          ],
         );
       } catch (err) {
+        if (stored) await storage.deleteObject(stored.key).catch(() => undefined);
         console.error("[sales-leadership] prize image upload failed:", err);
-        return res.status(500).json({ error: "upload_failed", detail: "internal_error" });
+        return res.status(502).json({ error: "upload_failed", detail: "internal_error" });
       }
-      const imageUrl = `${B2_ENDPOINT}/${config.bucket}/${b2Key}`;
-      return res.status(201).json({ image_url: imageUrl, image_b2_key: b2Key });
+      const imageUrl = await storage.createDownloadUrl(stored.key, 600).catch(() => null);
+      return res.status(201).json({
+        image_url: imageUrl,
+        image_b2_key: stored.key,
+        storage_provider: "aws_s3",
+        storage_object_id: fileId,
+      });
     },
   );
 

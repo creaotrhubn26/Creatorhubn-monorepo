@@ -563,14 +563,18 @@ export function registerPartnerVerificationRoutes({ app, pool, activeSessions }:
       }
 
       // Bekreft eierskap
-      const own = await pool.query(
-        `SELECT 1 FROM partner_applications WHERE id = $1 AND applicant_user_id = $2`,
+      const own = await pool.query<{ organization_id: string }>(
+        `SELECT organization_id::text
+           FROM partner_applications
+          WHERE id = $1 AND applicant_user_id = $2`,
         [applicationId, session.userId],
       );
       if (own.rows.length === 0) return res.status(403).json({ error: "Ikke din søknad" });
 
       const r = await uploadPartnerDocument(pool, {
-        applicationId, documentType,
+        applicationId,
+        organizationId: own.rows[0].organization_id,
+        documentType,
         filename: file.originalname,
         mimeType: file.mimetype,
         fileBuffer: file.buffer,
@@ -612,7 +616,8 @@ export function registerPartnerVerificationRoutes({ app, pool, activeSessions }:
       [req.params.docId, session.userId],
     );
     if (own.rows.length === 0) return res.status(403).json({ error: "Ikke din fil" });
-    await deletePartnerDocument(pool, req.params.docId);
+    const deleted = await deletePartnerDocument(pool, req.params.docId);
+    if (!deleted) return res.status(502).json({ error: "Kunne ikke slette dokumentet fra lagring" });
     res.json({ ok: true });
   });
 
@@ -620,12 +625,21 @@ export function registerPartnerVerificationRoutes({ app, pool, activeSessions }:
   app.get("/api/superadmin/partner-documents/:id/url", async (req, res) => {
     const s = await requireSuperAdmin(req, res, pool, activeSessions);
     if (!s) return;
-    const r = await pool.query<{ storage_url: string; filename: string }>(
-      `SELECT storage_url, filename FROM partner_application_documents WHERE id = $1`,
+    const r = await pool.query<{
+      storage_url: string;
+      filename: string;
+      storage_provider: "aws_s3" | "legacy_b2";
+    }>(
+      `SELECT storage_url, filename, storage_provider
+         FROM partner_application_documents WHERE id = $1`,
       [req.params.id],
     );
     if (r.rows.length === 0) return res.status(404).json({ error: "Ikke funnet" });
-    const url = await presignPartnerDocument(r.rows[0].storage_url, 600);
+    const url = await presignPartnerDocument(
+      r.rows[0].storage_url,
+      600,
+      r.rows[0].storage_provider,
+    );
     if (!url) return res.status(500).json({ error: "Kunne ikke generere URL" });
     res.json({ url, filename: r.rows[0].filename });
   });
