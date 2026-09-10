@@ -1,6 +1,6 @@
 {
   "formatVersion": 2,
-  "baselineId": "creatorhub-production-ledger-2026-09-02-v3",
+  "baselineId": "creatorhub-production-ledger-2026-09-10-v4",
   "legacyAppliedFilenames": [
     "0000b_missing_columns.sql",
     "0000c_missing_tables.sql",
@@ -26,7 +26,8 @@
     "0471_project_pricing_and_time_tracking.sql",
     "0490_leadgrid_core_dataflow.sql",
     "0491_leadgrid_lead_files.sql",
-    "0492_leadgrid_runtime_schema_backfill.sql"
+    "0492_leadgrid_runtime_schema_backfill.sql",
+    "0506_role_room_storage_ownership_billing.sql"
   ],
   "legacyAppliedChecksums": {
     "0000b_missing_columns.sql": "22fc5b363ad5d0c4949c92b195031435c6a683b846489ac2e65b492ceac17714",
@@ -53,6 +54,7 @@
     "0471_project_pricing_and_time_tracking.sql": "981ea9e0b70850a05abe7c90ddba30eb246c15cf1cd6e1bf62450f5b9a614649",
     "0490_leadgrid_core_dataflow.sql": null,
     "0491_leadgrid_lead_files.sql": null,
-    "0492_leadgrid_runtime_schema_backfill.sql": null
+    "0492_leadgrid_runtime_schema_backfill.sql": null,
+    "0506_role_room_storage_ownership_billing.sql": null
   }
 }
