@@ -18,14 +18,9 @@ export const DIRECTOR_SURFACES = [
 ] as const;
 
 export type DirectorSurface = (typeof DIRECTOR_SURFACES)[number];
-export type RoleRoomWorkspaceLens = 'director' | 'full';
 
 export function isDirectorSurface(value: unknown): value is DirectorSurface {
   return typeof value === 'string' && DIRECTOR_SURFACES.includes(value as DirectorSurface);
-}
-
-export function isRoleRoomWorkspaceLens(value: unknown): value is RoleRoomWorkspaceLens {
-  return value === 'director' || value === 'full';
 }
 
 export type DirectorBriefTone = 'attention' | 'upcoming' | 'ready' | 'neutral';
