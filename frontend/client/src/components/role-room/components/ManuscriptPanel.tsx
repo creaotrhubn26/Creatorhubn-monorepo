@@ -8,6 +8,7 @@ import {
   Box,
   Typography,
   Button,
+  ButtonGroup,
   IconButton,
   TextField,
   Select,
@@ -474,6 +475,8 @@ import {
   FileDownload as FileDownloadIcon,
   FileUpload as FileUploadIcon,
   ChevronRight as ChevronRightIcon,
+  ArrowBack as ArrowBackIcon,
+  MoreHoriz as MoreHorizIcon,
 } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
@@ -577,6 +580,23 @@ const manuscriptCloudSaveLabel = (
   if (state === 'conflict') return `Konflikt med skyversjon${versionSuffix}`;
   if (state === 'error') return 'Skylagringsfeil';
   return 'Ikke synkronisert';
+};
+
+const manuscriptStatusLabel = (status: string | null | undefined): string => {
+  if (status === 'shooting') return 'Produksjon';
+  if (status === 'approved') return 'Godkjent';
+  if (status === 'review') return 'Gjennomgang';
+  if (status === 'completed') return 'Fullført';
+  return 'Utkast';
+};
+
+const manuscriptToolbarSaveLabel = (state: ManuscriptSaveState): string => {
+  if (state === 'saving') return 'Lagrer…';
+  if (state === 'saved') return 'Lagret';
+  if (state === 'local-only') return 'Lagret lokalt';
+  if (state === 'conflict') return 'Versjonskonflikt';
+  if (state === 'error') return 'Prøv lagring';
+  return 'Lagre';
 };
 
 const isUnknownRecord = (value: unknown): value is Record<string, unknown> =>
@@ -722,6 +742,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     return (key && memberNameMapRef.current[key]) || key || 'En annen i teamet';
   };
   const [exportMenuAnchor, setExportMenuAnchor] = useState<null | HTMLElement>(null);
+  const [breakdownMenuAnchor, setBreakdownMenuAnchor] = useState<null | HTMLElement>(null);
   const [showTargetDialog, setShowTargetDialog] = useState(false);
   const [targetDraft, setTargetDraft] = useState('');
   const [lastManuscriptSaved, setLastManuscriptSaved] = useState<Date | null>(null);
@@ -2606,6 +2627,25 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   const selectedManuscriptIsExample = selectedManuscript
     ? isExampleManuscriptProject(selectedManuscript)
     : false;
+  const estimatedRuntimeMinutes = Math.round(selectedManuscript?.pageCount || 0);
+  const normalizedTargetDuration =
+    typeof targetDurationMinutes === 'number' && targetDurationMinutes > 0
+      ? targetDurationMinutes
+      : null;
+  const targetDurationDeviates =
+    normalizedTargetDuration !== null
+    && estimatedRuntimeMinutes > 0
+    && Math.abs(estimatedRuntimeMinutes - normalizedTargetDuration) / normalizedTargetDuration > 0.15;
+  const saveToolbarLabel = manuscriptToolbarSaveLabel(manuscriptSaveStatus);
+  const saveToolbarColor =
+    manuscriptSaveStatus === 'error' || manuscriptSaveStatus === 'conflict'
+      ? '#f87171'
+      : manuscriptSaveStatus === 'local-only' || manuscriptSaveStatus === 'unsaved'
+        ? '#fbbf24'
+        : manuscriptSaveStatus === 'saving'
+          ? '#60a5fa'
+          : branding.colors.textSecondary;
+  const showSingleHeaderRow = tier === 'xl' || tier === 'xxl' || tier === '4k';
 
   if (!hasProjectContext) {
     return (
@@ -2645,228 +2685,388 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       {/* Header */}
       <Box
         sx={{
-          p: responsive.headerPadding,
+          px: isMobile ? 1.25 : 2,
+          py: isMobile ? 1 : 1.25,
           borderBottom: `1px solid ${branding.colors.border}`,
           background: `linear-gradient(180deg, ${branding.colors.surface} 0%, ${branding.colors.background} 100%)`,
         }}
       >
-        <Stack 
-          direction={responsive.headerStackDirection} 
-          spacing={responsive.spacing} 
-          alignItems={isMobile ? 'stretch' : 'center'} 
-          justifyContent="space-between"
+        <Box
+          data-testid="manuscript-toolbar"
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: showSingleHeaderRow ? 'minmax(0, 1fr) auto' : 'minmax(0, 1fr)',
+            alignItems: 'center',
+            gap: isMobile ? 1 : 1.5,
+            '& .MuiButton-root': {
+              minHeight: 40,
+              borderRadius: 1.5,
+              fontSize: isMobile ? '0.75rem' : '0.82rem',
+              textTransform: 'none',
+              whiteSpace: 'nowrap',
+            },
+            '& .MuiButton-outlined': {
+              borderColor: `${branding.colors.primary}66`,
+              color: branding.colors.textPrimary,
+              '&:hover': {
+                borderColor: branding.colors.primary,
+                bgcolor: `${branding.colors.primary}1a`,
+              },
+            },
+            '& .MuiButton-contained': {
+              bgcolor: branding.colors.primary,
+              color: branding.colors.textPrimary,
+              '&:hover': { bgcolor: branding.colors.secondary },
+            },
+          }}
         >
           <Box
             sx={{
               display: 'flex',
               alignItems: 'center',
-              minHeight: isMobile ? 34 : 40,
+              flexWrap: showSingleHeaderRow ? 'nowrap' : 'wrap',
+              gap: isMobile ? 0.75 : 1,
+              minHeight: 40,
               minWidth: 0,
             }}
           >
             {headerLeftContent}
-          </Box>
-          
-          <Stack 
-            direction="row" 
-            spacing={isMobile ? 0.5 : 1} 
-            flexWrap="wrap"
-            justifyContent={isMobile ? 'flex-start' : 'flex-end'}
-            sx={{
-              gap: isMobile ? 0.5 : 1,
-              '& .MuiButton-outlined': {
-                borderColor: `${branding.colors.primary}66`,
-                color: branding.colors.textPrimary,
-                '&:hover': {
-                  borderColor: branding.colors.primary,
-                  bgcolor: `${branding.colors.primary}1a`,
-                },
-              },
-              '& .MuiButton-contained': {
-                bgcolor: branding.colors.primary,
-                color: branding.colors.textPrimary,
-                '&:hover': {
-                  bgcolor: branding.colors.secondary,
-                },
-              },
-            }}
-          >
             {selectedManuscript && (
               <>
-                {manuscriptViewers.length > 0 && (
-                  <Tooltip title={`Også her nå: ${manuscriptViewers.map((v) => v.displayName).join(', ')}`}>
+                {headerLeftContent && !isMobile && (
+                  <Divider orientation="vertical" flexItem sx={{ borderColor: branding.colors.border }} />
+                )}
+                <Button
+                  data-testid="manuscript-back-to-list"
+                  variant="text"
+                  startIcon={<ArrowBackIcon sx={{ fontSize: 18 }} />}
+                  size={isMobile ? 'small' : 'medium'}
+                  onClick={handleBackToManuscriptList}
+                  title="Tilbake til manuskriptoversikten"
+                  sx={{ color: branding.colors.textSecondary, flexShrink: 0 }}
+                >
+                  {isMobile ? 'Manus' : 'Manuskripter'}
+                </Button>
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography
+                    variant="subtitle2"
+                    title={selectedManuscript.title}
+                    sx={{
+                      color: branding.colors.textPrimary,
+                      fontWeight: 700,
+                      lineHeight: 1.2,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {selectedManuscript.title}
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.4, flexWrap: 'wrap' }}>
                     <Chip
                       size="small"
-                      icon={<GroupIcon sx={{ fontSize: 14 }} />}
-                      color="info"
-                      label={manuscriptViewers.length === 1
-                        ? `${manuscriptViewers[0].displayName} er her`
-                        : `${manuscriptViewers.length} andre her`}
-                      sx={{ fontSize: responsive.captionFontSize }}
+                      variant="outlined"
+                      label={manuscriptStatusLabel(selectedManuscript.status)}
+                      sx={{ height: 22, fontSize: responsive.captionFontSize }}
                     />
-                  </Tooltip>
-                )}
-                <Button
-                  variant="outlined"
-                  startIcon={!isMobile ? <MenuBookIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                  size={responsive.buttonSize}
-                  onClick={handleBackToManuscriptList}
-                  title="Tilbake til utkast-oversikten — bytt mellom utkast, gi nytt navn eller opprett nytt"
-                  sx={{ fontSize: responsive.bodyFontSize }}
-                >
-                  {isMobile ? 'Utkast' : 'Dine manuskripter'}
-                </Button>
-                <ToggleButton
-                  value="auto-breakdown"
-                  selected={autoBreakdownEnabled}
-                  size={isMobile ? 'small' : 'medium'}
-                  onChange={(_, isEnabled) => {
-                    setAutoBreakdownEnabled(isEnabled);
-                    showInfo(isEnabled ? 'Auto Breakdown aktivert' : 'Auto Breakdown deaktivert');
-                  }}
-                  sx={{
-                    fontSize: responsive.captionFontSize,
-                    color: autoBreakdownEnabled ? branding.colors.accent : branding.colors.textSecondary,
-                    borderColor: autoBreakdownEnabled ? `${branding.colors.accent}88` : branding.colors.border,
-                    '&.Mui-selected': {
-                      color: branding.colors.accent,
-                      bgcolor: `${branding.colors.accent}22`,
-                      borderColor: `${branding.colors.accent}88`,
-                    },
-                  }}
-                >
-                  {autoBreakdownEnabled ? 'Auto Breakdown På' : 'Auto Breakdown Av'}
-                </ToggleButton>
-                <Button
-                  variant="outlined"
-                  startIcon={!isMobile ? <AutoFixHighIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                  size={responsive.buttonSize}
-                  onClick={handleAutoBreakdown}
-                  disabled={isLoading || !autoBreakdownEnabled}
-                  sx={{ fontSize: responsive.bodyFontSize }}
-                >
-                  {isMobile ? 'Auto' : 'Auto Breakdown'}
-                </Button>
-                <Button
-                  variant="outlined"
-                  startIcon={!isMobile ? <FileDownloadIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                  size={responsive.buttonSize}
-                  onClick={handleExport}
-                  disabled={isLoading}
-                  title="Eksporter hele manuskriptet med produksjondata som JSON"
-                  sx={{ fontSize: responsive.bodyFontSize }}
-                >
-                  {isMobile ? 'JSON' : 'Eksporter JSON'}
-                </Button>
-                <Button
-                  variant="outlined"
-                  startIcon={!isMobile ? <DescriptionIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                  endIcon={!isMobile ? <ArrowDropDownIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                  size={responsive.buttonSize}
-                  onClick={(e) => setExportMenuAnchor(e.currentTarget)}
-                  disabled={isLoading}
-                  title="Eksporter manuset som Fountain eller Final Draft (FDX) for bruk i manus-verktøy"
-                  sx={{ fontSize: responsive.bodyFontSize }}
-                >
-                  {isMobile ? 'Manus' : 'Eksporter manus'}
-                </Button>
-                <Menu
-                  anchorEl={exportMenuAnchor}
-                  open={Boolean(exportMenuAnchor)}
-                  onClose={() => setExportMenuAnchor(null)}
-                >
-                  <MenuItem onClick={() => handleExportScreenplay('fountain')}>
-                    <ListItemIcon><DescriptionIcon fontSize="small" /></ListItemIcon>
-                    <ListItemText primary="Fountain (.fountain)" secondary="Åpen tekst-standard for manus" />
-                  </MenuItem>
-                  <MenuItem onClick={() => handleExportScreenplay('fdx')}>
-                    <ListItemIcon><DescriptionIcon fontSize="small" /></ListItemIcon>
-                    <ListItemText primary="Final Draft (.fdx)" secondary="For Final Draft og de fleste manus-verktøy" />
-                  </MenuItem>
-                </Menu>
-                <Button
-                  variant="contained"
-                  startIcon={!isMobile ? <SaveIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                  size={responsive.buttonSize}
-                  onClick={handleSaveManuscript}
-                  disabled={isLoading}
-                  sx={{ fontSize: responsive.bodyFontSize }}
-                >
-                  Lagre
-                </Button>
-                {onSendToApproval && (
-                  <Button
-                    variant="outlined"
-                    startIcon={!isMobile ? <SendIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                    size={responsive.buttonSize}
-                    onClick={onSendToApproval}
-                    title="Send manuset videre til klient-/godkjenningsflaten"
-                    sx={{ fontSize: responsive.bodyFontSize }}
-                  >
-                    {isMobile ? 'Godkjenning' : 'Send til godkjenning'}
-                  </Button>
-                )}
-                {onTargetDurationChange && (() => {
-                  const estRuntime = Math.round(selectedManuscript?.pageCount || 0);
-                  const target = typeof targetDurationMinutes === 'number' && targetDurationMinutes > 0 ? targetDurationMinutes : null;
-                  const deviates = target != null && estRuntime > 0 && Math.abs(estRuntime - target) / target > 0.15;
-                  return (
-                    <Tooltip title={
-                      target == null
-                        ? 'Sett en mål-lengde for å få varsel når manuset blir for langt/kort'
-                        : deviates
-                          ? `Manuset er ~${estRuntime} min, men målet er ${target} min`
-                          : `Mål-lengde ${target} min (manus ~${estRuntime} min)`
-                    }>
-                      <Chip
-                        size="small"
-                        icon={deviates ? <WarningAmberIcon sx={{ fontSize: 16 }} /> : <TimerIcon sx={{ fontSize: 16 }} />}
-                        color={deviates ? 'warning' : 'default'}
-                        variant={target == null ? 'outlined' : 'filled'}
-                        onClick={() => { setTargetDraft(target != null ? String(target) : ''); setShowTargetDialog(true); }}
-                        label={target == null ? 'Sett mål-lengde' : `Mål ${target} min`}
-                        sx={{ cursor: 'pointer', fontSize: responsive.captionFontSize }}
-                      />
-                    </Tooltip>
-                  );
-                })()}
+                    {!isMobile && onTargetDurationChange && (
+                      <Tooltip title={
+                        normalizedTargetDuration === null
+                          ? 'Sett en mål-lengde for å få varsel når manuset blir for langt eller kort'
+                          : targetDurationDeviates
+                            ? `Manuset er omtrent ${estimatedRuntimeMinutes} min, mens målet er ${normalizedTargetDuration} min`
+                            : `Mål ${normalizedTargetDuration} min · manus omtrent ${estimatedRuntimeMinutes} min`
+                      }>
+                        <Chip
+                          size="small"
+                          icon={targetDurationDeviates
+                            ? <WarningAmberIcon sx={{ fontSize: 14 }} />
+                            : <TimerIcon sx={{ fontSize: 14 }} />}
+                          color={targetDurationDeviates ? 'warning' : 'default'}
+                          variant="outlined"
+                          onClick={() => {
+                            setTargetDraft(normalizedTargetDuration !== null ? String(normalizedTargetDuration) : '');
+                            setShowTargetDialog(true);
+                          }}
+                          label={normalizedTargetDuration === null ? 'Mål-lengde' : `Mål ${normalizedTargetDuration} min`}
+                          sx={{ height: 22, cursor: 'pointer', fontSize: responsive.captionFontSize }}
+                        />
+                      </Tooltip>
+                    )}
+                    {manuscriptViewers.length > 0 && (
+                      <Tooltip title={`Også her nå: ${manuscriptViewers.map((viewer) => viewer.displayName).join(', ')}`}>
+                        <Chip
+                          size="small"
+                          icon={<GroupIcon sx={{ fontSize: 13 }} />}
+                          color="info"
+                          variant="outlined"
+                          label={manuscriptViewers.length === 1
+                            ? `${manuscriptViewers[0].displayName} er her`
+                            : `${manuscriptViewers.length} andre her`}
+                          sx={{ height: 22, fontSize: responsive.captionFontSize }}
+                        />
+                      </Tooltip>
+                    )}
+                  </Box>
+                </Box>
               </>
             )}
-            <Button
-              variant="outlined"
-              startIcon={!isMobile ? <FileUploadIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-              size={responsive.buttonSize}
-              onClick={() => setShowImportDialog(true)}
-              title="Importer manuskript fra tidligere eksport"
-              sx={{ fontSize: responsive.bodyFontSize }}
-            >
-              Importer
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={!isMobile ? <MenuBookIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-              size={responsive.buttonSize}
-              onClick={() => setShowTemplatePanel(true)}
-              sx={{ 
-                borderColor: `${branding.colors.accent}aa`,
-                color: branding.colors.accent,
-                fontSize: responsive.bodyFontSize,
-                '&:hover': { borderColor: branding.colors.accent, bgcolor: `${branding.colors.accent}1a` } 
+          </Box>
+
+          {selectedManuscript ? (
+            <Stack
+              direction="row"
+              alignItems="center"
+              justifyContent={showSingleHeaderRow ? 'flex-end' : 'flex-start'}
+              spacing={0.75}
+              sx={{
+                width: showSingleHeaderRow ? 'auto' : '100%',
+                minWidth: 0,
+                overflowX: isMobile ? 'auto' : 'visible',
+                scrollbarWidth: 'none',
+                '&::-webkit-scrollbar': { display: 'none' },
               }}
             >
-              Maler
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={!isMobile ? <AddIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-              size={responsive.buttonSize}
-              onClick={() => setShowNewManuscriptDialog(true)}
-              sx={{ fontSize: responsive.bodyFontSize }}
+              <ButtonGroup
+                variant="outlined"
+                size={isMobile ? 'small' : 'medium'}
+                aria-label="Breakdown-handlinger"
+                sx={{
+                  flexShrink: 0,
+                  '& .MuiButton-root': { borderRadius: 0 },
+                  '& .MuiButtonGroup-firstButton': { borderRadius: '6px 0 0 6px' },
+                  '& .MuiButtonGroup-lastButton': { borderRadius: '0 6px 6px 0' },
+                }}
+              >
+                <Button
+                  startIcon={!isMobile ? <AutoFixHighIcon sx={{ fontSize: 18 }} /> : undefined}
+                  onClick={handleAutoBreakdown}
+                  disabled={isLoading || !autoBreakdownEnabled}
+                  sx={{
+                    color: autoBreakdownEnabled ? branding.colors.accent : branding.colors.textSecondary,
+                    borderColor: autoBreakdownEnabled ? `${branding.colors.accent}88` : branding.colors.border,
+                  }}
+                >
+                  Breakdown
+                </Button>
+                <Button
+                  aria-label="Innstillinger for breakdown"
+                  aria-controls={breakdownMenuAnchor ? 'manuscript-breakdown-menu' : undefined}
+                  aria-haspopup="menu"
+                  aria-expanded={breakdownMenuAnchor ? 'true' : undefined}
+                  onClick={(event) => setBreakdownMenuAnchor(event.currentTarget)}
+                  disabled={isLoading}
+                  sx={{ minWidth: 40, px: 0.5 }}
+                >
+                  <ArrowDropDownIcon />
+                </Button>
+              </ButtonGroup>
+              <Menu
+                id="manuscript-breakdown-menu"
+                anchorEl={breakdownMenuAnchor}
+                open={Boolean(breakdownMenuAnchor)}
+                onClose={() => setBreakdownMenuAnchor(null)}
+                MenuListProps={{ 'aria-label': 'Innstillinger for breakdown' }}
+              >
+                <MenuItem
+                  disabled={!autoBreakdownEnabled}
+                  onClick={() => {
+                    setBreakdownMenuAnchor(null);
+                    void handleAutoBreakdown();
+                  }}
+                >
+                  <ListItemIcon><AutoFixHighIcon fontSize="small" /></ListItemIcon>
+                  <ListItemText primary="Kjør breakdown nå" />
+                </MenuItem>
+                <Divider />
+                <MenuItem
+                  selected={autoBreakdownEnabled}
+                  onClick={() => {
+                    const nextValue = !autoBreakdownEnabled;
+                    setBreakdownMenuAnchor(null);
+                    setAutoBreakdownEnabled(nextValue);
+                    showInfo(nextValue ? 'Breakdown aktivert' : 'Breakdown deaktivert');
+                  }}
+                >
+                  <ListItemIcon>
+                    <Box
+                      aria-hidden="true"
+                      sx={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: '50%',
+                        bgcolor: autoBreakdownEnabled ? branding.colors.accent : 'transparent',
+                        border: `1px solid ${autoBreakdownEnabled ? branding.colors.accent : branding.colors.textSecondary}`,
+                      }}
+                    />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={autoBreakdownEnabled ? 'Breakdown er aktivert' : 'Breakdown er deaktivert'}
+                    secondary="Styrer produksjonsuttrekk fra manuset"
+                  />
+                </MenuItem>
+              </Menu>
+
+              <Tooltip title={`${manuscriptCloudSaveLabel(manuscriptSaveStatus, lastManuscriptSaved, lastCloudVersion)} · klikk for å lagre nå`}>
+                {isMobile ? (
+                  <span>
+                    <IconButton
+                      data-testid="manuscript-save-status"
+                      aria-label={`${saveToolbarLabel}. Lagre manuskriptet nå`}
+                      onClick={handleSaveManuscript}
+                      disabled={isLoading || manuscriptSaveStatus === 'saving'}
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        flexShrink: 0,
+                        color: saveToolbarColor,
+                        border: `1px solid ${branding.colors.border}`,
+                        borderRadius: 1.5,
+                      }}
+                    >
+                      <SaveIcon sx={{ fontSize: 19 }} />
+                    </IconButton>
+                  </span>
+                ) : (
+                  <Button
+                    data-testid="manuscript-save-status"
+                    variant="text"
+                    startIcon={<SaveIcon sx={{ fontSize: 18 }} />}
+                    onClick={handleSaveManuscript}
+                    disabled={isLoading || manuscriptSaveStatus === 'saving'}
+                    sx={{ color: saveToolbarColor, flexShrink: 0 }}
+                  >
+                    {saveToolbarLabel}
+                  </Button>
+                )}
+              </Tooltip>
+
+              {onSendToApproval && (
+                <Button
+                  data-testid="send-manuscript-to-approval"
+                  variant="contained"
+                  startIcon={!isMobile ? <SendIcon sx={{ fontSize: 18 }} /> : undefined}
+                  size={isMobile ? 'small' : 'medium'}
+                  onClick={onSendToApproval}
+                  title="Send manuset videre til godkjenning"
+                  sx={{ flexShrink: 0 }}
+                >
+                  {isMobile ? 'Godkjenning' : 'Send til godkjenning'}
+                </Button>
+              )}
+
+              <Tooltip title="Flere manusverktøy">
+                <IconButton
+                  aria-label="Flere manusverktøy"
+                  aria-controls={exportMenuAnchor ? 'manuscript-more-menu' : undefined}
+                  aria-haspopup="menu"
+                  aria-expanded={exportMenuAnchor ? 'true' : undefined}
+                  onClick={(event) => setExportMenuAnchor(event.currentTarget)}
+                  disabled={isLoading}
+                  sx={{
+                    width: 40,
+                    height: 40,
+                    flexShrink: 0,
+                    color: branding.colors.textPrimary,
+                    border: `1px solid ${branding.colors.border}`,
+                    borderRadius: 1.5,
+                  }}
+                >
+                  <MoreHorizIcon />
+                </IconButton>
+              </Tooltip>
+              <Menu
+                id="manuscript-more-menu"
+                anchorEl={exportMenuAnchor}
+                open={Boolean(exportMenuAnchor)}
+                onClose={() => setExportMenuAnchor(null)}
+                MenuListProps={{ 'aria-label': 'Flere manusverktøy' }}
+              >
+                <MenuItem onClick={() => {
+                  setExportMenuAnchor(null);
+                  void handleExportScreenplay('fountain');
+                }}>
+                  <ListItemIcon><DescriptionIcon fontSize="small" /></ListItemIcon>
+                  <ListItemText primary="Eksporter Fountain" secondary="Manusfil i åpent tekstformat" />
+                </MenuItem>
+                <MenuItem onClick={() => {
+                  setExportMenuAnchor(null);
+                  void handleExportScreenplay('fdx');
+                }}>
+                  <ListItemIcon><DescriptionIcon fontSize="small" /></ListItemIcon>
+                  <ListItemText primary="Eksporter FDX" secondary="Kompatibelt manusformat" />
+                </MenuItem>
+                <MenuItem onClick={() => {
+                  setExportMenuAnchor(null);
+                  void handleExport();
+                }}>
+                  <ListItemIcon><FileDownloadIcon fontSize="small" /></ListItemIcon>
+                  <ListItemText primary="Eksporter prosjektdata" secondary="JSON med manus- og produksjonsdata" />
+                </MenuItem>
+                {onTargetDurationChange && (
+                  <>
+                    <Divider />
+                    <MenuItem onClick={() => {
+                      setExportMenuAnchor(null);
+                      setTargetDraft(normalizedTargetDuration !== null ? String(normalizedTargetDuration) : '');
+                      setShowTargetDialog(true);
+                    }}>
+                      <ListItemIcon><TimerIcon fontSize="small" /></ListItemIcon>
+                      <ListItemText
+                        primary={normalizedTargetDuration === null ? 'Sett mål-lengde' : `Mål-lengde: ${normalizedTargetDuration} min`}
+                        secondary="Varsle når estimert spilletid avviker"
+                      />
+                    </MenuItem>
+                  </>
+                )}
+              </Menu>
+            </Stack>
+          ) : (
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: isMobile ? 'repeat(3, minmax(0, 1fr))' : 'repeat(3, auto)',
+                justifyContent: showSingleHeaderRow ? 'end' : 'start',
+                gap: isMobile ? 0.5 : 0.75,
+                width: showSingleHeaderRow ? 'auto' : '100%',
+              }}
             >
-              {isMobile ? 'Nytt' : 'Nytt Manuskript'}
-            </Button>
-          </Stack>
-        </Stack>
+              <Button
+                variant="outlined"
+                startIcon={!isMobile ? <FileUploadIcon sx={{ fontSize: 18 }} /> : undefined}
+                size={isMobile ? 'small' : 'medium'}
+                onClick={() => setShowImportDialog(true)}
+                title="Importer manuskript fra tidligere eksport"
+                sx={{ minWidth: 0 }}
+              >
+                Importer
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={!isMobile ? <MenuBookIcon sx={{ fontSize: 18 }} /> : undefined}
+                size={isMobile ? 'small' : 'medium'}
+                onClick={() => setShowTemplatePanel(true)}
+                sx={{
+                  minWidth: 0,
+                  borderColor: `${branding.colors.accent}aa`,
+                  color: branding.colors.accent,
+                  '&:hover': { borderColor: branding.colors.accent, bgcolor: `${branding.colors.accent}1a` },
+                }}
+              >
+                Maler
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={!isMobile ? <AddIcon sx={{ fontSize: 18 }} /> : undefined}
+                size={isMobile ? 'small' : 'medium'}
+                onClick={() => setShowNewManuscriptDialog(true)}
+                sx={{ minWidth: 0 }}
+              >
+                {isMobile ? 'Nytt' : 'Nytt manuskript'}
+              </Button>
+            </Box>
+          )}
+        </Box>
         {isLoading && selectedManuscript && (
           <LinearProgress
             sx={{
