@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import PDFDocument from "pdfkit";
 import { canonicalJsonStringify } from "../../frontend/shared/prototype-tester-agreements.ts";
 
@@ -98,6 +100,26 @@ function displayDigest(value: unknown): string {
       .match(/.{1,16}/g)
       ?.join("  ") || "Ikke registrert"
   );
+}
+
+let cachedCreatorHubWordmarkPath: string | null = null;
+
+function loadCreatorHubWordmarkPath(): string {
+  if (cachedCreatorHubWordmarkPath) return cachedCreatorHubWordmarkPath;
+
+  const fileName = "creatorhub-wordmark-light.png";
+  const candidates = [
+    path.resolve(process.cwd(), "../frontend/client/public", fileName),
+    path.resolve(process.cwd(), "frontend/client/public", fileName),
+    path.resolve(process.cwd(), "client/public", fileName),
+  ];
+  const assetPath = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!assetPath) {
+    throw new Error("CreatorHub-wordmarken mangler fra deploypakken");
+  }
+
+  cachedCreatorHubWordmarkPath = assetPath;
+  return cachedCreatorHubWordmarkPath;
 }
 
 export function prototypeTesterAgreementDigest(snapshot: unknown): string {
@@ -207,62 +229,20 @@ export function buildPrototypeTesterSigningReceiptPdf(
     const documents = Array.isArray(input.snapshot.documents)
       ? (input.snapshot.documents as ReceiptDocument[])
       : [];
+    const creatorHubWordmarkPath = loadCreatorHubWordmarkPath();
     const signatureLabel = signatureMethodLabel(input.signatureMethod);
     const acceptedAtLabel = formatReceiptTimestamp(input.snapshot.acceptedAt);
     const verifiedAtLabel = input.emailVerifiedAt
       ? formatReceiptTimestamp(input.emailVerifiedAt)
       : "Ikke registrert (eldre aksept)";
 
-    const drawCreatorHubMark = (
-      x: number,
-      y: number,
-      size: number,
-      color = COLOR.accent,
-    ) => {
-      doc.save();
-      doc.translate(x, y).scale(size / 128);
-      doc.lineWidth(12).lineCap("round").lineJoin("round").strokeColor(color);
-      doc
-        .path(
-          "M77 24C60.6 18.1 41.6 21.7 28.8 34.6C11.7 51.6 11.7 79.4 28.8 96.4C41.6 109.3 60.6 112.9 77 107",
-        )
-        .stroke();
-      doc.path("M79 35V93").stroke();
-      doc.path("M103 35V93").stroke();
-      doc.path("M79 64H103").stroke();
-      doc.restore();
-    };
-
     const drawBrandLockup = (
       x: number,
       y: number,
-      options: { inverse?: boolean; compact?: boolean } = {},
+      options: { compact?: boolean } = {},
     ) => {
-      const inverse = options.inverse === true;
       const compact = options.compact === true;
-      const markSize = compact ? 28 : 38;
-      drawCreatorHubMark(x, y, markSize);
-      const wordmarkX = x + markSize + (compact ? 10 : 13);
-      doc
-        .fillColor(inverse ? COLOR.white : COLOR.navy)
-        .font("Helvetica-Bold")
-        .fontSize(compact ? 10.5 : 13)
-        .text("CREATORHUB · NORGE", wordmarkX, y + (compact ? 4 : 6), {
-          lineBreak: false,
-        });
-      doc
-        .fillColor(inverse ? "#D0D5DD" : COLOR.muted)
-        .font("Helvetica")
-        .fontSize(compact ? 6.2 : 7.2)
-        .text(
-          "PROFESJONELL KREATIV PLATTFORM",
-          wordmarkX,
-          y + (compact ? 17 : 24),
-          {
-            lineBreak: false,
-            characterSpacing: compact ? 0.7 : 1,
-          },
-        );
+      doc.image(creatorHubWordmarkPath, x, y, { width: compact ? 145 : 190 });
     };
 
     const drawPill = (
@@ -433,13 +413,14 @@ export function buildPrototypeTesterSigningReceiptPdf(
 
     const drawCompactHeader = (rightLabel: string, rightReference?: string) => {
       paintPage();
+      doc.rect(0, 0, PW, 76).fill(COLOR.navy);
       doc.rect(0, 0, PW, 6).fill(COLOR.accent);
-      drawBrandLockup(L, 25, { compact: true });
+      drawBrandLockup(L, 16, { compact: true });
       doc
-        .fillColor(COLOR.muted)
+        .fillColor("#D0D5DD")
         .font("Helvetica-Bold")
         .fontSize(7)
-        .text(rightLabel.toUpperCase(), L, 28, {
+        .text(rightLabel.toUpperCase(), L, 23, {
           width: W,
           align: "right",
           lineBreak: false,
@@ -447,18 +428,18 @@ export function buildPrototypeTesterSigningReceiptPdf(
         });
       if (rightReference) {
         doc
-          .fillColor(COLOR.faint)
+          .fillColor("#98A2B3")
           .font("Helvetica")
           .fontSize(7)
-          .text(rightReference, L, 43, {
+          .text(rightReference, L, 39, {
             width: W,
             align: "right",
             lineBreak: false,
           });
       }
       doc
-        .moveTo(L, 74)
-        .lineTo(R, 74)
+        .moveTo(L, 86)
+        .lineTo(R, 86)
         .lineWidth(0.7)
         .strokeColor(COLOR.line)
         .stroke();
@@ -468,7 +449,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
       paintPage(COLOR.white);
       doc.rect(0, 0, PW, 208).fill(COLOR.navy);
       doc.rect(0, 0, PW, 7).fill(COLOR.accent);
-      drawBrandLockup(L, 31, { inverse: true });
+      drawBrandLockup(L, 25);
       doc
         .fillColor("#D0D5DD")
         .font("Helvetica-Bold")
