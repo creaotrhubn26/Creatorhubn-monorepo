@@ -19,6 +19,8 @@ const snapshot = {
   signerName: "Test Tester",
   signerEmail: "tester@example.com",
   representedCompany: "Test AS",
+  representedCompanyOrganizationNumber: "998989159",
+  representedCompanyBusinessAddress: "Styrilia 16, 2080 EIDSVOLL",
   confirmedSigningAuthority: true,
   signatureMethod: "email_otp_typed_name",
   emailVerifiedAt,
@@ -110,7 +112,10 @@ describe("prototype tester signing receipt", () => {
       programEndsAt: "2026-12-02T12:00:00.000Z",
     });
     expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
-    expect(pdf.length).toBeGreaterThan(5_000);
+    expect(pdf.length).toBeGreaterThan(25_000);
+    const pdfSource = pdf.toString("latin1");
+    expect(pdfSource).toContain("CreatorHub signeringskvittering");
+    expect(pdfSource.match(/\/Type \/Page\b/g)?.length).toBeGreaterThanOrEqual(6);
   });
 
   it("rejects a logged-in user who does not own the receipt", async () => {
