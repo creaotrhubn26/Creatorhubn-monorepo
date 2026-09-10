@@ -32,6 +32,9 @@ function createPool() {
         rowCount: 1,
       };
     }
+    if (sql.includes("FROM audio_review_projects ar") && sql.includes("project_audio_rooms")) {
+      return { rows: [{ id: "review-1", owner_user_id: "user-1", easeverse_track_id: "track-local-1", workspace_project_id: null }], rowCount: 1 };
+    }
     if (sql.includes("SELECT id FROM audio_review_versions")) {
       return { rows: [{ id: "version-1" }], rowCount: 1 };
     }
@@ -152,5 +155,17 @@ describe("Pro Tools Companion EaseVerse bridge", () => {
     );
     expect(sessionUpdate?.[1]?.[1]).toBeNull();
     expect(mocks.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("returns a device-scoped Sound Room feedback inbox", async () => {
+    const app = express();
+    app.use(express.json());
+    setupProToolsCompanionRoutes({ app, pool: createPool(), requireUserSession: vi.fn(() => null) });
+    const response = await request(app)
+      .get("/api/protools/sessions/session-1/feedback")
+      .set("authorization", "Bearer trr_desk_test");
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ comments: [], approvals: [], tasks: [] });
+    expect(response.body.generatedAt).toEqual(expect.any(String));
   });
 });

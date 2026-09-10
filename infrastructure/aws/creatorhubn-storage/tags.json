@@ -1,0 +1,8 @@
+{
+  "TagSet": [
+    { "Key": "Project", "Value": "CreatorHubn" },
+    { "Key": "DataClassification", "Value": "personal-data" },
+    { "Key": "Environment", "Value": "production" },
+    { "Key": "ManagedBy", "Value": "aws-cli" }
+  ]
+}

@@ -1,7 +1,7 @@
 # Integrasjon: EaseVerse ⇄ Workspace/Sound Room ⇄ Pro Tools Companion
 
 > Implementert arkitektur og driftsrunbook for den samlede musikkprodusentflyten.
-> Sist oppdatert: 2026-09-09.
+> Sist oppdatert: 2026-09-10.
 
 ## 1. Mål
 
@@ -24,7 +24,9 @@ Den kanoniske flyten er:
 | Keeper tilbake til Sound Room | ✅ | EaseVerse sender keeper via service-autentisert webhook og oppretter idempotent review-kandidat. |
 | Godkjent referansemiks | ✅ | Sound Room sender godkjent miks til EaseVerse sitt `/api/v1/collab/reference`-endepunkt. |
 | Lyrics | ✅ | Revisjons-/tidsstempelstyrt last-write-wins hindrer eldre offlineutkast fra å overskrive nyere tekst. |
-| Robust synk | ✅ | CreatorHub bruker persistent outbox med event-ID, leveringsstatus, feilårsak, eksponentiell retry og manuell retry fra Sound Room. |
+| Robust synk | ✅ | Companion har atomisk lokal outbox og auto-resume etter omstart. CreatorHub og EaseVerse har DB-outbox med leasing, eksponentiell retry, dead-letter og bakgrunnsworker/Netlify-cron. |
+| Auth-recovery | ✅ | 401 og auth-relaterte 403-responser ugyldiggjør den lokale CreatorHub-sesjonen og viser felles innlogging på nytt; rollebaserte 403-responser logger ikke brukeren ut. |
+| Companion-feedback | ✅ | Companion viser kommentarer, åpne tasks, beslutninger og godkjenninger fra koblet Sound Room og oppdaterer hvert 15. sekund. |
 | Realtime-sikkerhet | ✅ | Web-klienten henter en tilfeldig 30-sekunders engangsticket før WebSocket-oppkobling; OAuth-token legges ikke i URL-en. |
 | Legacy EaseVerse-paring | ✅ | Gamle Clerk-/lokale Companion-kort er fjernet fra aktiv EaseVerse-UI. Paring administreres i Workspace/Sound Room. |
 | Desktop-distribusjon | 🟡 | macOS DMG-er er Developer ID-signert/notarisert. Windows x64-pipelinen krever gyldig Authenticode før publisering; offentlig v0.1.2 er fortsatt usignert mens Azure Public Trust-validering fullføres. |
@@ -60,7 +62,7 @@ Kun relative retur-URL-er eller godkjente CreatorHub-domener aksepteres. Hemmeli
 ### Paring
 
 - Workspace kaller `POST /api/protools/pair/start` med workspace-, Sound Room- og track-kontekst.
-- Backend validerer at den innloggede brukeren eier/har tilgang til de refererte ressursene.
+- Backend validerer samme tilgangsmodell som Workspace: eier eller aktivt medlem med `canEdit`. Kun prosjekteieren kan koble Workspace-rommet til en annen EaseVerse-låt.
 - Companion kaller `POST /api/protools/pair/claim` med engangskoden.
 - Claim er atomisk og returnerer device-token, `deviceId` og prosjektkontekst.
 - Companion lagrer konteksten lokalt og forhåndsutfyller prosjekt/session.
@@ -74,13 +76,15 @@ Kun relative retur-URL-er eller godkjente CreatorHub-domener aksepteres. Hemmeli
 - `POST /api/protools/sessions/:id/bounce/presign`
 - `POST /api/protools/sessions/:id/bounce/complete`
 
-Watcher markerer ikke en fil som ferdig behandlet før serveren har bekreftet mottak. Feil retries ved 0, 2, 5 og 15 sekunder. Markør-/metadataeventer og bounces har stabile event-ID-er basert på innhold, ikke lokal filsti.
+Watcher markerer ikke en fil som ferdig behandlet før serveren har bekreftet mottak. Session Info og bounces legges først i en atomisk lokal JSON-outbox. Køen og `auto_watch` overlever app-/maskinomstart, skannes ved oppstart og retries eksponentielt i opptil 15-minutters intervaller. Markør-/metadataeventer og bounces har stabile event-ID-er basert på innhold, ikke lokal filsti.
 
 ### Administrasjon i Sound Room
 
 - `GET /api/protools/web/status?audioRoomId=...` viser enheter, siste session, markører, bounces og outbox-status.
 - `POST /api/protools/web/unlink-device` tilbakekaller kun valgt enhet.
 - `POST /api/protools/web/retry-sync` prøver pending EaseVerse-leveranser på nytt.
+- `GET /api/protools/sessions/:id/feedback` gir den device-scopede innboksen med kommentarer, tasks og godkjenninger.
+- `GET /api/protools/worker/health` er separat heartbeat/readiness for den automatiske synk-workeren.
 - Companion kan tilbakekalle sitt eget token ved unpair.
 
 ## 6. CreatorHub ⇄ EaseVerse servicekontrakter
@@ -97,21 +101,34 @@ Server-til-server-kall bruker `x-api-key` og samme produksjonshemmelighet på be
 | CreatorHub ← EaseVerse | `GET /api/v1/collab/lyrics/:externalTrackId` | Pull/recovery av lyrics |
 | CreatorHub ← EaseVerse | `GET /api/v1/collab/takes/:externalTrackId` | Import av takes |
 
-Outbox lagrer payload, `eventType`, `eventId`, forsøk, neste retry, siste feil og leveringstid. Et allerede levert event med samme ID leveres ikke på nytt.
+Outbox lagrer payload, `eventType`, `eventId`, forsøk, neste retry, lease, siste feil og leveringstid. Et allerede levert event med samme ID leveres ikke på nytt. CreatorHub-worker kjører hvert 15. sekund; EaseVerse sin keeper-outbox kjøres av Netlify Scheduled Functions hvert andre minutt.
 
 ## 7. Databaseendringer
 
-Migrasjon `0558_protools_companion_integration_integrity.sql` etablerer:
+Migrasjon `0558_protools_companion_integration_integrity.sql` etablerer grunnkontrakten. Migrasjon `0569_protools_companion_resilience.sql` legger til:
 
-- persistent pairing codes og claim/rate-limit-data
-- device- og prosjektkontekst på sessions
-- unik/idempotent bounce-identitet
-- durable EaseVerse outbox
-- nødvendige indekser og integritetsfelter
+- `organization_id` og separat `integration_owner_user_id` på Companion-session
+- leased worker-kø, dead-letter og heartbeat
+- egen outbox for godkjente referansemikser
+- nødvendige indekser for multi-instance draining
 
-EaseVerse sitt collaboration-lager lagrer prosjektkontekst, canonical Pro Tools snapshot, referansemiks og lyrics-revisjon.
+EaseVerse-migrasjon `0002_creatorhub_sync_outbox.sql` etablerer varig keeper-levering tilbake til CreatorHub. Collaboration-lageret lagrer prosjektkontekst, canonical Pro Tools snapshot, referansemiks og lyrics-revisjon.
 
-## 8. Verifikasjonsmatrise
+## 8. Objektlagring og tenant-hierarki
+
+Produksjonsbøtten er `creatorhubn-prod-745600963362-eu-north-1` i AWS `eu-north-1`. Den er privat, har BucketOwnerEnforced, full public-access block, SSE-S3, versjonering, TLS-only policy og lifecycle for `temporary/`, `exports/` og `quarantine/`.
+
+Kanonisk nøkkel for en Pro Tools-bounce:
+
+```text
+organizations/{organizationId}/users/{userId}/projects/{workspaceProjectId}/
+  sound-room/{audioReviewProjectId}/protools/sessions/{sessionId}/
+  bounces/{objectId}-{filename}
+```
+
+Personlige brukere bruker `personal-{userId}` som tenant-segment. PostgreSQL er autoritativ for tilgang; en S3-prefix gir aldri tilgang alene. Render skal bruke den scoped IAM-brukeren `creatorhubn-production-storage`, aldri provisioning/root-profilen. Infrastrukturpolicy og runbook ligger i `infrastructure/aws/creatorhubn-storage/`.
+
+## 9. Verifikasjonsmatrise
 
 Før produksjonsrelease skal følgende passere:
 
@@ -129,7 +146,7 @@ Før produksjonsrelease skal følgende passere:
 | Musikk E2E | Workspace → Sound Room → pair → markers/metadata → bounce → review | Samme prosjekt-/track-ID hele veien |
 | Offline | Endring uten nett → retry/reconnect → én server-side versjon | Ingen duplikater eller tapt state |
 
-## 9. Produksjonskonfigurasjon
+## 10. Produksjonskonfigurasjon
 
 ### EaseVerse / Netlify
 
@@ -142,6 +159,9 @@ Før produksjonsrelease skal følgende passere:
 
 - `EASEVERSE_API_URL=https://easeverse.netlify.app`
 - `EASEVERSE_API_KEY` – samme verdi som EaseVerse `EXTERNAL_API_KEY`
+- `CREATORHUB_S3_BUCKET=creatorhubn-prod-745600963362-eu-north-1`
+- `CREATORHUB_S3_REGION=eu-north-1`
+- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` – scoped `creatorhubn-production-storage`-identitet
 
 ### Pro Tools Companion / GitHub Actions
 
@@ -158,7 +178,7 @@ Før produksjonsrelease skal følgende passere:
 
 Logg aldri verdiene, og eksponer dem ikke gjennom `EXPO_PUBLIC_*` eller frontend-bundlen.
 
-## 10. Release- og rollback-runbook
+## 11. Release- og rollback-runbook
 
 1. Kjør verifikasjonsmatrisen og `git diff --check` i begge repoer.
 2. Deploy EaseVerse til Netlify production og kjør health/API smoke mot produksjons-URL.
@@ -174,8 +194,8 @@ Rollback:
 - TestFlight: behold forrige build tilgjengelig for testere; fjern ny build fra testgruppe ved kritisk feil.
 - Outbox-data beholdes under rollback og kan retries når servicekontrakten er gjenopprettet.
 
-## 11. Deprecated flater
+## 12. Deprecated flater
 
 - `songflow-*` beholdes bare som bakoverkompatible aliaser frem til avtalt sunset.
-- EaseVerse sin gamle lokale/Clerk-baserte Companion-paring skal ikke brukes i ny UI.
+- EaseVerse sin gamle lokale/Clerk-baserte Companion-paring returnerer HTTP 410. Gamle `pair_*`-tokens aksepteres ikke; kildekatalogene er kun read-only arkiv uten package/Cargo/release-workflow.
 - Query-string-baserte bearer tokens for realtime støttes midlertidig kun for eldre klienter; nye webklienter bruker engangsticket.
