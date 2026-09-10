@@ -352,6 +352,18 @@ export function setupLeadMapRoutes(deps: Deps): void {
         if (creation.idempotentReplay) {
           res.setHeader("Idempotent-Replayed", "true");
         }
+        if (creation.created && body.organizationNumber) {
+          const { enqueueLeadBrregEnrich } = await import("./job-handlers.js");
+          await enqueueLeadBrregEnrich(pool, {
+            leadId: creation.id,
+            ownerUserId: session.userId,
+          }).catch((queueError) => {
+            console.warn(
+              "[lead-map] kunne ikke køe BRREG-berikelse:",
+              String(queueError).slice(0, 120),
+            );
+          });
+        }
         if (creation.created) {
           void (async () => {
             try {
