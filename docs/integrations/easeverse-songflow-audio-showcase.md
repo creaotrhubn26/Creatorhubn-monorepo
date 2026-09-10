@@ -105,7 +105,7 @@ Outbox lagrer payload, `eventType`, `eventId`, forsøk, neste retry, lease, sist
 
 ## 7. Databaseendringer
 
-Migrasjon `0558_protools_companion_integration_integrity.sql` etablerer grunnkontrakten. Migrasjon `0566_protools_companion_resilience.sql` legger til:
+Migrasjon `0558_protools_companion_integration_integrity.sql` etablerer grunnkontrakten. Migrasjon `0568_protools_companion_resilience.sql` legger til:
 
 - `organization_id` og separat `integration_owner_user_id` på Companion-session
 - leased worker-kø, dead-letter og heartbeat
