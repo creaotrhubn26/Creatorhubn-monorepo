@@ -17,6 +17,28 @@ export interface AppState {
   pending_bounces: number;
   pending_session_info: boolean;
   last_queue_error: string | null;
+  protools_tier: "intro" | "artist" | "studio" | "flex";
+  intro_preflight: IntroPreflight | null;
+  ptsl: {
+    state: "connected" | "degraded" | "unavailable";
+    server_detected: boolean;
+    helper_installed: boolean;
+    helper_path: string | null;
+    message: string;
+  };
+}
+
+export interface IntroPreflight {
+  compatible: boolean;
+  counts: { audio: number; instrument: number; midi: number; aux: number; io_paths: number };
+  violations: Array<{
+    category: string;
+    actual: number;
+    limit: number;
+    excess: number;
+    recommendation: string;
+  }>;
+  checked_against: string;
 }
 
 export interface TrackInfo {
@@ -45,6 +67,7 @@ export interface SyncResult {
   easeverse_synced: boolean;
   sample_rate: number | null;
   track_count: number;
+  intro_preflight: IntroPreflight;
 }
 
 export interface BounceResult {
@@ -110,9 +133,21 @@ export const setupSession = (args: {
   audioRoomId: string | null;
   sessionInfoPath: string | null;
   bounceDir: string | null;
+  proToolsTier: AppState["protools_tier"];
 }) => invoke<SessionInfo>("setup_session", args);
 export const syncSessionInfo = () => invoke<SyncResult>("sync_session_info");
 export const uploadBounce = (path: string) => invoke<BounceResult>("upload_bounce", { path });
 export const startWatching = () => invoke<void>("start_watching");
 export const stopWatching = () => invoke<void>("stop_watching");
 export const getFeedback = () => invoke<FeedbackInbox>("get_feedback");
+export const createRealtimeTicket = () => invoke<{
+  ticket: string;
+  expiresAt: string;
+  websocketPath: string;
+  protocolVersion: number;
+  workspaceProjectId: string | null;
+}>("create_realtime_ticket");
+export const processCommands = () => invoke<{ processed: number; succeeded: number; failed: number }>("process_commands");
+export const locateFeedback = (seconds: number) => invoke<Record<string, unknown>>("locate_feedback", { seconds });
+export const resolveFeedback = (commentId: string) => invoke<Record<string, unknown>>("resolve_feedback", { commentId });
+export const replyFeedback = (commentId: string, body: string) => invoke<Record<string, unknown>>("reply_feedback", { commentId, body });

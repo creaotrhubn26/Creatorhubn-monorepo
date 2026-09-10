@@ -1,11 +1,8 @@
 //! Parser for Pro Tools «Export Session Info as Text».
 //!
-//! Pro Tools har ingen åpen marker/scripting-API på vanlige lisenser, men kan
-//! eksportere all sesjons-info som tekst (File → Export → Session Info as Text).
-//! Den eksporten inneholder samplerate, bitdybde, spor-listing og — viktigst —
-//! en MARKERS LISTING med tidsreferanse i samples. Vi konverterer samples →
-//! sekunder via sampleraten. Dette er den eneste pålitelige veien til markører
-//! uten AAX/EuCon, og er rent tekst-arbeid (enhetstestbart her).
+//! PTSL er primær direkteintegrasjon når den lisensierte lokale broen finnes.
+//! «Export Session Info as Text» er den portable fallbacken som virker uten
+//! SDK-broen, og inneholder samplerate, sporlister og markører i samples.
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Marker {
@@ -23,6 +20,7 @@ pub struct ParsedSession {
     pub key_signature: Option<String>,
     pub time_signature: Option<String>,
     pub markers: Vec<Marker>,
+    pub track_counts: crate::intro_preflight::TrackCounts,
 }
 
 /// Fjerner all whitespace og upper-caser — brukes til å kjenne igjen de
@@ -157,6 +155,19 @@ pub fn parse_session_info(text: &str) -> ParsedSession {
                         }
                     }
                 }
+                for (key, target) in [
+                    ("# OF AUDIO TRACKS", &mut out.track_counts.audio),
+                    ("# OF INSTRUMENT TRACKS", &mut out.track_counts.instrument),
+                    ("# OF MIDI TRACKS", &mut out.track_counts.midi),
+                    ("# OF AUX TRACKS", &mut out.track_counts.aux),
+                    ("# OF I/O PATHS", &mut out.track_counts.io_paths),
+                ] {
+                    if let Some(v) = field_after_colon(line, key) {
+                        if let Some(n) = parse_leading_number(v) {
+                            *target = n.max(0.0) as usize;
+                        }
+                    }
+                }
             }
             Section::Tracks => {
                 if let Some(v) = field_after_colon(line, "TRACK NAME") {
@@ -230,6 +241,9 @@ pub fn parse_session_info(text: &str) -> ParsedSession {
         }
     }
 
+    if out.track_counts.audio == 0 && !out.tracks.is_empty() {
+        out.track_counts.audio = out.tracks.len();
+    }
     out
 }
 
@@ -264,6 +278,10 @@ KEY SIGNATURE:\tF# minor\n\
 TIME SIGNATURE:\t7/8\n\
 TIMECODE FORMAT:\t25 Frame\n\
 # OF AUDIO TRACKS:\t2\n\
+# OF INSTRUMENT TRACKS:\t1\n\
+# OF MIDI TRACKS:\t2\n\
+# OF AUX TRACKS:\t1\n\
+# OF I/O PATHS:\t4\n\
 \n\
 T R A C K   L I S T I N G\n\
 TRACK NAME:\tLead Vox\n\
@@ -286,6 +304,11 @@ M A R K E R S  L I S T I N G\n\
         assert_eq!(p.tempo, Some(124.5));
         assert_eq!(p.key_signature.as_deref(), Some("F# minor"));
         assert_eq!(p.time_signature.as_deref(), Some("7/8"));
+        assert_eq!(p.track_counts.audio, 2);
+        assert_eq!(p.track_counts.instrument, 1);
+        assert_eq!(p.track_counts.midi, 2);
+        assert_eq!(p.track_counts.aux, 1);
+        assert_eq!(p.track_counts.io_paths, 4);
     }
 
     #[test]

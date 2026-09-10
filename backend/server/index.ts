@@ -20,6 +20,7 @@ import {
   creatorHubEmailLogoDimensions,
   normalizeCreatorHubEmailLogoUrl,
 } from "./creatorhub-email-branding.js";
+import { buildCreatorHubEmailLayout } from "./creatorhub-email-layout.js";
 
 import express from "express";
 import helmet from "helmet";
@@ -29659,23 +29660,10 @@ async function renderCreatorHubPlatformEmail(input: {
   const ctaLabel = template.ctaLabel
     ? replaceRoleRoomEmailVariables(template.ctaLabel, input.variables, "text")
     : "";
-  const ctaHtml =
-    ctaLabel && normalizeMailConfigValue(input.ctaUrl)
-      ? `<a href="${escapeRoleRoomEmailHtml(
-          normalizeMailConfigValue(input.ctaUrl),
-        )}" style="display:inline-block;padding:15px 22px;border-radius:999px;background:${theme.buttonBackground};color:${theme.buttonText};text-decoration:none;font-weight:800;letter-spacing:0.01em">${escapeRoleRoomEmailHtml(
-          ctaLabel,
-        )}</a>`
-      : "";
   const emailLogoUrl = normalizeMailConfigValue(settings.identity.emailLogoUrl);
   const logoDimensions = emailLogoUrl
     ? creatorHubEmailLogoDimensions(emailLogoUrl)
     : null;
-  const logoHtml = emailLogoUrl && logoDimensions
-    ? `<img src="${escapeRoleRoomEmailHtml(emailLogoUrl)}" alt="${escapeRoleRoomEmailHtml(
-        settings.identity.appName,
-      )}" width="${logoDimensions.width}" height="${logoDimensions.height}" style="${logoDimensions.style}" />`
-    : "";
   const categoryLabel =
     input.templateId.startsWith("creatorhub_access_request_") ||
     input.templateId === "creatorhub_prototype_tester_invite" ||
@@ -29685,52 +29673,24 @@ async function renderCreatorHubPlatformEmail(input: {
       ? "CreatorHub Tilgang"
       : "CreatorHub Commerce";
 
-  const html = `
-    <div style="font-family:Inter,Arial,sans-serif;background:${theme.canvasBackground};padding:32px 16px;color:${theme.bodyText}">
-      <div style="max-width:720px;margin:0 auto">
-        <div style="background:${theme.cardBackground};border:1px solid ${theme.cardBorder};border-radius:28px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,0.38)">
-          <div style="padding:28px 28px 24px;background:${theme.headerBackground};color:${theme.headerText};border-bottom:1px solid ${theme.cardBorder}">
-            <div style="display:flex;align-items:center;gap:14px">
-              ${logoHtml}
-              <div>
-                <div style="font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:${theme.brandLabelColor};font-weight:800">${escapeRoleRoomEmailHtml(
-                  settings.identity.appName,
-                )}</div>
-                <div style="margin-top:6px;font-size:13px;line-height:1.5;color:${theme.mutedText}">${escapeRoleRoomEmailHtml(
-                  settings.identity.tagline,
-                )}</div>
-              </div>
-            </div>
-            <div style="margin-top:24px;display:inline-block;padding:7px 12px;border-radius:999px;background:#171d26;color:${theme.brandLabelColor};font-size:11px;letter-spacing:0.12em;text-transform:uppercase;font-weight:800">${escapeRoleRoomEmailHtml(categoryLabel)}</div>
-            <h1 style="margin:18px 0 0;font-size:29px;line-height:1.1;color:${theme.headerText};font-family:'Space Grotesk',Inter,Arial,sans-serif;font-weight:700">${escapeRoleRoomEmailHtml(
-              title,
-            )}</h1>
-            <p style="margin:14px 0 0;font-size:14px;line-height:1.7;color:${theme.mutedText}">${escapeRoleRoomEmailHtml(
-              `${settings.identity.tagline} • ${settings.identity.domain}`,
-            )}</p>
-          </div>
-          <div style="padding:28px">
-            <div style="margin:0 0 22px;font-size:15px;line-height:1.85;color:${theme.bodyText}">${bodyHtml}</div>
-            ${detailSection.html}
-            ${noticeSection.html}
-            ${ctaHtml ? `<div style="margin:0 0 22px">${ctaHtml}</div>` : ""}
-            ${
-              footerNote
-                ? `<p style="margin:0 0 16px;font-size:12px;line-height:1.8;color:${theme.mutedText}">${escapeRoleRoomEmailHtml(
-                    footerNote,
-                  )}</p>`
-                : ""
-            }
-            <div style="padding-top:18px;border-top:1px solid ${theme.cardBorder}">
-              <p style="margin:0;font-size:12px;line-height:1.8;color:${theme.footerText}">${escapeRoleRoomEmailHtml(
-                footerText,
-              )}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
+  const html = buildCreatorHubEmailLayout({
+    theme,
+    appName: settings.identity.appName,
+    tagline: settings.identity.tagline,
+    domain: settings.identity.domain,
+    categoryLabel,
+    title,
+    bodyHtml,
+    detailHtml: detailSection.html,
+    noticeHtml: noticeSection.html,
+    ctaLabel,
+    ctaUrl: normalizeMailConfigValue(input.ctaUrl),
+    footerNote,
+    footerText,
+    logo: emailLogoUrl && logoDimensions
+      ? { url: emailLogoUrl, ...logoDimensions }
+      : null,
+  });
 
   const textParts = [
     bodyText,
@@ -30206,14 +30166,46 @@ async function sendCreatorHubPrototypeTesterInviteEmail(options: {
   programDurationWeeks: number;
   inviteExpiresDays: number;
 }) {
+  const presentation = creatorHubPrototypeTesterInvitePresentation(
+    options,
+    options.ctaUrl,
+  );
+  return sendCreatorHubAccessLifecycleEmail({
+    templateId: "creatorhub_prototype_tester_invite",
+    recipientEmail: options.recipientEmail,
+    ...presentation,
+    trackingPixelUrl: options.trackingPixelUrl,
+    projectId: options.inviteId,
+    sentByUserId: options.sentByUserId,
+  });
+}
+
+function creatorHubPrototypeTesterInvitePresentation(options: {
+  recipientEmail: string;
+  recipientName: string;
+  inviteUrl: string;
+  profession: string | null;
+  company: string | null;
+  testingAreas: string[];
+  personalMessage: string | null;
+  programDurationWeeks: number;
+  inviteExpiresDays: number;
+}, ctaUrl = options.inviteUrl): {
+  variables: Record<string, string | number | null | undefined>;
+  ctaUrl: string;
+  detailRows: Array<{ label: string; value: string }>;
+  noticeSection: {
+    label: string;
+    body: string;
+    tone: "neutral";
+  } | null;
+} {
   const professionName = formatCreatorHubAccessProfession(options.profession);
   const testingAreas = options.testingAreas
     .map((area) => String(area).trim())
     .filter(Boolean)
     .join(", ");
-  return sendCreatorHubAccessLifecycleEmail({
-    templateId: "creatorhub_prototype_tester_invite",
-    recipientEmail: options.recipientEmail,
+  return {
     variables: {
       recipientName: options.recipientName,
       recipientEmail: options.recipientEmail,
@@ -30223,8 +30215,7 @@ async function sendCreatorHubPrototypeTesterInviteEmail(options: {
       programDurationWeeks: options.programDurationWeeks,
       inviteExpiresDays: options.inviteExpiresDays,
     },
-    ctaUrl: options.ctaUrl,
-    trackingPixelUrl: options.trackingPixelUrl,
+    ctaUrl,
     detailRows: [
       { label: "Rolle", value: professionName },
       ...(options.company ? [{ label: "Firma", value: options.company }] : []),
@@ -30240,9 +30231,36 @@ async function sendCreatorHubPrototypeTesterInviteEmail(options: {
           tone: "neutral",
         }
       : null,
-    projectId: options.inviteId,
-    sentByUserId: options.sentByUserId,
+  };
+}
+
+async function previewCreatorHubPrototypeTesterInviteEmail(options: {
+  recipientEmail: string;
+  recipientName: string;
+  inviteUrl: string;
+  profession: string | null;
+  company: string | null;
+  testingAreas: string[];
+  personalMessage: string | null;
+  programDurationWeeks: number;
+  inviteExpiresDays: number;
+}) {
+  const brandingSettings = await resolveCreatorHubPlatformBrandingSettings();
+  const rendered = await renderCreatorHubPlatformEmail({
+    templateId: "creatorhub_prototype_tester_invite",
+    ...creatorHubPrototypeTesterInvitePresentation(options),
   });
+  return {
+    subject: rendered.subject,
+    html: rendered.html,
+    text: rendered.text,
+    fromLabel: brandingSettings.identity.appName,
+    fromAddress: resolveCreatorHubTemplateFromEmail(
+      "creatorhub_prototype_tester_invite",
+      brandingSettings,
+    ),
+    replyToEmail: rendered.replyToEmail,
+  };
 }
 
 async function sendCreatorHubPrototypeTesterApprovalEmail(options: {
@@ -67471,6 +67489,7 @@ setupPrototypeTesterInvitesRoutes({
     return acct;
   },
   sendInviteEmail: sendCreatorHubPrototypeTesterInviteEmail,
+  previewInviteEmail: previewCreatorHubPrototypeTesterInviteEmail,
   sendAccessActivatedEmail: sendCreatorHubTesterAccessActivatedEmail,
   issueSigningCode: async ({
     recipientEmail,

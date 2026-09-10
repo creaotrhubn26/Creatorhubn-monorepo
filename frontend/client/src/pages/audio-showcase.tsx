@@ -36,6 +36,7 @@ import { SpotifyIcon } from '@/components/universal/showcase/BrandIcons';
 import WarmupDialog from '@/components/universal/showcase/WarmupDialog';
 import SessionsDialog from '@/components/universal/showcase/SessionsDialog';
 import { audioShowcaseEvents } from '@/utils/creatorhub-events';
+import { useUserEventStream } from '@/hooks/useUserEventStream';
 
 /* ── Tema ──────────────────────────────────────────────────────────────── */
 const BG = '#0A0A0B', PANEL = '#131316', PANEL2 = '#0F0F11', BORDER = 'rgba(255,255,255,0.08)';
@@ -124,6 +125,7 @@ export default function AudioShowcasePage() {
   const [sessionsOpen, setSessionsOpen] = React.useState(false);
   const [syncingCollab, setSyncingCollab] = React.useState(false);
   const [splitToast, setSplitToast] = React.useState<string | null>(null);
+  const [proTools, setProTools] = React.useState<any>(null);
 
   const saveCover = async (dataUrl: string) => {
     try { const p = await apiRequest(`/api/audio-showcases/${projectId}`, { method: 'PATCH', body: { coverUrl: dataUrl } }); setProject(p); } catch { /* */ }
@@ -181,8 +183,24 @@ export default function AudioShowcasePage() {
     try { const d = await apiRequest(`/api/audio-versions/${vid}`); setDetail({ comments: d.comments || [], sections: d.sections || [], approvals: d.approvals || [] }); }
     catch { /* ignore */ }
   }, []);
+  const loadProTools = React.useCallback(async () => {
+    if (!projectId) return;
+    try { setProTools(await apiRequest(`/api/protools/web/status?audioRoomId=${encodeURIComponent(projectId)}`)); }
+    catch { setProTools(null); }
+  }, [projectId]);
   React.useEffect(() => { void loadProject(); }, [loadProject]);
   React.useEffect(() => { void loadVersion(currentVid); }, [currentVid, loadVersion]);
+  React.useEffect(() => { void loadProTools(); }, [loadProTools]);
+  useUserEventStream({
+    enabled: Boolean(wsBack),
+    onEvent: (event) => {
+      if (event.kind !== 'sound-room.updated' || event.projectId !== wsBack) return;
+      void loadProject();
+      void loadVersion(currentVid);
+      void loadProTools();
+    },
+    onReconnect: () => { void loadProject(); void loadVersion(currentVid); void loadProTools(); },
+  });
   // «Now on Spotify»: hvis rommet har en utgivelse som er live, vis embed i senter.
   const [spotifyLive, setSpotifyLive] = React.useState<any>(null);
   const [coaching, setCoaching] = React.useState<any[]>([]);
@@ -210,13 +228,13 @@ export default function AudioShowcasePage() {
     })();
     return () => { cancelled = true; };
   }, [projectId, publishOpen]);
-  // Sanntid: poll gjeldende versjon hvert 5. sek så nye kommentarer/seksjoner fra
-  // andre anmeldere dukker opp live (uten å forstyrre lokal skriving/avspilling).
+  // Sanntid kommer fra den delte, brukeravgrensede eventstrømmen. Et lavfrekvent
+  // sikkerhetsnett dekker standalone-rom og maskiner som har sovet offline.
   React.useEffect(() => {
     if (!currentVid) return;
-    const t = setInterval(() => { void loadVersion(currentVid); }, 5000);
+    const t = setInterval(() => { void loadVersion(currentVid); void loadProTools(); }, 60000);
     return () => clearInterval(t);
-  }, [currentVid, loadVersion]);
+  }, [currentVid, loadVersion, loadProTools]);
 
   const currentVersion = versions.find((v) => v.id === currentVid);
   const prevVersion = React.useMemo(() => {
@@ -353,6 +371,23 @@ export default function AudioShowcasePage() {
   const setCommentStatus = async (id: string, status: string) => {
     const c = await apiRequest(`/api/audio-comments/${id}`, { method: 'PATCH', body: { status } });
     setDetail((p) => ({ ...p, comments: p.comments.map((x) => (x.id === id ? c : x)) }));
+  };
+  const sendCommentToProTools = async (comment: any, kind: 'locate' | 'create_marker') => {
+    if (!proTools?.session?.id) { setSplitToast('Koble en aktiv Pro Tools Companion-sesjon til dette rommet først'); return; }
+    try {
+      await apiRequest('/api/protools/web/commands', {
+        method: 'POST', body: {
+          audioRoomId: projectId,
+          sessionId: proTools.session.id,
+          kind,
+          payload: { seconds: Number(comment.timecode_seconds) || 0, commentId: comment.id, name: comment.body },
+          dedupeKey: `${comment.id}:${kind}`,
+        },
+      });
+      setSplitToast(kind === 'locate' ? 'Sendt til Pro Tools-playhead' : 'Markør sendt til Pro Tools');
+      void loadProTools();
+    } catch (error: any) { setSplitToast(error?.message || 'Kunne ikke sende til Pro Tools'); }
+    window.setTimeout(() => setSplitToast(null), 3500);
   };
   const likeComment = async (id: string) => {
     const c = await apiRequest(`/api/audio-comments/${id}/like`, { method: 'POST', body: {} });
@@ -738,6 +773,8 @@ export default function AudioShowcasePage() {
                       <Typography sx={{ fontSize: '0.86rem', color: 'rgba(245,242,234,0.9)', mt: 0.4 }}>{c.body}</Typography>
                       <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mt: 0.75 }}>
                         <Typography onClick={() => { setReplyTo(c); }} sx={{ fontSize: '0.74rem', color: MUTED, cursor: 'pointer', '&:hover': { color: TEXT } }}>Svar</Typography>
+                        {proTools?.session?.id && <Typography onClick={() => void sendCommentToProTools(c, 'locate')} sx={{ fontSize: '0.74rem', color: ACCENT, cursor: 'pointer', '&:hover': { color: TEXT } }}>Finn i Pro Tools</Typography>}
+                        {proTools?.session?.id && <Typography onClick={() => void sendCommentToProTools(c, 'create_marker')} sx={{ fontSize: '0.74rem', color: c.protools_sync_status === 'synced' ? '#5fb88a' : MUTED, cursor: 'pointer', '&:hover': { color: TEXT } }}>{c.protools_sync_status === 'synced' ? 'PT-markør ✓' : 'Lag PT-markør'}</Typography>}
                         <Stack direction="row" alignItems="center" spacing={0.4} onClick={() => void likeComment(c.id)} sx={{ cursor: 'pointer', color: c.like_count > 0 ? ACCENT : FAINT, '&:hover': { color: ACCENT } }}>
                           {c.like_count > 0 ? <ThumbUpAlt sx={{ fontSize: 14 }} /> : <ThumbUpAltOutlined sx={{ fontSize: 14 }} />}{c.like_count > 0 && <Typography sx={{ fontSize: '0.72rem', fontWeight: 700 }}>{c.like_count}</Typography>}
                         </Stack>

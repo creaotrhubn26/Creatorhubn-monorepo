@@ -4,6 +4,7 @@ import {
   type EaseVerseProToolsSyncPayload,
   type EaseVerseProToolsSyncResult,
 } from "./easeverse-protools-sync.js";
+import { ensureMusicIntegrationSchema } from "./music-artifact-lineage.js";
 
 export type Queryable = {
   query: (sql: string, params?: unknown[]) => Promise<{ rows: any[]; rowCount?: number }>;
@@ -116,6 +117,7 @@ export async function ensureProToolsCompanionSchema(pool: PoolLike): Promise<voi
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+  await ensureMusicIntegrationSchema(pool);
 }
 
 export async function databaseRateLimited(

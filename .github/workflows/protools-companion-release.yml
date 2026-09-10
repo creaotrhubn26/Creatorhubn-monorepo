@@ -15,7 +15,7 @@ on:
       tag:
         description: 'Release-tag (f.eks. protools-companion-v0.1.3)'
         required: true
-        default: 'protools-companion-v0.1.3'
+        default: 'protools-companion-v0.2.0'
 
 permissions:
   contents: write
@@ -98,8 +98,11 @@ jobs:
             cat > "$notes_file" <<NOTES
           Native CreatorHub Pro Tools Companion ${version} kobler Pro Tools til Sound Room og EaseVerse:
 
-          - synker markører og sesjonsmetadata fra «Export Session Info as Text»
-          - laster nye bounces inn som review-versjoner i Sound Room
+          - mottar tidskodet Sound Room-feedback i sanntid og styrer locate/markør gjennom lokal Avid PTSL
+          - importerer keeper-/referanselyd og eksporterer 24-bit WAV til review
+          - følger take → mix → review → keeper/master i en kanonisk artefaktlinje
+          - sjekker Pro Tools Intro-grenser før handoff
+          - beholder Session Info- og bounce-watchere som robust offline fallback
           - **macOS:** Developer ID-signert og Apple-notarisert for Apple Silicon og Intel
           - **Windows x64:** Authenticode-signert EXE-installer og MSI for administrert utrulling
 
