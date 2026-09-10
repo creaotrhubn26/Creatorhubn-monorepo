@@ -218,6 +218,11 @@ jobs:
           PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
         run: node scripts/deploy/render-backend.mjs assert-runtime-database-roles
 
+      - name: Verify Render Leadgrid storage contract
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: node scripts/deploy/render-backend.mjs assert-leadgrid-storage-runtime
+
       - name: Revalidate current main before database mutation
         env:
           GH_TOKEN: ${{ github.token }}
