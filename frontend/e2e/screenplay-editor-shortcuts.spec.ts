@@ -195,6 +195,8 @@ test.describe('ScreenplayEditor Final Draft keyboard flow', () => {
     await page.getByRole('button', { name: 'Tilpass hurtigtaster for manuskript' }).click();
     const dialog = page.getByRole('dialog', { name: 'Hurtigtaster for manuskript' });
     await expect(dialog).toBeVisible();
+    await expect(dialog).not.toContainText('Final Draft');
+    await expect(dialog.getByRole('button', { name: 'Tilbakestill standard' })).toBeVisible();
     await dialog.getByRole('button', { name: 'Endre hurtigtast for Character' }).click();
     await page.keyboard.press(primaryShortcut('k'));
     await expect(dialog.getByRole('button', { name: 'Endre hurtigtast for Character' })).toContainText(`${primaryLabel}K`);

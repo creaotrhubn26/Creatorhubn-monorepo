@@ -161,6 +161,14 @@ interface ParsedLine {
   metadata?: Record<string, string>;
 }
 
+export interface ScreenplayTextSelection {
+  start: number;
+  end: number;
+  startLine: number;
+  endLine: number;
+  text: string;
+}
+
 interface ScreenplayEditorProps {
   value: string;
   onChange: (value: string) => void;
@@ -182,6 +190,10 @@ interface ScreenplayEditorProps {
   commentLines?: Set<number>;
   /** Klikk på en kommentar-markør i margen. */
   onCommentLineClick?: (line: number) => void;
+  /** Oppdateres for både markør og tekstutvalg. */
+  onSelectionChange?: (selection: ScreenplayTextSelection) => void;
+  /** Google Docs-kompatibel kommentarhandling: Cmd/Ctrl+Alt+M. */
+  onAddComment?: (selection: ScreenplayTextSelection) => void;
 }
 
 // Fountain syntax patterns
@@ -460,6 +472,8 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   spellCheck = true,
   commentLines,
   onCommentLineClick,
+  onSelectionChange,
+  onAddComment,
 }) => {
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
@@ -1461,6 +1475,27 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
       return;
     }
 
+    if (
+      e.key.toLowerCase() === 'm'
+      && (e.metaKey || e.ctrlKey)
+      && e.altKey
+      && !e.shiftKey
+      && onAddComment
+    ) {
+      e.preventDefault();
+      const { selectionStart, selectionEnd, value: editorValue } = e.currentTarget;
+      const start = Math.min(selectionStart, selectionEnd);
+      const end = Math.max(selectionStart, selectionEnd);
+      onAddComment({
+        start,
+        end,
+        startLine: editorValue.slice(0, start).split('\n').length,
+        endLine: editorValue.slice(0, Math.max(start, end - 1)).split('\n').length,
+        text: editorValue.slice(start, end),
+      });
+      return;
+    }
+
     // Autocomplete navigation
     if (showAutocomplete) {
       if (e.key === 'ArrowDown') {
@@ -1616,6 +1651,8 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   parsedLinesRef.current = parsedLines;
   const onCursorChangeRef = useRef(onCursorChange);
   onCursorChangeRef.current = onCursorChange;
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  onSelectionChangeRef.current = onSelectionChange;
   const internalValueRef2 = useRef(internalValue);
   internalValueRef2.current = internalValue;
 
@@ -1629,6 +1666,15 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     const column = lines[lines.length - 1].length + 1;
     setCursorPosition({ line, column });
     setSelectionCollapsed(selectionStart === selectionEnd);
+    onSelectionChangeRef.current?.({
+      start: selectionStart,
+      end: selectionEnd,
+      startLine: line,
+      endLine: internalValueRef2.current
+        .slice(0, Math.max(selectionStart, selectionEnd - 1))
+        .split('\n').length,
+      text: internalValueRef2.current.slice(selectionStart, selectionEnd),
+    });
     const pl = parsedLinesRef.current;
     if (pl[line - 1]) {
       const pendingType = pendingElementRef.current?.lineIndex === line - 1
@@ -2441,6 +2487,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onClick={handleCursorUpdate}
+          onSelect={handleCursorUpdate}
           onKeyUp={handleEditorKeyUp}
           onScroll={handleScroll}
           onFocus={() => setIsEditorFocused(true)}

@@ -129,7 +129,7 @@ export function ScreenplayShortcutSettingsDialog({
             </Box>
             <Chip
               color={isCustom ? 'secondary' : 'primary'}
-              label={isCustom ? 'Tilpasset' : 'Final Draft'}
+              label={isCustom ? 'Tilpasset' : 'Standard'}
               size="small"
             />
           </Stack>
@@ -190,7 +190,7 @@ export function ScreenplayShortcutSettingsDialog({
             setCaptureError('');
           }}
         >
-          Final Draft-oppsett
+          Tilbakestill standard
         </Button>
         <Stack direction="row" spacing={1}>
           <Button onClick={onClose}>Avbryt</Button>
