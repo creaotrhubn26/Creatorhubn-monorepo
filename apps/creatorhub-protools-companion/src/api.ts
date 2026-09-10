@@ -14,6 +14,9 @@ export interface AppState {
   easeverse_project_id: string | null;
   suggested_project_name: string | null;
   watching: boolean;
+  pending_bounces: number;
+  pending_session_info: boolean;
+  last_queue_error: string | null;
 }
 
 export interface TrackInfo {
@@ -56,6 +59,45 @@ export interface ActivityEntry {
   message: string;
 }
 
+export interface FeedbackComment {
+  id: string;
+  author: string | null;
+  author_role: string | null;
+  timecode_seconds: number;
+  body: string;
+  category: string | null;
+  status: string;
+  is_decision: boolean;
+  version_label: string;
+  created_at: string;
+}
+
+export interface FeedbackApproval {
+  id: string;
+  approved_by: string | null;
+  approval_type: string;
+  note: string | null;
+  version_label: string;
+  created_at: string;
+}
+
+export interface FeedbackTask {
+  id: string;
+  title: string;
+  status: "todo" | "in_progress" | "done";
+  assignee: string | null;
+  created_at: string;
+}
+
+export interface FeedbackInbox {
+  project: { id: string; title: string; status: string } | null;
+  version: { id: string; version_label: string; version_number: number; status: string } | null;
+  comments: FeedbackComment[];
+  approvals: FeedbackApproval[];
+  tasks: FeedbackTask[];
+  generatedAt: string;
+}
+
 export const getDefaultApiBase = () => invoke<string>("default_api_base");
 export const getState = () => invoke<AppState>("get_state");
 export const pair = (code: string, apiBase: string) => invoke<PairResult>("pair", { code, apiBase });
@@ -73,3 +115,4 @@ export const syncSessionInfo = () => invoke<SyncResult>("sync_session_info");
 export const uploadBounce = (path: string) => invoke<BounceResult>("upload_bounce", { path });
 export const startWatching = () => invoke<void>("start_watching");
 export const stopWatching = () => invoke<void>("stop_watching");
+export const getFeedback = () => invoke<FeedbackInbox>("get_feedback");

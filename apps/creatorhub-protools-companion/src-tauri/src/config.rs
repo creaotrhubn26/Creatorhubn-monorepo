@@ -8,6 +8,18 @@ use serde::{Deserialize, Serialize};
 pub const DEFAULT_API_BASE: &str = "https://creatorhub-backend-rtbl.onrender.com";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingBounce {
+    pub path: String,
+    pub fingerprint: String,
+    #[serde(default)]
+    pub attempt_count: u32,
+    #[serde(default)]
+    pub next_attempt_at_ms: u64,
+    #[serde(default)]
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     #[serde(default = "default_api_base")]
     pub api_base: String,
@@ -38,6 +50,20 @@ pub struct AppConfig {
     /// Filfingerprints som er fullført hos backend, brukt for idempotens over omstart.
     #[serde(default)]
     pub uploaded_bounces: Vec<String>,
+    /// Slås på eksplisitt av brukeren og gjenoppretter watcher etter omstart.
+    #[serde(default)]
+    pub auto_watch: bool,
+    /// Varig lokal outbox: en fil forsvinner ikke ved app-/maskinomstart.
+    #[serde(default)]
+    pub pending_bounces: Vec<PendingBounce>,
+    #[serde(default)]
+    pub session_info_pending: bool,
+    #[serde(default)]
+    pub session_info_attempt_count: u32,
+    #[serde(default)]
+    pub session_info_next_attempt_at_ms: u64,
+    #[serde(default)]
+    pub session_info_last_error: Option<String>,
 }
 
 fn default_api_base() -> String {
@@ -61,6 +87,12 @@ impl Default for AppConfig {
             easeverse_project_id: None,
             suggested_project_name: None,
             uploaded_bounces: Vec::new(),
+            auto_watch: false,
+            pending_bounces: Vec::new(),
+            session_info_pending: false,
+            session_info_attempt_count: 0,
+            session_info_next_attempt_at_ms: 0,
+            session_info_last_error: None,
         }
     }
 }
@@ -90,12 +122,14 @@ pub fn save(cfg: &AppConfig) -> Result<(), String> {
     fs::create_dir_all(&dir).map_err(|e| format!("Opprett config-mappe: {}", e))?;
     let json = serde_json::to_vec_pretty(cfg).map_err(|e| format!("Serialiser config: {}", e))?;
     let path = config_path();
-    fs::write(&path, &json).map_err(|e| format!("Skriv config: {}", e))?;
+    let tmp_path = dir.join("config.json.tmp");
+    fs::write(&tmp_path, &json).map_err(|e| format!("Skriv midlertidig config: {}", e))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+        let _ = fs::set_permissions(&tmp_path, fs::Permissions::from_mode(0o600));
     }
+    fs::rename(&tmp_path, &path).map_err(|e| format!("Aktiver config atomisk: {}", e))?;
     Ok(())
 }
 
@@ -116,11 +150,35 @@ mod tests {
         let c: AppConfig = serde_json::from_str("{}").unwrap();
         assert_eq!(c.api_base, DEFAULT_API_BASE);
         assert!(c.uploaded_bounces.is_empty());
+        assert!(c.pending_bounces.is_empty());
+        assert!(!c.auto_watch);
     }
 
     #[test]
     fn unknown_fields_ignored() {
         let c: AppConfig = serde_json::from_str(r#"{"api_base":"https://x","future":1}"#).unwrap();
         assert_eq!(c.api_base, "https://x");
+    }
+
+    #[test]
+    fn pending_queue_survives_serialization() {
+        let mut c = AppConfig::default();
+        c.auto_watch = true;
+        c.session_info_pending = true;
+        c.pending_bounces.push(PendingBounce {
+            path: "/tmp/Mix.wav".into(),
+            fingerprint: "Mix.wav:10:20".into(),
+            attempt_count: 3,
+            next_attempt_at_ms: 42,
+            last_error: Some("offline".into()),
+        });
+        let restored: AppConfig = serde_json::from_slice(&serde_json::to_vec(&c).unwrap()).unwrap();
+        assert!(restored.auto_watch);
+        assert!(restored.session_info_pending);
+        assert_eq!(restored.pending_bounces[0].attempt_count, 3);
+        assert_eq!(
+            restored.pending_bounces[0].last_error.as_deref(),
+            Some("offline")
+        );
     }
 }

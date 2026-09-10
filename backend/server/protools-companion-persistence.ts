@@ -81,6 +81,9 @@ export async function ensureProToolsCompanionSchema(pool: PoolLike): Promise<voi
       PRIMARY KEY(scope,subject_hash,window_started_at)
     );
     ALTER TABLE protools_companion_sessions ADD COLUMN IF NOT EXISTS workspace_project_id VARCHAR(160);
+    ALTER TABLE protools_companion_sessions ADD COLUMN IF NOT EXISTS organization_id VARCHAR(160);
+    ALTER TABLE protools_companion_sessions ADD COLUMN IF NOT EXISTS integration_owner_user_id VARCHAR(64);
+    UPDATE protools_companion_sessions SET integration_owner_user_id=user_id WHERE integration_owner_user_id IS NULL;
     ALTER TABLE protools_companion_sessions ADD COLUMN IF NOT EXISTS easeverse_project_id VARCHAR(160);
     ALTER TABLE protools_companion_sessions ADD COLUMN IF NOT EXISTS device_token_id VARCHAR(160);
     ALTER TABLE protools_companion_sessions ADD COLUMN IF NOT EXISTS sync_revision BIGINT NOT NULL DEFAULT 0;
@@ -101,6 +104,17 @@ export async function ensureProToolsCompanionSchema(pool: PoolLike): Promise<voi
     );
     CREATE INDEX IF NOT EXISTS idx_ptc_easeverse_outbox_pending
       ON protools_easeverse_sync_outbox(status,next_attempt_at,created_at);
+    ALTER TABLE protools_easeverse_sync_outbox ADD COLUMN IF NOT EXISTS lock_token UUID;
+    ALTER TABLE protools_easeverse_sync_outbox ADD COLUMN IF NOT EXISTS locked_at TIMESTAMPTZ;
+    ALTER TABLE protools_easeverse_sync_outbox ADD COLUMN IF NOT EXISTS dead_letter_at TIMESTAMPTZ;
+    CREATE INDEX IF NOT EXISTS idx_ptc_easeverse_outbox_lease
+      ON protools_easeverse_sync_outbox(status,next_attempt_at,locked_at,created_at);
+    CREATE TABLE IF NOT EXISTS protools_companion_worker_heartbeat (
+      worker_name VARCHAR(80) PRIMARY KEY, instance_id VARCHAR(160) NOT NULL,
+      last_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), last_heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_success_at TIMESTAMPTZ, last_error TEXT, processed_count BIGINT NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
 }
 
@@ -183,23 +197,31 @@ async function deliverOutboxRow(pool: PoolLike, row: any): Promise<QueuedSyncRes
   if (result.synced) {
     await pool.query(
       `UPDATE protools_easeverse_sync_outbox SET status='delivered',attempt_count=attempt_count+1,
-         delivered_at=NOW(),last_error=NULL,updated_at=NOW() WHERE id=$1`, [row.id],
+         delivered_at=NOW(),last_error=NULL,lock_token=NULL,locked_at=NULL,updated_at=NOW() WHERE id=$1`, [row.id],
     );
-    await pool.query(
-      `UPDATE protools_companion_sessions SET last_easeverse_sync_at=NOW(),last_easeverse_sync_status='delivered',
-         last_easeverse_sync_error=NULL WHERE id=$1::uuid`, [row.session_id],
-    );
+    if (row.session_id) {
+      await pool.query(
+        `UPDATE protools_companion_sessions SET last_easeverse_sync_at=NOW(),last_easeverse_sync_status='delivered',
+           last_easeverse_sync_error=NULL WHERE id=$1::uuid`, [row.session_id],
+      );
+    }
   } else {
-    const nextAttempt = retryDelaySeconds(Number(row.attempt_count || 0) + 1);
+    const attempt = Number(row.attempt_count || 0) + 1;
+    const nextAttempt = retryDelaySeconds(attempt);
+    const nextStatus = attempt >= 12 ? "dead_letter" : "pending";
     await pool.query(
-      `UPDATE protools_easeverse_sync_outbox SET status='pending',attempt_count=attempt_count+1,
-         next_attempt_at=NOW()+($2::text||' seconds')::interval,last_error=$3,updated_at=NOW() WHERE id=$1`,
-      [row.id, nextAttempt, reason.slice(0, 500)],
+      `UPDATE protools_easeverse_sync_outbox SET status=$2,attempt_count=attempt_count+1,
+         next_attempt_at=NOW()+($3::text||' seconds')::interval,last_error=$4,
+         dead_letter_at=CASE WHEN $2='dead_letter' THEN NOW() ELSE dead_letter_at END,
+         lock_token=NULL,locked_at=NULL,updated_at=NOW() WHERE id=$1`,
+      [row.id, nextStatus, nextAttempt, reason.slice(0, 500)],
     );
-    await pool.query(
-      `UPDATE protools_companion_sessions SET last_easeverse_sync_status='pending',last_easeverse_sync_error=$2
-        WHERE id=$1::uuid`, [row.session_id, reason.slice(0, 500)],
-    );
+    if (row.session_id) {
+      await pool.query(
+        `UPDATE protools_companion_sessions SET last_easeverse_sync_status=$2,last_easeverse_sync_error=$3
+          WHERE id=$1::uuid`, [row.session_id, nextStatus, reason.slice(0, 500)],
+      );
+    }
   }
   return { ...result, eventId: String(row.event_id), revision: Number(row.revision), queued: !result.synced };
 }
@@ -208,6 +230,7 @@ export async function enqueueEaseVerseSync(args: {
   pool: PoolLike;
   sessionId: string;
   userId: string;
+  integrationOwnerUserId?: string;
   eventType: string;
   eventId?: string;
   payload: EaseVerseProToolsSyncPayload;
@@ -236,7 +259,7 @@ export async function enqueueEaseVerseSync(args: {
     schemaVersion: 1,
     eventId,
     revision,
-    ownerUserId: args.userId,
+    ownerUserId: args.integrationOwnerUserId || args.userId,
     proToolsSessionId: args.sessionId,
   };
   const inserted = await args.pool.query(
@@ -277,4 +300,47 @@ export async function retryEaseVerseSync(
     [userId],
   );
   return { attempted: rows.rows.length, delivered, pending: Number(pending.rows[0]?.count || 0) };
+}
+
+export async function drainDueEaseVerseSync(
+  pool: PoolLike,
+  limit = 25,
+): Promise<{ attempted: number; delivered: number; pending: number }> {
+  const client = typeof pool.connect === "function" ? await pool.connect() : pool;
+  const lockToken = crypto.randomUUID();
+  let rows: any[] = [];
+  try {
+    await client.query("BEGIN");
+    const claimed = await client.query(
+      `WITH due AS (
+         SELECT id FROM protools_easeverse_sync_outbox
+          WHERE ((status='pending' AND next_attempt_at<=NOW())
+             OR (status='processing' AND locked_at<NOW()-INTERVAL '5 minutes'))
+          ORDER BY created_at ASC
+          FOR UPDATE SKIP LOCKED
+          LIMIT $1
+       )
+       UPDATE protools_easeverse_sync_outbox o
+          SET status='processing',lock_token=$2::uuid,locked_at=NOW(),updated_at=NOW()
+         FROM due WHERE o.id=due.id
+       RETURNING o.*`,
+      [Math.max(1, Math.min(100, limit)), lockToken],
+    );
+    rows = claimed.rows;
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    if (client !== pool && "release" in client) client.release();
+  }
+
+  let delivered = 0;
+  for (const row of rows) {
+    if ((await deliverOutboxRow(pool, row)).synced) delivered += 1;
+  }
+  const pendingResult = await pool.query(
+    `SELECT COUNT(*)::int AS count FROM protools_easeverse_sync_outbox WHERE status IN ('pending','processing')`,
+  );
+  return { attempted: rows.length, delivered, pending: Number(pendingResult.rows[0]?.count || 0) };
 }

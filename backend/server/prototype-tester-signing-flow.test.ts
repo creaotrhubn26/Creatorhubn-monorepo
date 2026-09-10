@@ -115,6 +115,9 @@ describe("prototype tester signing receipt", () => {
     expect(pdf.length).toBeGreaterThan(25_000);
     const pdfSource = pdf.toString("latin1");
     expect(pdfSource).toContain("CreatorHub signeringskvittering");
+    expect(pdfSource).toContain("/Subtype /Image");
+    expect(pdfSource).toContain("/Outlines");
+    expect(pdfSource).toContain("/PageMode /UseOutlines");
     expect(pdfSource.match(/\/Type \/Page\b/g)?.length).toBeGreaterThanOrEqual(6);
   });
 

@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import PDFDocument from "pdfkit";
 import { canonicalJsonStringify } from "../../frontend/shared/prototype-tester-agreements.ts";
 
@@ -100,6 +102,26 @@ function displayDigest(value: unknown): string {
   );
 }
 
+let cachedCreatorHubWordmarkPath: string | null = null;
+
+function loadCreatorHubWordmarkPath(): string {
+  if (cachedCreatorHubWordmarkPath) return cachedCreatorHubWordmarkPath;
+
+  const fileName = "creatorhub-wordmark-light.png";
+  const candidates = [
+    path.resolve(process.cwd(), "../frontend/client/public", fileName),
+    path.resolve(process.cwd(), "frontend/client/public", fileName),
+    path.resolve(process.cwd(), "client/public", fileName),
+  ];
+  const assetPath = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!assetPath) {
+    throw new Error("CreatorHub-wordmarken mangler fra deploypakken");
+  }
+
+  cachedCreatorHubWordmarkPath = assetPath;
+  return cachedCreatorHubWordmarkPath;
+}
+
 export function prototypeTesterAgreementDigest(snapshot: unknown): string {
   return crypto
     .createHash("sha256")
@@ -179,23 +201,23 @@ export function buildPrototypeTesterSigningReceiptPdf(
 
     const PW = doc.page.width;
     const PH = doc.page.height;
-    const L = 52;
-    const R = PW - 52;
+    const L = 54;
+    const R = PW - 54;
     const W = R - L;
     const FOOTER_Y = PH - 38;
     const BODY_BOTTOM = PH - 62;
 
     const COLOR = {
-      navy: "#101828",
-      ink: "#182230",
-      text: "#344054",
+      navy: "#0B1426",
+      ink: "#172033",
+      text: "#364152",
       muted: "#667085",
       faint: "#98A2B3",
-      line: "#E4E7EC",
-      panel: "#F8FAFC",
-      warm: "#FFF7ED",
-      accent: "#F79009",
-      accentDark: "#B54708",
+      line: "#D9E0EA",
+      panel: "#F6F8FB",
+      warm: "#FFF4E5",
+      accent: "#FF9500",
+      accentDark: "#C85E00",
       green: "#067647",
       greenSoft: "#ECFDF3",
       greenLine: "#ABEFC6",
@@ -207,62 +229,41 @@ export function buildPrototypeTesterSigningReceiptPdf(
     const documents = Array.isArray(input.snapshot.documents)
       ? (input.snapshot.documents as ReceiptDocument[])
       : [];
+    const creatorHubWordmarkPath = loadCreatorHubWordmarkPath();
     const signatureLabel = signatureMethodLabel(input.signatureMethod);
     const acceptedAtLabel = formatReceiptTimestamp(input.snapshot.acceptedAt);
     const verifiedAtLabel = input.emailVerifiedAt
       ? formatReceiptTimestamp(input.emailVerifiedAt)
       : "Ikke registrert (eldre aksept)";
 
-    const drawCreatorHubMark = (
-      x: number,
-      y: number,
-      size: number,
-      color = COLOR.accent,
-    ) => {
-      doc.save();
-      doc.translate(x, y).scale(size / 128);
-      doc.lineWidth(12).lineCap("round").lineJoin("round").strokeColor(color);
-      doc
-        .path(
-          "M77 24C60.6 18.1 41.6 21.7 28.8 34.6C11.7 51.6 11.7 79.4 28.8 96.4C41.6 109.3 60.6 112.9 77 107",
-        )
-        .stroke();
-      doc.path("M79 35V93").stroke();
-      doc.path("M103 35V93").stroke();
-      doc.path("M79 64H103").stroke();
-      doc.restore();
-    };
-
     const drawBrandLockup = (
       x: number,
       y: number,
-      options: { inverse?: boolean; compact?: boolean } = {},
+      options: { compact?: boolean } = {},
     ) => {
-      const inverse = options.inverse === true;
       const compact = options.compact === true;
-      const markSize = compact ? 28 : 38;
-      drawCreatorHubMark(x, y, markSize);
-      const wordmarkX = x + markSize + (compact ? 10 : 13);
+      doc.image(creatorHubWordmarkPath, x, y, { width: compact ? 142 : 186 });
+    };
+
+    const drawCheckBadge = (
+      x: number,
+      y: number,
+      options: { size?: number; background?: string } = {},
+    ) => {
+      const size = options.size || 18;
+      const radius = size / 2;
       doc
-        .fillColor(inverse ? COLOR.white : COLOR.navy)
-        .font("Helvetica-Bold")
-        .fontSize(compact ? 10.5 : 13)
-        .text("CREATORHUB · NORGE", wordmarkX, y + (compact ? 4 : 6), {
-          lineBreak: false,
-        });
+        .circle(x + radius, y + radius, radius)
+        .fill(options.background || COLOR.green);
       doc
-        .fillColor(inverse ? "#D0D5DD" : COLOR.muted)
-        .font("Helvetica")
-        .fontSize(compact ? 6.2 : 7.2)
-        .text(
-          "PROFESJONELL KREATIV PLATTFORM",
-          wordmarkX,
-          y + (compact ? 17 : 24),
-          {
-            lineBreak: false,
-            characterSpacing: compact ? 0.7 : 1,
-          },
-        );
+        .moveTo(x + size * 0.27, y + size * 0.52)
+        .lineTo(x + size * 0.43, y + size * 0.68)
+        .lineTo(x + size * 0.76, y + size * 0.32)
+        .lineWidth(Math.max(1.2, size * 0.08))
+        .lineCap("round")
+        .lineJoin("round")
+        .strokeColor(COLOR.white)
+        .stroke();
     };
 
     const drawPill = (
@@ -337,7 +338,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
       rows: Array<{ label: string; value: unknown }>,
     ) => {
       doc
-        .roundedRect(x, y, width, height, 9)
+        .roundedRect(x, y, width, height, 8)
         .fillAndStroke(COLOR.panel, COLOR.line);
       doc
         .fillColor(COLOR.ink)
@@ -433,13 +434,14 @@ export function buildPrototypeTesterSigningReceiptPdf(
 
     const drawCompactHeader = (rightLabel: string, rightReference?: string) => {
       paintPage();
+      doc.rect(0, 0, PW, 72).fill(COLOR.navy);
       doc.rect(0, 0, PW, 6).fill(COLOR.accent);
-      drawBrandLockup(L, 25, { compact: true });
+      drawBrandLockup(L, 15, { compact: true });
       doc
-        .fillColor(COLOR.muted)
+        .fillColor("#D0D5DD")
         .font("Helvetica-Bold")
         .fontSize(7)
-        .text(rightLabel.toUpperCase(), L, 28, {
+        .text(rightLabel.toUpperCase(), L, 21, {
           width: W,
           align: "right",
           lineBreak: false,
@@ -447,18 +449,18 @@ export function buildPrototypeTesterSigningReceiptPdf(
         });
       if (rightReference) {
         doc
-          .fillColor(COLOR.faint)
+          .fillColor("#98A2B3")
           .font("Helvetica")
           .fontSize(7)
-          .text(rightReference, L, 43, {
+          .text(rightReference, L, 37, {
             width: W,
             align: "right",
             lineBreak: false,
           });
       }
       doc
-        .moveTo(L, 74)
-        .lineTo(R, 74)
+        .moveTo(L, 84)
+        .lineTo(R, 84)
         .lineWidth(0.7)
         .strokeColor(COLOR.line)
         .stroke();
@@ -466,14 +468,14 @@ export function buildPrototypeTesterSigningReceiptPdf(
 
     const drawSummaryPage = () => {
       paintPage(COLOR.white);
-      doc.rect(0, 0, PW, 208).fill(COLOR.navy);
+      doc.rect(0, 0, PW, 226).fill(COLOR.navy);
       doc.rect(0, 0, PW, 7).fill(COLOR.accent);
-      drawBrandLockup(L, 31, { inverse: true });
+      drawBrandLockup(L, 25);
       doc
         .fillColor("#D0D5DD")
         .font("Helvetica-Bold")
         .fontSize(7)
-        .text("SIGNERINGSKVITTERING", L, 38, {
+        .text("SIGNERINGSBEVIS · PROTOTYPEPROGRAMMET", L, 38, {
           width: W,
           align: "right",
           lineBreak: false,
@@ -483,73 +485,159 @@ export function buildPrototypeTesterSigningReceiptPdf(
       doc
         .fillColor(COLOR.white)
         .font("Helvetica-Bold")
-        .fontSize(23)
-        .text("Kvittering for elektronisk signering", L, 101, {
+        .fontSize(28)
+        .text("Elektronisk signering bekreftet", L, 104, {
           width: W,
           lineBreak: false,
         });
       doc
         .fillColor("#D0D5DD")
         .font("Helvetica")
-        .fontSize(10)
+        .fontSize(10.2)
         .text(
-          "Prototype-testerprogrammet · dokumentert aksept av komplett avtalegrunnlag",
+          "Fire dokumenter er akseptert og samlet i én kontrollerbar avtaleversjon.",
           L,
-          140,
+          148,
           { width: W, lineBreak: false },
         );
-      drawPill(L, 172, "AKSEPT BEKREFTET", COLOR.greenSoft, COLOR.green);
+      drawPill(L, 178, "VERIFISERT AKSEPT", COLOR.greenSoft, COLOR.green);
 
-      drawMetadataValue(L, 230, 235, "Kvitterings-ID", input.receiptId);
-      drawMetadataValue(L + 255, 230, W - 255, "Akseptert", acceptedAtLabel);
+      // The signer certificate deliberately overlaps the hero. This gives the
+      // legal act visual priority and keeps identity, time and method together.
       doc
-        .moveTo(L, 274)
-        .lineTo(R, 274)
+        .roundedRect(L, 203, W, 160, 11)
+        .fillAndStroke(COLOR.white, COLOR.line);
+      drawCheckBadge(L + 18, 221, { size: 22 });
+      doc
+        .fillColor(COLOR.green)
+        .font("Helvetica-Bold")
+        .fontSize(7)
+        .text("ELEKTRONISK SIGNERT AV", L + 50, 222, {
+          width: 230,
+          characterSpacing: 0.7,
+          lineBreak: false,
+        });
+      doc
+        .fillColor(COLOR.ink)
+        .font("Helvetica-Bold")
+        .fontSize(16)
+        .text(receiptText(input.snapshot.signerName, 200) || "—", L + 50, 240, {
+          width: 230,
+          lineBreak: false,
+          ellipsis: true,
+        });
+      doc
+        .fillColor(COLOR.muted)
+        .font("Helvetica")
+        .fontSize(8.5)
+        .text(
+          receiptText(input.snapshot.signerEmail, 320) || "—",
+          L + 50,
+          263,
+          {
+            width: 230,
+            lineBreak: false,
+            ellipsis: true,
+          },
+        );
+
+      const certificateDividerX = L + 286;
+      doc
+        .moveTo(certificateDividerX, 220)
+        .lineTo(certificateDividerX, 282)
         .lineWidth(0.7)
         .strokeColor(COLOR.line)
         .stroke();
-
-      drawSectionLabel("Partene", L, 292);
-      const cardGap = 14;
-      const cardWidth = (W - cardGap) / 2;
-      drawInfoCard(L, 318, cardWidth, 132, "Signatar", [
-        { label: "Navn", value: input.snapshot.signerName },
-        { label: "E-post", value: input.snapshot.signerEmail },
-      ]);
-      drawInfoCard(
-        L + cardWidth + cardGap,
-        318,
-        cardWidth,
-        132,
-        "Representert virksomhet",
-        [
-          {
-            label: "Juridisk navn",
-            value: input.snapshot.representedCompany || "Ikke oppgitt",
-          },
-          {
-            label: "Organisasjonsnummer",
-            value: input.snapshot.representedCompanyOrganizationNumber
-              ? formatOrganizationNumber(
-                  input.snapshot.representedCompanyOrganizationNumber,
-                )
-              : "Ikke oppgitt",
-          },
-          {
-            label: "Forretningsadresse",
-            value:
-              input.snapshot.representedCompanyBusinessAddress ||
-              "Ikke oppgitt",
-          },
-        ],
+      drawMetadataValue(
+        certificateDividerX + 18,
+        221,
+        W - 322,
+        "Akseptert",
+        acceptedAtLabel,
+      );
+      drawMetadataValue(
+        certificateDividerX + 18,
+        258,
+        W - 322,
+        "Metode",
+        signatureLabel,
       );
 
-      drawSectionLabel("Dokumentert beviskjede", L, 475);
+      doc
+        .moveTo(L + 18, 296)
+        .lineTo(R - 18, 296)
+        .lineWidth(0.7)
+        .strokeColor(COLOR.line)
+        .stroke();
+      drawMetadataValue(
+        L + 18,
+        311,
+        300,
+        "Representert virksomhet",
+        input.snapshot.representedCompany || "Ikke oppgitt",
+      );
+      drawMetadataValue(
+        L + 338,
+        311,
+        W - 356,
+        "Organisasjonsnummer",
+        input.snapshot.representedCompanyOrganizationNumber
+          ? formatOrganizationNumber(
+              input.snapshot.representedCompanyOrganizationNumber,
+            )
+          : "Ikke oppgitt",
+      );
+
+      drawSectionLabel("Dokumentgrunnlag", L, 391);
+      const tileGap = 10;
+      const tileWidth = (W - tileGap) / 2;
+      for (const [index, agreement] of documents.entries()) {
+        const tileX = L + (index % 2) * (tileWidth + tileGap);
+        const tileY = 418 + Math.floor(index / 2) * 65;
+        doc
+          .roundedRect(tileX, tileY, tileWidth, 55, 8)
+          .fillAndStroke(COLOR.panel, COLOR.line);
+        doc.circle(tileX + 22, tileY + 27.5, 12).fill(COLOR.navy);
+        doc
+          .fillColor(COLOR.white)
+          .font("Helvetica-Bold")
+          .fontSize(8)
+          .text(String(index + 1), tileX + 15, tileY + 24, {
+            width: 14,
+            align: "center",
+            lineBreak: false,
+          });
+        doc
+          .fillColor(COLOR.ink)
+          .font("Helvetica-Bold")
+          .fontSize(9)
+          .text(agreementLabel(agreement.key), tileX + 43, tileY + 13, {
+            width: tileWidth - 56,
+            lineBreak: false,
+            ellipsis: true,
+          });
+        doc
+          .fillColor(
+            agreement.bindingNature === "non_binding"
+              ? COLOR.blue
+              : COLOR.green,
+          )
+          .font("Helvetica-Bold")
+          .fontSize(6.8)
+          .text(
+            `${bindingNatureLabel(agreement.bindingNature).toUpperCase()} · v${receiptText(agreement.version, 40)}`,
+            tileX + 43,
+            tileY + 32,
+            { width: tileWidth - 56, lineBreak: false },
+          );
+      }
+
+      drawSectionLabel("Integritet og sporbarhet", L, 562);
       const evidenceGap = 10;
       const evidenceWidth = (W - evidenceGap * 2) / 3;
       drawEvidenceCard(
         L,
-        501,
+        589,
         evidenceWidth,
         "E-post verifisert",
         verifiedAtLabel,
@@ -557,14 +645,14 @@ export function buildPrototypeTesterSigningReceiptPdf(
       );
       drawEvidenceCard(
         L + evidenceWidth + evidenceGap,
-        501,
+        589,
         evidenceWidth,
-        "Signeringsmetode",
-        signatureLabel,
+        "Dokumentintegritet",
+        `${documents.length}/4 dokumenter kontrollert`,
       );
       drawEvidenceCard(
         L + (evidenceWidth + evidenceGap) * 2,
-        501,
+        589,
         evidenceWidth,
         "Signeringsfullmakt",
         input.snapshot.confirmedSigningAuthority === true
@@ -573,75 +661,105 @@ export function buildPrototypeTesterSigningReceiptPdf(
         input.snapshot.confirmedSigningAuthority === true,
       );
 
-      doc.roundedRect(L, 613, W, 104, 9).fillAndStroke(COLOR.warm, "#FEDF89");
+      doc.roundedRect(L, 691, W, 73, 9).fillAndStroke(COLOR.warm, "#FEDF89");
       doc
         .fillColor(COLOR.accentDark)
         .font("Helvetica-Bold")
-        .fontSize(10)
-        .text(
-          `${documents.length}/4 avtaledokumenter kontrollert`,
-          L + 16,
-          630,
-          {
-            width: W - 32,
-            lineBreak: false,
-          },
-        );
+        .fontSize(7)
+        .text("KVITTERINGSREFERANSE", L + 16, 707, {
+          width: 190,
+          lineBreak: false,
+          characterSpacing: 0.65,
+        });
       doc
-        .fillColor(COLOR.text)
-        .font("Helvetica")
-        .fontSize(8.8)
-        .text(
-          "Kvitteringen gjengir den uforanderlige avtalesnapshoten som ble lagret ved aksept. Kontrollsummen på neste side kan brukes til å påvise senere endringer i dokumentsettet.",
-          L + 16,
-          649,
-          { width: W - 32, lineGap: 2 },
-        );
+        .fillColor(COLOR.ink)
+        .font("Courier-Bold")
+        .fontSize(8.2)
+        .text(receiptText(input.receiptId, 100), L + 16, 725, {
+          width: 300,
+          lineBreak: false,
+        });
       doc
         .fillColor(COLOR.muted)
         .font("Helvetica")
-        .fontSize(7.8)
+        .fontSize(7.6)
         .text(
           `Prototypeperioden er registrert til ${formatReceiptTimestamp(input.programEndsAt)}.`,
-          L + 16,
-          692,
+          L + 325,
+          710,
           {
-            width: W - 32,
-            lineBreak: false,
+            width: W - 341,
+            lineGap: 1.5,
           },
         );
     };
 
+    const documentPageLabelPositions: Array<{ x: number; y: number }> = [];
+
     const drawControlPage = () => {
       doc.addPage();
       drawCompactHeader(
-        "Kontroll- og dokumentdetaljer",
+        "Kontrollside",
         `Ref. ${abbreviatedId(input.receiptId)}`,
       );
       doc
         .fillColor(COLOR.ink)
         .font("Helvetica-Bold")
-        .fontSize(22)
-        .text("Kontroll- og dokumentdetaljer", L, 105, { width: W });
+        .fontSize(23)
+        .text("Dokumentkontroll", L, 105, { width: W });
       doc
         .fillColor(COLOR.muted)
         .font("Helvetica")
         .fontSize(9.5)
         .text(
-          "Teknisk integritetsbevis og oversikt over dokumentene som inngår i aksepten.",
+          "Identitet, dokumentversjoner og teknisk integritetsbevis samlet på én side.",
           L,
-          139,
+          140,
           {
             width: W,
           },
         );
 
-      doc.roundedRect(L, 177, W, 118, 10).fillAndStroke(COLOR.navy, COLOR.navy);
+      const partyGap = 12;
+      const partyWidth = (W - partyGap) / 2;
+      drawInfoCard(L, 174, partyWidth, 105, "Signatar", [
+        { label: "Navn", value: input.snapshot.signerName },
+        { label: "E-post", value: input.snapshot.signerEmail },
+      ]);
+      drawInfoCard(
+        L + partyWidth + partyGap,
+        174,
+        partyWidth,
+        105,
+        "Virksomhet",
+        [
+          {
+            label: "Juridisk navn",
+            value: input.snapshot.representedCompany || "Ikke oppgitt",
+          },
+          {
+            label: "Org.nr. og adresse",
+            value:
+              [
+                input.snapshot.representedCompanyOrganizationNumber
+                  ? formatOrganizationNumber(
+                      input.snapshot.representedCompanyOrganizationNumber,
+                    )
+                  : null,
+                input.snapshot.representedCompanyBusinessAddress,
+              ]
+                .filter(Boolean)
+                .join(" · ") || "Ikke oppgitt",
+          },
+        ],
+      );
+
+      doc.roundedRect(L, 299, W, 108, 10).fillAndStroke(COLOR.navy, COLOR.navy);
       doc
         .fillColor("#D0D5DD")
         .font("Helvetica-Bold")
         .fontSize(6.8)
-        .text("INTEGRITETSKONTROLL · SHA-256", L + 17, 194, {
+        .text("INTEGRITETSKONTROLL · SHA-256", L + 17, 316, {
           width: W - 34,
           lineBreak: false,
           characterSpacing: 0.7,
@@ -649,66 +767,76 @@ export function buildPrototypeTesterSigningReceiptPdf(
       doc
         .fillColor(COLOR.white)
         .font("Courier-Bold")
-        .fontSize(8.5)
-        .text(displayDigest(input.agreementDigest), L + 17, 216, {
+        .fontSize(8.7)
+        .text(displayDigest(input.agreementDigest), L + 17, 338, {
           width: W - 34,
-          lineGap: 5,
+          lineGap: 4,
         });
       doc
         .fillColor("#D0D5DD")
         .font("Helvetica")
         .fontSize(7.5)
         .text(
-          "Kontrollsummen gjelder hele den lagrede avtalesnapshoten, inkludert dokumenttekst og signataropplysninger.",
+          "Fingeravtrykket gjelder den komplette lagrede avtaleversjonen: signatar, virksomhet, dokumenttekst og versjoner.",
           L + 17,
-          269,
+          382,
           {
-            width: W - 34,
+            width: W - 190,
             lineBreak: false,
           },
         );
+      drawPill(
+        R - 17,
+        375,
+        "AVTALEVERSJON LÅST",
+        COLOR.greenSoft,
+        COLOR.green,
+        {
+          align: "right",
+        },
+      );
 
-      drawSectionLabel("Dokumentsett", L, 326);
-      let rowY = 352;
+      drawSectionLabel("Dokumentregister", L, 431);
+      let rowY = 457;
       for (const [index, agreement] of documents.entries()) {
-        const rowHeight = 55;
+        const rowHeight = 46;
         doc
           .roundedRect(L, rowY, W, rowHeight, 8)
           .fillAndStroke(
             index % 2 === 0 ? COLOR.panel : COLOR.white,
             COLOR.line,
           );
-        doc.circle(L + 23, rowY + rowHeight / 2, 13).fill(COLOR.navy);
+        doc.circle(L + 21, rowY + rowHeight / 2, 11).fill(COLOR.navy);
         doc
           .fillColor(COLOR.white)
           .font("Helvetica-Bold")
-          .fontSize(9)
-          .text(String(index + 1), L + 16, rowY + 22, {
-            width: 14,
+          .fontSize(8)
+          .text(String(index + 1), L + 15, rowY + 19.5, {
+            width: 12,
             align: "center",
             lineBreak: false,
           });
         doc
           .fillColor(COLOR.ink)
           .font("Helvetica-Bold")
-          .fontSize(9.5)
-          .text(agreementLabel(agreement.key), L + 47, rowY + 12, {
-            width: 295,
+          .fontSize(9.2)
+          .text(agreementLabel(agreement.key), L + 43, rowY + 9, {
+            width: 275,
             lineBreak: false,
             ellipsis: true,
           });
         doc
           .fillColor(COLOR.muted)
           .font("Helvetica")
-          .fontSize(7.7)
-          .text(receiptText(agreement.title, 300), L + 47, rowY + 29, {
-            width: 295,
+          .fontSize(7.2)
+          .text(receiptText(agreement.title, 300), L + 43, rowY + 25, {
+            width: 275,
             lineBreak: false,
             ellipsis: true,
           });
         drawPill(
-          R - 12,
-          rowY + 18,
+          R - 61,
+          rowY + 14,
           `v${receiptText(agreement.version, 40)} · ${bindingNatureLabel(agreement.bindingNature)}`,
           agreement.bindingNature === "non_binding"
             ? COLOR.blueSoft
@@ -716,41 +844,60 @@ export function buildPrototypeTesterSigningReceiptPdf(
           agreement.bindingNature === "non_binding" ? COLOR.blue : COLOR.green,
           { align: "right" },
         );
-        rowY += rowHeight + 7;
+        doc
+          .fillColor(COLOR.faint)
+          .font("Helvetica-Bold")
+          .fontSize(6.5)
+          .text("SIDE", R - 50, rowY + 8, {
+            width: 38,
+            align: "right",
+            characterSpacing: 0.45,
+            lineBreak: false,
+          });
+        documentPageLabelPositions[index] = { x: R - 50, y: rowY + 23 };
+        rowY += rowHeight + 6;
       }
 
       doc
-        .roundedRect(L, 617, W, 86, 9)
+        .roundedRect(L, 681, W, 72, 9)
         .fillAndStroke(COLOR.blueSoft, "#B2DDFF");
       doc
         .fillColor(COLOR.blue)
         .font("Helvetica-Bold")
-        .fontSize(9.5)
-        .text("Signaturnivå", L + 16, 633, { width: W - 32, lineBreak: false });
+        .fontSize(9)
+        .text("Dokumentert signaturnivå", L + 16, 696, {
+          width: W - 32,
+          lineBreak: false,
+        });
       doc
         .fillColor(COLOR.text)
         .font("Helvetica")
-        .fontSize(8.5)
+        .fontSize(8.2)
         .text(
           "Enkel elektronisk signatur. Aksepten er dokumentert med e-postkode, skrevet navn, tidspunkt, fullmaktserklæring, dokumentversjoner og kontrollsum. Dette er ikke BankID eller en kvalifisert elektronisk signatur.",
           L + 16,
-          651,
+          714,
           { width: W - 32, lineGap: 2 },
         );
-
       doc
-        .moveTo(L, 731)
-        .lineTo(R, 731)
-        .lineWidth(0.7)
-        .strokeColor(COLOR.line)
-        .stroke();
-      drawMetadataValue(L, 743, 235, "Invitasjons-ID", input.inviteId);
-      drawMetadataValue(
-        L + 255,
-        743,
-        W - 255,
-        "Kvitterings-ID",
-        input.receiptId,
+        .fillColor(COLOR.faint)
+        .font("Helvetica")
+        .fontSize(6.4)
+        .text(`Invitasjons-ID ${receiptText(input.inviteId, 100)}`, L, 770, {
+          width: W / 2 - 8,
+          lineBreak: false,
+          ellipsis: true,
+        });
+      doc.text(
+        `Kvitterings-ID ${receiptText(input.receiptId, 100)}`,
+        L + W / 2,
+        770,
+        {
+          width: W / 2,
+          align: "right",
+          lineBreak: false,
+          ellipsis: true,
+        },
       );
     };
 
@@ -779,44 +926,54 @@ export function buildPrototypeTesterSigningReceiptPdf(
       agreement: ReceiptDocument,
       index: number,
       continuation: boolean,
+      pageWithinAgreement: number,
     ): number => {
       drawCompactHeader(
-        `Avtale ${index + 1} av ${documents.length}${continuation ? " · fortsettelse" : ""}`,
+        `Avtale ${index + 1} av ${documents.length} · dokumentside ${pageWithinAgreement}`,
         `Ref. ${abbreviatedId(input.receiptId)}`,
       );
       if (continuation) {
         doc
           .fillColor(COLOR.ink)
           .font("Helvetica-Bold")
-          .fontSize(12)
-          .text(agreementLabel(agreement.key), L, 96, {
+          .fontSize(12.5)
+          .text(agreementLabel(agreement.key), L, 100, {
             width: W - 130,
             lineBreak: false,
             ellipsis: true,
           });
         drawPill(
           R,
-          93,
+          96,
           `v${receiptText(agreement.version, 40)}`,
           COLOR.panel,
           COLOR.text,
           { align: "right" },
         );
         doc
-          .moveTo(L, 122)
-          .lineTo(R, 122)
+          .moveTo(L, 127)
+          .lineTo(R, 127)
           .lineWidth(0.7)
           .strokeColor(COLOR.line)
           .stroke();
-        return 143;
+        doc
+          .fillColor(COLOR.faint)
+          .font("Helvetica")
+          .fontSize(7.2)
+          .text("FORTSETTELSE", L, 134, {
+            width: W,
+            characterSpacing: 0.65,
+            lineBreak: false,
+          });
+        return 157;
       }
 
-      doc.circle(L + 17, 112, 17).fill(COLOR.navy);
+      doc.circle(L + 17, 113, 17).fill(COLOR.navy);
       doc
         .fillColor(COLOR.white)
         .font("Helvetica-Bold")
         .fontSize(11)
-        .text(String(index + 1), L + 8, 107, {
+        .text(String(index + 1), L + 8, 108, {
           width: 18,
           align: "center",
           lineBreak: false,
@@ -825,18 +982,18 @@ export function buildPrototypeTesterSigningReceiptPdf(
         .fillColor(COLOR.accentDark)
         .font("Helvetica-Bold")
         .fontSize(7)
-        .text(agreementLabel(agreement.key).toUpperCase(), L + 45, 97, {
+        .text(agreementLabel(agreement.key).toUpperCase(), L + 45, 98, {
           width: W - 45,
           lineBreak: false,
           characterSpacing: 0.7,
         });
       const title = receiptText(agreement.title, 300);
-      doc.fillColor(COLOR.ink).font("Helvetica-Bold").fontSize(19);
+      doc.fillColor(COLOR.ink).font("Helvetica-Bold").fontSize(20);
       const titleHeight = Math.min(
         doc.heightOfString(title, { width: W - 45, lineGap: 1 }),
         52,
       );
-      doc.text(title, L + 45, 113, {
+      doc.text(title, L + 45, 114, {
         width: W - 45,
         height: titleHeight,
         lineGap: 1,
@@ -871,7 +1028,9 @@ export function buildPrototypeTesterSigningReceiptPdf(
 
     const drawAgreement = (agreement: ReceiptDocument, index: number) => {
       doc.addPage();
-      let y = drawAgreementHeader(agreement, index, false);
+      doc.outline.addItem(`${index + 1}. ${agreementLabel(agreement.key)}`);
+      let agreementPage = 1;
+      let y = drawAgreementHeader(agreement, index, false, agreementPage);
       const rawLines = receiptText(agreement.content, 500_000)
         .replace(/\r/g, "")
         .split("\n");
@@ -883,7 +1042,8 @@ export function buildPrototypeTesterSigningReceiptPdf(
 
       const newContinuationPage = () => {
         doc.addPage();
-        y = drawAgreementHeader(agreement, index, true);
+        agreementPage += 1;
+        y = drawAgreementHeader(agreement, index, true, agreementPage);
       };
 
       const ensureSpace = (requiredHeight: number) => {
@@ -899,56 +1059,146 @@ export function buildPrototypeTesterSigningReceiptPdf(
 
         if (line.startsWith("•")) {
           const bulletText = line.replace(/^•\s*/, "");
-          doc.font("Helvetica").fontSize(9.2);
+          doc.font("Helvetica").fontSize(9.7);
           const height =
-            doc.heightOfString(bulletText, { width: W - 24, lineGap: 2 }) + 3;
+            doc.heightOfString(bulletText, { width: W - 24, lineGap: 3 }) + 5;
           ensureSpace(height);
-          doc.circle(L + 5, y + 6, 2.2).fill(COLOR.accent);
+          doc.circle(L + 5, y + 6.5, 2.2).fill(COLOR.accent);
           doc
             .fillColor(COLOR.text)
             .font("Helvetica")
-            .fontSize(9.2)
-            .text(bulletText, L + 18, y, { width: W - 18, lineGap: 2 });
+            .fontSize(9.7)
+            .text(bulletText, L + 18, y, { width: W - 18, lineGap: 3 });
           y += height;
           continue;
         }
 
         if (isAgreementHeading(line)) {
-          doc.font("Helvetica-Bold").fontSize(10.5);
-          const height =
-            doc.heightOfString(line, { width: W - 16, lineGap: 1 }) + 12;
+          doc.font("Helvetica-Bold").fontSize(10.3);
+          const textHeight = doc.heightOfString(line, {
+            width: W - 28,
+            lineGap: 1.5,
+          });
+          const height = textHeight + 17;
           // Keep a section heading with at least a few lines of its following
           // paragraph instead of leaving the heading orphaned above the footer.
-          ensureSpace(height + 45);
-          y += 4;
-          doc
-            .roundedRect(L, y + 1, 3, Math.max(13, height - 10), 1.5)
-            .fill(COLOR.accent);
+          ensureSpace(height + 110);
+          y += 5;
+          doc.roundedRect(L, y, W, height, 6).fill(COLOR.warm);
+          doc.roundedRect(L, y, 3, height, 1.5).fill(COLOR.accent);
           doc
             .fillColor(COLOR.ink)
             .font("Helvetica-Bold")
-            .fontSize(10.5)
-            .text(line, L + 13, y, { width: W - 13, lineGap: 1 });
-          y += height - 7;
+            .fontSize(10.3)
+            .text(line, L + 15, y + 8, {
+              width: W - 28,
+              lineGap: 1.5,
+            });
+          y += height + 7;
           continue;
         }
 
-        doc.font("Helvetica").fontSize(9.2);
-        const height = doc.heightOfString(line, { width: W, lineGap: 2.6 }) + 3;
+        doc.font("Helvetica").fontSize(9.7);
+        const height = doc.heightOfString(line, { width: W, lineGap: 3.1 }) + 5;
         ensureSpace(height);
         doc
           .fillColor(COLOR.text)
           .font("Helvetica")
-          .fontSize(9.2)
-          .text(line, L, y, { width: W, lineGap: 2.6, align: "left" });
+          .fontSize(9.7)
+          .text(line, L, y, { width: W, lineGap: 3.1, align: "left" });
         y += height;
+      }
+
+      const acceptanceHeight = 82;
+      if (BODY_BOTTOM - y >= acceptanceHeight + 24) {
+        const acceptanceY = Math.max(
+          y + 28,
+          BODY_BOTTOM - acceptanceHeight - 18,
+        );
+        doc
+          .roundedRect(L, acceptanceY, W, acceptanceHeight, 8)
+          .fillAndStroke(COLOR.greenSoft, COLOR.greenLine);
+        drawCheckBadge(L + 16, acceptanceY + 17, { size: 20 });
+        doc
+          .fillColor(COLOR.green)
+          .font("Helvetica-Bold")
+          .fontSize(6.8)
+          .text("INNGÅR I SIGNERT AVTALEGRUNNLAG", L + 48, acceptanceY + 17, {
+            width: 250,
+            characterSpacing: 0.55,
+            lineBreak: false,
+          });
+        doc
+          .fillColor(COLOR.ink)
+          .font("Helvetica-Bold")
+          .fontSize(9.2)
+          .text(
+            receiptText(input.snapshot.signerName, 200),
+            L + 48,
+            acceptanceY + 35,
+            {
+              width: 250,
+              lineBreak: false,
+              ellipsis: true,
+            },
+          );
+        doc
+          .fillColor(COLOR.muted)
+          .font("Helvetica")
+          .fontSize(7.4)
+          .text(acceptedAtLabel, L + 48, acceptanceY + 53, {
+            width: 250,
+            lineBreak: false,
+          });
+        doc
+          .fillColor(COLOR.muted)
+          .font("Helvetica-Bold")
+          .fontSize(6.6)
+          .text("SHA-256", R - 156, acceptanceY + 19, {
+            width: 140,
+            align: "right",
+            lineBreak: false,
+            characterSpacing: 0.5,
+          });
+        doc
+          .fillColor(COLOR.ink)
+          .font("Courier-Bold")
+          .fontSize(7.5)
+          .text(
+            `${receiptText(input.agreementDigest, 64).slice(0, 12)}…${receiptText(input.agreementDigest, 64).slice(-12)}`,
+            R - 190,
+            acceptanceY + 39,
+            { width: 174, align: "right", lineBreak: false },
+          );
       }
     };
 
     drawSummaryPage();
+    doc.outline.addItem("Signeringsbevis");
     drawControlPage();
+    doc.outline.addItem("Dokumentkontroll");
+    const documentStartPages: number[] = [];
     for (const [index, agreement] of documents.entries()) {
+      documentStartPages[index] = doc.bufferedPageRange().count + 1;
       drawAgreement(agreement, index);
+    }
+
+    doc.switchToPage(1);
+    for (const [index, position] of documentPageLabelPositions.entries()) {
+      doc
+        .fillColor(COLOR.ink)
+        .font("Helvetica-Bold")
+        .fontSize(8.2)
+        .text(
+          String(documentStartPages[index] || "—"),
+          position.x,
+          position.y,
+          {
+            width: 38,
+            align: "right",
+            lineBreak: false,
+          },
+        );
     }
 
     const range = doc.bufferedPageRange();
