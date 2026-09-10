@@ -20,7 +20,7 @@ import Check from '@mui/icons-material/Check';
 import Download from '@mui/icons-material/Download';
 import Close from '@mui/icons-material/Close';
 import { apiRequest } from '@/lib/queryClient';
-import { easeVerseWorkspaceUrl } from '@/lib/easeverse';
+import { EASEVERSE_APP_URL, easeVerseWorkspaceUrl } from '@/lib/easeverse';
 import { useTeamAccess } from '@/hooks/useTeamAccess';
 import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
@@ -51,6 +51,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [ptBusy, setPtBusy] = useState(false);
   const [ptDialog, setPtDialog] = useState(false);
   const [ptRelease, setPtRelease] = useState<any | null>(null);
+  const [openingEaseVerse, setOpeningEaseVerse] = useState(false);
   const [release, setRelease] = useState<any | null>(null);      // audio_releases (utgivelse/distribusjon)
   const [validation, setValidation] = useState<any | null>(null); // pre-flight-sjekkliste
   const [relBusy, setRelBusy] = useState(false);
@@ -256,6 +257,37 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const members = summary?.members || [];
   const current = versions.find((v: any) => v.status === 'under_review') || versions[versions.length - 1] || null;
   const openComments = current?.comment_count ?? null;
+  const easeVerseHref = easeVerseWorkspaceUrl({
+    creatorhubProjectId: projectId,
+    audioReviewProjectId: roomId,
+    externalTrackId: ev?.linkedTrackId || ev?.tracks?.find((track: any) => track.linked)?.id,
+    projectName: proj.title || ev?.tracks?.find((track: any) => track.linked)?.title,
+    returnTo: typeof window !== 'undefined' ? window.location.href : undefined,
+  });
+  const openEaseVerse = async (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    if (openingEaseVerse) return;
+    setOpeningEaseVerse(true);
+    try {
+      const handoff: any = await apiRequest('/api/creatorhub/google/oauth/satellite-transfer', {
+        method: 'POST',
+        body: { browserOrigin: new URL(EASEVERSE_APP_URL).origin },
+      });
+      if (!handoff?.transferId) throw new Error('CreatorHub returnerte ingen innloggingsoverføring.');
+      const integration = new URL(easeVerseHref);
+      const callback = new URL('/auth/callback', EASEVERSE_APP_URL);
+      callback.searchParams.set('chGoogleStatus', 'success');
+      callback.searchParams.set('chGoogleMode', 'login');
+      callback.searchParams.set('chGoogleTransfer', handoff.transferId);
+      callback.searchParams.set('next', `${integration.pathname}${integration.search}`);
+      window.location.assign(callback.toString());
+    } catch {
+      // Preserve the regular shared Google OAuth flow if the one-time Workspace
+      // handoff is temporarily unavailable.
+      window.location.assign(easeVerseHref);
+    }
+  };
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}><CircularProgress sx={{ color: ws.accent }} /></Box>;
 
@@ -267,14 +299,11 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Lyd-review for prosjektet — versjoner, tidsstemplede tilbakemeldinger, A/B-compare og leveranse. Samme «Universal Showcase»-rom klienten/bandet får.</Typography>
         </Box>
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-          <Button component="a" href={easeVerseWorkspaceUrl({
-              creatorhubProjectId: projectId,
-              audioReviewProjectId: roomId,
-              externalTrackId: ev?.linkedTrackId || ev?.tracks?.find((track: any) => track.linked)?.id,
-              projectName: proj.title || ev?.tracks?.find((track: any) => track.linked)?.title,
-              returnTo: typeof window !== 'undefined' ? window.location.href : undefined,
-            })} target="_blank" rel="noopener noreferrer" variant="outlined" startIcon={<OpenInNew sx={{ fontSize: 16 }} />}
-            sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 700 }}>Åpne EaseVerse</Button>
+          <Button component="a" href={easeVerseHref} onClick={openEaseVerse} aria-busy={openingEaseVerse}
+            variant="outlined" startIcon={openingEaseVerse ? <CircularProgress size={15} color="inherit" /> : <OpenInNew sx={{ fontSize: 16 }} />}
+            sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 700 }}>
+            {openingEaseVerse ? 'Åpner EaseVerse…' : 'Åpne EaseVerse'}
+          </Button>
           {roomId && <Button variant="contained" startIcon={<OpenInFull sx={{ fontSize: 17 }} />} onClick={openRoom} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Åpne lydrommet</Button>}
         </Stack>
       </Stack>
