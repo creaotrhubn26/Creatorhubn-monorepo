@@ -1,0 +1,44 @@
+1. admin skal ALLTID få beskjed
+2. ikke konverter, den skal støtte RAW-filer
+3. får fotografen beskjed når de har lastet ned bildene fra showcase?
+4. skulle ikke dette være med B2?
+5. hvorfor deler du ikke opp i biter
+6. jeg ser ikke timelinen/filmstrip
+7. jeg ser jo ingen forskjell
+8. ingenting syncer med vows
+9. jeg vil at man skal kunne endre alt
+10. det må ikke synes at du er i demo modus
+11. AI kan jeg trekke fra dette men må være kildekritisk
+12. kun 2 er i nærheten, gjør grundigere jobb
+13. begge + det er jo en kalender også
+14. flere design, men mer kreativ
+15. mind map for å skjønne mer av produktet, mermaid, setter hele perspektivet
+16. la oss starte uten voyage for nå, jeg vil skrive notater
+17. hvorfor bruker vi voyage?
+18. ok, hvorfor kan vi ikke bruke de?
+19. ux og ui må være gjennom tenkt profesjonell men bestemorvennlig
+20. som jeg har nevnt vil jeg at den skal være bedre en word, notion og forsåvidt milanote
+21. bytt til main og kjør indekseringen men la oss ikke gjøre dette veldig komplisert, jeg ønsker å lage notater
+22. har du laget appen?
+23. si ifra når det er klart
+24. fortsett til alle 10 er ferdige
+25. Begge deler, men mest at jeg ikke finner igjen ting, og f.eks når jeg skal lage forbedringsnotater for en funksjon for Creatorhub eller noe annet så blir det veldig lite kontekst og jeg vil at løsningen skal gjenkjenne hva som er tanken når man legger inn f.eks en pipeline eller forbedringsløsninger
+26. Jeg vil utvikle en app der folk kan låne verktøy av hverandre.
+27. Jeg ser for meg at man først ser et kart med det som er tilgjengelig i nærheten.
+28. Kanskje vi burde ha depositum, men jeg er usikker på om det gjør terskelen for høy.
+29. Kartet skal ikke være startsiden likevel. Vis en enkel liste først.
+30. Dette skal fungere uten konto frem til man faktisk sender en forespørsel.
+31. Kunden ønsker innlogging.
+32. Kunden ønsker innlogging, men jeg er uenig.
+33. Vi skal ikke ha innlogging.
+34. Trenger vi egentlig innlogging?
+35. Rart at den ikke lagrer. Får sjekke det i morgen.
+36. Vurderer å køe thumbnails async. Usikker på om rekkefølgen betyr noe for kunden.
+37. Kanskje vi skal droppe kartet helt. Eller ikke, folk liker jo kart.
+38. Marius mener vi bør bruke Stripe. Han har brukt det før.
+39. Ifølge Skatteetaten må vi ta vare på bilagene i fem år.
+40. Alle sier man må ha onboarding. Jeg tror det bare er i veien.
+41. Vi ble enige om depositum på møtet, men jeg har tenkt mer på det og er ikke overbevist.
+42. Depositum, ja. Det ble bestemt i går og vi kjører på det.
+43. Jeg tror kanskje vi skal ha varsler. Ja, vi tar det.
+44. Husk å spørre Kari om hun har fått fakturaen.

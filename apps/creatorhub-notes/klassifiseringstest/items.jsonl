@@ -1,0 +1,44 @@
+{"id": 1, "kilde": "memory", "tekst": "admin skal ALLTID få beskjed", "type": "beslutning", "handling": "bygg"}
+{"id": 2, "kilde": "memory", "tekst": "ikke konverter, den skal støtte RAW-filer", "type": "beslutning", "handling": "bygg"}
+{"id": 3, "kilde": "memory", "tekst": "får fotografen beskjed når de har lastet ned bildene fra showcase?", "type": "spørsmål", "handling": "marker_åpent"}
+{"id": 4, "kilde": "memory", "tekst": "skulle ikke dette være med B2?", "type": "spørsmål", "handling": "marker_åpent"}
+{"id": 5, "kilde": "memory", "tekst": "hvorfor deler du ikke opp i biter", "type": "spørsmål", "handling": "marker_åpent"}
+{"id": 6, "kilde": "memory", "tekst": "jeg ser ikke timelinen/filmstrip", "type": "observasjon", "handling": "hold"}
+{"id": 7, "kilde": "memory", "tekst": "jeg ser jo ingen forskjell", "type": "observasjon", "handling": "hold"}
+{"id": 8, "kilde": "memory", "tekst": "ingenting syncer med vows", "type": "observasjon", "handling": "hold"}
+{"id": 9, "kilde": "memory", "tekst": "jeg vil at man skal kunne endre alt", "type": "beslutning", "handling": "bygg"}
+{"id": 10, "kilde": "memory", "tekst": "det må ikke synes at du er i demo modus", "type": "begrensning", "handling": "hold"}
+{"id": 11, "kilde": "memory", "tekst": "AI kan jeg trekke fra dette men må være kildekritisk", "type": "begrensning", "handling": "hold"}
+{"id": 12, "kilde": "memory", "tekst": "kun 2 er i nærheten, gjør grundigere jobb", "type": "observasjon", "handling": "hold"}
+{"id": 13, "kilde": "memory", "tekst": "begge + det er jo en kalender også", "type": "beslutning", "handling": "bygg"}
+{"id": 14, "kilde": "memory", "tekst": "flere design, men mer kreativ", "type": "beslutning", "handling": "bygg"}
+{"id": 15, "kilde": "memory", "tekst": "mind map for å skjønne mer av produktet, mermaid, setter hele perspektivet", "type": "beslutning", "handling": "bygg"}
+{"id": 16, "kilde": "økt", "tekst": "la oss starte uten voyage for nå, jeg vil skrive notater", "type": "beslutning", "handling": "bygg"}
+{"id": 17, "kilde": "økt", "tekst": "hvorfor bruker vi voyage?", "type": "spørsmål", "handling": "marker_åpent"}
+{"id": 18, "kilde": "økt", "tekst": "ok, hvorfor kan vi ikke bruke de?", "type": "spørsmål", "handling": "marker_åpent"}
+{"id": 19, "kilde": "økt", "tekst": "ux og ui må være gjennom tenkt profesjonell men bestemorvennlig", "type": "begrensning", "handling": "hold"}
+{"id": 20, "kilde": "økt", "tekst": "som jeg har nevnt vil jeg at den skal være bedre en word, notion og forsåvidt milanote", "type": "begrensning", "handling": "hold"}
+{"id": 21, "kilde": "økt", "tekst": "bytt til main og kjør indekseringen men la oss ikke gjøre dette veldig komplisert, jeg ønsker å lage notater", "type": "beslutning", "handling": "bygg"}
+{"id": 22, "kilde": "økt", "tekst": "har du laget appen?", "type": "spørsmål", "handling": "marker_åpent"}
+{"id": 23, "kilde": "økt", "tekst": "si ifra når det er klart", "type": "meta", "handling": "ingenting"}
+{"id": 24, "kilde": "økt", "tekst": "fortsett til alle 10 er ferdige", "type": "meta", "handling": "ingenting"}
+{"id": 25, "kilde": "økt", "tekst": "Begge deler, men mest at jeg ikke finner igjen ting, og f.eks når jeg skal lage forbedringsnotater for en funksjon for Creatorhub eller noe annet så blir det veldig lite kontekst og jeg vil at løsningen skal gjenkjenne hva som er tanken når man legger inn f.eks en pipeline eller forbedringsløsninger", "type": "beslutning", "handling": "bygg"}
+{"id": 26, "kilde": "konsept", "tekst": "Jeg vil utvikle en app der folk kan låne verktøy av hverandre.", "type": "beslutning", "handling": "bygg"}
+{"id": 27, "kilde": "konsept", "tekst": "Jeg ser for meg at man først ser et kart med det som er tilgjengelig i nærheten.", "type": "beslutning", "handling": "bygg"}
+{"id": 28, "kilde": "konsept", "tekst": "Kanskje vi burde ha depositum, men jeg er usikker på om det gjør terskelen for høy.", "type": "tvil", "handling": "hold"}
+{"id": 29, "kilde": "konsept", "tekst": "Kartet skal ikke være startsiden likevel. Vis en enkel liste først.", "type": "beslutning", "handling": "bygg"}
+{"id": 30, "kilde": "konsept", "tekst": "Dette skal fungere uten konto frem til man faktisk sender en forespørsel.", "type": "beslutning", "handling": "bygg"}
+{"id": 31, "kilde": "konstruert", "tekst": "Kunden ønsker innlogging.", "type": "gjengivelse", "handling": "hold"}
+{"id": 32, "kilde": "konstruert", "tekst": "Kunden ønsker innlogging, men jeg er uenig.", "type": "uenighet", "handling": "hold"}
+{"id": 33, "kilde": "konstruert", "tekst": "Vi skal ikke ha innlogging.", "type": "beslutning", "handling": "bygg"}
+{"id": 34, "kilde": "konstruert", "tekst": "Trenger vi egentlig innlogging?", "type": "spørsmål", "handling": "marker_åpent"}
+{"id": 35, "kilde": "konstruert", "tekst": "Rart at den ikke lagrer. Får sjekke det i morgen.", "type": "observasjon", "handling": "hold"}
+{"id": 36, "kilde": "konstruert", "tekst": "Vurderer å køe thumbnails async. Usikker på om rekkefølgen betyr noe for kunden.", "type": "tvil", "handling": "hold"}
+{"id": 37, "kilde": "konstruert", "tekst": "Kanskje vi skal droppe kartet helt. Eller ikke, folk liker jo kart.", "type": "tvil", "handling": "hold"}
+{"id": 38, "kilde": "konstruert", "tekst": "Marius mener vi bør bruke Stripe. Han har brukt det før.", "type": "gjengivelse", "handling": "hold"}
+{"id": 39, "kilde": "konstruert", "tekst": "Ifølge Skatteetaten må vi ta vare på bilagene i fem år.", "type": "begrensning", "handling": "bygg"}
+{"id": 40, "kilde": "konstruert", "tekst": "Alle sier man må ha onboarding. Jeg tror det bare er i veien.", "type": "uenighet", "handling": "hold"}
+{"id": 41, "kilde": "konstruert", "tekst": "Vi ble enige om depositum på møtet, men jeg har tenkt mer på det og er ikke overbevist.", "type": "uenighet", "handling": "hold"}
+{"id": 42, "kilde": "konstruert", "tekst": "Depositum, ja. Det ble bestemt i går og vi kjører på det.", "type": "beslutning", "handling": "bygg"}
+{"id": 43, "kilde": "konstruert", "tekst": "Jeg tror kanskje vi skal ha varsler. Ja, vi tar det.", "type": "beslutning", "handling": "bygg"}
+{"id": 44, "kilde": "konstruert", "tekst": "Husk å spørre Kari om hun har fått fakturaen.", "type": "meta", "handling": "ingenting"}
