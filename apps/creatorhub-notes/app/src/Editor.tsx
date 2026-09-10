@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { EditorView, minimalSetup } from "codemirror";
 import { Decoration, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
-import { EditorState, RangeSetBuilder, StateField } from "@codemirror/state";
+import { EditorState, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
 import { markdown } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
@@ -35,6 +35,12 @@ const skriveflate = EditorView.theme({
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": {
     backgroundColor: "var(--sel)",
   },
+  // Avsnittet en panellinje kom fra, mens brukeren finner det igjen.
+  ".cm-vist": {
+    backgroundColor: "var(--mark)",
+    borderRadius: "3px",
+    boxShadow: "0 0 0 4px var(--mark)",
+  },
 });
 
 const markdownFarger = HighlightStyle.define([
@@ -50,6 +56,26 @@ const markdownFarger = HighlightStyle.define([
   { tag: tags.list, color: "var(--accent)" },
   { tag: tags.processingInstruction, color: "var(--ink-faint)" },
 ]);
+
+/// Peker panelet på et avsnitt, markeres det en liten stund. `null` fjerner
+/// markeringen igjen. Dokumentet røres ikke — dette er ren visning.
+const vis = StateEffect.define<{ from: number; to: number } | null>();
+
+const vistAvsnitt = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(verdi, tr) {
+    verdi = verdi.map(tr.changes);
+    for (const e of tr.effects) {
+      if (e.is(vis)) {
+        verdi = e.value
+          ? Decoration.set([Decoration.mark({ class: "cm-vist" }).range(e.value.from, e.value.to)])
+          : Decoration.none;
+      }
+    }
+    return verdi;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
 
 const skjult = Decoration.replace({});
 const skjultBlokk = Decoration.replace({ block: true });
@@ -145,9 +171,12 @@ type Props = {
   onChange: (text: string) => void;
   /** Nytt notat: marker overskriften så første tastetrykk erstatter den. */
   selectTitle: boolean;
+  /** Avsnittet panelet peker på. `n` teller opp for hvert klikk, slik at det
+   *  å klikke samme linje to ganger fører deg dit begge gangene. */
+  peker: { from: number; to: number; n: number } | null;
 };
 
-export function Editor({ path, doc, onChange, selectTitle }: Props) {
+export function Editor({ path, doc, onChange, selectTitle, peker }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const change = useRef(onChange);
@@ -171,6 +200,7 @@ export function Editor({ path, doc, onChange, selectTitle }: Props) {
           syntaxHighlighting(markdownFarger),
           skjulToppfelt,
           skjulMerker,
+          vistAvsnitt,
           skriveflate,
           EditorView.lineWrapping,
           EditorView.updateListener.of((u) => {
@@ -203,6 +233,24 @@ export function Editor({ path, doc, onChange, selectTitle }: Props) {
     v.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);
+
+  useEffect(() => {
+    const v = view.current;
+    if (!v || !peker) return;
+    // Posisjonene kommer fra teksten slik den ble lest. Skriver man videre mens
+    // panelet står, kan de ligge utenfor dokumentet; da hopper vi heller ingen
+    // steder enn til feil sted.
+    const to = Math.min(peker.to, v.state.doc.length);
+    const from = Math.min(peker.from, to);
+    if (from === to) return;
+    v.dispatch({
+      effects: [vis.of({ from, to }), EditorView.scrollIntoView(from, { y: "center" })],
+    });
+    const t = window.setTimeout(() => {
+      view.current?.dispatch({ effects: vis.of(null) });
+    }, 1800);
+    return () => window.clearTimeout(t);
+  }, [peker]);
 
   return <div className="editor" ref={host} />;
 }

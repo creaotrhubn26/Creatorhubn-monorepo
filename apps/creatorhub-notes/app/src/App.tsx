@@ -1,14 +1,18 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Editor } from "./Editor";
+import { Panel } from "./Panel";
 import {
   createNote,
   listNotes,
   readNote,
   reindex,
   searchNotes,
+  understandNote,
   writeNote,
   type Note,
+  type Paragraph,
   type SearchHit,
+  type Understanding,
 } from "./api";
 
 const klokke = new Intl.DateTimeFormat("nb-NO", { hour: "2-digit", minute: "2-digit" });
@@ -92,6 +96,9 @@ export default function App() {
   const [status, setStatus] = useState("");
   const [detaljer, setDetaljer] = useState(false);
   const [feil, setFeil] = useState<string | null>(null);
+  const [panel, setPanel] = useState(() => localStorage.getItem("forstaelse") !== "skjult");
+  const [forståelse, setForståelse] = useState<Understanding | null>(null);
+  const [peker, setPeker] = useState<{ from: number; to: number; n: number } | null>(null);
 
   const søkefelt = useRef<HTMLInputElement>(null);
   /** Lista slik den er nå, uten å binde tilbakekallene til den. */
@@ -99,6 +106,35 @@ export default function App() {
   notater.current = notes;
   const uskrevet = useRef<{ path: string; content: string } | null>(null);
   const timer = useRef<number | undefined>(undefined);
+  /** Panelet slik det er nå, uten å binde lagringen til det. */
+  const panelPå = useRef(panel);
+  panelPå.current = panel;
+  /** Lesningen tar sekunder. Én av gangen, og alltid på den ferskeste
+   *  teksten — starter man en ny for hvert tastetrykk, køer de seg opp og
+   *  panelet viser noe som var sant for et halvt minutt siden. */
+  const leser = useRef(false);
+  const køet = useRef<string | null>(null);
+
+  /** Les notatet på nytt. Ingen venter på dette: teksten er allerede på disk,
+   *  og panelet fyller seg ut når svaret kommer. */
+  const les: (tekst: string) => Promise<void> = useCallback(async (tekst: string) => {
+    if (!panelPå.current) return;
+    if (leser.current) {
+      køet.current = tekst;
+      return;
+    }
+    leser.current = true;
+    try {
+      setForståelse(await understandNote(tekst));
+    } catch {
+      // Panelet blir stående som det var. Notatet er lagret uansett.
+    } finally {
+      leser.current = false;
+      const neste = køet.current;
+      køet.current = null;
+      if (neste !== null && neste !== tekst) void les(neste);
+    }
+  }, []);
 
   /** Skriv til disk, indekser, oppdater lista. Kalles på pause, før bytte av
    *  notat og før søk — det siste er det som gjør at et notat fra ett minutt
@@ -111,6 +147,7 @@ export default function App() {
     try {
       await writeNote(p.path, p.content);
       setStatus(`Lagret ${klokke.format(new Date())}`);
+      void les(p.content);
     } catch (e) {
       setFeil(String(e));
       return;
@@ -122,7 +159,7 @@ export default function App() {
       // Teksten ligger trygt på disk; det er bare søket som henger etter.
       setFeil("Notatet er lagret, men søket er ikke oppdatert ennå.");
     }
-  }, []);
+  }, [les]);
 
   const skriv = useCallback(
     (tekst: string) => {
@@ -144,6 +181,9 @@ export default function App() {
         setDoc(tekst);
         setPath(p);
         setDetaljer(false);
+        setPeker(null);
+        setForståelse(null);
+        void les(tekst);
         // Lagringsmerket står alltid. Er ingenting endret ennå, er sannheten
         // tidspunktet fila sist ble skrevet.
         const rørt = notater.current.find((n) => n.path === p)?.modified;
@@ -152,7 +192,7 @@ export default function App() {
         setFeil(String(e));
       }
     },
-    [lagre],
+    [lagre, les],
   );
 
   const nyttNotat = useCallback(async () => {
@@ -251,12 +291,24 @@ export default function App() {
             </button>
           )}
         </div>
+        <button
+          className="bryter"
+          aria-pressed={panel}
+          onClick={() => {
+            const på = !panel;
+            setPanel(på);
+            localStorage.setItem("forstaelse", på ? "vist" : "skjult");
+            if (på) void les(uskrevet.current?.content ?? doc);
+          }}
+        >
+          {panel ? "Skjul forståelse" : "Vis forståelse"}
+        </button>
         <button className="nytt" onClick={() => void nyttNotat()}>
           Nytt notat <kbd>⌘N</kbd>
         </button>
       </header>
 
-      <div className="kropp">
+      <div className={panel ? "kropp med-panel" : "kropp"}>
         <nav className="liste" aria-label="Notater">
           {treff !== null ? (
             treff.length === 0 ? (
@@ -329,7 +381,7 @@ export default function App() {
                   )}
                 </div>
               )}
-              <Editor path={path} doc={doc} onChange={skriv} selectTitle={nytt} />
+              <Editor path={path} doc={doc} onChange={skriv} selectTitle={nytt} peker={peker} />
             </>
           ) : (
             <div className="velkomst">
@@ -348,6 +400,19 @@ export default function App() {
             {status}
           </span>
         </main>
+
+        {panel &&
+          (path ? (
+            <Panel
+              forståelse={forståelse}
+              onVelg={(p: Paragraph) =>
+                setPeker((forrige) => ({ from: p.start, to: p.end, n: (forrige?.n ?? 0) + 1 }))
+              }
+            />
+          ) : (
+            // Ingen notat åpent: spalten holder plassen sin, og sier ingenting.
+            <aside className="panel" />
+          ))}
       </div>
     </div>
   );
