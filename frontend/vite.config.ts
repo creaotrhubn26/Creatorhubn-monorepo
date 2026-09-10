@@ -260,9 +260,17 @@ export default defineConfig({
       'zod',
       'axios',
     ],
-    exclude: ['rgthree/common/rgthree_api.js', 'rgthree/common/components/base_custom_element', 'three-stdlib'],
-    // Only scan files within the project directory
-    entries: ['./client/**/*.{js,jsx,ts,tsx}'],
+    exclude: [
+      'rgthree/common/rgthree_api.js',
+      'rgthree/common/components/base_custom_element',
+      'three-stdlib',
+      '@tauri-apps/api/core',
+      '@tauri-apps/api/event',
+    ],
+    // `entries` is resolved relative to Vite's `root` (`./client`). Scan the
+    // real browser entry points (including E2E harnesses) without pulling the
+    // intentionally archived/unused source tree into esbuild.
+    entries: ['./*.html'],
     esbuildOptions: {
       // Ignore external paths completely
       plugins: [

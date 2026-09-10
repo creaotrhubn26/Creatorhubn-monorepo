@@ -1977,7 +1977,8 @@ export interface Manuscript {
   subtitle?: string;
   author?: string;
   status?: string;
-  version?: string;
+  /** Numeric values are the API's optimistic-concurrency revision. */
+  version?: string | number;
   format?: 'markdown' | 'fountain' | 'final-draft';
   pageCount?: number;
   wordCount?: number;
@@ -2763,4 +2764,3 @@ export interface AISuggestionFilter {
   status?: AISuggestionStatus | AISuggestionStatus[];
   minConfidence?: number;
 }
-

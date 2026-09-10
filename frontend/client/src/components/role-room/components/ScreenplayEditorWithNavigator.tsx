@@ -204,7 +204,7 @@ const getResponsiveValues = (tier: ScreenTier) => {
 
 export type ScriptLockState = 'unlocked' | 'locked' | 'final';
 export type RightPanelType = 'none' | 'analysis' | 'beatboard' | 'tableread' | 'structure' | 'grammar' | 'storyboard' | 'comments';
-export type HeaderSaveState = 'saved' | 'saving' | 'unsaved' | 'error';
+export type HeaderSaveState = 'saved' | 'saving' | 'unsaved' | 'local-only' | 'conflict' | 'error';
 
 export interface ScreenplayHeaderSummary {
   pages: number;
@@ -848,7 +848,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                     <CheckCircleIcon sx={{ fontSize: responsive.iconSize - 8, color: '#34d399' }} />
                   ) : headerSummary.saveState === 'saving' ? (
                     <CircularProgress size={14} sx={{ color: '#60a5fa' }} />
-                  ) : headerSummary.saveState === 'error' ? (
+                  ) : headerSummary.saveState === 'error' || headerSummary.saveState === 'conflict' ? (
                     <WarningIcon sx={{ fontSize: responsive.iconSize - 8, color: '#f43f5e' }} />
                   ) : undefined
                 }
@@ -860,7 +860,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                       ? 'rgba(52, 211, 153, 0.2)'
                       : headerSummary.saveState === 'saving'
                         ? 'rgba(59, 130, 246, 0.2)'
-                        : headerSummary.saveState === 'error'
+                        : headerSummary.saveState === 'error' || headerSummary.saveState === 'conflict'
                           ? 'rgba(244, 63, 94, 0.2)'
                           : 'rgba(251, 191, 36, 0.2)',
                   color:
@@ -868,7 +868,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                       ? '#34d399'
                       : headerSummary.saveState === 'saving'
                         ? '#60a5fa'
-                        : headerSummary.saveState === 'error'
+                        : headerSummary.saveState === 'error' || headerSummary.saveState === 'conflict'
                           ? '#f43f5e'
                           : '#fbbf24',
                 }}

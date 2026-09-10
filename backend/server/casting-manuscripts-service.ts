@@ -32,8 +32,10 @@
  *     find-in-Map → fallback-find-in-DB-patternet i én metode (var dupli-
  *     sert 3 steder i opprinnelig kode).
  *
+ *   - If-Match håndheves i route-laget; servicen bumper manusversjonen på
+ *     writes og returnerer den persisterte versjonen til klienten.
+ *
  * **Ikke endret (samme oppførsel som før):**
- *   - Ingen optimistic locking (TODO: legg til versjons-felt + If-Match)
  *   - Ingen DB-transaksjoner på cascade-delete (compat-store-laget
  *     støtter ikke transaksjoner per nå)
  *   - ID-generering ved `Date.now()` (TODO: vurder crypto.randomUUID()

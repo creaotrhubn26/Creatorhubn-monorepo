@@ -480,11 +480,18 @@ import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 import { useToast } from './ToastStack';
 import type { Manuscript, SceneBreakdown, DialogueLine, ScriptRevision, Act, ManuscriptExport, Role, Location, Candidate, AISuggestion } from '../models/casting';
 import type { StoryLogicState } from '../services/storyLogicService';
-import { manuscriptService } from '../services/manuscriptService';
+import {
+  manuscriptService,
+  type ManuscriptConflictError,
+  type ManuscriptSaveResult,
+} from '../services/manuscriptService';
 import authSessionService from '../services/authSessionService';
+import { getCurrentUserId } from '../services/settingsService';
 import { roleRoomProjectMembersService } from '../services/roleRoomProjectMembersService';
 import { RichTextEditor } from './RichTextEditor';
 import { ScriptDiffViewer } from './ScriptDiffViewer';
+import { ManuscriptConflictDialog } from './screenplay/ManuscriptConflictDialog';
+import { addScreenplayRecoveryPoint } from './screenplay/screenplayRecovery';
 import { TimelineView } from './TimelineView';
 import { ProductionControlPanel } from './ProductionControlPanel';
 import { DraggableSceneList } from './DraggableSceneList';
@@ -539,6 +546,38 @@ interface ManuscriptPanelProps {
 }
 
 type ManuscriptTabValue = 'editor' | 'acts' | 'scenes' | 'characters' | 'dialogue' | 'breakdown' | 'revisions' | 'timeline' | 'production' | 'productionview';
+type ManuscriptSaveState = 'saved' | 'unsaved' | 'saving' | 'local-only' | 'conflict' | 'error';
+
+interface ManuscriptVersionConflictState {
+  manuscriptId: string;
+  localManuscript: Manuscript;
+  cloudManuscript: Manuscript | null;
+  currentVersion: number | null;
+}
+
+const numericManuscriptVersion = (manuscript: Manuscript | null | undefined): number | null => (
+  typeof manuscript?.version === 'number' && Number.isFinite(manuscript.version)
+    ? manuscript.version
+    : null
+);
+
+const manuscriptCloudSaveLabel = (
+  state: ManuscriptSaveState,
+  savedAt: Date | null,
+  cloudVersion: number | null,
+): string => {
+  const versionSuffix = cloudVersion !== null ? ` · v${cloudVersion}` : '';
+  if (state === 'saved') {
+    return savedAt
+      ? `Synkronisert ${savedAt.toLocaleTimeString('nb-NO')}${versionSuffix}`
+      : `Synkronisert${versionSuffix}`;
+  }
+  if (state === 'saving') return 'Synkroniserer…';
+  if (state === 'local-only') return `Venter på sky${versionSuffix}`;
+  if (state === 'conflict') return `Konflikt med skyversjon${versionSuffix}`;
+  if (state === 'error') return 'Skylagringsfeil';
+  return 'Ikke synkronisert';
+};
 
 const isUnknownRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -605,6 +644,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   const pendingContentRef = useRef<string>(''); // Track content changes without re-render
   const selectedManuscriptRef = useRef<Manuscript | null>(null);
   const autoSaveAbortControllerRef = useRef<AbortController | null>(null); // Prevent memory leaks
+  const pendingCloudManuscriptRef = useRef<Manuscript | null>(null);
   const isMountedRef = useRef(true);
   const castingDataLoadTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingCastingDataLoadRef = useRef(false);
@@ -656,7 +696,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     });
   }, [scenes]);
   const [isLoading, setIsLoading] = useState(false);
-  const [manuscriptSaveStatus, setManuscriptSaveStatus] = useState<'saved' | 'unsaved' | 'saving' | 'error'>('saved');
+  const [manuscriptSaveStatus, setManuscriptSaveStatus] = useState<ManuscriptSaveState>('saved');
   // Når en ANNEN i produksjonsteamet holder manus-låsen avvises lagring (409).
   // Vi viser hvem som låste i stedet for en generisk "Lagringsfeil".
   const [manuscriptLockConflict, setManuscriptLockConflict] = useState<{ lockedBy: string | null; lockedAt: string | null } | null>(null);
@@ -675,6 +715,11 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   const [showTargetDialog, setShowTargetDialog] = useState(false);
   const [targetDraft, setTargetDraft] = useState('');
   const [lastManuscriptSaved, setLastManuscriptSaved] = useState<Date | null>(null);
+  const [lastCloudVersion, setLastCloudVersion] = useState<number | null>(null);
+  const [manuscriptVersionConflict, setManuscriptVersionConflict] = useState<ManuscriptVersionConflictState | null>(null);
+  const manuscriptVersionConflictRef = useRef<ManuscriptVersionConflictState | null>(null);
+  const [showManuscriptConflictDialog, setShowManuscriptConflictDialog] = useState(false);
+  const [isResolvingManuscriptConflict, setIsResolvingManuscriptConflict] = useState(false);
   const [_isOnline, setIsOnline] = useState(navigator.onLine);
   const [showNewManuscriptDialog, setShowNewManuscriptDialog] = useState(false);
   const [showSceneDialog, setShowSceneDialog] = useState(false);
@@ -894,6 +939,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       setDialogueLines([]);
       setRevisions([]);
       selectedManuscriptRef.current = null;
+      pendingCloudManuscriptRef.current = null;
       lastSavedContentRef.current = '';
       pendingContentRef.current = '';
       isDirtyRef.current = false;
@@ -1109,16 +1155,24 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       setDialogueLines([]);
       setRevisions([]);
       selectedManuscriptRef.current = null;
+      manuscriptVersionConflictRef.current = null;
+      setManuscriptVersionConflict(null);
+      setLastCloudVersion(null);
       return;
     }
     
     // Always initialize refs when manuscript changes
     selectedManuscriptRef.current = selectedManuscript;
+    pendingCloudManuscriptRef.current = null;
     lastSavedContentRef.current = selectedManuscript.content || '';
     pendingContentRef.current = selectedManuscript.content || '';
     isDirtyRef.current = false;
     isInitialLoadRef.current = false;
     setManuscriptSaveStatus('saved');
+    setLastCloudVersion(numericManuscriptVersion(selectedManuscript));
+    manuscriptVersionConflictRef.current = null;
+    setManuscriptVersionConflict(null);
+    setShowManuscriptConflictDialog(false);
     setLastManuscriptSaved(
       selectedManuscript.updatedAt ? new Date(selectedManuscript.updatedAt) : new Date()
     );
@@ -1384,6 +1438,72 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     }
   };
 
+  const registerManuscriptVersionConflict = useCallback((
+    error: unknown,
+    localManuscript: Manuscript,
+  ): boolean => {
+    if (!error || typeof error !== 'object' || (error as { code?: unknown }).code !== 'manuscript_conflict') {
+      return false;
+    }
+
+    const conflictError = error as ManuscriptConflictError;
+    const conflict: ManuscriptVersionConflictState = {
+      manuscriptId: localManuscript.id,
+      localManuscript,
+      cloudManuscript: conflictError.cloudManuscript,
+      currentVersion: conflictError.currentVersion,
+    };
+    manuscriptVersionConflictRef.current = conflict;
+    setManuscriptVersionConflict(conflict);
+    setLastCloudVersion(conflict.currentVersion);
+    setManuscriptSaveStatus('conflict');
+    setShowManuscriptConflictDialog(true);
+    showWarning('Skyversjonen er nyere. Endringene dine er sikret lokalt og ingenting er overskrevet.');
+    return true;
+  }, [showWarning]);
+
+  const applyCloudSaveResult = useCallback((
+    result: ManuscriptSaveResult,
+    content: string,
+  ): Manuscript => {
+    const persisted = { ...result.manuscript, content };
+    if (selectedManuscriptRef.current?.id === persisted.id) {
+      selectedManuscriptRef.current = persisted;
+    }
+    setSelectedManuscript((current) => current?.id === persisted.id ? persisted : current);
+    setManuscripts((current) =>
+      current.map((entry) => (entry.id === persisted.id ? persisted : entry))
+    );
+    if (result.cloud) {
+      pendingCloudManuscriptRef.current = null;
+      setLastCloudVersion(result.cloudVersion);
+      setLastManuscriptSaved(new Date(result.savedAt));
+      setManuscriptSaveStatus('saved');
+      setManuscriptLockConflict(null);
+    } else {
+      pendingCloudManuscriptRef.current = persisted;
+      setManuscriptSaveStatus('local-only');
+    }
+    return persisted;
+  }, []);
+
+  const reportUserInitiatedSave = (
+    result: ManuscriptSaveResult,
+    successMessage: string,
+  ): boolean => {
+    applyCloudSaveResult(result, result.manuscript.content || '');
+    if (!result.cloud) {
+      if (selectedManuscriptRef.current?.id === result.manuscript.id) {
+        pendingContentRef.current = result.manuscript.content || '';
+        isDirtyRef.current = true;
+      }
+      showWarning('Endringen er sikret lokalt og venter på synkronisering til skyen.');
+      return false;
+    }
+    showSuccess(successMessage);
+    return true;
+  };
+
   const handleSaveManuscript = async () => {
     if (!selectedManuscript) return;
 
@@ -1398,23 +1518,31 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         content: contentToPersist,
         updatedAt: persistedTimestamp,
       };
-      await manuscriptService.updateManuscript(manuscriptToPersist);
-      setSelectedManuscript(manuscriptToPersist);
-      setManuscripts((current) =>
-        current.map((entry) => (entry.id === manuscriptToPersist.id ? manuscriptToPersist : entry))
-      );
-      lastSavedContentRef.current = contentToPersist;
+      const result = await manuscriptService.updateManuscript(manuscriptToPersist);
+      const persisted = applyCloudSaveResult(result, contentToPersist);
       pendingContentRef.current = contentToPersist;
+
+      if (!result.cloud) {
+        isDirtyRef.current = true;
+        showWarning('Manuskriptet er sikret lokalt og venter på synkronisering til skyen.');
+        return;
+      }
+
+      lastSavedContentRef.current = contentToPersist;
       isDirtyRef.current = false;
-      setLastManuscriptSaved(new Date(persistedTimestamp));
-      setManuscriptSaveStatus('saved');
-      
-      showSuccess('Manuskript lagret');
-      
+      manuscriptVersionConflictRef.current = null;
+      setManuscriptVersionConflict(null);
+      showSuccess('Manuskript synkronisert');
+
       if (onManuscriptChange) {
-        onManuscriptChange(manuscriptToPersist);
+        onManuscriptChange(persisted);
       }
     } catch (error) {
+      const localManuscript = {
+        ...selectedManuscript,
+        content: isDirtyRef.current ? pendingContentRef.current : selectedManuscript.content,
+      };
+      if (registerManuscriptVersionConflict(error, localManuscript)) return;
       setManuscriptSaveStatus('error');
       showError('Feil ved lagring av manuskript');
       console.error(error);
@@ -1825,6 +1953,21 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     // Store in ref immediately (no re-render)
     pendingContentRef.current = content;
     isDirtyRef.current = true;
+    const unresolvedConflict = manuscriptVersionConflictRef.current;
+    if (unresolvedConflict) {
+      const nextConflict = {
+        ...unresolvedConflict,
+        localManuscript: {
+          ...unresolvedConflict.localManuscript,
+          content,
+          updatedAt: new Date().toISOString(),
+        },
+      };
+      manuscriptVersionConflictRef.current = nextConflict;
+      setManuscriptVersionConflict(nextConflict);
+      setManuscriptSaveStatus('conflict');
+      return;
+    }
     setManuscriptSaveStatus((previous) => (previous === 'unsaved' ? previous : 'unsaved'));
     
     // Debounce the save to avoid constant saves while typing
@@ -1838,6 +1981,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       
       const manuscript = selectedManuscriptRef.current;
       if (!manuscript || !isDirtyRef.current) return;
+      if (manuscriptVersionConflictRef.current?.manuscriptId === manuscript.id) {
+        setManuscriptSaveStatus('conflict');
+        return;
+      }
       
       const contentToSave = pendingContentRef.current;
       if (contentToSave === lastSavedContentRef.current) return;
@@ -1850,7 +1997,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         autoSaveAbortControllerRef.current = new AbortController();
         
         // Save to database - DO NOT update selectedManuscript state to avoid re-render
-        await manuscriptService.updateManuscript(
+        const result = await manuscriptService.updateManuscript(
           {
             ...manuscript,
             content: contentToSave,
@@ -1861,13 +2008,17 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         
         // Only update refs if not aborted AND component still mounted
         if (!autoSaveAbortControllerRef.current?.signal.aborted && isMountedRef.current) {
+          applyCloudSaveResult(result, contentToSave);
+          if (!result.cloud) {
+            // Keep dirty=true. A timed retry (and the browser's online event)
+            // will attempt the same cloud write without losing local text.
+            isDirtyRef.current = true;
+            return;
+          }
           lastSavedContentRef.current = contentToSave;
           isDirtyRef.current = false;
-          setLastManuscriptSaved(new Date());
-          setManuscriptSaveStatus('saved');
-          setManuscriptLockConflict(null);
-          // IMPORTANT: Do NOT call onManuscriptChange or setSelectedManuscript here
-          // Auto-save should be completely transparent to parent
+          manuscriptVersionConflictRef.current = null;
+          setManuscriptVersionConflict(null);
         }
       } catch (error) {
         // Ignore abort errors (component unmounted)
@@ -1875,6 +2026,12 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           return;
         }
         if (!isMountedRef.current) return;
+        const localManuscript = {
+          ...manuscript,
+          content: contentToSave,
+          updatedAt: new Date().toISOString(),
+        };
+        if (registerManuscriptVersionConflict(error, localManuscript)) return;
         // Lås holdt av en annen bruker (409) → vis HVEM, ikke generisk feil.
         // isDirtyRef forblir true så innholdet beholdes og kan re-lagres når
         // låsen frigis. Innholdet er ikke tapt — det ligger fortsatt i editoren.
@@ -1896,7 +2053,149 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         setManuscriptSaveStatus('error');
       }
     }, 2000);
-  }, [selectedManuscript?.id]);
+  }, [applyCloudSaveResult, registerManuscriptVersionConflict, showWarning]);
+
+  // A local-only save is retried even if the writer stops typing. Keep the
+  // complete manuscript payload (not just content), so metadata/revisions are
+  // retried too.
+  useEffect(() => {
+    if (manuscriptSaveStatus !== 'local-only' || !pendingCloudManuscriptRef.current) return undefined;
+    const retryTimer = window.setTimeout(async () => {
+      const pending = pendingCloudManuscriptRef.current;
+      if (!pending || !isMountedRef.current || manuscriptVersionConflictRef.current) return;
+      try {
+        setManuscriptSaveStatus('saving');
+        const result = await manuscriptService.updateManuscript(pending);
+        if (!isMountedRef.current) return;
+
+        const isCurrentManuscript = selectedManuscriptRef.current?.id === pending.id;
+        const currentContent = isCurrentManuscript ? pendingContentRef.current : pending.content;
+        const contentChangedDuringRetry = currentContent !== pending.content;
+        applyCloudSaveResult(result, contentChangedDuringRetry ? currentContent : pending.content);
+        if (!result.cloud) return;
+
+        lastSavedContentRef.current = pending.content;
+        isDirtyRef.current = contentChangedDuringRetry;
+        if (contentChangedDuringRetry) setManuscriptSaveStatus('unsaved');
+      } catch (error) {
+        const localManuscript = {
+          ...pending,
+          content: selectedManuscriptRef.current?.id === pending.id
+            ? pendingContentRef.current
+            : pending.content,
+          updatedAt: new Date().toISOString(),
+        };
+        if (registerManuscriptVersionConflict(error, localManuscript)) return;
+        if (isMountedRef.current) setManuscriptSaveStatus('error');
+      }
+    }, 10_000);
+    return () => window.clearTimeout(retryTimer);
+  }, [applyCloudSaveResult, manuscriptSaveStatus, registerManuscriptVersionConflict, _isOnline]);
+
+  const refreshConflictCloudManuscript = async (): Promise<void> => {
+    const conflict = manuscriptVersionConflictRef.current;
+    if (!conflict) return;
+    setIsResolvingManuscriptConflict(true);
+    try {
+      const cloudManuscript = await manuscriptService.getCloudManuscript(conflict.manuscriptId);
+      if (!cloudManuscript) {
+        showWarning('Skyversjonen finnes ikke lenger. Den lokale versjonen er fortsatt urørt.');
+        return;
+      }
+      const refreshed: ManuscriptVersionConflictState = {
+        ...conflict,
+        cloudManuscript,
+        currentVersion: numericManuscriptVersion(cloudManuscript) ?? conflict.currentVersion,
+      };
+      manuscriptVersionConflictRef.current = refreshed;
+      setManuscriptVersionConflict(refreshed);
+      setLastCloudVersion(refreshed.currentVersion);
+    } catch (error) {
+      console.error('Could not refresh cloud manuscript for conflict:', error);
+      showWarning('Kunne ikke hente skyversjonen ennå. Den lokale versjonen er fortsatt trygg.');
+    } finally {
+      setIsResolvingManuscriptConflict(false);
+    }
+  };
+
+  const useCloudManuscriptFromConflict = (): void => {
+    const conflict = manuscriptVersionConflictRef.current;
+    if (!conflict?.cloudManuscript) return;
+
+    // Preserve the complete local text as a recovery point before the user
+    // explicitly replaces the editor with the cloud copy.
+    try {
+      addScreenplayRecoveryPoint(
+        conflict.manuscriptId,
+        getCurrentUserId(),
+        conflict.localManuscript.content,
+        'before_restore',
+      );
+    } catch (error) {
+      console.warn('Could not create pre-conflict recovery point:', error);
+    }
+
+    const cloudManuscript = conflict.cloudManuscript;
+    selectedManuscriptRef.current = cloudManuscript;
+    pendingContentRef.current = cloudManuscript.content || '';
+    lastSavedContentRef.current = cloudManuscript.content || '';
+    isDirtyRef.current = false;
+    setSelectedManuscript(cloudManuscript);
+    setManuscripts((current) =>
+      current.map((entry) => entry.id === cloudManuscript.id ? cloudManuscript : entry)
+    );
+    setLastCloudVersion(numericManuscriptVersion(cloudManuscript) ?? conflict.currentVersion);
+    setLastManuscriptSaved(cloudManuscript.updatedAt ? new Date(cloudManuscript.updatedAt) : new Date());
+    setManuscriptSaveStatus('saved');
+    pendingCloudManuscriptRef.current = null;
+    manuscriptVersionConflictRef.current = null;
+    setManuscriptVersionConflict(null);
+    setShowManuscriptConflictDialog(false);
+    onManuscriptChange?.(cloudManuscript);
+    showInfo('Skyversjonen er åpnet. Din lokale versjon ligger i gjenopprettingshistorikken.');
+  };
+
+  const keepLocalManuscriptFromConflict = async (): Promise<void> => {
+    const conflict = manuscriptVersionConflictRef.current;
+    if (!conflict || conflict.currentVersion === null || !conflict.cloudManuscript) return;
+
+    const localManuscript: Manuscript = {
+      ...conflict.localManuscript,
+      content: conflict.localManuscript.content,
+      updatedAt: new Date().toISOString(),
+    };
+    setIsResolvingManuscriptConflict(true);
+    try {
+      const result = await manuscriptService.updateManuscript(
+        localManuscript,
+        undefined,
+        { expectedCloudVersion: conflict.currentVersion },
+      );
+      const persisted = applyCloudSaveResult(result, localManuscript.content);
+      if (!result.cloud) {
+        isDirtyRef.current = true;
+        showWarning('Den lokale versjonen er trygg, men konflikten kunne ikke synkroniseres ennå.');
+        return;
+      }
+
+      pendingContentRef.current = localManuscript.content;
+      lastSavedContentRef.current = localManuscript.content;
+      isDirtyRef.current = false;
+      manuscriptVersionConflictRef.current = null;
+      setManuscriptVersionConflict(null);
+      setShowManuscriptConflictDialog(false);
+      onManuscriptChange?.(persisted);
+      showSuccess('Din versjon ble synkronisert etter eksplisitt bekreftelse.');
+    } catch (error) {
+      if (!registerManuscriptVersionConflict(error, localManuscript)) {
+        console.error('Could not resolve manuscript conflict:', error);
+        setManuscriptSaveStatus('error');
+        showError('Kunne ikke løse lagringskonflikten. Den lokale versjonen er fortsatt trygg.');
+      }
+    } finally {
+      setIsResolvingManuscriptConflict(false);
+    }
+  };
 
   const handleScriptChangeFromSplitView = useCallback((content: string) => {
     setSelectedManuscript((previous) => {
@@ -2687,9 +2986,17 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                                   coverImage,
                                   coverFocalPoint: { ...DEFAULT_MANUSCRIPT_COVER_FOCAL_POINT },
                                 };
-                                await manuscriptService.updateManuscript(updatedManuscript);
-                                loadManuscripts();
-                                showSuccess('Cover oppdatert');
+                                try {
+                                  const result = await manuscriptService.updateManuscript(updatedManuscript);
+                                  if (reportUserInitiatedSave(result, 'Cover oppdatert')) {
+                                    void loadManuscripts();
+                                  }
+                                } catch (error) {
+                                  if (!registerManuscriptVersionConflict(error, updatedManuscript)) {
+                                    console.error('Could not update manuscript cover:', error);
+                                    showError('Kunne ikke oppdatere cover');
+                                  }
+                                }
                               };
                               reader.readAsDataURL(file);
                             }
@@ -3102,6 +3409,23 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                       onDismiss={handleResumeDismiss}
                     />
                   )}
+                {manuscriptVersionConflict?.manuscriptId === selectedManuscript.id && (
+                  <Alert
+                    severity="warning"
+                    sx={{ mb: 1.5 }}
+                    action={(
+                      <Button
+                        color="inherit"
+                        size="small"
+                        onClick={() => setShowManuscriptConflictDialog(true)}
+                      >
+                        Sammenlign
+                      </Button>
+                    )}
+                  >
+                    Nyere skyversjon funnet. Du arbeider fortsatt trygt lokalt; automatisk overskriving er satt på pause.
+                  </Alert>
+                )}
                 <EditorTab
                   manuscript={selectedManuscript}
                   scenes={scenes}
@@ -3109,6 +3433,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   onParseToScenes={handleParseToScenes}
                   manuscriptSaveStatus={manuscriptSaveStatus}
                   lastManuscriptSaved={lastManuscriptSaved}
+                  lastCloudVersion={lastCloudVersion}
                   characters={sceneCharactersMemo}
                   locations={sceneLocationsMemo}
                   castingRoles={castingRoles}
@@ -3307,10 +3632,14 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   setManuscripts((current) =>
                     current.map((entry) => (entry.id === updatedManuscript.id ? updatedManuscript : entry))
                   );
-                  await manuscriptService.updateManuscript(updatedManuscript);
-                  setManuscriptSaveStatus('saved');
-                  setLastManuscriptSaved(new Date(nowIso));
-                  onManuscriptChange?.(updatedManuscript);
+                  try {
+                    const result = await manuscriptService.updateManuscript(updatedManuscript);
+                    if (reportUserInitiatedSave(result, 'Revisjonen er synkronisert')) {
+                      onManuscriptChange?.(result.manuscript);
+                    }
+                  } catch (error) {
+                    if (!registerManuscriptVersionConflict(error, updatedManuscript)) throw error;
+                  }
                 }}
                 onRestoreRevision={async (revision) => {
                   const nowIso = new Date().toISOString();
@@ -3327,12 +3656,17 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   );
                   selectedManuscriptRef.current = restoredManuscript;
                   pendingContentRef.current = revision.content ?? '';
-                  lastSavedContentRef.current = revision.content ?? '';
-                  isDirtyRef.current = false;
-                  setManuscriptSaveStatus('saved');
-                  setLastManuscriptSaved(new Date(nowIso));
-                  await manuscriptService.updateManuscript(restoredManuscript);
-                  onManuscriptChange?.(restoredManuscript);
+                  isDirtyRef.current = true;
+                  try {
+                    const result = await manuscriptService.updateManuscript(restoredManuscript);
+                    if (reportUserInitiatedSave(result, 'Revisjonen er gjenopprettet og synkronisert')) {
+                      lastSavedContentRef.current = revision.content ?? '';
+                      isDirtyRef.current = false;
+                      onManuscriptChange?.(result.manuscript);
+                    }
+                  } catch (error) {
+                    if (!registerManuscriptVersionConflict(error, restoredManuscript)) throw error;
+                  }
                 }}
               />
             )}
@@ -3450,16 +3784,11 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                                   sceneCount: scenes.length,
                                   characterCount: sceneCharactersMemo.length,
                                   statusLabel: (selectedManuscript.status ?? 'draft').toUpperCase(),
-                                  saveLabel:
-                                    manuscriptSaveStatus === 'saved'
-                                      ? (lastManuscriptSaved
-                                          ? `Lagret ${lastManuscriptSaved.toLocaleTimeString('nb-NO')}`
-                                          : 'Lagret')
-                                      : manuscriptSaveStatus === 'saving'
-                                        ? 'Lagrer...'
-                                        : manuscriptSaveStatus === 'error'
-                                          ? 'Lagringsfeil'
-                                          : 'Ulagret',
+                                  saveLabel: manuscriptCloudSaveLabel(
+                                    manuscriptSaveStatus,
+                                    lastManuscriptSaved,
+                                    lastCloudVersion,
+                                  ),
                                   saveState: manuscriptSaveStatus,
                                 }}
                                 characters={sceneCharactersMemo}
@@ -3599,14 +3928,15 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   }}
                   onManuscriptUpdate={async (updatedManuscript) => {
                     setSelectedManuscript(updatedManuscript);
-                    if (onManuscriptChange) {
-                      onManuscriptChange(updatedManuscript);
-                    }
                     // Persist to service
                     try {
-                      await manuscriptService.updateManuscript(updatedManuscript);
+                      const result = await manuscriptService.updateManuscript(updatedManuscript);
+                      if (reportUserInitiatedSave(result, 'Manuskript-endringen er synkronisert')) {
+                        onManuscriptChange?.(result.manuscript);
+                      }
                       if (DEV_LOG) console.log('Manuscript saved:', updatedManuscript.id);
                     } catch (error) {
+                      if (registerManuscriptVersionConflict(error, updatedManuscript)) return;
                       console.error('Failed to save manuscript:', error);
                       showError('Kunne ikke lagre manuskript-endringer');
                     }
@@ -3636,6 +3966,20 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
             />
           </Drawer>
         </>
+      )}
+
+      {manuscriptVersionConflict && (
+        <ManuscriptConflictDialog
+          open={showManuscriptConflictDialog}
+          localManuscript={manuscriptVersionConflict.localManuscript}
+          cloudManuscript={manuscriptVersionConflict.cloudManuscript}
+          currentVersion={manuscriptVersionConflict.currentVersion}
+          resolving={isResolvingManuscriptConflict}
+          onContinueLocally={() => setShowManuscriptConflictDialog(false)}
+          onKeepLocal={() => { void keepLocalManuscriptFromConflict(); }}
+          onUseCloud={useCloudManuscriptFromConflict}
+          onRefreshCloud={() => { void refreshConflictCloudManuscript(); }}
+        />
       )}
 
       {/* Scene Dialog */}
@@ -4520,10 +4864,18 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   coverImage: editingManuscript.coverImage,
                   coverFocalPoint: editingManuscript.coverFocalPoint,
                 };
-                await manuscriptService.updateManuscript(updated);
-                loadManuscripts();
-                setShowEditManuscriptDialog(false);
-                showSuccess('Manuskript oppdatert');
+                try {
+                  const result = await manuscriptService.updateManuscript(updated);
+                  if (reportUserInitiatedSave(result, 'Manuskript oppdatert')) {
+                    void loadManuscripts();
+                    setShowEditManuscriptDialog(false);
+                  }
+                } catch (error) {
+                  if (!registerManuscriptVersionConflict(error, updated)) {
+                    console.error('Could not update manuscript metadata:', error);
+                    showError('Kunne ikke oppdatere manuskriptet');
+                  }
+                }
               }
             }} 
             variant="contained"
@@ -4548,8 +4900,9 @@ interface EditorTabProps {
   manuscript: Manuscript;
   onContentChange: (content: string) => void;
   onParseToScenes?: (content: string) => void;
-  manuscriptSaveStatus?: 'saved' | 'unsaved' | 'saving' | 'error';
+  manuscriptSaveStatus?: ManuscriptSaveState;
   lastManuscriptSaved?: Date | null;
+  lastCloudVersion?: number | null;
   characters?: string[];
   locations?: string[];
   castingRoles?: Role[];
@@ -4573,6 +4926,7 @@ const EditorTab: React.FC<EditorTabProps> = React.memo(({
   onParseToScenes,
   manuscriptSaveStatus = 'saved',
   lastManuscriptSaved = null,
+  lastCloudVersion = null,
   characters = [],
   locations = [],
   castingRoles = [],
@@ -4856,16 +5210,11 @@ Anna går raskt gjennom regnet.
               sceneCount: scenes.length,
               characterCount: allCharacters.length,
               statusLabel: (manuscript.status ?? 'draft').toUpperCase(),
-              saveLabel:
-                manuscriptSaveStatus === 'saved'
-                  ? (lastManuscriptSaved
-                      ? `Lagret ${lastManuscriptSaved.toLocaleTimeString('nb-NO')}`
-                      : 'Lagret')
-                  : manuscriptSaveStatus === 'saving'
-                    ? 'Lagrer...'
-                    : manuscriptSaveStatus === 'error'
-                      ? 'Lagringsfeil'
-                      : 'Ulagret',
+              saveLabel: manuscriptCloudSaveLabel(
+                manuscriptSaveStatus,
+                lastManuscriptSaved,
+                lastCloudVersion,
+              ),
               saveState: manuscriptSaveStatus,
             }}
             characters={characters}

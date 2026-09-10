@@ -161,7 +161,7 @@ interface ScreenplayEditorProps {
   value: string;
   onChange: (value: string) => void;
   manuscriptId?: string;
-  cloudSaveState?: 'saved' | 'unsaved' | 'saving' | 'error';
+  cloudSaveState?: 'saved' | 'unsaved' | 'saving' | 'local-only' | 'conflict' | 'error';
   cloudSaveLabel?: string;
   characters?: string[];
   locations?: string[];
@@ -2085,18 +2085,22 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
                   ? (isMobile ? '☁ ✓' : `☁ ${cloudSaveLabel?.replace(/^Lagret/, 'Synkronisert') || 'Synkronisert'}`)
                   : cloudSaveState === 'saving'
                     ? (isMobile ? '☁ …' : '☁ Synkroniserer…')
+                    : cloudSaveState === 'conflict'
+                      ? (isMobile ? 'Konflikt' : `☁ ${cloudSaveLabel || 'Konflikt – velg versjon'}`)
+                      : cloudSaveState === 'local-only'
+                        ? (isMobile ? 'Kun lokal' : `☁ ${cloudSaveLabel || 'Venter – sikret lokalt'}`)
                     : cloudSaveState === 'error'
                       ? (isMobile ? 'Kun lokal' : '☁ Feil – sikret lokalt')
                       : (isMobile ? '☁ ○' : '☁ Ikke synkronisert')}
                 sx={{
                   bgcolor: cloudSaveState === 'saved'
                     ? 'rgba(59, 130, 246, 0.18)'
-                    : cloudSaveState === 'error'
+                    : cloudSaveState === 'error' || cloudSaveState === 'conflict'
                       ? 'rgba(244, 63, 94, 0.2)'
                       : 'rgba(251, 191, 36, 0.2)',
                   color: cloudSaveState === 'saved'
                     ? '#93c5fd'
-                    : cloudSaveState === 'error'
+                    : cloudSaveState === 'error' || cloudSaveState === 'conflict'
                       ? '#fda4af'
                       : '#fbbf24',
                   fontSize: responsive.captionFontSize,

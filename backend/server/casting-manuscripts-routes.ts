@@ -49,11 +49,13 @@
  *     parsing-mønsteret som var duplisert i scenes/dialogue/acts/
  *     revisions-POST.
  *
+ * **Samtidig redigering:**
+ *   - Optimistic concurrency control på manuskript-writes via If-Match og
+ *     versjonsfelt. Eldre klienter uten header støttes fortsatt.
+ *
  * **Ikke endret (samme oppførsel som før):**
  *   - ID-generering: bruker newEntityId() fra _shared-ids (crypto.randomUUID
  *     under panseret — gammel `${prefix}-${Date.now()}`-bug ryddet 2026-05).
- *   - Ingen optimistic concurrency control (mulig forbedring: If-Match +
- *     version-felt for å forhindre concurrent overwrites).
  *   - DELETE-cascade for manuscripts er ikke atomisk på DB-nivå
  *     (compatStore-laget støtter ikke transaksjoner ennå)
  *   - Status-codes: 200 ved oppdatering, 201 ved opprettelse (bevart)
@@ -80,6 +82,7 @@ import type express from "express";
 
 import {
   checkIfMatch,
+  etagFor,
   sendPreconditionFailed,
   setEtagHeader,
 } from "./_shared-concurrency.js";
@@ -335,7 +338,11 @@ export function setupCastingManuscriptsRoutes(
       const manuscript = await manuscriptsService.getManuscript(
         req.params.manuscriptId,
       );
-      setEtagHeader(res, manuscript);
+      if (manuscript && typeof manuscript.version !== "number") {
+        res.setHeader("ETag", etagFor(0));
+      } else {
+        setEtagHeader(res, manuscript);
+      }
       res.json(manuscript);
     } catch (error) {
       console.error("Error fetching manuscript:", error);
@@ -348,8 +355,17 @@ export function setupCastingManuscriptsRoutes(
     if (!session) return;
     try {
       const manuscriptId = req.params.manuscriptId;
-      const existing =
-        (await manuscriptsService.getManuscript(manuscriptId)) || {};
+      const existingRecord = await manuscriptsService.getManuscript(manuscriptId);
+      const existing = existingRecord || {};
+      const payload = req.body && typeof req.body === "object" ? req.body : {};
+      const projectId = readProjectId(
+        existing,
+        readProjectId(payload, "default-project"),
+      );
+      if (!(await canAccessProject(projectId, session.userId))) {
+        res.status(404).json({ error: "not_found" });
+        return;
+      }
       // Lock enforcement: hvis en ANNEN bruker holder en gyldig lås → 409.
       // Utløpt lås blokkerer ikke; neste acquire overskriver den.
       const lockState = computeManuscriptLockState(existing);
@@ -364,17 +380,14 @@ export function setupCastingManuscriptsRoutes(
       // F1 enforcement: hvis klient sender If-Match med stale version → 412.
       // Klienter som IKKE sender header passerer uendret (backwards-compat).
       const currentVersion =
-        typeof existing.version === "number" ? existing.version : undefined;
+        existingRecord && typeof existing.version === "number" ? existing.version
+          : existingRecord ? 0
+            : undefined;
       const ifMatchCheck = checkIfMatch(req, currentVersion);
       if (!ifMatchCheck.matches) {
         return sendPreconditionFailed(res, currentVersion);
       }
-      const payload = req.body && typeof req.body === "object" ? req.body : {};
       const now = new Date().toISOString();
-      const projectId = readProjectId(
-        payload,
-        readProjectId(existing, "default-project"),
-      );
       const manuscript = {
         ...existing,
         ...payload,
