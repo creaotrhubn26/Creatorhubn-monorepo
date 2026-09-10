@@ -1628,6 +1628,8 @@ struct InviteMemberSheet: View {
     @Environment(AppState.self) private var appState
     @State private var email: String = ""
     @State private var role: LeadgridProjectOnboardingProjectRole = .member
+    @State private var isPrototypeTester = false
+    @State private var useOrganizationStorage = true
     @State private var invitations: [LeadgridProjectInvitationStatus] = []
     @State private var isSending = false
     @State private var statusMessage: String?
@@ -1648,6 +1650,7 @@ struct InviteMemberSheet: View {
                 VStack(spacing: 14) {
                     emailField
                     roleGrid
+                    if appState.isSuperAdmin { superAdminSetup }
                     if let project = appState.activeLeadgridProject {
                         Label("Tilgang gis til \(project.name)", systemImage: "folder.badge.person.crop")
                             .font(.appScaled(size: 12, weight: .semibold))
@@ -1690,6 +1693,27 @@ struct InviteMemberSheet: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .task { await loadInvitations() }
+    }
+
+    private var superAdminSetup: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Oppsett styrt av Super Admin", systemImage: "shield.lefthalf.filled")
+                .font(.appScaled(size: 12, weight: .bold))
+                .foregroundStyle(TBrand.purpleLight)
+            Toggle("Prototype-tester", isOn: $isPrototypeTester)
+                .tint(TBrand.purpleLight)
+            Toggle("Bruk organisasjonens lagring", isOn: $useOrganizationStorage)
+                .tint(TBrand.purpleLight)
+            Text(useOrganizationStorage
+                 ? "Opplastinger bruker prosjektorganisasjonens felles kvote. Medlemmet får aldri et eget lagringsabonnement."
+                 : "Medlemmet kan se og laste ned eksisterende filer, men ikke laste opp nye filer.")
+                .font(.appScaled(size: 11))
+                .foregroundStyle(TBrand.textSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(TBrand.card, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(TBrand.purpleLight.opacity(0.25), lineWidth: 1))
     }
 
     private var emailField: some View {
@@ -1764,6 +1788,16 @@ struct InviteMemberSheet: View {
                             Text(invitation.role.title)
                                 .font(.caption2)
                                 .foregroundStyle(TBrand.textSecondary)
+                            if invitation.isPrototypeTester == true {
+                                Label("Prototype-tester", systemImage: "hammer.fill")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(TBrand.purpleLight)
+                            }
+                            if invitation.storagePolicy == "disabled" {
+                                Label("Opplasting av", systemImage: "externaldrive.badge.xmark")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(TBrand.orange)
+                            }
                         }
                         Spacer()
                         Text(invitation.status == "accepted" ? "Akseptert" : (invitation.emailStatus == "sent" ? "Sendt" : "Venter"))
@@ -1834,12 +1868,16 @@ struct InviteMemberSheet: View {
                 email: normalizedEmail,
                 role: role,
                 salesTeamId: nil,
-                salesTeamRole: nil
+                salesTeamRole: nil,
+                isPrototypeTester: appState.isSuperAdmin ? isPrototypeTester : nil,
+                useOrganizationStorage: appState.isSuperAdmin ? useOrganizationStorage : nil
             )
             statusMessage = sent.emailSent
                 ? "Invitasjonen er sendt."
                 : "Invitasjonen er lagret, men e-posten må sendes på nytt."
             email = ""
+            isPrototypeTester = false
+            useOrganizationStorage = true
             await loadInvitations()
         } catch {
             errorMessage = error.localizedDescription

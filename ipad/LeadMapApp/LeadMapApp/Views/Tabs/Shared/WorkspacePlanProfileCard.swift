@@ -67,6 +67,20 @@ struct WorkspacePlanProfileCard: View {
             detailRow(label: "Rolle", value: roleDisplayName)
             planRow
 
+            if summary?.isBillingReadOnly == true {
+                Label("Kun lesetilgang mens betaling oppdateres. Filer beholdes.",
+                      systemImage: "lock.shield.fill")
+                    .font(.appScaled(size: 11, weight: .semibold))
+                    .foregroundStyle(LBrand.orange)
+            }
+
+            if let storage = summary?.storage {
+                detailRow(
+                    label: "Organisasjonslagring",
+                    value: "\(byteLabel(storage.usedBytes)) / \(byteLabel(storage.capacityBytes))"
+                )
+            }
+
             if let summary {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
@@ -177,5 +191,9 @@ struct WorkspacePlanProfileCard: View {
         if percent >= 90 { return LBrand.red }
         if percent >= 75 { return LBrand.orange }
         return LBrand.green
+    }
+
+    private func byteLabel(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .binary)
     }
 }

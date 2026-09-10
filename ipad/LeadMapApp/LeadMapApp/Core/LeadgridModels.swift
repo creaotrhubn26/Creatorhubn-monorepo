@@ -636,10 +636,10 @@ extension LeadgridNotification {
 
 struct LeadgridPlanLimits: Codable, Hashable {
     let displayName: String?
-    let maxCustomers: Int?
+    let maxActiveCustomers: Int?
     let maxAutoOnboardsPerMonth: Int?
-    let maxTeamLeaders: Int?
-    let maxReps: Int?
+    let maxTeamMembers: Int?
+    let includedStorageBytes: Int64?
 }
 
 struct LeadgridPlanUsage: Codable, Hashable {
@@ -652,6 +652,21 @@ struct LeadgridPlanPct: Codable, Hashable {
     let autoOnboards: Int   // 0-100
 }
 
+struct LeadgridBillingState: Codable, Hashable {
+    let subscriptionStatus: String
+    let pastDueSince: String?
+    let readOnlyAt: String?
+}
+
+struct LeadgridStorageState: Codable, Hashable {
+    let includedBytes: Int64
+    let addonQuantity: Int
+    let capacityBytes: Int64
+    let usedBytes: Int64
+    let reservedBytes: Int64
+    let availableBytes: Int64
+}
+
 struct LeadgridPlanSummary: Codable, Hashable {
     let planKey: String
     let displayName: String
@@ -660,6 +675,12 @@ struct LeadgridPlanSummary: Codable, Hashable {
     let limits: LeadgridPlanLimits
     let usage: LeadgridPlanUsage
     let pct: LeadgridPlanPct
+    let billing: LeadgridBillingState?
+    let storage: LeadgridStorageState?
+
+    var isBillingReadOnly: Bool {
+        billing?.readOnlyAt != nil
+    }
 
     /// Worst-case prosent (det som bør vises i kompakt bar).
     var worstPct: Int {
@@ -668,7 +689,7 @@ struct LeadgridPlanSummary: Codable, Hashable {
 
     /// Hovedmetrikk-label for kompakt visning.
     var primaryLabel: String {
-        if let max = limits.maxCustomers {
+        if let max = limits.maxActiveCustomers {
             return "\(usage.customersActive) / \(max) leads"
         }
         return "\(usage.customersActive) leads"

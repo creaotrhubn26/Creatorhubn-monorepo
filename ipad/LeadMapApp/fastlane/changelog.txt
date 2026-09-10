@@ -26,3 +26,5 @@ Leadgrid 2.1
 • Nettstedsinnhold kvalifiseres før kandidater foreslås, og alle aktive profiler kan kjøres samlet med treffhistorikk på tvers.
 • Skuespillere behandles som personprospekter etter eksplisitt godkjenning – aldri som automatisk opprettede talentkontoer – med reservasjons- og 90-dagers personvernflyt.
 • Super Admin kan korrigere prosjektnavn, kategori, beskrivelse og målgruppe før prosjektet opprettes eller gjenbrukes.
+• Super Admin kan velge prototype-status og organisasjonslagring når et medlem inviteres til et kundeprosjekt.
+• Organisasjonen eier abonnement og lagringskvote, og betalingsproblemer gir trygg lesemodus uten automatisk filsletting.

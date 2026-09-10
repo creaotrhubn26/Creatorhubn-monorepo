@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { hydrateLeadgridPrizeImageUrls } from "./leadgrid-prize-image-service.js";
 import type { Express, Request, Response } from "express";
 import type { Pool, PoolClient } from "pg";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
@@ -552,7 +553,7 @@ export function registerLeadgridSalesManagementRoutes(deps: Deps): void {
         commissionConfig: config,
         team,
         templates,
-        prizeCatalog: prizes.rows.map(prizeDTO),
+        prizeCatalog: (await hydrateLeadgridPrizeImageUrls(prizes.rows)).map(prizeDTO),
         contests,
         awards: awards.rows.map(awardDTO),
         approvals: approvals.rows.map(approvalDTO),
@@ -631,7 +632,8 @@ export function registerLeadgridSalesManagementRoutes(deps: Deps): void {
        str(body.imageB2Key ?? body.image_b2_key) || null, JSON.stringify(obj(body.metadata)), access.session.userId, key],
     );
     const inserted = Boolean(saved.rows[0].inserted);
-    return res.status(inserted ? 201 : 200).json({ product: prizeDTO(saved.rows[0]), replayed: !inserted });
+    const [product] = await hydrateLeadgridPrizeImageUrls(saved.rows);
+    return res.status(inserted ? 201 : 200).json({ product: prizeDTO(product), replayed: !inserted });
   });
 
   app.patch("/api/leadgrid/sales-management/prize-catalog/:id", async (req, res) => {
@@ -661,7 +663,8 @@ export function registerLeadgridSalesManagementRoutes(deps: Deps): void {
        JSON.stringify(body.metadata === undefined ? obj(previous.metadata) : obj(body.metadata)),
        body.archived === undefined ? Boolean(previous.archived) : Boolean(body.archived), req.params.id, access.organizationId],
     );
-    return res.json({ product: prizeDTO(saved.rows[0]) });
+    const [product] = await hydrateLeadgridPrizeImageUrls(saved.rows);
+    return res.json({ product: prizeDTO(product) });
   });
 
   app.delete("/api/leadgrid/sales-management/prize-catalog/:id", async (req, res) => {

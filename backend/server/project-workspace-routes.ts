@@ -543,12 +543,13 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   const { app, pool, requireUserSession } = deps;
 
   // Lokal lagrings-fallback (for dev / testing uten B2-credentials)
-  app.get("/api/local-storage/:key(*)", (req, res) => {
+  app.get("/api/local-storage/*key", (req, res) => {
     try {
-      const rawKey = req.params.key;
+      const keyParam = (req.params as Record<string, string | string[] | undefined>).key;
+      const rawKey = Array.isArray(keyParam) ? keyParam.join("/") : String(keyParam ?? "");
       const rootDir = path.resolve(process.cwd(), "uploads", "b2_fallback");
       const fullPath = path.resolve(rootDir, rawKey);
-      if (!fullPath.startsWith(rootDir)) {
+      if (!rawKey || !fullPath.startsWith(`${rootDir}${path.sep}`)) {
         return res.status(403).json({ error: "forbidden" });
       }
       if (!fs.existsSync(fullPath)) {

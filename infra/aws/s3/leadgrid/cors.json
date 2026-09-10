@@ -1,0 +1,25 @@
+{
+  "CORSRules": [
+    {
+      "ID": "LeadgridDirectUploads",
+      "AllowedHeaders": [
+        "*"
+      ],
+      "AllowedMethods": [
+        "GET",
+        "HEAD",
+        "PUT"
+      ],
+      "AllowedOrigins": [
+        "https://leadgrid.no",
+        "https://www.leadgrid.no"
+      ],
+      "ExposeHeaders": [
+        "ETag",
+        "x-amz-checksum-sha256",
+        "x-amz-request-id"
+      ],
+      "MaxAgeSeconds": 3600
+    }
+  ]
+}
