@@ -4,6 +4,8 @@
 //! kaller indekseren som bibliotek. Ingen binær startes, ingen nettverkskall
 //! gjøres: alt her er disk, git og SQLite.
 
+mod understand;
+
 use creatorhub_notes_indexer::{db, index, search};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -331,6 +333,22 @@ fn search_notes(query: String) -> Result<Vec<SearchHit>, String> {
     Ok(out)
 }
 
+/// Leser notatet og sier hva det har forstått. Feiler kallet — `claude` finnes
+/// ikke, er ikke innlogget, eller bruker for lang tid — svarer den «av», og
+/// panelet viser én rolig linje. Ingen feilmelding: brukeren har ikke bedt om
+/// noe her, og skriving, lagring og søk går som før.
+///
+/// Hukommelsen holdes låst gjennom kallet. Det serialiserer to lagringer som
+/// kommer tett — som er det man vil: den andre finner arbeidet den første
+/// gjorde, i stedet for å betale for det på nytt.
+#[tauri::command]
+fn understand_note(content: String) -> Result<understand::Understanding, String> {
+    let mut memo = understand::memo().lock().unwrap_or_else(|e| e.into_inner());
+    Ok(understand::understand(&content, &understand::Cli, &mut memo)
+        .map(understand::Understanding::on)
+        .unwrap_or_else(|_| understand::Understanding::off()))
+}
+
 #[tauri::command]
 fn reindex() -> Result<String, String> {
     let dir = notes_dir()?;
@@ -346,7 +364,8 @@ pub fn run() {
             write_note,
             create_note,
             search_notes,
-            reindex
+            reindex,
+            understand_note
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
