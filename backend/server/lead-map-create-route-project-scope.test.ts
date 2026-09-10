@@ -8,6 +8,7 @@ const serviceMocks = vi.hoisted(() => ({
 }));
 const sessionMocks = vi.hoisted(() => ({ resolve: vi.fn() }));
 const projectMocks = vi.hoisted(() => ({ load: vi.fn() }));
+const jobMocks = vi.hoisted(() => ({ enqueueLeadBrregEnrich: vi.fn() }));
 const organizationMocks = vi.hoisted(() => ({
   requested: vi.fn(),
   resolveAuthorized: vi.fn(),
@@ -28,6 +29,9 @@ vi.mock("./lead-map-session-helper.js", () => ({
 }));
 vi.mock("./leadgrid-project-access.js", () => ({
   loadAccessibleLeadgridProject: projectMocks.load,
+}));
+vi.mock("./job-handlers.js", () => ({
+  enqueueLeadBrregEnrich: jobMocks.enqueueLeadBrregEnrich,
 }));
 vi.mock("./lead-map-rbac-helper.js", () => ({
   requireLeadMapPermission: vi.fn(() => (
@@ -143,6 +147,7 @@ beforeEach(() => {
     idempotentReplay: false,
   });
   serviceMocks.findLeadDuplicateCandidates.mockResolvedValue([]);
+  jobMocks.enqueueLeadBrregEnrich.mockResolvedValue(undefined);
 });
 
 describe("canonical lead creation project and Places provenance", () => {
@@ -208,6 +213,28 @@ describe("canonical lead creation project and Places provenance", () => {
       }),
     );
     expect(result.status()).toBe(200);
+  });
+
+  it("queues BRREG enrichment for a newly created lead with organization number", async () => {
+    const { create, pool } = setupHarness();
+    const result = responseHarness();
+    serviceMocks.createLeadFromPin.mockResolvedValue({
+      id: "lead-with-org-number",
+      created: true,
+      idempotentReplay: false,
+    });
+
+    await create(
+      request(validBody({ organization_number: "937518684" })),
+      result.response,
+      vi.fn(),
+    );
+
+    expect(jobMocks.enqueueLeadBrregEnrich).toHaveBeenCalledWith(pool, {
+      leadId: "lead-with-org-number",
+      ownerUserId: "seller-a",
+    });
+    expect(result.status()).toBe(201);
   });
 
   it("applies the same authoritative project boundary to the legacy from-pin alias", async () => {
