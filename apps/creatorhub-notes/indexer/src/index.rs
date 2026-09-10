@@ -13,6 +13,11 @@ use zerocopy::AsBytes;
 /// Pris per million tokener for voyage-code-3, i dollar.
 pub const USD_PER_MILLION_TOKENS: f64 = 0.18;
 
+/// Uten embedder er tokenbudsjettet meningsløst, så pakker uten embedder
+/// deles etter antall filer i stedet, slik at et stort repo ikke bygger én
+/// kjempetransaksjon.
+const NO_EMBED_FILES_PER_PACK: usize = 200;
+
 #[derive(Debug)]
 pub struct IndexReport {
     /// Filer som ble lest, delt og embeddet i denne kjøringen.
@@ -49,44 +54,52 @@ fn read_path_state(conn: &Connection) -> Result<HashMap<String, String>> {
 /// En bit klar for skriving: (sti, startlinje, sluttlinje, tekst).
 type Row = (String, usize, usize, String);
 
-/// Embedder én pakke og skriver den i én transaksjon. Enten går alt inn, eller
-/// ingenting — og pakker som allerede er committet står igjen om en senere
-/// pakke feiler. Det er hele gjenopptakbarheten.
+/// Embedder (om noen er gitt) én pakke og skriver den i én transaksjon.
+/// Enten går alt inn, eller ingenting — og pakker som allerede er committet
+/// står igjen om en senere pakke feiler. Det er hele gjenopptakbarheten.
+///
+/// Uten embedder skrives `chunks`- og `path_state`-radene som vanlig, men
+/// `chunk_vec` forblir tom for disse bitene. `chunk_fts` fylles uansett, av
+/// triggerne på `chunks` — det krever ingen embedder.
 fn flush(
     conn: &Connection,
-    embedder: &dyn Embedder,
+    embedder: Option<&dyn Embedder>,
     paths: &[(String, String)],
     rows: &[Row],
 ) -> Result<()> {
-    let vectors = if rows.is_empty() {
-        Vec::new()
-    } else {
-        let texts: Vec<String> = rows.iter().map(|r| r.3.clone()).collect();
-        embedder.embed(&texts, InputType::Document)?
+    let vectors = match embedder {
+        Some(embedder) if !rows.is_empty() => {
+            let texts: Vec<String> = rows.iter().map(|r| r.3.clone()).collect();
+            let vectors = embedder.embed(&texts, InputType::Document)?;
+            if vectors.len() != rows.len() {
+                anyhow::bail!(
+                    "embedder returnerte {} vektorer for {} biter",
+                    vectors.len(),
+                    rows.len()
+                );
+            }
+            Some(vectors)
+        }
+        _ => None,
     };
-    if vectors.len() != rows.len() {
-        anyhow::bail!(
-            "embedder returnerte {} vektorer for {} biter",
-            vectors.len(),
-            rows.len()
-        );
-    }
 
     let tx = conn.unchecked_transaction()?;
     for (path, _) in paths {
         purge_path(&tx, path)?;
     }
-    for (row, vector) in rows.iter().zip(vectors.iter()) {
+    for (i, row) in rows.iter().enumerate() {
         tx.execute(
             "insert into chunks(source, path, start_line, end_line, text) \
              values ('code', ?1, ?2, ?3, ?4)",
             rusqlite::params![row.0, row.1 as i64, row.2 as i64, row.3],
         )?;
-        let id = tx.last_insert_rowid();
-        tx.execute(
-            "insert into chunk_vec(rowid, embedding) values (?1, ?2)",
-            rusqlite::params![id, vector.as_bytes()],
-        )?;
+        if let Some(vectors) = &vectors {
+            let id = tx.last_insert_rowid();
+            tx.execute(
+                "insert into chunk_vec(rowid, embedding) values (?1, ?2)",
+                rusqlite::params![id, vectors[i].as_bytes()],
+            )?;
+        }
     }
     for (path, blob_sha) in paths {
         tx.execute(
@@ -99,7 +112,68 @@ fn flush(
     Ok(())
 }
 
+/// Bitene som allerede har tekst i `chunks` men mangler en vektor i
+/// `chunk_vec`: enten fra en `--no-embed`-kjøring, eller en tidligere
+/// embed-kjøring som feilet midt i (umulig i praksis siden `flush` skriver
+/// begge i samme transaksjon, men koster ingenting å dekke uansett).
+///
+/// Dette er gjenkjennelsen som gjør oppgraderingsstien trygg: en kjøring med
+/// embedder finner disse bitene og embedder dem på plass, uten å røre
+/// teksten — ingen re-splitting, ingen duplisering, `path_state` uendret
+/// fordi blob-hashen ikke har endret seg.
+fn backfill_missing_vectors(conn: &Connection, embedder: &dyn Embedder) -> Result<usize> {
+    let rows: Vec<(i64, String)> = conn
+        .prepare(
+            "select c.id, c.text from chunks c \
+             where not exists (select 1 from chunk_vec v where v.rowid = c.id)",
+        )?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+    if rows.is_empty() {
+        return Ok(0);
+    }
+
+    let texts: Vec<String> = rows.iter().map(|r| r.1.clone()).collect();
+    for range in embed::batches(&texts) {
+        let vectors = embedder.embed(&texts[range.clone()], InputType::Document)?;
+        if vectors.len() != range.len() {
+            anyhow::bail!(
+                "embedder returnerte {} vektorer for {} biter",
+                vectors.len(),
+                range.len()
+            );
+        }
+        let tx = conn.unchecked_transaction()?;
+        for (offset, idx) in range.enumerate() {
+            tx.execute(
+                "insert into chunk_vec(rowid, embedding) values (?1, ?2)",
+                rusqlite::params![rows[idx].0, vectors[offset].as_bytes()],
+            )?;
+        }
+        tx.commit()?;
+    }
+    Ok(rows.len())
+}
+
+/// Indekserer med embedder: bygger og oppdaterer vektorene som semantisk søk
+/// bruker.
 pub fn run(conn: &Connection, repo: &Path, embedder: &dyn Embedder) -> Result<IndexReport> {
+    run_inner(conn, repo, Some(embedder))
+}
+
+/// Indekserer uten embedder: kun tekst og FTS5. Ingen `VOYAGE_API_KEY`
+/// kreves, ingen nettverkskall gjøres. `chunk_vec` forblir tom for bitene
+/// som skrives her, til en senere `run()` med embedder fyller dem inn — se
+/// `backfill_missing_vectors`.
+pub fn run_no_embed(conn: &Connection, repo: &Path) -> Result<IndexReport> {
+    run_inner(conn, repo, None)
+}
+
+fn run_inner(
+    conn: &Connection,
+    repo: &Path,
+    embedder: Option<&dyn Embedder>,
+) -> Result<IndexReport> {
     let current = gitsrc::list_files_with_sha(repo)?;
     let state = read_path_state(conn)?;
 
@@ -159,15 +233,23 @@ pub fn run(conn: &Connection, repo: &Path, embedder: &dyn Embedder) -> Result<In
         };
         let file_tokens: usize = file_rows.iter().map(|r| embed::est_tokens(&r.3)).sum();
 
+        // Med embedder deles pakker på tokenbudsjettet Voyage håndhever. Uten
+        // embedder finnes intet slikt budsjett, så vi deler på antall filer i
+        // stedet — bare for å unngå én kjempetransaksjon på et stort repo.
         let overflows = !rows.is_empty()
-            && (pack_tokens + file_tokens > embed::MAX_TOKENS_PER_REQUEST
-                || rows.len() + file_rows.len() > embed::MAX_TEXTS_PER_REQUEST);
+            && match embedder {
+                Some(_) => {
+                    pack_tokens + file_tokens > embed::MAX_TOKENS_PER_REQUEST
+                        || rows.len() + file_rows.len() > embed::MAX_TEXTS_PER_REQUEST
+                }
+                None => pack.len() >= NO_EMBED_FILES_PER_PACK,
+            };
         if overflows {
             flush(conn, embedder, &pack, &rows)?;
             batch_no += 1;
             files_done += pack.len();
             chunks_total += rows.len();
-            progress(batch_no, files_done, chunks_total, embedder.tokens_used());
+            progress(batch_no, files_done, chunks_total, tokens_used(embedder));
             pack.clear();
             rows.clear();
             pack_tokens = 0;
@@ -183,7 +265,14 @@ pub fn run(conn: &Connection, repo: &Path, embedder: &dyn Embedder) -> Result<In
         batch_no += 1;
         files_done += pack.len();
         chunks_total += rows.len();
-        progress(batch_no, files_done, chunks_total, embedder.tokens_used());
+        progress(batch_no, files_done, chunks_total, tokens_used(embedder));
+    }
+
+    // Oppgraderingssti: en kjøring med embedder ser etter biter som allerede
+    // har tekst (fra en tidligere `--no-embed`-kjøring) men ingen vektor, og
+    // embedder dem i etterkant — uten å røre `chunks` eller `path_state`.
+    if let Some(embedder) = embedder {
+        backfill_missing_vectors(conn, embedder)?;
     }
 
     Ok(IndexReport {
@@ -191,8 +280,12 @@ pub fn run(conn: &Connection, repo: &Path, embedder: &dyn Embedder) -> Result<In
         chunks: chunks_total,
         deleted: gone.len(),
         skipped,
-        tokens: embedder.tokens_used(),
+        tokens: tokens_used(embedder),
     })
+}
+
+fn tokens_used(embedder: Option<&dyn Embedder>) -> usize {
+    embedder.map(|e| e.tokens_used()).unwrap_or(0)
 }
 
 #[derive(Debug, Default, Clone)]

@@ -23,12 +23,21 @@ enum Command {
         /// Krever ingen API-nøkkel og gjør ingen nettverkskall.
         #[arg(long)]
         dry_run: bool,
+        /// Indekser tekst og fulltekstsøk uten embedder. Krever ingen
+        /// VOYAGE_API_KEY og gjør ingen nettverkskall. Kjør uten flagget
+        /// senere for å legge til vektorer på de samme bitene.
+        #[arg(long)]
+        no_embed: bool,
     },
-    /// Søk semantisk i indeksen
+    /// Søk i indeksen
     Search {
         query: String,
         #[arg(long, default_value_t = 5)]
         limit: usize,
+        /// Fulltekstsøk (FTS5/bm25) i stedet for semantisk søk. Krever ingen
+        /// VOYAGE_API_KEY og gjør ingen nettverkskall.
+        #[arg(long)]
+        text: bool,
     },
     /// Kjør gullsettet og rapporter recall
     Eval {
@@ -44,12 +53,36 @@ fn main() -> Result<()> {
 
     // --dry-run rører verken databasen eller Voyage, så begge bygges først når
     // en gren faktisk trenger dem.
-    if let Command::Index { repo, dry_run: true } = &args.command {
+    if let Command::Index { repo, dry_run: true, .. } = &args.command {
         print!("{}", index::dry_run(repo)?.render());
         return Ok(());
     }
 
     let db_path = args.db.unwrap_or_else(cli::default_db_path);
+
+    // --no-embed og --text er de andre nøkkelfrie stiene: begge åpner
+    // databasen, men ingen av dem må komme i nærheten av
+    // VoyageEmbedder::from_env(), som feiler uten VOYAGE_API_KEY.
+    if let Command::Index { repo, no_embed: true, .. } = &args.command {
+        let conn = db::open(&db_path)?;
+        let report = index::run_no_embed(&conn, repo)?;
+        println!(
+            "{} filer indeksert, {} biter, {} slettet, {} uendret",
+            report.files, report.chunks, report.deleted, report.skipped
+        );
+        return Ok(());
+    }
+    if let Command::Search { query, limit, text: true } = &args.command {
+        let conn = db::open(&db_path)?;
+        for hit in search::text(&conn, query, *limit)? {
+            println!(
+                "{:.4}  {}:{}-{}",
+                hit.distance, hit.path, hit.start_line, hit.end_line
+            );
+        }
+        return Ok(());
+    }
+
     let conn = db::open(&db_path)?;
     let embedder = VoyageEmbedder::from_env()?;
 
@@ -66,7 +99,7 @@ fn main() -> Result<()> {
                 report.tokens as f64 / 1_000_000.0 * index::USD_PER_MILLION_TOKENS
             );
         }
-        Command::Search { query, limit } => {
+        Command::Search { query, limit, .. } => {
             for hit in search::query(&conn, &embedder, &query, limit)? {
                 println!(
                     "{:.4}  {}:{}-{}",
