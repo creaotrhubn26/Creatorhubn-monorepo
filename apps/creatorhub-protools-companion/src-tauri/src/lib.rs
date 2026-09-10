@@ -15,6 +15,7 @@ mod state;
 mod watcher;
 
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -22,6 +23,40 @@ use tauri::{AppHandle, State};
 
 use processing::{BounceResult, SyncResult};
 use state::{emit_activity, snapshot, SharedConfig, SharedWatcher, WatcherCtl};
+
+const COMMAND_POLL_INTERVAL: Duration = Duration::from_secs(10);
+
+fn command_polling_ready(config: &config::AppConfig) -> bool {
+    config
+        .device_token
+        .as_deref()
+        .is_some_and(|token| !token.trim().is_empty())
+        && config
+            .session_id
+            .as_deref()
+            .is_some_and(|session_id| !session_id.trim().is_empty())
+}
+
+fn start_command_polling(app: AppHandle, cfg: SharedConfig) {
+    tauri::async_runtime::spawn(async move {
+        let mut interval = tokio::time::interval(COMMAND_POLL_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            let ready = {
+                let current = cfg.lock().unwrap();
+                command_polling_ready(&current)
+            };
+            if !ready {
+                continue;
+            }
+            // Server-side claiming is atomic. The foreground realtime handler
+            // may drain at the same time, but each durable command is still
+            // handed to at most one caller.
+            let _ = command_processor::drain(&cfg, &app).await;
+        }
+    });
+}
 
 #[derive(Serialize)]
 struct AppStateDto {
@@ -374,6 +409,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
+            start_command_polling(app.handle().clone(), startup_cfg.clone());
             if startup_cfg.lock().unwrap().auto_watch {
                 if let Err(error) = watcher::start(
                     app.handle().clone(),
@@ -411,4 +447,24 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_command_polling_requires_pairing_and_session() {
+        let mut config = config::AppConfig::default();
+        assert!(!command_polling_ready(&config));
+
+        config.device_token = Some("trr_desk_test".into());
+        assert!(!command_polling_ready(&config));
+
+        config.session_id = Some("session-test".into());
+        assert!(command_polling_ready(&config));
+
+        config.device_token = Some("  ".into());
+        assert!(!command_polling_ready(&config));
+    }
 }

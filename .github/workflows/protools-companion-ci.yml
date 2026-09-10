@@ -1,0 +1,64 @@
+name: Pro Tools Companion CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/creatorhub-protools-companion/**'
+      - '.github/workflows/protools-companion-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows x64 build and tests
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/creatorhub-protools-companion/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/creatorhub-protools-companion/src-tauri
+
+      - name: Install locked frontend dependencies
+        working-directory: apps/creatorhub-protools-companion
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck frontend
+        working-directory: apps/creatorhub-protools-companion
+        run: npm run typecheck
+
+      - name: Test native core
+        working-directory: apps/creatorhub-protools-companion/src-tauri
+        run: cargo test --locked
+
+      - name: Build native Windows application
+        working-directory: apps/creatorhub-protools-companion
+        run: npm run tauri -- build --no-bundle
+
+      - name: Verify Windows executable
+        working-directory: apps/creatorhub-protools-companion
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $app = Resolve-Path 'src-tauri/target/release/creatorhub-protools-companion.exe'
+          if ((Get-Item $app).Length -le 0) {
+            throw "Empty application binary: $app"
+          }
+          $signature = Get-AuthenticodeSignature -FilePath $app
+          if ($signature.Status -ne 'NotSigned') {
+            throw "CI input must remain unsigned before the controlled release job; got $($signature.Status)"
+          }
+          Write-Host "Windows application compiled successfully: $((Get-Item $app).Length) bytes"
