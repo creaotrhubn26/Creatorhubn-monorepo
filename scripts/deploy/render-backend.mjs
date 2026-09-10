@@ -15,6 +15,7 @@ const FAILURE_STATUSES = new Set([
 const DEFAULT_POLL_INTERVAL_MS = 15_000;
 const DEFAULT_DEPLOY_TIMEOUT_MS = 35 * 60_000;
 const DEFAULT_PUBLIC_TIMEOUT_MS = 10 * 60_000;
+const REQUIRED_PUBLIC_COMMIT_MATCHES = 3;
 const ALLOWED_POSTGRES_TLS_MODES = new Set([
   'require',
   'verify-ca',
@@ -492,24 +493,31 @@ async function verifyPublicDeployment({
   timeoutMs,
 }) {
   const deadline = Date.now() + timeoutMs;
+  let consecutiveCommitMatches = 0;
+  let publicCommitVerified = false;
   while (Date.now() < deadline) {
     try {
       const version = await fetchPublicJson(
         fetchImpl,
         backendUrl + '/api/version?expected=' + commit,
       );
-      if (commitsMatch(version?.commit, commit)) break;
+      if (commitsMatch(version?.commit, commit)) {
+        consecutiveCommitMatches += 1;
+        if (consecutiveCommitMatches >= REQUIRED_PUBLIC_COMMIT_MATCHES) {
+          publicCommitVerified = true;
+          break;
+        }
+      } else {
+        consecutiveCommitMatches = 0;
+      }
     } catch {
       // The previous instance can be reachable briefly during the rollover.
+      consecutiveCommitMatches = 0;
     }
     await sleep(pollIntervalMs);
   }
 
-  const version = await fetchPublicJson(
-    fetchImpl,
-    backendUrl + '/api/version?expected=' + commit,
-  );
-  if (!commitsMatch(version?.commit, commit)) {
+  if (!publicCommitVerified) {
     throw new Error('Public backend did not report the deployed commit');
   }
 
@@ -721,6 +729,7 @@ async function runSelfTest() {
   const successfulCommit = 'b'.repeat(40);
   const successfulServiceId = 'srv-' + 'b'.repeat(20);
   let successfulServiceStateReads = 0;
+  let successfulVersionReads = 0;
   await assert.doesNotReject(
     deployAndVerify({
       fetchImpl: async (url, options = {}) => {
@@ -743,10 +752,16 @@ async function runSelfTest() {
           });
         }
         if (target.startsWith('https://example.test/api/version')) {
+          successfulVersionReads += 1;
           return {
             ok: true,
             status: 200,
-            json: async () => ({ commit: successfulCommit }),
+            json: async () => ({
+              commit:
+                successfulVersionReads === 2
+                  ? 'c'.repeat(40)
+                  : successfulCommit,
+            }),
           };
         }
         if (target === 'https://example.test/api/health') {
@@ -777,6 +792,11 @@ async function runSelfTest() {
     successfulServiceStateReads,
     2,
     'deploy must re-read auto-deploy state immediately before and after rollout',
+  );
+  assert.equal(
+    successfulVersionReads,
+    5,
+    'public rollout verification must reset after mixed old/new instance traffic',
   );
   const runtimeDatabaseUrl =
     'postgresql://creatorhub_runtime_login:secret@' +
