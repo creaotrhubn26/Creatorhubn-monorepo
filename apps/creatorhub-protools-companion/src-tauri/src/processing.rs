@@ -68,12 +68,6 @@ pub fn file_fingerprint(path: &Path) -> Result<String, String> {
     ))
 }
 
-pub fn is_bounce_uploaded(cfg: &SharedConfig, path: &Path) -> bool {
-    file_fingerprint(path)
-        .map(|fingerprint| cfg.lock().unwrap().uploaded_bounces.contains(&fingerprint))
-        .unwrap_or(false)
-}
-
 /// Les «Session Info»-tekstfila, parse markører/metadata, og push til backend.
 pub async fn sync_session_info(cfg: &SharedConfig, app: &AppHandle) -> Result<SyncResult, String> {
     let snap = snapshot(cfg);

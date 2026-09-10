@@ -35,6 +35,9 @@ struct AppStateDto {
     easeverse_project_id: Option<String>,
     suggested_project_name: Option<String>,
     watching: bool,
+    pending_bounces: usize,
+    pending_session_info: bool,
+    last_queue_error: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -75,6 +78,14 @@ fn get_state(cfg: State<'_, SharedConfig>, w: State<'_, SharedWatcher>) -> AppSt
         easeverse_track_id: c.easeverse_track_id.clone(),
         audio_room_id: c.audio_room_id.clone(),
         watching: watcher::is_running(w.inner()),
+        pending_bounces: c.pending_bounces.len(),
+        pending_session_info: c.session_info_pending,
+        last_queue_error: c.session_info_last_error.clone().or_else(|| {
+            c.pending_bounces
+                .iter()
+                .rev()
+                .find_map(|item| item.last_error.clone())
+        }),
     }
 }
 
@@ -157,6 +168,8 @@ async fn unpair(
     c.easeverse_project_id = None;
     c.suggested_project_name = None;
     c.uploaded_bounces.clear();
+    c.pending_bounces.clear();
+    c.auto_watch = false;
     config::save(&c)
 }
 
@@ -236,17 +249,37 @@ async fn upload_bounce(
 }
 
 #[tauri::command]
+async fn get_feedback(cfg: State<'_, SharedConfig>) -> Result<Value, String> {
+    let snap = snapshot(cfg.inner());
+    let token = snap.token.ok_or("Ikke paret")?;
+    let session_id = snap.session_id.ok_or("Sesjon mangler")?;
+    api_client::get_feedback(&snap.api_base, &token, &session_id).await
+}
+
+#[tauri::command]
 fn start_watching(
     app: AppHandle,
     cfg: State<'_, SharedConfig>,
     w: State<'_, SharedWatcher>,
 ) -> Result<(), String> {
+    {
+        let mut current = cfg.lock().unwrap();
+        current.auto_watch = true;
+        config::save(&current)?;
+    }
     watcher::start(app, cfg.inner().clone(), w.inner().clone())
 }
 
 #[tauri::command]
-fn stop_watching(app: AppHandle, w: State<'_, SharedWatcher>) -> Result<(), String> {
+fn stop_watching(
+    app: AppHandle,
+    cfg: State<'_, SharedConfig>,
+    w: State<'_, SharedWatcher>,
+) -> Result<(), String> {
     watcher::stop(&app, w.inner());
+    let mut current = cfg.lock().unwrap();
+    current.auto_watch = false;
+    config::save(&current)?;
     Ok(())
 }
 
@@ -254,10 +287,28 @@ fn stop_watching(app: AppHandle, w: State<'_, SharedWatcher>) -> Result<(), Stri
 pub fn run() {
     let cfg: SharedConfig = Arc::new(Mutex::new(config::load()));
     let watcher_ctl: SharedWatcher = Arc::new(Mutex::new(WatcherCtl::default()));
+    let startup_cfg = cfg.clone();
+    let startup_watcher = watcher_ctl.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .setup(move |app| {
+            if startup_cfg.lock().unwrap().auto_watch {
+                if let Err(error) = watcher::start(
+                    app.handle().clone(),
+                    startup_cfg.clone(),
+                    startup_watcher.clone(),
+                ) {
+                    emit_activity(
+                        app.handle(),
+                        "error",
+                        &format!("Automatisk overvåking feilet: {}", error),
+                    );
+                }
+            }
+            Ok(())
+        })
         .manage(cfg)
         .manage(watcher_ctl)
         .invoke_handler(tauri::generate_handler![
@@ -269,6 +320,7 @@ pub fn run() {
             setup_session,
             sync_session_info,
             upload_bounce,
+            get_feedback,
             start_watching,
             stop_watching
         ])

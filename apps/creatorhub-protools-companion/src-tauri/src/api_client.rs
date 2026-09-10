@@ -240,3 +240,23 @@ pub async fn complete_bounce(
         .await
         .map_err(|e| format!("Ugyldig svar: {}", e))
 }
+
+/// GET /api/protools/sessions/:id/feedback — kommentarer, godkjenninger og tasks.
+pub async fn get_feedback(api_base: &str, token: &str, session_id: &str) -> Result<Value, String> {
+    let resp = client()
+        .get(format!(
+            "{}/api/protools/sessions/{}/feedback",
+            base(api_base),
+            session_id
+        ))
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| format!("Nettverksfeil: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(err_body(resp).await);
+    }
+    resp.json()
+        .await
+        .map_err(|e| format!("Ugyldig svar: {}", e))
+}

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock("./easeverse-protools-sync.js", () => ({ pushProToolsSyncToEaseVerse: mocks.push }));
-import { enqueueEaseVerseSync } from "./protools-companion-persistence.js";
+import { drainDueEaseVerseSync, enqueueEaseVerseSync } from "./protools-companion-persistence.js";
 
 describe("Pro Tools Companion durable EaseVerse outbox", () => {
   beforeEach(() => {
@@ -35,5 +35,22 @@ describe("Pro Tools Companion durable EaseVerse outbox", () => {
     expect(result).toEqual({ configured: true, synced: true, eventId: "file-1:markers", revision: 7, queued: false });
     expect(mocks.push).not.toHaveBeenCalled();
     expect(query).toHaveBeenCalledOnce();
+  });
+
+  it("leases due work and delivers it without a user-triggered retry", async () => {
+    const row = {
+      id: "outbox-2", session_id: "session-1", event_id: "automatic-1", revision: 8,
+      attempt_count: 1, payload: { externalTrackId: "track-1", markers: [] },
+    };
+    const query = vi.fn(async (sqlValue: unknown) => {
+      const sql = String(sqlValue);
+      if (sql.includes("UPDATE protools_easeverse_sync_outbox o")) return { rows: [row], rowCount: 1 };
+      if (sql.includes("COUNT(*)::int")) return { rows: [{ count: 0 }], rowCount: 1 };
+      return { rows: [], rowCount: 1 };
+    });
+    const result = await drainDueEaseVerseSync({ query }, 5);
+    expect(result).toEqual({ attempted: 1, delivered: 1, pending: 0 });
+    expect(query.mock.calls.some(([sql]) => String(sql).includes("FOR UPDATE SKIP LOCKED"))).toBe(true);
+    expect(mocks.push).toHaveBeenCalledOnce();
   });
 });

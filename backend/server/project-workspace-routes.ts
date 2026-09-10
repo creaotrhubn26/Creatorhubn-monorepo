@@ -24,7 +24,7 @@ import crypto from "crypto";
 import fs from "node:fs";
 import path from "node:path";
 import multer from "multer";
-import { canAccessProject, canEditProject } from "./project-team-routes";
+import { canAccessProject, canEditProject, getProjectAccess } from "./project-team-routes";
 import { hasActiveTeamAccess, requireTeamAccess } from "./team-access";
 import { resolveCrewRoles } from "../../frontend/shared/crew-roles.ts";
 import { CANONICAL_PROFESSIONS, normalizeProfession as normalizeCanonProfession, isWorkspaceCategory as isWsCategory } from "../../frontend/shared/profession-types.ts";
@@ -2744,6 +2744,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     const uid = await guard(req, res); if (!uid) return;
     try {
       const pid = req.params.projectId;
+      const access = await getProjectAccess(pool, uid, pid);
+      if (!access.isOwner) return res.status(403).json({ error: "project_owner_required" });
       const trackId = String(req.body?.trackId || "");
       if (!trackId) return res.status(400).json({ error: "trackId_required" });
       const tr = await pool.query(`SELECT id, title, artist, genre, bpm, musical_key, collaborators FROM easeverse_tracks WHERE id = $1::uuid AND user_id = $2 LIMIT 1`, [trackId, uid]).catch(() => ({ rows: [] }));
