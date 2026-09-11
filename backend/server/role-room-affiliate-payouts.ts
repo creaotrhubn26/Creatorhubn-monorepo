@@ -10,7 +10,7 @@ const DEFAULT_MINIMUM_PAYOUT_MINOR = 100_000;
 
 type SessionData = { userId: string; role?: string; email?: string };
 type Queryable = Pool | PoolClient;
-type AdminSession = { userId: string; email?: string };
+type AdminSession = { userId: string; email?: string; role?: string };
 
 interface AffiliatePayoutDeps {
   app: Express;
@@ -52,6 +52,57 @@ interface PayoutRow {
   stripe_transfer_id: string | null;
   attempt_count: number;
 }
+
+interface AffiliateAdminPartnerRow {
+  id: string;
+  organization_id: string;
+  organization_name: string;
+  organization_number: string | null;
+  contact_email: string | null;
+  billing_email: string | null;
+  organization_owner_user_id: string | null;
+  organization_admin_count: number;
+  referral_code: string;
+  commission_basis_points: number;
+  storage_commission_basis_points: number;
+  commission_months: number;
+  referred_org_bonus_bytes: string;
+  referred_org_bonus_months: number;
+  status: string;
+  stripe_connect_account_id: string | null;
+  stripe_connect_country: string;
+  stripe_connect_onboarding_status: string;
+  stripe_connect_details_submitted: boolean;
+  stripe_connect_payouts_enabled: boolean;
+  stripe_connect_transfers_status: string | null;
+  stripe_connect_requirements: Record<string, unknown> | null;
+  stripe_connect_synced_at: Date | string | null;
+  payout_currency: string;
+  minimum_payout_minor: string;
+  last_connect_payout_id: string | null;
+  last_connect_payout_status: string | null;
+  last_connect_payout_at: Date | string | null;
+  referral_count: number;
+  paying_referral_count: number;
+  accrued_minor: string;
+  adjustment_minor: string;
+  reserved_or_transferred_minor: string;
+  available_minor: string;
+  next_maturity_at: Date | string | null;
+  transferred_minor: string;
+  failed_payout_count: number;
+  pending_payout_count: number;
+  last_payout_id: string | null;
+  last_payout_status: string | null;
+  last_payout_amount_minor: string | null;
+  last_payout_created_at: Date | string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
+}
+
+const partnerStatusSchema = z
+  .object({ status: z.enum(["active", "paused"]) })
+  .strict();
 
 const organizationSchema = z
   .object({ organizationId: z.string().uuid() })
@@ -1236,6 +1287,532 @@ export async function runRoleRoomAffiliatePayoutBatch(
   };
 }
 
+function dateValue(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  return value instanceof Date ? value.toISOString() : String(value);
+}
+
+function enabledEnvironmentFlag(name: string): boolean {
+  return /^(1|true|yes|on)$/i.test(process.env[name]?.trim() || "");
+}
+
+async function logAffiliateAdminAction(
+  queryable: Queryable,
+  admin: AdminSession,
+  req: Request,
+  action: string,
+  details: Record<string, unknown>,
+  targetOrganizationId?: string | null,
+): Promise<void> {
+  await queryable.query(
+    `INSERT INTO superadmin_audit_log (
+       super_admin_id, action, target_org_id, details, ip_address, user_agent
+     ) VALUES ($1, $2, $3::uuid, $4::jsonb, $5, $6)`,
+    [
+      admin.userId,
+      action,
+      targetOrganizationId || null,
+      JSON.stringify(details),
+      req.ip || null,
+      req.get("user-agent") || null,
+    ],
+  );
+}
+
+async function readAffiliateAdminOverview(pool: Pool, stripe: Stripe | null) {
+  const partnerResult = await pool.query<AffiliateAdminPartnerRow>(
+    `WITH commission_rows AS (
+       SELECT referral.affiliate_partner_id, commission.id,
+              commission.commission_amount_minor, commission.matures_at
+         FROM role_room_affiliate_commissions commission
+         JOIN role_room_affiliate_referrals referral
+           ON referral.id = commission.affiliate_referral_id
+        WHERE commission.currency = 'nok'
+     ), adjustments AS (
+       SELECT adjustment.commission_id,
+              SUM(adjustment.amount_minor)::bigint AS amount_minor
+         FROM role_room_affiliate_commission_adjustments adjustment
+        GROUP BY adjustment.commission_id
+     ), allocations AS (
+       SELECT item.commission_id,
+              SUM(item.amount_minor - item.reversed_amount_minor)::bigint AS amount_minor
+         FROM role_room_affiliate_payout_items item
+        WHERE item.status IN ('reserved', 'transferred', 'reversed')
+        GROUP BY item.commission_id
+     ), balances AS (
+       SELECT commission.affiliate_partner_id,
+              COALESCE(SUM(commission.commission_amount_minor), 0)::bigint AS accrued_minor,
+              COALESCE(SUM(COALESCE(adjustments.amount_minor, 0)), 0)::bigint AS adjustment_minor,
+              COALESCE(SUM(COALESCE(allocations.amount_minor, 0)), 0)::bigint AS reserved_or_transferred_minor,
+              COALESCE(SUM(CASE WHEN commission.matures_at <= NOW()
+                THEN commission.commission_amount_minor
+                     + COALESCE(adjustments.amount_minor, 0)
+                     - COALESCE(allocations.amount_minor, 0)
+                ELSE 0 END), 0)::bigint AS available_minor,
+              MIN(commission.matures_at) FILTER (WHERE commission.matures_at > NOW()) AS next_maturity_at
+         FROM commission_rows commission
+         LEFT JOIN adjustments ON adjustments.commission_id = commission.id
+         LEFT JOIN allocations ON allocations.commission_id = commission.id
+        GROUP BY commission.affiliate_partner_id
+     ), referral_stats AS (
+       SELECT referral.affiliate_partner_id,
+              COUNT(*)::int AS referral_count,
+              COUNT(*) FILTER (WHERE referral.status = 'paying')::int AS paying_referral_count
+         FROM role_room_affiliate_referrals referral
+        GROUP BY referral.affiliate_partner_id
+     ), payout_stats AS (
+       SELECT payout.affiliate_partner_id,
+              COALESCE(SUM(CASE WHEN payout.status IN ('transferred', 'reversed')
+                THEN payout.amount_minor - payout.stripe_transfer_reversed_minor
+                ELSE 0 END), 0)::bigint AS transferred_minor,
+              COUNT(*) FILTER (WHERE payout.status = 'failed')::int AS failed_payout_count,
+              COUNT(*) FILTER (WHERE payout.status IN ('pending', 'processing'))::int AS pending_payout_count
+         FROM role_room_affiliate_payouts payout
+        GROUP BY payout.affiliate_partner_id
+     ), organization_admins AS (
+       SELECT member.organization_id,
+              COUNT(*) FILTER (WHERE member.role = 'admin')::int AS admin_count
+         FROM organization_members member
+        GROUP BY member.organization_id
+     )
+     SELECT partner.id, partner.organization_id,
+            organization.name AS organization_name,
+            organization.org_number AS organization_number,
+            organization.contact_email, organization.billing_email,
+            organization.owner_user_id AS organization_owner_user_id,
+            COALESCE(organization_admins.admin_count, 0)::int AS organization_admin_count,
+            partner.referral_code, partner.commission_basis_points,
+            partner.storage_commission_basis_points, partner.commission_months,
+            partner.referred_org_bonus_bytes, partner.referred_org_bonus_months,
+            partner.status, partner.stripe_connect_account_id,
+            partner.stripe_connect_country, partner.stripe_connect_onboarding_status,
+            partner.stripe_connect_details_submitted,
+            partner.stripe_connect_payouts_enabled,
+            partner.stripe_connect_transfers_status,
+            partner.stripe_connect_requirements,
+            partner.stripe_connect_synced_at, partner.payout_currency,
+            partner.minimum_payout_minor, partner.last_connect_payout_id,
+            partner.last_connect_payout_status, partner.last_connect_payout_at,
+            COALESCE(referral_stats.referral_count, 0)::int AS referral_count,
+            COALESCE(referral_stats.paying_referral_count, 0)::int AS paying_referral_count,
+            COALESCE(balances.accrued_minor, 0)::bigint AS accrued_minor,
+            COALESCE(balances.adjustment_minor, 0)::bigint AS adjustment_minor,
+            COALESCE(balances.reserved_or_transferred_minor, 0)::bigint AS reserved_or_transferred_minor,
+            COALESCE(balances.available_minor, 0)::bigint AS available_minor,
+            balances.next_maturity_at,
+            COALESCE(payout_stats.transferred_minor, 0)::bigint AS transferred_minor,
+            COALESCE(payout_stats.failed_payout_count, 0)::int AS failed_payout_count,
+            COALESCE(payout_stats.pending_payout_count, 0)::int AS pending_payout_count,
+            latest_payout.id AS last_payout_id,
+            latest_payout.status AS last_payout_status,
+            latest_payout.amount_minor AS last_payout_amount_minor,
+            latest_payout.created_at AS last_payout_created_at,
+            partner.created_at, partner.updated_at
+       FROM role_room_affiliate_partners partner
+       JOIN organizations organization ON organization.id = partner.organization_id
+       LEFT JOIN organization_admins ON organization_admins.organization_id = organization.id
+       LEFT JOIN balances ON balances.affiliate_partner_id = partner.id
+       LEFT JOIN referral_stats ON referral_stats.affiliate_partner_id = partner.id
+       LEFT JOIN payout_stats ON payout_stats.affiliate_partner_id = partner.id
+       LEFT JOIN LATERAL (
+         SELECT payout.id, payout.status, payout.amount_minor, payout.created_at
+           FROM role_room_affiliate_payouts payout
+          WHERE payout.affiliate_partner_id = partner.id
+          ORDER BY payout.created_at DESC, payout.id DESC
+          LIMIT 1
+       ) latest_payout ON TRUE
+      ORDER BY LOWER(organization.name), partner.created_at`,
+  );
+
+  const organizationResult = await pool.query<{
+    id: string;
+    name: string;
+    organization_number: string | null;
+    contact_email: string | null;
+    billing_email: string | null;
+    owner_user_id: string | null;
+    member_count: number;
+    admin_count: number;
+    affiliate_partner_id: string | null;
+  }>(
+    `SELECT organization.id::text, organization.name,
+            organization.org_number AS organization_number,
+            organization.contact_email, organization.billing_email,
+            organization.owner_user_id,
+            COUNT(member.id)::int AS member_count,
+            COUNT(member.id) FILTER (WHERE member.role = 'admin')::int AS admin_count,
+            partner.id::text AS affiliate_partner_id
+       FROM organizations organization
+       LEFT JOIN organization_members member ON member.organization_id = organization.id
+       LEFT JOIN role_room_affiliate_partners partner ON partner.organization_id = organization.id
+      GROUP BY organization.id, partner.id
+      ORDER BY LOWER(organization.name)
+      LIMIT 500`,
+  );
+
+  const memberResult = await pool.query<{
+    organization_id: string;
+    user_id: string;
+    email: string | null;
+    first_name: string | null;
+    last_name: string | null;
+    platform_role: string | null;
+    member_role: string;
+    is_active: boolean;
+    joined_at: Date | string | null;
+    last_login_at: Date | string | null;
+  }>(
+    `SELECT member.organization_id::text, user_row.id AS user_id,
+            user_row.email, user_row.first_name, user_row.last_name,
+            user_row.role AS platform_role, member.role AS member_role,
+            user_row.is_active, member.joined_at, user_row.last_login_at
+       FROM organization_members member
+       JOIN users user_row ON user_row.id = member.user_id
+       JOIN role_room_affiliate_partners partner
+         ON partner.organization_id = member.organization_id
+      ORDER BY member.organization_id,
+               CASE WHEN member.role = 'admin' THEN 0 ELSE 1 END,
+               LOWER(COALESCE(user_row.email, user_row.id))`,
+  );
+
+  const payoutResult = await pool.query<{
+    id: string;
+    affiliate_partner_id: string;
+    organization_name: string;
+    amount_minor: string;
+    currency: string;
+    batch_period: Date | string;
+    status: string;
+    stripe_transfer_id: string | null;
+    stripe_transfer_reversed_minor: string;
+    attempt_count: number;
+    last_error: string | null;
+    initiated_by: string;
+    created_at: Date | string;
+    transferred_at: Date | string | null;
+    reversed_at: Date | string | null;
+  }>(
+    `SELECT payout.id, payout.affiliate_partner_id,
+            organization.name AS organization_name,
+            payout.amount_minor, payout.currency, payout.batch_period,
+            payout.status, payout.stripe_transfer_id,
+            payout.stripe_transfer_reversed_minor, payout.attempt_count,
+            payout.last_error, payout.initiated_by, payout.created_at,
+            payout.transferred_at, payout.reversed_at
+       FROM role_room_affiliate_payouts payout
+       JOIN role_room_affiliate_partners partner ON partner.id = payout.affiliate_partner_id
+       JOIN organizations organization ON organization.id = partner.organization_id
+      ORDER BY payout.created_at DESC, payout.id DESC
+      LIMIT 100`,
+  );
+
+  const connectedPayoutResult = await pool.query<{
+    stripe_payout_id: string;
+    affiliate_partner_id: string;
+    organization_name: string;
+    currency: string;
+    amount_minor: string;
+    status: string;
+    arrival_at: Date | string | null;
+    failure_code: string | null;
+    failure_message: string | null;
+    updated_at: Date | string;
+  }>(
+    `SELECT event.stripe_payout_id, event.affiliate_partner_id,
+            organization.name AS organization_name, event.currency,
+            event.amount_minor, event.status, event.arrival_at,
+            event.failure_code, event.failure_message, event.updated_at
+       FROM role_room_affiliate_connected_payout_events event
+       JOIN role_room_affiliate_partners partner ON partner.id = event.affiliate_partner_id
+       JOIN organizations organization ON organization.id = partner.organization_id
+      ORDER BY event.updated_at DESC, event.stripe_payout_id DESC
+      LIMIT 100`,
+  );
+
+  let agreementRegistryAvailable = true;
+  let agreementRows: Array<{
+    organization_id: string;
+    id: string;
+    title: string;
+    status: string;
+    partner_type: string | null;
+    template_version: string | null;
+    signer_email: string;
+    signer_name: string | null;
+    sent_at: Date | string | null;
+    viewed_at: Date | string | null;
+    signed_at: Date | string | null;
+  }> = [];
+  try {
+    const agreementResult = await pool.query<(typeof agreementRows)[number]>(
+      `SELECT DISTINCT ON (agreement.organization_id)
+              agreement.organization_id::text, agreement.id::text,
+              agreement.title, agreement.status, agreement.partner_type,
+              agreement.template_version, agreement.signer_email,
+              agreement.signer_name, agreement.sent_at,
+              agreement.viewed_at, agreement.signed_at
+         FROM partner_intent_agreements agreement
+         JOIN role_room_affiliate_partners partner
+           ON partner.organization_id = agreement.organization_id
+        ORDER BY agreement.organization_id, agreement.sent_at DESC, agreement.id DESC`,
+    );
+    agreementRows = agreementResult.rows;
+  } catch (error) {
+    agreementRegistryAvailable = false;
+    console.warn(
+      "[role-room-affiliate] partner agreement registry unavailable",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+
+  const membersByOrganization = new Map<
+    string,
+    Array<Record<string, unknown>>
+  >();
+  for (const member of memberResult.rows) {
+    const members = membersByOrganization.get(member.organization_id) ?? [];
+    members.push({
+      userId: member.user_id,
+      email: member.email,
+      name:
+        [member.first_name, member.last_name].filter(Boolean).join(" ") || null,
+      platformRole: member.platform_role,
+      memberRole: member.member_role,
+      active: member.is_active,
+      joinedAt: dateValue(member.joined_at),
+      lastLoginAt: dateValue(member.last_login_at),
+    });
+    membersByOrganization.set(member.organization_id, members);
+  }
+  const agreementByOrganization = new Map(
+    agreementRows.map((agreement) => [agreement.organization_id, agreement]),
+  );
+
+  const partners = partnerResult.rows.map((partner) => {
+    const minimumPayoutMinor = safeMinorAmount(
+      partner.minimum_payout_minor,
+      "affiliate_minimum_payout",
+    );
+    const availableMinor = safeMinorAmount(
+      partner.available_minor,
+      "affiliate_admin_available",
+    );
+    const connectReady =
+      partner.stripe_connect_onboarding_status === "complete" &&
+      partner.stripe_connect_payouts_enabled &&
+      partner.stripe_connect_transfers_status === "active";
+    const agreement = agreementByOrganization.get(partner.organization_id);
+    return {
+      id: partner.id,
+      organization: {
+        id: partner.organization_id,
+        name: partner.organization_name,
+        organizationNumber: partner.organization_number,
+        contactEmail: partner.contact_email,
+        billingEmail: partner.billing_email,
+        ownerUserId: partner.organization_owner_user_id,
+        adminCount: partner.organization_admin_count,
+        members: membersByOrganization.get(partner.organization_id) ?? [],
+      },
+      referralCode: partner.referral_code,
+      status: partner.status,
+      terms: {
+        subscriptionCommissionBasisPoints: partner.commission_basis_points,
+        storageCommissionBasisPoints: partner.storage_commission_basis_points,
+        commissionMonths: partner.commission_months,
+        referredOrganizationBonusBytes: safeMinorAmount(
+          partner.referred_org_bonus_bytes,
+          "affiliate_bonus_bytes",
+        ),
+        referredOrganizationBonusMonths: partner.referred_org_bonus_months,
+        minimumPayoutMinor,
+        payoutCurrency: partner.payout_currency,
+      },
+      connect: {
+        accountId: partner.stripe_connect_account_id,
+        country: partner.stripe_connect_country,
+        onboardingStatus: partner.stripe_connect_onboarding_status,
+        detailsSubmitted: partner.stripe_connect_details_submitted,
+        payoutsEnabled: partner.stripe_connect_payouts_enabled,
+        transfersStatus: partner.stripe_connect_transfers_status,
+        requirements: partner.stripe_connect_requirements ?? {},
+        syncedAt: dateValue(partner.stripe_connect_synced_at),
+        ready: connectReady,
+        lastBankPayout: {
+          id: partner.last_connect_payout_id,
+          status: partner.last_connect_payout_status,
+          at: dateValue(partner.last_connect_payout_at),
+        },
+      },
+      agreement: agreement
+        ? {
+            id: agreement.id,
+            title: agreement.title,
+            status: agreement.status,
+            partnerType: agreement.partner_type,
+            templateVersion: agreement.template_version,
+            signerEmail: agreement.signer_email,
+            signerName: agreement.signer_name,
+            sentAt: dateValue(agreement.sent_at),
+            viewedAt: dateValue(agreement.viewed_at),
+            signedAt: dateValue(agreement.signed_at),
+            scope: "organization_partner_intent",
+          }
+        : null,
+      referrals: {
+        total: partner.referral_count,
+        paying: partner.paying_referral_count,
+      },
+      balance: {
+        currency: "nok",
+        accruedMinor: safeMinorAmount(
+          partner.accrued_minor,
+          "affiliate_admin_accrued",
+        ),
+        adjustmentMinor: safeMinorAmount(
+          partner.adjustment_minor,
+          "affiliate_admin_adjustment",
+        ),
+        reservedOrTransferredMinor: safeMinorAmount(
+          partner.reserved_or_transferred_minor,
+          "affiliate_admin_allocated",
+        ),
+        availableMinor,
+        nextMaturityAt: dateValue(partner.next_maturity_at),
+      },
+      payoutReadiness: {
+        connectReady,
+        minimumReached: availableMinor >= minimumPayoutMinor,
+        partnerActive: partner.status === "active",
+      },
+      payouts: {
+        transferredMinor: safeMinorAmount(
+          partner.transferred_minor,
+          "affiliate_admin_transferred",
+        ),
+        failedCount: partner.failed_payout_count,
+        pendingCount: partner.pending_payout_count,
+        latest: partner.last_payout_id
+          ? {
+              id: partner.last_payout_id,
+              status: partner.last_payout_status,
+              amountMinor: safeMinorAmount(
+                partner.last_payout_amount_minor || 0,
+                "affiliate_admin_latest_payout",
+              ),
+              createdAt: dateValue(partner.last_payout_created_at),
+            }
+          : null,
+      },
+      createdAt: dateValue(partner.created_at),
+      updatedAt: dateValue(partner.updated_at),
+    };
+  });
+
+  const organizations = organizationResult.rows.map((organization) => {
+    const hasAdministrator =
+      Boolean(organization.owner_user_id) || organization.admin_count > 0;
+    const issues = [
+      !organization.organization_number ? "organization_number_missing" : null,
+      !(organization.billing_email || organization.contact_email)
+        ? "contact_email_missing"
+        : null,
+      !hasAdministrator ? "organization_admin_missing" : null,
+    ].filter((issue): issue is string => Boolean(issue));
+    return {
+      id: organization.id,
+      name: organization.name,
+      organizationNumber: organization.organization_number,
+      contactEmail: organization.contact_email,
+      billingEmail: organization.billing_email,
+      ownerUserId: organization.owner_user_id,
+      memberCount: organization.member_count,
+      adminCount: organization.admin_count,
+      affiliatePartnerId: organization.affiliate_partner_id,
+      readiness: { ready: issues.length === 0, issues },
+    };
+  });
+
+  const total = (field: "accruedMinor" | "availableMinor") =>
+    partners.reduce((sum, partner) => sum + partner.balance[field], 0);
+  const transferredMinor = partners.reduce(
+    (sum, partner) => sum + partner.payouts.transferredMinor,
+    0,
+  );
+
+  return {
+    config: {
+      payoutsEnabled: payoutsEnabled(),
+      stripeConfigured: Boolean(stripe),
+      connectWebhookConfigured: Boolean(
+        process.env.ROLE_ROOM_STRIPE_CONNECT_WEBHOOK_SECRET?.trim(),
+      ),
+      oneTiBCheckoutEnabled: enabledEnvironmentFlag(
+        "ROLE_ROOM_STORAGE_1_TIB_CHECKOUT_ENABLED",
+      ),
+      maturityHoldDays: 30,
+      currency: "nok",
+      agreementRegistryAvailable,
+    },
+    summary: {
+      totalPartners: partners.length,
+      activePartners: partners.filter((partner) => partner.status === "active")
+        .length,
+      connectReadyPartners: partners.filter((partner) => partner.connect.ready)
+        .length,
+      partnersNeedingKyc: partners.filter((partner) => !partner.connect.ready)
+        .length,
+      availableMinor: total("availableMinor"),
+      accruedMinor: total("accruedMinor"),
+      transferredMinor,
+      failedPayouts: partners.reduce(
+        (sum, partner) => sum + partner.payouts.failedCount,
+        0,
+      ),
+    },
+    partners,
+    organizations,
+    payouts: payoutResult.rows.map((payout) => ({
+      id: payout.id,
+      partnerId: payout.affiliate_partner_id,
+      organizationName: payout.organization_name,
+      amountMinor: safeMinorAmount(
+        payout.amount_minor,
+        "affiliate_admin_payout",
+      ),
+      currency: payout.currency,
+      batchPeriod: dateValue(payout.batch_period),
+      status: payout.status,
+      stripeTransferId: payout.stripe_transfer_id,
+      reversedMinor: safeMinorAmount(
+        payout.stripe_transfer_reversed_minor,
+        "affiliate_admin_payout_reversed",
+      ),
+      attemptCount: payout.attempt_count,
+      lastError: payout.last_error,
+      initiatedBy: payout.initiated_by,
+      createdAt: dateValue(payout.created_at),
+      transferredAt: dateValue(payout.transferred_at),
+      reversedAt: dateValue(payout.reversed_at),
+    })),
+    connectedBankPayouts: connectedPayoutResult.rows.map((event) => ({
+      id: event.stripe_payout_id,
+      partnerId: event.affiliate_partner_id,
+      organizationName: event.organization_name,
+      amountMinor: safeMinorAmount(
+        event.amount_minor,
+        "affiliate_admin_connected_payout",
+      ),
+      currency: event.currency,
+      status: event.status,
+      arrivalAt: dateValue(event.arrival_at),
+      failureCode: event.failure_code,
+      failureMessage: event.failure_message,
+      updatedAt: dateValue(event.updated_at),
+    })),
+  };
+}
+
 export function registerRoleRoomAffiliatePayoutRoutes({
   app,
   pool,
@@ -1243,6 +1820,20 @@ export function registerRoleRoomAffiliatePayoutRoutes({
   stripe,
   requireAdminSession,
 }: AffiliatePayoutDeps): void {
+  const requireAffiliateSuperAdmin = (req: Request, res: Response) => {
+    const admin = requireAdminSession(req, res);
+    if (!admin) return null;
+    if (
+      String(admin.role || "")
+        .trim()
+        .toLowerCase() !== "super_admin"
+    ) {
+      res.status(403).json({ error: "super_admin_tilgang_kreves" });
+      return null;
+    }
+    return admin;
+  };
+
   app.get(
     "/api/role-room/storage/affiliate/connect/status",
     async (req, res) => {
@@ -1387,15 +1978,71 @@ export function registerRoleRoomAffiliatePayoutRoutes({
     },
   );
 
+  app.get("/api/admin/role-room/affiliates/overview", async (req, res) => {
+    const admin = requireAffiliateSuperAdmin(req, res);
+    if (!admin) return;
+    try {
+      return res.json(await readAffiliateAdminOverview(pool, stripe));
+    } catch (error) {
+      console.error("[role-room-affiliate] admin overview failed", error);
+      return res
+        .status(503)
+        .json({ error: "affiliate_payout_schema_unavailable" });
+    }
+  });
+
   app.post("/api/admin/role-room/affiliates/partners", async (req, res) => {
-    const admin = requireAdminSession(req, res);
+    const admin = requireAffiliateSuperAdmin(req, res);
     if (!admin) return;
     const parsed = createPartnerSchema.safeParse(req.body);
     if (!parsed.success)
       return res.status(400).json({ error: "ugyldig_foresporsel" });
+    const client = await pool.connect();
     try {
       const input = parsed.data;
-      const result = await pool.query(
+      await client.query("BEGIN");
+      const organizationResult = await client.query<{
+        id: string;
+        organization_number: string | null;
+        contact_email: string | null;
+        billing_email: string | null;
+        has_administrator: boolean;
+      }>(
+        `SELECT organization.id::text,
+                organization.org_number AS organization_number,
+                organization.contact_email, organization.billing_email,
+                (organization.owner_user_id IS NOT NULL OR EXISTS (
+                  SELECT 1
+                    FROM organization_members member
+                   WHERE member.organization_id = organization.id
+                     AND member.role = 'admin'
+                )) AS has_administrator
+           FROM organizations organization
+          WHERE organization.id = $1::uuid`,
+        [input.organizationId],
+      );
+      const organization = organizationResult.rows[0];
+      if (!organization) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "organisasjon_ikke_funnet" });
+      }
+      const readinessIssues = [
+        !organization.organization_number
+          ? "organization_number_missing"
+          : null,
+        !(organization.billing_email || organization.contact_email)
+          ? "contact_email_missing"
+          : null,
+        !organization.has_administrator ? "organization_admin_missing" : null,
+      ].filter((issue): issue is string => Boolean(issue));
+      if (readinessIssues.length > 0) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({
+          error: "affiliate_organization_not_ready",
+          issues: readinessIssues,
+        });
+      }
+      const result = await client.query(
         `INSERT INTO role_room_affiliate_partners (
            organization_id, referral_code, commission_basis_points,
            storage_commission_basis_points, commission_months,
@@ -1413,8 +2060,25 @@ export function registerRoleRoomAffiliatePayoutRoutes({
           input.minimumPayoutMinor,
         ],
       );
+      await logAffiliateAdminAction(
+        client,
+        admin,
+        req,
+        "role_room_affiliate_created",
+        {
+          partnerId: result.rows[0].id,
+          referralCode: input.referralCode,
+          commissionBasisPoints: input.commissionBasisPoints,
+          storageCommissionBasisPoints: input.storageCommissionBasisPoints,
+          commissionMonths: input.commissionMonths,
+          minimumPayoutMinor: input.minimumPayoutMinor,
+        },
+        input.organizationId,
+      );
+      await client.query("COMMIT");
       return res.status(201).json({ partner: result.rows[0] });
     } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
       const code =
         error && typeof error === "object" && "code" in error
           ? String((error as { code?: unknown }).code || "")
@@ -1429,8 +2093,73 @@ export function registerRoleRoomAffiliatePayoutRoutes({
       return res
         .status(503)
         .json({ error: "affiliate_payout_schema_unavailable" });
+    } finally {
+      client.release();
     }
   });
+
+  app.patch(
+    "/api/admin/role-room/affiliates/partners/:partnerId/status",
+    async (req, res) => {
+      const admin = requireAffiliateSuperAdmin(req, res);
+      if (!admin) return;
+      const partnerId = z.string().uuid().safeParse(req.params.partnerId);
+      const body = partnerStatusSchema.safeParse(req.body);
+      if (!partnerId.success || !body.success) {
+        return res.status(400).json({ error: "ugyldig_foresporsel" });
+      }
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const result = await client.query<{
+          id: string;
+          organization_id: string;
+          status: string;
+          updated_at: Date | string;
+        }>(
+          `UPDATE role_room_affiliate_partners
+              SET status = $2, updated_at = NOW()
+            WHERE id = $1::uuid AND status IN ('active', 'paused')
+            RETURNING id, organization_id, status, updated_at`,
+          [partnerId.data, body.data.status],
+        );
+        if (!result.rows[0]) {
+          await client.query("ROLLBACK");
+          return res
+            .status(404)
+            .json({ error: "affiliate_partner_ikke_funnet" });
+        }
+        await logAffiliateAdminAction(
+          client,
+          admin,
+          req,
+          "role_room_affiliate_status",
+          { partnerId: partnerId.data, status: body.data.status },
+          result.rows[0].organization_id,
+        );
+        await client.query("COMMIT");
+        return res.json({
+          partner: {
+            id: result.rows[0].id,
+            organizationId: result.rows[0].organization_id,
+            status: result.rows[0].status,
+            updatedAt: dateValue(result.rows[0].updated_at),
+          },
+        });
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        console.error(
+          "[role-room-affiliate] partner status update failed",
+          error,
+        );
+        return res
+          .status(503)
+          .json({ error: "affiliate_payout_schema_unavailable" });
+      } finally {
+        client.release();
+      }
+    },
+  );
 
   const runBatch = async (initiatedBy: string, partnerId?: string) => {
     if (!payoutsEnabled()) return { disabled: true as const };
@@ -1442,7 +2171,7 @@ export function registerRoleRoomAffiliatePayoutRoutes({
   };
 
   app.post("/api/admin/role-room/affiliates/payouts/run", async (req, res) => {
-    const admin = requireAdminSession(req, res);
+    const admin = requireAffiliateSuperAdmin(req, res);
     if (!admin) return;
     const partnerId =
       req.body?.partnerId == null
@@ -1451,11 +2180,35 @@ export function registerRoleRoomAffiliatePayoutRoutes({
     if (partnerId && !partnerId.success)
       return res.status(400).json({ error: "ugyldig_partner_id" });
     try {
+      await logAffiliateAdminAction(
+        pool,
+        admin,
+        req,
+        "role_room_affiliate_payout_run",
+        { partnerId: partnerId?.data ?? null, stage: "requested" },
+      );
       const result = await runBatch(`admin:${admin.userId}`, partnerId?.data);
       if ("disabled" in result)
         return res.status(409).json({ error: "affiliate_payouts_deaktivert" });
       if ("stripeMissing" in result)
         return res.status(503).json({ error: "stripe_ikke_konfigurert" });
+      await logAffiliateAdminAction(
+        pool,
+        admin,
+        req,
+        "role_room_affiliate_payout_result",
+        {
+          partnerId: partnerId?.data ?? null,
+          batchPeriod: result.batchPeriod,
+          processedPartners: result.processedPartners,
+          statuses: result.results.map((item) => ({
+            partnerId: item.partnerId,
+            payoutId: item.payoutId ?? null,
+            status: item.status,
+            reason: item.reason ?? null,
+          })),
+        },
+      );
       return res.json(result);
     } catch (error) {
       console.error("[role-room-affiliate] payout batch failed", error);

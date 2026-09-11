@@ -180,6 +180,7 @@ import FineTuningMonitoringPanel from './FineTuningMonitoringPanel';
 import OAuthScopeChecker from './OAuthScopeChecker';
 import TidumAccessRequestsPanel from './TidumAccessRequestsPanel';
 import PrototypeTesterAdminPanel from './PrototypeTesterAdminPanel';
+import RoleRoomAffiliateAdminPanel from './RoleRoomAffiliateAdminPanel';
 
 // Integration props for unified workflow connectivity
 interface AdminDashboardProps {
@@ -1408,6 +1409,7 @@ export default function AdminDashboard({
     { id: 'inbound-alerts', label: 'Innkommende', icon: Inbox },
     { id: 'prototype-feedback', label: 'Prototype Feedback', icon: Feedback },
     { id: 'okonomi', label: 'Økonomi', icon: AttachMoney },
+    { id: 'affiliate-payouts', label: 'Affiliate & utbetalinger', icon: Payments },
     { id: 'price-management', label: 'Prisstyring', icon: AttachMoney },
     { id: 'leadgrid', label: 'Leadgrid', icon: Language },
     { id: 'user-costs', label: 'Bruker-kostnader', icon: AttachMoney },
@@ -1455,7 +1457,9 @@ export default function AdminDashboard({
     { id: 'marketing', label: 'Marketing', icon: Campaign },
     { id: 'feature-customization', label: 'Tilpasning', icon: Settings },
     { id: 'fine-tuning-monitor', label: 'Fine-tuning', icon: Psychology },
-  ];
+  ].filter(
+    (tab) => tab.id !== 'affiliate-payouts' || currentUser?.role === 'super_admin',
+  );
   const currentTab = adminTabs[tabValue] || adminTabs[0];
   const adminShellGroups = [
     {
@@ -1467,7 +1471,7 @@ export default function AdminDashboard({
     {
       label: 'Forretning',
       items: adminTabs.filter((tab) =>
-        ['okonomi', 'price-management', 'user-costs', 'reports', 'academy', 'tidum-tilganger', 'vendor-types', 'editing-partners', 'workspace-preview', 'debug-tool', 'profession-types'].includes(tab.id),
+        ['okonomi', 'affiliate-payouts', 'price-management', 'user-costs', 'reports', 'academy', 'tidum-tilganger', 'vendor-types', 'editing-partners', 'workspace-preview', 'debug-tool', 'profession-types'].includes(tab.id),
       ),
     },
     {
@@ -1497,6 +1501,7 @@ export default function AdminDashboard({
     'inbound-alerts': 'Full oversikt over innkommende varsler — søknader, leads og signups som krever oppfølging.',
     'prototype-feedback': 'Samle produktinnsikt, tester og prioritering fra prototyper.',
     okonomi: 'Følg inntekter, utbetalinger og operativ økonomi.',
+    'affiliate-payouts': 'Kontroller The Role Room-affiliates, organisasjonsbrukere, avtaler, Stripe Connect og utbetalingsledger.',
     'price-management': 'Juster prismodeller og kommersielle satser på tvers av tilbud.',
     'user-costs': 'Per-bruker oversikt over lagring, AI-kost, totalkost og margin til CreatorHub.',
     reports: 'Analyser utvikling, rapporter og forretningssignaler.',
@@ -3575,6 +3580,8 @@ export default function AdminDashboard({
             onOpenPriceManagement={() => activateTab(tabIndexFor('price-management'))}
           />
         );
+      case 'affiliate-payouts':
+        return <RoleRoomAffiliateAdminPanel />;
       case 'price-management':
         return (
           <PriceManagementDashboard
