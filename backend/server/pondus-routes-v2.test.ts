@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const access = {
   organizationId: "11111111-1111-4111-8111-111111111111",
+  projectId: "dentum-oslo",
   organizationRole: "salgssjef",
   permissions: new Set(["analytics.view_overview"]),
   platformAdmin: false,
@@ -62,6 +63,26 @@ describe("Pondus usage v2", () => {
     const insert = query.mock.calls.find(([sql]) => String(sql).includes("INSERT INTO pondus_template_usage"));
     expect(String(insert?.[0])).toContain("ON CONFLICT (usage_session_id) DO NOTHING");
     expect(insert?.[1]?.[0]).toBe("33333333-3333-4333-8333-333333333333");
+    expect(insert?.[1]?.[3]).toBe("dentum-oslo");
+  });
+
+  it("requires an authoritative project for every usage write", async () => {
+    const previous = access.projectId;
+    access.projectId = null as unknown as string;
+    try {
+      const query = vi.fn();
+      const app = appWith(registerPondusUsageRoutesV2, query);
+      const response = await request(app)
+        .post("/api/leadgrid/pondus/templates/22222222-2222-4222-8222-222222222222/usage")
+        .send({
+          usage_session_id: "33333333-3333-4333-8333-333333333333",
+          outcome: "used",
+        });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe("project_required");
+    } finally {
+      access.projectId = previous;
+    }
   });
 
   it("updates outcome by exact session and never by a time heuristic", async () => {
@@ -102,9 +123,37 @@ describe("Pondus usage v2", () => {
     expect(String(insert?.[0])).toContain("ON CONFLICT (usage_session_id) DO NOTHING");
     expect(insert?.[1]?.[0]).toBe("33333333-3333-4333-8333-333333333333");
   });
+
+  it("scopes every usage aggregate to the active project", async () => {
+    const query = vi.fn(async () => ({ rows: [] }));
+    const app = appWith(registerPondusUsageRoutesV2, query);
+    const response = await request(app)
+      .get("/api/leadgrid/pondus/usage/stats?period=30d");
+
+    expect(response.status).toBe(200);
+    expect(query).toHaveBeenCalledTimes(2);
+    for (const [sql, values] of query.mock.calls) {
+      expect(String(sql)).toContain("organization_id=$1::uuid AND project_id=$2");
+      expect(values).toEqual([access.organizationId, "dentum-oslo"]);
+    }
+  });
 });
 
 describe("Pondus template concurrency", () => {
+  it("lists only global, organization-shared, or active-project templates", async () => {
+    const query = vi.fn(async () => ({ rows: [] }));
+    const app = appWith(registerPondusTemplateRoutesV2, query);
+    const response = await request(app)
+      .get("/api/leadgrid/pondus/templates?published=all");
+
+    expect(response.status).toBe(200);
+    expect(response.body.templates).toEqual([]);
+    const [sql, values] = query.mock.calls[0];
+    expect(String(sql)).toContain("project_id = $2");
+    expect(String(sql)).toContain("project_id IS NULL");
+    expect(values).toEqual([access.organizationId, "dentum-oslo"]);
+  });
+
   it("uses explicit PostgreSQL types for reused create parameters", async () => {
     const query = vi.fn(async (sql: string) => ({
       rows: String(sql).includes("INSERT INTO pondus_templates")
@@ -131,7 +180,8 @@ describe("Pondus template concurrency", () => {
     expect(response.status).toBe(201);
     const insert = query.mock.calls.find(([sql]) => String(sql).includes("INSERT INTO pondus_templates"));
     expect(String(insert?.[0])).toContain("$10::varchar(255)");
-    expect(String(insert?.[0])).toContain("$12::boolean");
+    expect(String(insert?.[0])).toContain("$13::boolean");
+    expect(insert?.[1]?.[11]).toBe("dentum-oslo");
   });
 
   it("requires an expected version before publish", async () => {

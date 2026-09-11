@@ -35,6 +35,7 @@ struct LeadDetailSheet: View {
     /// Leadgrid Research (native Claude + BRREG + website-analyse).
     /// Pops opp som sheet når brukeren trykker "Research" på pin-detail.
     @State private var showResearch = false
+    @State private var showEmailTemplates = false
 
     // ── Workflows (PR feat/leadmap-ipad-pulse-workflow-chat) ───────────
     /// Aktive workflows i orgen — vises som "Kjør nå"-handlinger på lead.
@@ -154,6 +155,12 @@ struct LeadDetailSheet: View {
                     )
                 }
             }
+            .sheet(isPresented: $showEmailTemplates) {
+                EmailTemplatePicker(
+                    lead: LeadRow(from: lead),
+                    toEmail: lead.email ?? ""
+                )
+            }
         }
         .presentationDetents([.medium, .large])
     }
@@ -247,14 +254,15 @@ struct LeadDetailSheet: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.tint)
             }
-            if let email = lead.email, let url = URL(string: "mailto:\(email)") {
-                LeadgridContactHandoffButton(
-                    url: url, channel: .email, leadId: lead.id, projectId: lead.projectId
-                ) {
+            if let email = lead.email, !email.isEmpty {
+                Button {
+                    showEmailTemplates = true
+                } label: {
                     Label(email, systemImage: "envelope")
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.tint)
+                .accessibilityIdentifier("lead.outreach.open")
             }
             if let url = lead.websiteUrl, let link = URL(string: url) {
                 Link(destination: link) {

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   resolveOrg: vi.fn(),
+  loadProject: vi.fn(),
   entitled: vi.fn(),
   putObject: vi.fn(),
   getObjectBuffer: vi.fn(),
@@ -12,6 +13,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("./leadgrid-org-resolver.js", () => ({
   resolveOrgIdForUser: mocks.resolveOrg,
+}));
+vi.mock("./leadgrid-project-access.js", () => ({
+  loadAccessibleLeadgridProject: mocks.loadProject,
 }));
 vi.mock("./leadgrid-entitlement-guard.js", () => ({
   assertAnyEntitled: mocks.entitled,
@@ -34,6 +38,7 @@ vi.mock("./leadgrid-s3-storage-service.js", async (importOriginal) => {
 import { registerLeadgridCanvasRoutes } from "./leadgrid-canvas-routes.js";
 
 const organizationId = "11111111-1111-4111-8111-111111111111";
+const projectId = "dentum-oslo";
 const noteId = "22222222-2222-4222-8222-222222222222";
 const otherNoteId = "33333333-3333-4333-8333-333333333333";
 
@@ -59,6 +64,11 @@ describe("Leadgrid Canvas AWS S3 document contract", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.resolveOrg.mockResolvedValue(organizationId);
+    mocks.loadProject.mockResolvedValue({
+      id: projectId,
+      organizationId,
+      name: "Dentum",
+    });
     mocks.entitled.mockResolvedValue(true);
     mocks.deleteObject.mockResolvedValue(undefined);
     mocks.putObject.mockImplementation(async ({ key, body }) => ({
@@ -68,6 +78,25 @@ describe("Leadgrid Canvas AWS S3 document contract", () => {
       checksumSha256: "d".repeat(64),
       sizeBytes: body.byteLength,
     }));
+  });
+
+  it("requires an explicit accessible project before reading Canvas data", async () => {
+    const query = vi.fn();
+    const missing = await request(appWith(query)).get("/api/leadgrid/canvas");
+
+    expect(missing.status).toBe(400);
+    expect(missing.body.error).toBe("project_id_required");
+    expect(mocks.loadProject).not.toHaveBeenCalled();
+    expect(query).not.toHaveBeenCalled();
+
+    mocks.loadProject.mockResolvedValueOnce(null);
+    const inaccessible = await request(appWith(query))
+      .get("/api/leadgrid/canvas")
+      .query({ projectId: "creatorhub" });
+
+    expect(inaccessible.status).toBe(404);
+    expect(inaccessible.body.error).toBe("project_not_found");
+    expect(query).not.toHaveBeenCalled();
   });
 
   it("stores a PDF original in S3 and keeps only metadata in PostgreSQL", async () => {
@@ -83,12 +112,13 @@ describe("Leadgrid Canvas AWS S3 document contract", () => {
     const pdf = Buffer.from("%PDF-1.7\ncanvas");
     const response = await request(appWith(query))
       .post(`/api/leadgrid/canvas/${noteId}/dokumenter`)
+      .query({ projectId })
       .send({ id: "document-1", navn: "Plan.pdf", base64: pdf.toString("base64") });
 
     expect(response.status).toBe(200);
     const upload = mocks.putObject.mock.calls[0]?.[0];
     expect(upload.key).toMatch(
-      new RegExp(`^organizations/${organizationId}/users/[0-9a-f-]{36}/files/[0-9a-f-]{36}/original$`),
+      new RegExp(`^organizations/${organizationId}/projects/[0-9a-f-]{36}/users/[0-9a-f-]{36}/files/[0-9a-f-]{36}/original$`),
     );
     expect(upload.purpose).toBe("canvas_document");
     const registration = query.mock.calls.find(([sql]) => String(sql).includes("WITH stored AS"));
@@ -116,6 +146,7 @@ describe("Leadgrid Canvas AWS S3 document contract", () => {
     });
     const response = await request(appWith(query))
       .post(`/api/leadgrid/canvas/${noteId}/dokumenter`)
+      .query({ projectId })
       .send({
         id: "document-1",
         navn: "Plan.pdf",
@@ -146,7 +177,8 @@ describe("Leadgrid Canvas AWS S3 document contract", () => {
       throw new Error(`unexpected query: ${sql}`);
     });
     const response = await request(appWith(query))
-      .get("/api/leadgrid/canvas/dokumenter/document-1");
+      .get("/api/leadgrid/canvas/dokumenter/document-1")
+      .query({ projectId });
 
     expect(response.status).toBe(200);
     expect(response.body.dokument.base64).toBe(pdf.toString("base64"));

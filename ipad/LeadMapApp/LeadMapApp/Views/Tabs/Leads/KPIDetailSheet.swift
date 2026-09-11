@@ -67,6 +67,20 @@ enum KPIKind: Hashable, Identifiable {
         case .won:            return "+24 %"
         }
     }
+
+    var scopedValue: String {
+        if DemoModeManager.isDentumTour {
+            switch self {
+            case .totalLeads, .newLeads: return "1"
+            case .contacted, .meetingsBooked, .won: return "0"
+            }
+        }
+        return DemoModeManager.usesGenericFixtures ? value : "—"
+    }
+
+    var scopedTrend: String? {
+        DemoModeManager.usesGenericFixtures ? trend : nil
+    }
     var subtitle: String {
         switch self {
         case .totalLeads:     return "Alle aktive leads i pipeline"
@@ -117,9 +131,16 @@ struct KPIDetailSheet: View {
             ScrollView {
                 VStack(spacing: 16) {
                     heroCard
-                    trendChart
-                    breakdownCard
-                    topLeadsCard
+                    if DemoModeManager.usesGenericFixtures {
+                        trendChart
+                        breakdownCard
+                        topLeadsCard
+                    } else {
+                        historyEmptyCard
+                        if DemoModeManager.isDentumTour, !topLeads.isEmpty {
+                            topLeadsCard
+                        }
+                    }
                     // suggestedActions fjernet 2026-07-17: var døde knapper —
                     // hele kortet besto av handlings-CTAer («Filtrér…»,
                     // «Eksporter…», «Ring…») uten flater å utføre dem.
@@ -164,17 +185,19 @@ struct KPIDetailSheet: View {
                         .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(KpBrand.textSecondary)
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(kind.value)
+                        Text(kind.scopedValue)
                             .font(.appScaled(size: 38, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
                             .monospacedDigit()
-                        HStack(spacing: 3) {
-                            Image(systemName: "arrow.up")
-                                .font(.appScaled(size: 10, weight: .bold))
-                            Text(kind.trend)
-                                .font(.appScaled(size: 12, weight: .bold))
+                        if let trend = kind.scopedTrend {
+                            HStack(spacing: 3) {
+                                Image(systemName: "arrow.up")
+                                    .font(.appScaled(size: 10, weight: .bold))
+                                Text(trend)
+                                    .font(.appScaled(size: 12, weight: .bold))
+                            }
+                            .foregroundStyle(KpBrand.green)
                         }
-                        .foregroundStyle(KpBrand.green)
                     }
                     Text(kind.subtitle)
                         .font(.appScaled(size: 11))
@@ -183,10 +206,16 @@ struct KPIDetailSheet: View {
                 Spacer()
             }
 
-            HStack(spacing: 10) {
-                heroStat(label: "Forrige periode",  value: previousPeriodValue, color: KpBrand.textSecondary)
-                heroStat(label: "Snitt per dag",    value: averagePerDay,       color: KpBrand.blue)
-                heroStat(label: "Måls-progresjon",  value: "78 %",              color: KpBrand.yellow)
+            if DemoModeManager.usesGenericFixtures {
+                HStack(spacing: 10) {
+                    heroStat(label: "Forrige periode",  value: previousPeriodValue, color: KpBrand.textSecondary)
+                    heroStat(label: "Snitt per dag",    value: averagePerDay,       color: KpBrand.blue)
+                    heroStat(label: "Måls-progresjon",  value: "78 %",              color: KpBrand.yellow)
+                }
+            } else {
+                Text("Ingen sammenlignbar historikk ennå")
+                    .font(.appScaled(size: 11))
+                    .foregroundStyle(KpBrand.textSecondary)
             }
         }
         .padding(16)
@@ -277,6 +306,26 @@ struct KPIDetailSheet: View {
                 }
             }
             .frame(height: 180)
+        }
+        .padding(16)
+        .background(KpBrand.card, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(KpBrand.stroke, lineWidth: 1))
+    }
+
+    private var historyEmptyCard: some View {
+        HStack(spacing: 11) {
+            Image(systemName: "chart.line.uptrend.xyaxis")
+                .font(.appScaled(size: 17, weight: .semibold))
+                .foregroundStyle(KpBrand.textTertiary)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Ingen leadhistorikk ennå")
+                    .font(.appScaled(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                Text("Utvikling og sammenligninger vises når prosjektet har aktivitet over flere perioder.")
+                    .font(.appScaled(size: 11))
+                    .foregroundStyle(KpBrand.textSecondary)
+            }
+            Spacer(minLength: 0)
         }
         .padding(16)
         .background(KpBrand.card, in: RoundedRectangle(cornerRadius: 14))
@@ -391,7 +440,7 @@ struct KPIDetailSheet: View {
 
     private var topLeadsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionHeader("Top 5 leads", icon: "list.star")
+            sectionHeader(DemoModeManager.isDentumTour ? "Leads i prosjektet" : "Top 5 leads", icon: "list.star")
             VStack(spacing: 8) {
                 // 2026-07-17: rad-knappene var døde (ingen lead-detaljflate
                 // herfra) — innholdet beholdt som ikke-klikkbar visning,
@@ -433,6 +482,15 @@ struct KPIDetailSheet: View {
     }
 
     private var topLeads: [(String, String, String)] {
+        if DemoModeManager.isDentumTour {
+            switch kind {
+            case .totalLeads, .newLeads:
+                return [("Majorstuen Tannlegesenter AS", "Tannhelse · Oslo", "86 fit")]
+            case .contacted, .meetingsBooked, .won:
+                return []
+            }
+        }
+        guard DemoModeManager.usesGenericFixtures else { return [] }
         switch kind {
         case .totalLeads:
             return [
@@ -495,4 +553,3 @@ struct KPIDetailSheet: View {
         }
     }
 }
-

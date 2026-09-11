@@ -35,13 +35,22 @@ struct PairingView: View {
                 .ignoresSafeArea()
                 .overlay(
                     LinearGradient(
-                        colors: [.black.opacity(0.0), .black.opacity(0.55)],
+                        // Jevn mørklegging gjør all innloggingscopy lesbar
+                        // uansett hvilket lyst parti i bildet den havner over.
+                        colors: [.black.opacity(0.36), .black.opacity(0.68)],
                         startPoint: .top, endPoint: .bottom
                     )
                     .ignoresSafeArea()
                 )
-            paringContent
-                .frame(maxWidth: 460)
+            GeometryReader { geo in
+                ScrollView {
+                    paringContent
+                        .frame(maxWidth: 460)
+                        .frame(minHeight: geo.size.height)
+                        .frame(maxWidth: .infinity)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+            }
         }
     }
 
@@ -59,8 +68,10 @@ struct PairingView: View {
                 .frame(maxWidth: 320)
                 .shadow(color: .black.opacity(0.45), radius: 18, x: 0, y: 6)
             Text("Logg inn for å begynne")
-                .foregroundStyle(.white.opacity(0.75))
+                .font(.headline)
+                .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
 
             // PRIMÆR: Google Sign-In (standalone, ingen pairing-kode nødvendig)
             Button {
@@ -77,8 +88,11 @@ struct PairingView: View {
                     Text("Fortsett med Google")
                         .font(.headline)
                         .foregroundStyle(.black)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity)
+                .frame(minHeight: 52)
                 .padding(.vertical, 14)
                 .background(.white, in: RoundedRectangle(cornerRadius: 12))
             }
@@ -89,7 +103,15 @@ struct PairingView: View {
             // Separator
             HStack {
                 Rectangle().fill(.white.opacity(0.2)).frame(height: 1)
-                Text("eller").font(.caption).foregroundStyle(.white.opacity(0.5))
+                Text("eller")
+                    .font(.caption.bold())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    // Ugjennomsiktig bakgrunn er nødvendig fordi kartbildet
+                    // varierer bak separatoren. 82 % sort ga målt
+                    // kontrastfeil på iPad mini selv med hvit tekst.
+                    .background(.black, in: Capsule())
                 Rectangle().fill(.white.opacity(0.2)).frame(height: 1)
             }
             .padding(.horizontal, 48)
@@ -100,8 +122,17 @@ struct PairingView: View {
             } label: {
                 Text(showManualCode ? "Skjul pairing-kode" : "Jeg har en pairing-kode")
                     .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.8))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .padding(.horizontal, 12)
+                    // Heldekkende flate gir stabil WCAG-kontrast også når
+                    // det lyse kartbildet havner rett bak knappen på iPad.
+                    .background(.black, in: Capsule())
             }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 32)
 
             if showManualCode {
                 instructionsCard
@@ -159,13 +190,18 @@ struct PairingView: View {
             VStack(spacing: 4) {
                 Text("Ny her?")
                     .font(.caption)
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(.white.opacity(0.9))
                 Button {
                     showGetStarted = true
                 } label: {
                     Text("Kom i gang med Leadgrid")
-                        .font(.caption.bold())
-                        .foregroundStyle(.tint)
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(minHeight: 44)
+                        .padding(.horizontal, 16)
+                        .background(Color.tint, in: Capsule())
                 }
                 .buttonStyle(.plain)
             }

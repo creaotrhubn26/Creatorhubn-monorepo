@@ -1,7 +1,19 @@
 // APIClient+Canvas.swift — Leadgrid Canvas (Pencil-notater) mot backend.
-// leadgrid_canvas_notater: org+bruker-scopet, PKDrawing som base64.
+// leadgrid_canvas_notater: prosjekt+org+bruker-scopet, PKDrawing som base64.
 
 import Foundation
+
+private func canvasScopedPath(
+    _ path: String,
+    projectId: String,
+    queryItems: [URLQueryItem] = []
+) -> String {
+    var components = URLComponents()
+    components.path = path
+    components.queryItems = [URLQueryItem(name: "projectId", value: projectId)]
+        + queryItems
+    return components.string ?? path
+}
 
 struct CanvasNotatDTO: Decodable, Hashable {
     let id: String
@@ -112,7 +124,9 @@ struct CanvasPaginationGuard {
 
 extension APIClient {
 
-    func hentCanvasNotater(papirkurv: Bool = false) async throws -> [CanvasNotatDTO] {
+    func hentCanvasNotater(
+        projectId: String, papirkurv: Bool = false
+    ) async throws -> [CanvasNotatDTO] {
         struct Resp: Decodable {
             let notater: [CanvasNotatDTO]
             let nextCursor: String?
@@ -122,11 +136,12 @@ extension APIClient {
         var pagination = CanvasPaginationGuard(
             maximumPageCount: CanvasPaginationSafetyLimit.notes)
         while true {
-            var query = [papirkurv ? "papirkurv=1" : nil, "limit=50"]
-                .compactMap { $0 }
-            if let cursor { query.append("cursor=\(cursor)") }
+            var query = [URLQueryItem(name: "limit", value: "50")]
+            if papirkurv { query.append(.init(name: "papirkurv", value: "1")) }
+            if let cursor { query.append(.init(name: "cursor", value: cursor)) }
             let r: Resp = try await _get(
-                "/api/leadgrid/canvas?" + query.joined(separator: "&"))
+                canvasScopedPath("/api/leadgrid/canvas", projectId: projectId,
+                                 queryItems: query))
             notater.append(contentsOf: r.notater)
             guard let nextCursor = try pagination.nextCursor(from: r.nextCursor) else {
                 break
@@ -138,7 +153,8 @@ extension APIClient {
 
     /// Opprett med klientgenerert UUID. ID-en forblir stabil i faner, async
     /// callbacks og save-køen; serveren returnerer kun autoritativ revisjon.
-    func opprettCanvasNotat(id: String, tittel: String, kategori: String,
+    func opprettCanvasNotat(projectId: String,
+                            id: String, tittel: String, kategori: String,
                             selskap: String?, leadId: String?,
                             drawingBase64: String,
                             delt: Bool = false,
@@ -178,7 +194,7 @@ extension APIClient {
             let created: Bool
         }
         let r: Resp = try await _post(
-            "/api/leadgrid/canvas",
+            canvasScopedPath("/api/leadgrid/canvas", projectId: projectId),
             body: Body(id: id, tittel: tittel, kategori: kategori, selskap: selskap,
                        leadId: leadId, drawingBase64: drawingBase64, delt: delt,
                        lat: lat, lon: lon, stempler: stempler,
@@ -191,7 +207,8 @@ extension APIClient {
             created: r.created)
     }
 
-    func oppdaterCanvasNotat(id: String, tittel: String, kategori: String,
+    func oppdaterCanvasNotat(projectId: String,
+                             id: String, tittel: String, kategori: String,
                              selskap: String?, leadId: String?,
                              drawingBase64: String,
                              delt: Bool = false,
@@ -236,7 +253,8 @@ extension APIClient {
         // bortsett fra leadId/drawingBase64; backend godtar begge former.
         struct Resp: Decodable { let revision: Int }
         let response = try await _request(
-            "/api/leadgrid/canvas/\(id)", method: "PUT", body: data,
+            canvasScopedPath("/api/leadgrid/canvas/\(id)", projectId: projectId),
+            method: "PUT", body: data,
             headers: ["If-Match": "W/\"\(revision)\""])
         return try Self._sharedDecoder.decode(Resp.self, from: response).revision
     }
@@ -298,7 +316,9 @@ extension APIClient {
     }
 
     /// Time Travel: notatets versjoner (eldst → nyest).
-    func hentCanvasVersjoner(notatId: String) async throws -> [CanvasVersjonDTO] {
+    func hentCanvasVersjoner(
+        notatId: String, projectId: String
+    ) async throws -> [CanvasVersjonDTO] {
         struct Resp: Decodable {
             let versjoner: [CanvasVersjonDTO]
             let nextCursor: String?
@@ -308,11 +328,13 @@ extension APIClient {
         var pagination = CanvasPaginationGuard(
             maximumPageCount: CanvasPaginationSafetyLimit.history)
         while true {
-            var query = ["limit=5"]
-            if let cursor { query.append("cursor=\(cursor)") }
+            var query = [URLQueryItem(name: "limit", value: "5")]
+            if let cursor { query.append(.init(name: "cursor", value: cursor)) }
             let r: Resp = try await _get(
-                "/api/leadgrid/canvas/\(notatId)/versjoner?"
-                    + query.joined(separator: "&"))
+                canvasScopedPath(
+                    "/api/leadgrid/canvas/\(notatId)/versjoner",
+                    projectId: projectId,
+                    queryItems: query))
             // Serveren beholder eldste→nyeste i hver side, mens neste side er
             // eldre. Prepend gir samme totale rekkefølge som legacy-responsen.
             versjoner.insert(contentsOf: r.versjoner, at: 0)
@@ -329,11 +351,14 @@ extension APIClient {
     func gjenopprettCanvasVersjon(
         notatId: String,
         versionId: String,
-        revision: Int
+        revision: Int,
+        projectId: String
     ) async throws -> CanvasNotatDTO {
         struct Resp: Decodable { let notat: CanvasNotatDTO }
         let data = try await _request(
-            "/api/leadgrid/canvas/\(notatId)/versjoner/\(versionId)/gjenopprett",
+            canvasScopedPath(
+                "/api/leadgrid/canvas/\(notatId)/versjoner/\(versionId)/gjenopprett",
+                projectId: projectId),
             method: "POST",
             body: nil,
             headers: ["If-Match": "W/\"\(revision)\""])
@@ -358,33 +383,41 @@ extension APIClient {
     }
 
     /// Slett → papirkurven (30 dager); permanent = borte for godt.
-    func slettCanvasNotat(id: String, revision: Int,
+    func slettCanvasNotat(id: String, revision: Int, projectId: String,
                           permanent: Bool = false) async throws {
         _ = try await _request(
-            "/api/leadgrid/canvas/\(id)" + (permanent ? "?permanent=1" : ""),
+            canvasScopedPath(
+                "/api/leadgrid/canvas/\(id)", projectId: projectId,
+                queryItems: permanent ? [.init(name: "permanent", value: "1")] : []),
             method: "DELETE", body: nil,
             headers: ["If-Match": "W/\"\(revision)\""])
     }
 
     /// Last opp dokument-bytes til egen tabell (klient-generert id).
     func lastOppCanvasDokument(notatId: String, dokId: String,
+                               projectId: String,
                                navn: String, base64: String) async throws {
         struct Body: Encodable { let id: String; let navn: String; let base64: String }
         let data = try JSONEncoder().encode(Body(id: dokId, navn: navn, base64: base64))
-        _ = try await _request("/api/leadgrid/canvas/\(notatId)/dokumenter",
+        _ = try await _request(canvasScopedPath(
+            "/api/leadgrid/canvas/\(notatId)/dokumenter", projectId: projectId),
                                method: "POST", body: data)
     }
 
     /// Hent dokument-bytes on-demand (lazy — lista bærer kun metadata).
-    func hentCanvasDokument(dokId: String) async throws -> (navn: String, base64: String) {
+    func hentCanvasDokument(
+        dokId: String, projectId: String
+    ) async throws -> (navn: String, base64: String) {
         struct Dok: Decodable { let id: String; let navn: String; let base64: String }
         struct Resp: Decodable { let dokument: Dok }
-        let r: Resp = try await _get("/api/leadgrid/canvas/dokumenter/\(dokId)")
+        let r: Resp = try await _get(canvasScopedPath(
+            "/api/leadgrid/canvas/dokumenter/\(dokId)", projectId: projectId))
         return (r.dokument.navn, r.dokument.base64)
     }
 
-    func slettCanvasDokument(dokId: String) async throws {
-        _ = try await _request("/api/leadgrid/canvas/dokumenter/\(dokId)",
+    func slettCanvasDokument(dokId: String, projectId: String) async throws {
+        _ = try await _request(canvasScopedPath(
+            "/api/leadgrid/canvas/dokumenter/\(dokId)", projectId: projectId),
                                method: "DELETE", body: nil)
     }
 
@@ -430,10 +463,14 @@ extension APIClient {
     }
 
     /// Hent notatet tilbake fra papirkurven.
-    func gjenopprettCanvasNotat(id: String, revision: Int) async throws -> Int {
+    func gjenopprettCanvasNotat(
+        id: String, revision: Int, projectId: String
+    ) async throws -> Int {
         struct Resp: Decodable { let revision: Int }
         let data = try await _request(
-            "/api/leadgrid/canvas/\(id)/gjenopprett", method: "POST", body: nil,
+            canvasScopedPath(
+                "/api/leadgrid/canvas/\(id)/gjenopprett", projectId: projectId),
+            method: "POST", body: nil,
             headers: ["If-Match": "W/\"\(revision)\""])
         return try Self._sharedDecoder.decode(Resp.self, from: data).revision
     }

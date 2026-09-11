@@ -64,6 +64,27 @@ enum TeamKPI: String, Identifiable, CaseIterable {
         }
     }
 
+    /// Project-scoped presentation value. Customer-specific QA tours use
+    /// their own tiny dataset, while the large showcase figures stay
+    /// exclusive to the generic demo.
+    @MainActor var scopedValue: String {
+        if DemoModeManager.isDentumTour {
+            switch self {
+            case .totalLeads: return "1"
+            case .meetings: return "1"
+            case .wonValue: return "NOK 0"
+            case .avgLeadScore: return "86"
+            case .momentum: return "—"
+            case .sales: return "0"
+            }
+        }
+        return DemoModeManager.usesGenericFixtures ? bigValue : liveValue
+    }
+
+    var scopedTrend: String? {
+        DemoModeManager.usesGenericFixtures ? trend : nil
+    }
+
     var subtitle: String {
         switch self {
         case .totalLeads:   return "Aktive leads på tvers av teamet"
@@ -114,10 +135,16 @@ struct TeamKPIDetailSheet: View {
             ScrollView {
                 VStack(spacing: 14) {
                     hero
-                    periodPicker
-                    trendCard
+                    if DemoModeManager.usesGenericFixtures {
+                        periodPicker
+                        trendCard
+                    } else {
+                        historyEmptyCard
+                    }
                     breakdownCard
-                    insightCard
+                    if DemoModeManager.usesGenericFixtures {
+                        insightCard
+                    }
                     actionsRow
                     Color.clear.frame(height: 20)
                 }
@@ -168,17 +195,19 @@ struct TeamKPIDetailSheet: View {
                     .textCase(.uppercase)
                     .tracking(0.5)
                 HStack(alignment: .firstTextBaseline, spacing: 9) {
-                    Text(DemoModeManager.isActiveNonisolated ? kpi.bigValue : kpi.liveValue)
+                    Text(kpi.scopedValue)
                         .font(.appScaled(size: 30, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
                         .monospacedDigit()
                         .lineLimit(1).minimumScaleFactor(0.6)
-                    Text(kpi.trend)
-                        .font(.appScaled(size: 13, weight: .black))
-                        .foregroundStyle(TBrand.green)
-                        .monospacedDigit()
+                    if let trend = kpi.scopedTrend {
+                        Text(trend)
+                            .font(.appScaled(size: 13, weight: .black))
+                            .foregroundStyle(TBrand.green)
+                            .monospacedDigit()
+                    }
                 }
-                Text("vs. forrige periode")
+                Text(kpi.scopedTrend == nil ? "Ingen historikk ennå" : "vs. forrige periode")
                     .font(.appScaled(size: 11))
                     .foregroundStyle(TBrand.textTertiary)
             }
@@ -222,6 +251,7 @@ struct TeamKPIDetailSheet: View {
     // MARK: Trend chart
 
     private var trendPoints: [(day: String, value: Double)] {
+        guard DemoModeManager.usesGenericFixtures else { return [] }
         let count: Int
         switch period {
         case .week: count = 7
@@ -307,6 +337,26 @@ struct TeamKPIDetailSheet: View {
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(TBrand.stroke, lineWidth: 1))
     }
 
+    private var historyEmptyCard: some View {
+        HStack(spacing: 11) {
+            Image(systemName: "chart.line.uptrend.xyaxis")
+                .font(.appScaled(size: 17, weight: .semibold))
+                .foregroundStyle(TBrand.textTertiary)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Ingen aktivitetshistorikk ennå")
+                    .font(.appScaled(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                Text("Utvikling og sammenligning vises når prosjektet har flere perioder med aktivitet.")
+                    .font(.appScaled(size: 11))
+                    .foregroundStyle(TBrand.textSecondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(TBrand.card, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(TBrand.stroke, lineWidth: 1))
+    }
+
     // MARK: Breakdown per medlem
 
     private var breakdownCard: some View {
@@ -338,9 +388,12 @@ struct TeamKPIDetailSheet: View {
         case .totalLeads:   return Double(m.leads)
         case .meetings:     return Double(m.meetings)
         case .wonValue:     return Double(m.valueNok)
-        case .avgLeadScore: return Double(m.leads / 3 + 50)        // mock
+        case .avgLeadScore:
+            if DemoModeManager.isDentumTour { return 86 }
+            return DemoModeManager.usesGenericFixtures ? Double(m.leads / 3 + 50) : 0
         case .momentum:     return Double(m.momentum)
-        case .sales:        return Double(m.valueNok / 50_000)     // mock: 1 salg per 50k
+        case .sales:
+            return DemoModeManager.usesGenericFixtures ? Double(m.valueNok / 50_000) : 0
         }
     }
 
@@ -544,7 +597,7 @@ struct SetKPIGoalSheet: View {
                 Text(kpi.rawValue)
                     .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
-                Text("Nåværende: \(DemoModeManager.isActiveNonisolated ? kpi.bigValue : kpi.liveValue) \(kpi.trend)")
+                Text("Nåværende: \(kpi.scopedValue)\(kpi.scopedTrend.map { " \($0)" } ?? "")")
                     .font(.appScaled(size: 11))
                     .foregroundStyle(TBrand.textSecondary)
             }
@@ -779,7 +832,7 @@ struct CreateKPIAlertSheet: View {
                 Text("Varsle når \(kpi.rawValue)")
                     .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
-                Text("Nåværende: \(DemoModeManager.isActiveNonisolated ? kpi.bigValue : kpi.liveValue)")
+                Text("Nåværende: \(kpi.scopedValue)")
                     .font(.appScaled(size: 11))
                     .foregroundStyle(TBrand.textSecondary)
             }
@@ -1188,7 +1241,7 @@ struct ShareKPIReportSheet: View {
                 Text("Del \(kpi.rawValue)-rapport")
                     .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
-                Text("Innhold: \(DemoModeManager.isActiveNonisolated ? kpi.bigValue : kpi.liveValue) \(kpi.trend) for \(period.lowercased())")
+                Text("Innhold: \(kpi.scopedValue)\(kpi.scopedTrend.map { " \($0)" } ?? "") for \(period.lowercased())")
                     .font(.appScaled(size: 11))
                     .foregroundStyle(TBrand.textSecondary)
             }

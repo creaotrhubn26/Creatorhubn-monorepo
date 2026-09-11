@@ -409,7 +409,9 @@ struct EtterMoteSheet: View {
         if tale.isRecording { tale.stop() }
         feil = nil
         if DemoModeManager.isActiveNonisolated {
-            resultat = Self.demoResultat(selskap: selskap, kontakt: kontakt)
+            resultat = DemoModeManager.isDentumTour
+                ? Self.dentumDemoResultat(selskap: selskap, kontakt: kontakt)
+                : Self.demoResultat(selskap: selskap, kontakt: kontakt)
             merkSomLogget()
             return
         }
@@ -497,6 +499,25 @@ struct EtterMoteSheet: View {
     }
 
     // MARK: Demo
+
+    static func dentumDemoResultat(selskap: String, kontakt: String?) -> EtterarbeidDTO {
+        EtterarbeidDTO(
+            notat: "Godt pilotmøte med \(selskap). Klinikken vil kvalitetssikre klinikkprofilen, behandlingene og den verifiserte fellesadressen før Dentum-piloten publiseres. \(kontakt ?? "Kontakten") ønsker en kort godkjenningsrunde før neste steg.",
+            lofter: [
+                "Sende oppdatert klinikkprofil og behandlingsoversikt",
+                "Dokumentere at kontaktadressen er en verifisert fellesadresse før utsendelse",
+            ],
+            oppgaver: [
+                EtterarbeidOppgaveDTO(tittel: "Oppdater klinikkprofil og behandlinger", frist: "innen torsdag"),
+                EtterarbeidOppgaveDTO(tittel: "Be klinikken godkjenne pilotoppsettet", frist: "neste uke"),
+            ],
+            statusForslag: "interessert",
+            epost: EtterarbeidEpostDTO(
+                emne: "Takk for møtet — Dentum-piloten",
+                brodtekst: "Hei \(kontakt ?? "")!\n\nTakk for et godt møte om Dentum-piloten. Jeg sender oppdatert klinikkprofil og behandlingsoversikt som avtalt. Når dere har kvalitetssikret innholdet og kontaktadressen, tar vi en kort godkjenningsrunde før publisering.\n\nMvh"),
+            maalVurdering: "Delvis nådd: klinikken er positiv til piloten, men profil og kontaktgrunnlag må godkjennes før publisering.",
+            nyeBehov: ["Korrekt behandlingsoversikt", "Godkjent klinikkprofil", "Verifisert fellesadresse"])
+    }
 
     static func demoResultat(selskap: String, kontakt: String?) -> EtterarbeidDTO {
         EtterarbeidDTO(

@@ -3,7 +3,7 @@
 // Pixel-perfect Leadgrid kartview matchende mockup (2026-06-29 v2):
 //
 //   ┌──────────────────────────────────────────────────────────────┐
-//   │ Kart-tittel                       [Ruteplanlegger][+ Legg til]│
+//   │ Kart-tittel                              [Filtre][Legg til] │
 //   │ Underskrift                                                  │
 //   │ [Søk]  [Alle områder ▾] [Alle typer ▾] [Status ▾] [Filtre ▾] │
 //   ├──────────────────────────────────────────┬───────────────────┤
@@ -87,6 +87,12 @@ struct MapLeadMock: Identifiable, Hashable {
     var phone: String? = nil
     var email: String? = nil
     var projectId: String? = nil
+    var category: String? = nil
+    var websiteURL: String? = nil
+    var contactName: String? = nil
+    var contactRole: String? = nil
+    var employeeCountEstimate: Int? = nil
+    var annualRevenueNokEstimate: Double? = nil
     var estimatedValue: Double? = nil
     var aiScore: Int? = nil
     /// Neste avtalte handling på leaden (LeadModel.nextAction) — peek-kortet
@@ -99,13 +105,13 @@ struct MapLeadMock: Identifiable, Hashable {
     /// visningsverdier så flyten kan demonstreres; ekte modus uten data → nil
     /// (handlingen skjules — ærlig i stedet for å ringe et påfunnet nummer).
     var phoneOrDemo: String? {
-        phone ?? (DemoModeManager.isActiveNonisolated ? "+47 911 22 333" : nil)
+        phone ?? (DemoModeManager.usesGenericFixtures ? "+47 911 22 333" : nil)
     }
     var emailOrDemo: String? {
-        email ?? (DemoModeManager.isActiveNonisolated ? "post@nordicelektro.no" : nil)
+        email ?? (DemoModeManager.usesGenericFixtures ? "post@nordicelektro.no" : nil)
     }
     var nextActionOrDemo: String? {
-        nextAction ?? (DemoModeManager.isActiveNonisolated
+        nextAction ?? (DemoModeManager.usesGenericFixtures
             ? "Følg opp prisforslag · frist tirsdag" : nil)
     }
 
@@ -259,7 +265,7 @@ enum OverlayData {
     /// Mock AI-forslag — KUN i demo-modus. Ellers tegnes ingenting selv om
     /// overlayet er slått på (ærlig tomt kart i stedet for falske pins).
     static var aiLeads: [AILeadSuggestion] {
-        DemoModeManager.isActiveNonisolated ? _aiLeads : []
+        DemoModeManager.usesGenericFixtures ? _aiLeads : []
     }
     private static let _aiLeads: [AILeadSuggestion] = [
         AILeadSuggestion(name: "Tech Norge AS", lat: 59.913, lon: 10.745,
@@ -272,7 +278,7 @@ enum OverlayData {
 
     // Mockede besøk i dag (sorterte etter tid) — KUN i demo-modus.
     static var travelHistory: [CLLocationCoordinate2D] {
-        DemoModeManager.isActiveNonisolated ? _travelHistory : []
+        DemoModeManager.usesGenericFixtures ? _travelHistory : []
     }
     private static let _travelHistory: [CLLocationCoordinate2D] = [
         CLLocationCoordinate2D(latitude: 59.9139, longitude: 10.7522),  // start: Storgata
@@ -283,7 +289,7 @@ enum OverlayData {
 
     /// Mock-territorier — KUN i demo-modus.
     static var territories: [TerritoryPolygon] {
-        DemoModeManager.isActiveNonisolated ? _territories : []
+        DemoModeManager.usesGenericFixtures ? _territories : []
     }
     private static let _territories: [TerritoryPolygon] = [
         // Min territory: Sentrum + Frogner (lilla)
@@ -345,7 +351,26 @@ enum KartPreviewData {
     /// Krasj-safe fallback for `@State`-init: alltid en ekte mock-lead
     /// (fra hardkodet _leads) så SwiftUI-init aldri traff `[]` [0]-krasj.
     static var firstOrPlaceholder: MapLeadMock {
-        _leads[0]
+        if DemoModeManager.isDentumTour {
+            return MapLeadMock(
+                id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                name: "Majorstuen Tannlegesenter AS",
+                address: "Kirkeveien 64 A, 0364 Oslo",
+                kmAway: 0,
+                status: .new,
+                lastActivity: "Inviter klinikken til Dentum-piloten",
+                lat: 59.9298,
+                lon: 10.7147,
+                phone: "+47 22 00 00 00",
+                email: "post@majorstuentannlegesenter.example",
+                projectId: "dentum-oslo",
+                category: "Tannhelse",
+                contactName: "Anne Lunde",
+                contactRole: "Daglig leder",
+                aiScore: 86,
+                nextAction: "Inviter klinikken til Dentum-piloten")
+        }
+        return _leads[0]
     }
 
     /// LeadModel → MapLeadMock adapter. Mapper status til PinStatus og
@@ -388,6 +413,12 @@ enum KartPreviewData {
             phone: lm.phone,
             email: lm.email,
             projectId: lm.projectId,
+            category: lm.category,
+            websiteURL: lm.websiteUrl,
+            contactName: lm.contactName,
+            contactRole: lm.contactRole,
+            employeeCountEstimate: lm.employeeCountEstimate,
+            annualRevenueNokEstimate: lm.annualRevenueNokEstimate,
             estimatedValue: lm.estimatedValue,
             aiScore: lm.aiOpportunityScore,
             nextAction: lm.nextAction,
@@ -409,13 +440,20 @@ enum KartPreviewData {
     /// Demo-mode-gated clusters. Ved demo AV skjules klyngene så kartet
     /// ikke lyver om at det finnes leads i området.
     static var clusters: [MapClusterMock] {
-        DemoModeManager.isActiveNonisolated ? _clusters : []
+        guard DemoModeManager.isActiveNonisolated,
+              !DemoModeManager.isDentumTour else { return [] }
+        return _clusters
     }
 
     /// Mock-aktiviteter — KUN i demo-modus. Ellers tom liste + ærlig tom-tilstand i viewet.
     static var activities: [ActivityItemMock] {
-        DemoModeManager.isActiveNonisolated ? _activities : []
+        guard DemoModeManager.isActiveNonisolated else { return [] }
+        return DemoModeManager.isDentumTour ? _dentumActivities : _activities
     }
+    private static let _dentumActivities: [ActivityItemMock] = [
+        ActivityItemMock(icon: "calendar", label: "Pilotmøte booket", timestamp: "i dag"),
+        ActivityItemMock(icon: "person.badge.plus", label: "Lead godkjent i Discovery", timestamp: "i dag"),
+    ]
     private static let _activities: [ActivityItemMock] = [
         ActivityItemMock(icon: "calendar",          label: "Møte",           timestamp: "i dag 10:00"),
         ActivityItemMock(icon: "envelope.open",     label: "E-post åpnet",   timestamp: "i går 14:22"),
@@ -426,8 +464,19 @@ enum KartPreviewData {
 
     /// Mock-notater — KUN i demo-modus.
     static var notes: [NoteItemMock] {
-        DemoModeManager.isActiveNonisolated ? _notes : []
+        guard DemoModeManager.isActiveNonisolated else { return [] }
+        return DemoModeManager.isDentumTour ? _dentumNotes : _notes
     }
+    private static let _dentumNotes: [NoteItemMock] = [
+        NoteItemMock(
+            author: "Daniel Qazi",
+            authorInitials: "DQ",
+            authorColor: KrBrand.purpleLight,
+            body: "Godkjent kandidat for Dentum-piloten. Tilpass første kontakt til klinikkens pasienttilbud før utsending.",
+            timestamp: "i dag",
+            pinned: true
+        ),
+    ]
     private static let _notes: [NoteItemMock] = [
         NoteItemMock(
             author: "Lars Kristensen",
@@ -457,7 +506,9 @@ enum KartPreviewData {
 
     /// Mock-filer — KUN i demo-modus.
     static var files: [FileItemMock] {
-        DemoModeManager.isActiveNonisolated ? _files : []
+        guard DemoModeManager.isActiveNonisolated,
+              !DemoModeManager.isDentumTour else { return [] }
+        return _files
     }
     private static let _files: [FileItemMock] = [
         FileItemMock(name: "Tilbud_NordicElektro_v3.pdf",   kind: .pdf,         size: "1.2 MB", uploadedAt: "i går 14:18"),
@@ -534,7 +585,7 @@ struct KartView: View {
     /// data vi faktisk har (neste handling / status), ikke oppdiktede
     /// konkurrent-narrativer.
     private var aiLeadSuggestions: [AILeadSuggestion] {
-        if DemoModeManager.isActiveNonisolated {
+        if DemoModeManager.usesGenericFixtures {
             return OverlayData.aiLeads
         }
         return kartLeads
@@ -813,6 +864,7 @@ struct KartView: View {
 
     // Routes + lead-detail extras
     @State private var routePlannerOpen: Bool = false
+    @State private var cardScannerOpen: Bool = false
     @State private var leadActionsOpen: Bool = false
     @State private var favorited: Bool = false
     @State private var navigateOpen: Bool = false
@@ -990,7 +1042,7 @@ struct KartView: View {
     /// default AV — B2B-org-er skal ikke se noen referanse til modusen.
     /// Demo-modus får den også (pitch-demo).
     private var visDorsalgToggle: Bool {
-        DemoModeManager.isActiveNonisolated
+        DemoModeManager.usesGenericFixtures
             || EntitlementStore.shared.isExplicitlyEnabled(.dorsalgModus)
     }
 
@@ -1366,17 +1418,10 @@ struct KartView: View {
         .onReceive(NotificationCenter.default.publisher(for: .leadgridFocusSearch)) { _ in
             searchFieldFocused = true
         }
-        // Discovery v2 is app-global: closing this workspace does not cancel
-        // its durable backend run. Unapproved registry candidates stay in a
-        // dedicated review workspace, so it fully obscures the map on every
-        // iPad window size.
-        .fullScreenCover(isPresented: discoveryV2PresentedBinding) {
-            DiscoveryWorkspaceView(coordinator: appState.discoveryCoordinator)
-        }
         // Canvas-laget: hent stedfestede notater når laget slås på.
         .task(id: activeOverlays.contains(.canvasNotater)) {
             guard activeOverlays.contains(.canvasNotater) else { return }
-            if DemoModeManager.isActiveNonisolated {
+            if DemoModeManager.usesGenericFixtures {
                 canvasKartNotater = [
                     CanvasKartNotat(id: "demo-c1", tittel: "Møte med Nordic Elektro AS",
                                     lat: 59.943, lon: 10.778),
@@ -1385,8 +1430,11 @@ struct KartView: View {
                 ]
                 return
             }
-            guard let api = appState.api else { return }
-            let notater = (try? await api.hentCanvasNotater()) ?? []
+            guard let api = appState.api,
+                  let projectId = appState.activeLeadgridProjectId else { return }
+            let notater = (try? await api.hentCanvasNotater(
+                projectId: projectId)) ?? []
+            guard appState.activeLeadgridProjectId == projectId else { return }
             canvasKartNotater = notater.compactMap { d in
                 guard let lat = d.lat, let lon = d.lon else { return nil }
                 return CanvasKartNotat(id: d.id, tittel: d.tittel, lat: lat, lon: lon)
@@ -1439,6 +1487,13 @@ struct KartView: View {
                     )
                 }
             }
+        }
+        .sheet(isPresented: $cardScannerOpen) {
+            // Samme ekte VisionKit → OCR → lead-flyt som i Leadbook.
+            // Refresh gjør at et skannet kort vises på kartet straks arket
+            // lukkes, uten å lage en separat kart-spesifikk lagringsvei.
+            BusinessCardScannerView()
+                .onDisappear { Task { await appState.refreshLeads() } }
         }
         // Kjøregodtgjørelse (statens sats) — ekte km fra nav-ruta.
         .sheet(isPresented: $navShowMileage) {
@@ -2457,35 +2512,42 @@ struct KartView: View {
                         .presentationCompactAdaptation(.popover)
                 }
 
-            // …og handlingene samlet i én «+»-meny (audit-grep 2).
+            // Discovery er den primære kart-handlingen. Kilder der brukeren
+            // allerede kjenner leaden ligger samlet i denne sekundære menyen.
             Menu {
                 // Dørsalg: husstander skal aldri inn i CRM — skjul lead-oppretting.
                 if !dorsalgModus {
                     Button { presentAddLead() } label: {
-                        Label("Legg til lead", systemImage: "person.crop.circle.badge.plus")
+                        Label("Legg inn kjent lead", systemImage: "person.crop.circle.badge.plus")
                     }
-                }
-                // Feature-gated (superadmin-matrisen): default PÅ, kan
-                // låses per org — da forsvinner inngangen helt.
-                if EntitlementStore.shared.canUse(.leadgridRuteplanlegger) {
-                    Button { routePlannerOpen = true } label: {
-                        Label("Ruteplanlegger", systemImage: "map.fill")
+                    .accessibilityIdentifier("kart.add.known")
+
+                    Button { dropPinAtCenter() } label: {
+                        Label("Opprett fra kartpunkt", systemImage: "mappin.and.ellipse")
                     }
+                    .accessibilityIdentifier("kart.add.map-point")
+
+                    Button { cardScannerOpen = true } label: {
+                        Label("Skann visittkort", systemImage: "person.text.rectangle")
+                    }
+                    .accessibilityIdentifier("kart.add.business-card")
                 }
             } label: {
-                Image(systemName: "plus")
-                    .font(.appScaled(size: 13, weight: .bold))
+                Label("Legg til", systemImage: "plus")
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 34, height: 34)
-                    .background(
-                        LinearGradient(
-                            colors: [KrBrand.purple, KrBrand.purpleLight],
-                            startPoint: .leading, endPoint: .trailing
-                        ),
-                        in: RoundedRectangle(cornerRadius: 9)
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 44)
+                    .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 11))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 11)
+                            .stroke(KrBrand.stroke, lineWidth: 1)
                     )
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Legg til")
+            .accessibilityHint("Viser måter å legge inn en kjent lead på")
+            .accessibilityIdentifier("kart.add-menu")
     }
 
     /// Teller for «Filtre · N»-pillen: hver filter-dimensjon med et aktivt
@@ -2593,6 +2655,8 @@ struct KartView: View {
                                 .overlay(measureRingFor(lead))
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("kart.lead.\(lead.id)")
+                        .accessibilityLabel(lead.name)
                     }
                 }
 
@@ -2753,13 +2817,20 @@ struct KartView: View {
             //   + / − manipulerer span på currentRegion (zoom 2x/0.5x)
             //   location.fill sentrerer på "min posisjon" (mock = sentrum Oslo)
             //   square.stack.3d.up.fill bytter map-style (kommer senere)
-            VStack(spacing: 10) {
+            VStack(alignment: .trailing, spacing: 10) {
                 // Zoom-gruppe
                 VStack(spacing: 0) {
                     mapFABButton(icon: "plus", action: zoomIn)
+                        .accessibilityLabel("Zoom inn")
+                        .accessibilityIdentifier("kart.zoom-in")
                     Divider().overlay(KrBrand.stroke)
                     mapFABButton(icon: "minus", action: zoomOut)
+                        .accessibilityLabel("Zoom ut")
+                        .accessibilityIdentifier("kart.zoom-out")
                 }
+                // Divider tar ellers hele bredden til den utvidede
+                // Discovery-FAB-en og gjør zoomkontrollen til en bred blokk.
+                .frame(width: 44)
                 .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
                 .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
 
@@ -2799,27 +2870,12 @@ struct KartView: View {
                             .stroke(measureMode ? KrBrand.green.opacity(0.5) : KrBrand.stroke, lineWidth: 1)
                     )
 
-                // Drop pin: legger pin i kart-sentrum + åpner AddLeadSheet
-                // forhåndsutfylt. Erstatter long-press (MapKit-gesture-konflikt).
-                // Skjult i dørsalg — husstander skal aldri inn i CRM.
-                if !dorsalgModus {
-                    mapFABButton(icon: "mappin.and.ellipse", action: dropPinAtCenter)
-                        .accessibilityLabel("Opprett lead fra kartposisjon")
-                        .accessibilityIdentifier("kart.drop-pin")
-                        .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
-                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
-                }
-
                 // «Finn leads her» åpner en eksplisitt søkeplan for det
                 // synlige området. Provider-kandidater vurderes i en egen
                 // liste og blir ikke kartpinner; kun godkjente kandidater
                 // importeres til CRM.
                 if !dorsalgModus && appState.leadgridDiscoveryEnabled {
-                    mapFABButton(icon: "sparkle.magnifyingglass", action: openDiscoveryV2)
-                        .accessibilityLabel("Finn nye leads i kartområdet")
-                        .accessibilityHint("Åpner en søkeplan. Ingen leads opprettes før du godkjenner kandidater.")
-                        .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
-                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
+                    discoveryMapFAB
                 }
 
                 // iPhone: «Leads i området» som halv-sheet — listen bor
@@ -3202,7 +3258,7 @@ struct KartView: View {
     /// Produktkatalogen — hentes én gang per økt (demo: to demo-produkter).
     private func dorsalgLastProdukter() {
         guard dorsalgProdukter == nil else { return }
-        if DemoModeManager.isActiveNonisolated {
+        if DemoModeManager.usesGenericFixtures {
             dorsalgProdukter = KartverketService.DorsalgProductsEnvelope(
                 canManage: true, mine: [],
                 products: [
@@ -3811,6 +3867,43 @@ struct KartView: View {
         .macCatalystHover()
     }
 
+    /// Synlig Discovery-inngang. En utvidet FAB gjør hovedhandlingen
+    /// forståelig uten at brukeren må tolke et symbol eller lete i menyer.
+    private var discoveryMapFAB: some View {
+        Button(action: openDiscoveryV2) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkle.magnifyingglass")
+                    .font(.appScaled(size: 15, weight: .semibold))
+
+                Text("Hva vil du finne?")
+                    .font(.appScaled(size: 13, weight: .bold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14)
+            .frame(minHeight: 48)
+            .background(
+                LinearGradient(
+                    colors: [KrBrand.purple, KrBrand.purpleLight],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                ),
+                in: RoundedRectangle(cornerRadius: 12)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(KrBrand.purpleLight.opacity(0.55), lineWidth: 1)
+            )
+            .shadow(color: KrBrand.purple.opacity(0.35), radius: 8, y: 3)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Hva vil du finne?")
+        .accessibilityHint("Åpner Discovery for kartområdet. Ingen leads opprettes før du godkjenner kandidater.")
+        .accessibilityIdentifier("kart.discovery.open")
+        .macCatalystHover()
+    }
+
     /// Zoom inn ved å halvere span. Klampes til min-grense slik at
     /// brukeren ikke kan zoome forbi gate-nivå (~25m).
     private func zoomIn() {
@@ -3924,7 +4017,8 @@ struct KartView: View {
         if let url = URL(string: "mailto:\(email)?subject=\(subj)&body=\(bod)") {
             contactHandoffRequest = .init(
                 url: url, channel: .email, leadId: selectedLead.id,
-                leadProjectId: selectedLead.projectId)
+                leadProjectId: selectedLead.projectId,
+                purpose: .service)
         }
     }
 
@@ -3951,16 +4045,6 @@ struct KartView: View {
     private func dropPinAtCenter() {
         addLeadDraft.begin(at: currentRegion.center)
         showToast("Midlertidig pin plassert — lagre for å opprette lead")
-    }
-
-    private var discoveryV2PresentedBinding: Binding<Bool> {
-        Binding(
-            get: { appState.leadgridDiscoveryEnabled && appState.discoveryCoordinator.isPresented },
-            set: { presented in
-                if presented && appState.leadgridDiscoveryEnabled { appState.discoveryCoordinator.showWorkspace() }
-                else { appState.discoveryCoordinator.dismissWorkspace() }
-            }
-        )
     }
 
     private func openDiscoveryV2() {
@@ -4874,7 +4958,7 @@ struct KartView: View {
                                     .foregroundStyle(KrBrand.textSecondary)
                                 Text(hasAnyLeads
                                      ? "Flytt kartet, eller juster søk og filtre"
-                                     : "Bruk «+»-menyen eller skru på demo-modus")
+                                     : "Bruk «Legg til»-menyen eller skru på demo-modus")
                                     .font(.appScaled(size: 10))
                                     .foregroundStyle(KrBrand.textTertiary)
                                     .multilineTextAlignment(.center)
@@ -6382,7 +6466,7 @@ struct KartView: View {
                 // Metadata-grid 2x2 (mer kompakt) — 4-kolonne på Mac
                 LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 2, mac: 4, spacing: 12),
                           alignment: .leading, spacing: 8) {
-                    if DemoModeManager.isActiveNonisolated {
+                    if DemoModeManager.usesGenericFixtures {
                         // Demo-visningsdata — ekte bransje/ansatte/omsetning har
                         // ingen kilde i LeadModel enda.
                         metaItem(label: "Bransje",  value: "Elektro")
@@ -6624,13 +6708,13 @@ struct KartView: View {
             HStack(spacing: 10) {
                 ZStack {
                     Circle().fill(KrBrand.purple.opacity(0.25))
-                    Text("AJ")
+                    Text(DemoModeManager.isDentumTour ? "AL" : (DemoModeManager.usesGenericFixtures ? "AJ" : String(selectedLead.name.prefix(2)).uppercased()))
                         .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(KrBrand.purpleLight)
                 }
                 .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Anders Johansen")
+                    Text(DemoModeManager.isDentumTour ? "Anne Lunde" : (DemoModeManager.usesGenericFixtures ? "Anders Johansen" : selectedLead.name))
                         .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                     Text("Daglig leder")
@@ -6652,7 +6736,11 @@ struct KartView: View {
                 Text("NOTAT")
                     .font(.appScaled(size: 9, weight: .bold))
                     .foregroundStyle(KrBrand.textTertiary)
-                Text("Interessert i nytt el-anlegg til kontorbygg. Følge opp prisforslag og referanseprosjekter.")
+                Text(DemoModeManager.isDentumTour
+                     ? "Godkjent kandidat for Dentum-piloten. Tilpass første kontakt til klinikkens pasienttilbud før utsending."
+                     : (DemoModeManager.usesGenericFixtures
+                        ? "Interessert i nytt el-anlegg til kontorbygg. Følge opp prisforslag og referanseprosjekter."
+                        : "Ingen sammendragsnotat registrert."))
                     .font(.appScaled(size: 11))
                     .foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
@@ -6703,7 +6791,7 @@ struct KartView: View {
                 HStack(spacing: 8) {
                     ZStack {
                         Circle().fill(KrBrand.purple.opacity(0.25))
-                        Text("LK")
+                        Text(DemoModeManager.isDentumTour ? "DQ" : (DemoModeManager.usesGenericFixtures ? "LK" : "ME"))
                             .font(.appScaled(size: 10, weight: .bold))
                             .foregroundStyle(KrBrand.purpleLight)
                     }

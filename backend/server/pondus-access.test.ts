@@ -4,6 +4,7 @@ import { assertPondusEntitled, isPondusTemplateVisible, type PondusAccessContext
 const organizationId = "11111111-1111-4111-8111-111111111111";
 const manager: PondusAccessContext = {
   organizationId,
+  projectId: "dentum-oslo",
   organizationRole: "salgssjef",
   permissions: new Set(),
   platformAdmin: false,
@@ -26,12 +27,31 @@ describe("Pondus tenant visibility", () => {
 
   it("allows a manager to preview only the organization's own draft", async () => {
     const visible = await isPondusTemplateVisible(
-      poolWithTemplate({ org_id: organizationId, is_published: false, archived_at: null }),
+      poolWithTemplate({
+        org_id: organizationId,
+        project_id: "dentum-oslo",
+        is_published: false,
+        archived_at: null,
+      }),
       "22222222-2222-4222-8222-222222222222",
       manager,
       { includeDraftForManagers: true },
     );
     expect(visible).toBe(true);
+  });
+
+  it("never exposes another customer project's template inside the same organization", async () => {
+    const visible = await isPondusTemplateVisible(
+      poolWithTemplate({
+        org_id: organizationId,
+        project_id: "creatorhub",
+        is_published: true,
+        archived_at: null,
+      }),
+      "22222222-2222-4222-8222-222222222222",
+      manager,
+    );
+    expect(visible).toBe(false);
   });
 
   it("blocks an explicitly locked Leadbook entitlement", async () => {

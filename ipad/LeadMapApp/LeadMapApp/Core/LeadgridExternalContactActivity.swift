@@ -25,6 +25,13 @@ enum LeadgridExternalContactChannel: String, Equatable, Sendable {
     }
 }
 
+/// Only commercial outreach is compliance-gated. Operational messages about
+/// an already agreed meeting or delivery remain service communication.
+enum LeadgridExternalContactPurpose: Equatable, Sendable {
+    case marketing
+    case service
+}
+
 enum LeadgridExternalContactCopy {
     /// The external message is never sent by the offline queue. Only the
     /// user-confirmed CRM activity is awaiting synchronization.
@@ -251,6 +258,21 @@ struct LeadgridExternalContactRequest: Equatable, Sendable {
     let channel: LeadgridExternalContactChannel
     let leadId: String?
     let leadProjectId: String?
+    let purpose: LeadgridExternalContactPurpose
+
+    init(
+        url: URL,
+        channel: LeadgridExternalContactChannel,
+        leadId: String?,
+        leadProjectId: String?,
+        purpose: LeadgridExternalContactPurpose = .marketing
+    ) {
+        self.url = url
+        self.channel = channel
+        self.leadId = leadId
+        self.leadProjectId = leadProjectId
+        self.purpose = purpose
+    }
 }
 
 /// Hosts the confirmation and persistence lifecycle outside menus and context
@@ -273,7 +295,7 @@ private struct LeadgridContactHandoffModifier: ViewModifier {
             .onChange(of: request) { _, newRequest in
                 guard let newRequest else { return }
                 request = nil
-                openExternalApp(newRequest)
+                Task { await openExternalApp(newRequest) }
             }
             .onChange(of: scenePhase) { _, phase in
                 presentPendingConfirmationIfPossible(phase)
@@ -323,24 +345,61 @@ private struct LeadgridContactHandoffModifier: ViewModifier {
     }
 
     @MainActor
-    private func openExternalApp(_ contactRequest: LeadgridExternalContactRequest) {
+    private func openExternalApp(_ contactRequest: LeadgridExternalContactRequest) async {
         guard !isRecording,
               !isOpeningExternalApp,
               !confirmationPresentation.hasPendingConfirmation,
               !showingConfirmation else { return }
+        isOpeningExternalApp = true
         let scope = LeadgridExternalContactScope.resolve(
             activeOrganizationId: appState.activeOrganizationId,
             activeProjectId: appState.activeLeadgridProjectId,
             leadId: contactRequest.leadId,
             leadProjectId: contactRequest.leadProjectId)
+        var outgoingURL = contactRequest.url
+        if contactRequest.channel == .email,
+           contactRequest.purpose == .marketing {
+            guard let scope,
+                  let api = appState.api,
+                  let recipient = marketingEmailRecipient(from: contactRequest.url)
+            else {
+                isOpeningExternalApp = false
+                noticeTitle = "E-post er blokkert"
+                noticeMessage =
+                    "Leadgrid kan ikke kontrollere adressen mot riktig organisasjon og kundeprosjekt. Ingenting er åpnet eller loggført."
+                return
+            }
+            do {
+                let compliance = try await api.fetchOutreachCompliance(
+                    leadId: scope.leadId,
+                    projectId: scope.projectId,
+                    organizationId: scope.organizationId)
+                guard compliance.permitsMarketing(to: recipient) else {
+                    isOpeningExternalApp = false
+                    noticeTitle = "E-post er blokkert"
+                    noticeMessage = "\(compliance.statusTitle). \(compliance.guidance)"
+                    return
+                }
+                outgoingURL = addingMarketingFooter(
+                    to: contactRequest.url,
+                    organizationName: appState.activeOrganization?.name ?? "organisasjonen",
+                    compliance: compliance)
+                    ?? contactRequest.url
+            } catch {
+                isOpeningExternalApp = false
+                noticeTitle = "E-post er blokkert"
+                noticeMessage =
+                    "Utsendelsesgrunnlaget kunne ikke kontrolleres. Prøv igjen når Leadgrid har nettforbindelse. Ingenting er åpnet eller loggført."
+                return
+            }
+        }
         let actionId = UUID()
         attempt.begin(
             channel: contactRequest.channel,
             actionId: actionId,
             scope: scope)
         confirmationPresentation.beginHandoff()
-        isOpeningExternalApp = true
-        UIApplication.shared.open(contactRequest.url) { opened in
+        UIApplication.shared.open(outgoingURL) { opened in
             Task { @MainActor in
                 isOpeningExternalApp = false
                 if opened {
@@ -356,6 +415,46 @@ private struct LeadgridContactHandoffModifier: ViewModifier {
                 }
             }
         }
+    }
+
+    private func marketingEmailRecipient(from url: URL) -> String? {
+        guard url.scheme?.lowercased() == "mailto"
+                || url.scheme?.lowercased() == "ms-outlook"
+                || url.scheme?.lowercased() == "googlegmail"
+        else { return nil }
+        if url.scheme?.lowercased() == "mailto" {
+            let value = url.path.removingPercentEncoding ?? url.path
+            return value.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?.first(where: { $0.name.lowercased() == "to" })?
+            .value?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func addingMarketingFooter(
+        to url: URL,
+        organizationName: String,
+        compliance: LeadgridEmailCompliance
+    ) -> URL? {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        var items = components.queryItems ?? []
+        let processing = compliance.gdprProcessing
+        let privacyDetails = processing.documented
+            ? " Formål: \(processing.purpose ?? "direkte markedsføring"). Kilde: \(processing.source ?? "Leadgrids CRM-register"). Opplysningen slettes eller vurderes på nytt senest \(processing.retentionUntil.map { String($0.prefix(10)) } ?? "etter organisasjonens lagringsrutine")."
+            : ""
+        let footer = "Dette er en markedsføringshenvendelse fra \(organizationName).\(privacyDetails) Svar «nei takk» for å reservere deg mot flere markedsføringshenvendelser fra organisasjonen, eller for å be om innsyn eller sletting."
+        if let index = items.firstIndex(where: { $0.name.lowercased() == "body" }) {
+            let original = items[index].value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            items[index] = URLQueryItem(
+                name: items[index].name,
+                value: original.isEmpty ? footer : "\(original)\n\n—\n\(footer)")
+        } else {
+            items.append(URLQueryItem(name: "body", value: footer))
+        }
+        components.queryItems = items
+        return components.url
     }
 
     @MainActor
@@ -455,6 +554,7 @@ struct LeadgridContactHandoffButton<Label: View>: View {
     let channel: LeadgridExternalContactChannel
     let leadId: String?
     let leadProjectId: String?
+    let purpose: LeadgridExternalContactPurpose
     private let label: Label
 
     @State private var request: LeadgridExternalContactRequest?
@@ -464,12 +564,14 @@ struct LeadgridContactHandoffButton<Label: View>: View {
         channel: LeadgridExternalContactChannel,
         leadId: String?,
         projectId: String?,
+        purpose: LeadgridExternalContactPurpose = .marketing,
         @ViewBuilder label: () -> Label
     ) {
         self.url = url
         self.channel = channel
         self.leadId = leadId
         self.leadProjectId = projectId
+        self.purpose = purpose
         self.label = label()
     }
 
@@ -479,7 +581,8 @@ struct LeadgridContactHandoffButton<Label: View>: View {
                 url: url,
                 channel: channel,
                 leadId: leadId,
-                leadProjectId: leadProjectId)
+                leadProjectId: leadProjectId,
+                purpose: purpose)
         } label: {
             label
         }

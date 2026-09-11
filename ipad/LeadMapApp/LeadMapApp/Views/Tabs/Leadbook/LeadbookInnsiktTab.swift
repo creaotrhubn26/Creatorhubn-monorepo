@@ -44,7 +44,7 @@ struct LeadbookInnsiktView: View {
     var body: some View {
         VStack(spacing: 14) {
             insiktHeader
-            if DemoModeManager.isActiveNonisolated {
+            if DemoModeManager.usesGenericFixtures {
                 // Demo: mock-dashbordet (cast-basert), uendret.
                 maritHeroCard
                 kpiRow
@@ -127,7 +127,7 @@ struct LeadbookInnsiktView: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: toast)
         .sheet(isPresented: $showFullReport) {
             FullInsiktReportSheet(
-                innsikt: DemoModeManager.isActiveNonisolated ? nil : innsikt,
+                innsikt: DemoModeManager.usesGenericFixtures ? nil : innsikt,
                 periodLabel: period.rawValue
             )
         }
@@ -194,7 +194,7 @@ struct LeadbookInnsiktView: View {
                 // «Full rapport» + PDF-eksport (2026-08-16): ekte i begge
                 // moduser nå — demo viser eksempeldata, ekte modus krever
                 // at innsikt faktisk er lastet (samme datakrav som kortene).
-                if DemoModeManager.isActiveNonisolated || (innsikt?.totals.examples ?? 0) > 0 {
+                if DemoModeManager.usesGenericFixtures || (innsikt?.totals.examples ?? 0) > 0 {
                 Button { showFullReport = true } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "doc.text.fill").font(.appScaled(size: 11, weight: .bold))

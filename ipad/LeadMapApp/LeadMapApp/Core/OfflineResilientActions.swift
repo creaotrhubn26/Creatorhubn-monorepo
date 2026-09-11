@@ -205,6 +205,7 @@ enum OfflineResilientActions {
 
     static func makePondusUsageAction(
         organizationId: String,
+        projectId: String,
         templateId: UUID,
         payload: PondusUsagePayload,
         actionId: UUID
@@ -214,7 +215,11 @@ enum OfflineResilientActions {
         return .init(
             id: actionId,
             organizationId: organizationId,
-            endpoint: "/api/leadgrid/pondus/templates/\(templateId.uuidString.lowercased())/usage",
+            projectId: projectId,
+            endpoint: projectEndpoint(
+                "/api/leadgrid/pondus/templates/\(templateId.uuidString.lowercased())/usage",
+                projectId: projectId
+            ),
             httpMethod: "POST",
             bodyJson: try encoder.encode(payload)
         )
@@ -224,6 +229,7 @@ enum OfflineResilientActions {
     static func logPondusUsage(
         api: APIClient,
         organizationId: String,
+        projectId: String,
         templateId: UUID,
         usageSessionId: UUID,
         leadId: String?,
@@ -235,6 +241,7 @@ enum OfflineResilientActions {
         do {
             let action = try makePondusUsageAction(
                 organizationId: organizationId,
+                projectId: projectId,
                 templateId: templateId,
                 payload: .init(
                     usageSessionId: usageSessionId,

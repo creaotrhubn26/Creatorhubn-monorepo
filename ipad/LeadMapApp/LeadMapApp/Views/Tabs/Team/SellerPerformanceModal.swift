@@ -84,6 +84,7 @@ struct SellerPerformanceModal: View {
 
     // 7-dagers trend (mock)
     private var trendData: [(day: String, value: Int)] {
+        guard DemoModeManager.usesGenericFixtures else { return [] }
         let base = max(20, member.leads / 12)
         return ["Ma","Ti","On","To","Fr","Lø","Sø"].enumerated().map { (i, d) in
             let noise = [1.2, 0.9, 1.1, 1.3, 0.7, 0.5, 0.8][i % 7]
@@ -117,7 +118,11 @@ struct SellerPerformanceModal: View {
                     hero
                     periodPicker
                     statsGrid
-                    trendCard
+                    if DemoModeManager.usesGenericFixtures {
+                        trendCard
+                    } else {
+                        activityHistoryEmptyCard
+                    }
                     dealsCard
                     actionsRow
                     Color.clear.frame(height: 24)
@@ -330,6 +335,26 @@ struct SellerPerformanceModal: View {
                 }
             }
             .frame(height: 130)
+        }
+        .padding(14)
+        .background(TBrand.card, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(TBrand.stroke, lineWidth: 1))
+    }
+
+    private var activityHistoryEmptyCard: some View {
+        HStack(spacing: 11) {
+            Image(systemName: "chart.bar")
+                .font(.appScaled(size: 17, weight: .semibold))
+                .foregroundStyle(TBrand.textTertiary)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Ingen aktivitetshistorikk ennå")
+                    .font(.appScaled(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                Text("Grafen fylles når selgeren har aktivitet over flere dager.")
+                    .font(.appScaled(size: 11))
+                    .foregroundStyle(TBrand.textSecondary)
+            }
+            Spacer(minLength: 0)
         }
         .padding(14)
         .background(TBrand.card, in: RoundedRectangle(cornerRadius: 14))
@@ -607,7 +632,8 @@ struct SellerPerformanceModal: View {
     ///   leadgrid_sales_teams), så vi grupperer direkte på det.
     /// - Demo: ingen ekte team-kobling → grupper på distrikt.
     private func teamName(for m: TeamMember) -> String {
-        if DemoModeManager.isActiveNonisolated {
+        if DemoModeManager.isDentumTour { return "Dentum" }
+        if DemoModeManager.usesGenericFixtures {
             switch m.area {
             case "Oslo Vest", "Oslo Sentrum":  return "Team Oslo"
             case "Lørenskog", "Sarpsborg":     return "Team Øst"

@@ -181,11 +181,13 @@ export const leadgridStorageKeys = {
 
   canvasDocument(input: {
     organizationId: string;
+    projectId: string;
     userId: string;
     assetId: string;
   }): string {
     return assertManagedKey(
       `organizations/${uuid(input.organizationId, "organizationId")}` +
+        `/projects/${opaqueLeadgridStorageId(input.projectId)}` +
         `/users/${opaqueLeadgridStorageId(input.userId)}` +
         `/files/${uuid(input.assetId, "assetId")}/original`,
     );

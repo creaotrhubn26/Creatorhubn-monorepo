@@ -645,14 +645,14 @@ private struct SampleCardView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("LEADGRID AS")
+                    Text(DemoModeManager.isDentumTour ? "MAJORSTUEN TANNLEGESENTER" : "LEADGRID AS")
                         .font(.appScaled(size: 11, weight: .black))
                         .foregroundStyle(.purple)
                         .tracking(0.6)
-                    Text("Maria Lindholm")
+                    Text(DemoModeManager.isDentumTour ? "Anne Lunde" : "Maria Lindholm")
                         .font(.appScaled(size: 18, weight: .heavy))
                         .foregroundStyle(.black)
-                    Text("Senior Salgssjef")
+                    Text(DemoModeManager.isDentumTour ? "Daglig leder" : "Senior Salgssjef")
                         .font(.appScaled(size: 10))
                         .foregroundStyle(.gray)
                 }
@@ -661,10 +661,10 @@ private struct SampleCardView: View {
             }
             Divider()
             Group {
-                Text("maria@leadgrid.no").font(.appScaled(size: 10, weight: .semibold))
-                Text("+47 41 23 45 67").font(.appScaled(size: 10, weight: .semibold))
-                Text("www.leadgrid.no").font(.appScaled(size: 10, weight: .semibold))
-                Text("Bryggegata 14, 0250 Oslo").font(.appScaled(size: 10))
+                Text(DemoModeManager.isDentumTour ? "post@majorstuentannlegesenter.example" : "maria@leadgrid.no").font(.appScaled(size: 10, weight: .semibold))
+                Text(DemoModeManager.isDentumTour ? "+47 22 00 00 00" : "+47 41 23 45 67").font(.appScaled(size: 10, weight: .semibold))
+                Text(DemoModeManager.isDentumTour ? "majorstuentannlegesenter.example" : "www.leadgrid.no").font(.appScaled(size: 10, weight: .semibold))
+                Text(DemoModeManager.isDentumTour ? "Kirkeveien 64 A, 0364 Oslo" : "Bryggegata 14, 0250 Oslo").font(.appScaled(size: 10))
             }
             .foregroundStyle(.black.opacity(0.7))
             Spacer()

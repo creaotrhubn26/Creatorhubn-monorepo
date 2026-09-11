@@ -190,6 +190,7 @@ final class LeadgridAgentSkillTests: XCTestCase {
         let sessionId = UUID(uuidString: "cccccccc-cccc-4ccc-8ccc-cccccccccccc")!
         let action = try OfflineResilientActions.makePondusUsageAction(
             organizationId: "org-a",
+            projectId: "dentum-oslo",
             templateId: templateId,
             payload: .init(
                 usageSessionId: sessionId,
@@ -201,9 +202,10 @@ final class LeadgridAgentSkillTests: XCTestCase {
         )
         XCTAssertEqual(action.id, sessionId)
         XCTAssertEqual(action.organizationId, "org-a")
+        XCTAssertEqual(action.projectId, "dentum-oslo")
         XCTAssertEqual(
             action.endpoint,
-            "/api/leadgrid/pondus/templates/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/usage"
+            "/api/leadgrid/pondus/templates/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/usage?projectId=dentum-oslo"
         )
         let body = try XCTUnwrap(
             JSONSerialization.jsonObject(with: try XCTUnwrap(action.bodyJson)) as? [String: Any]

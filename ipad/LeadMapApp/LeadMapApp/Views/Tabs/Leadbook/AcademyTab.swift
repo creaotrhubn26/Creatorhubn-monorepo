@@ -162,7 +162,7 @@ struct AcademyTabView: View {
             sectionLabel("LEADGRID-KURS", icon: "checkmark.seal.fill", tint: LBrand.purpleLight)
             LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 1, iPad: 2, mac: 3), spacing: 12) {
                 if officialCourses.isEmpty {
-                    if DemoModeManager.isActiveNonisolated {
+                    if DemoModeManager.usesGenericFixtures {
                         AcademyCourseCard(
                             title: "Lær Leadgrid Pondus",
                             description: "Bygg autoritet, klarhet, troverdighet, trygghet og fremdrift i all utadrettet kommunikasjon.",

@@ -29,6 +29,7 @@ import { publishEvent } from "./leadgrid-workflow-engine.js";
 import { applyStageChange } from "./leadgrid-deals-service.js";
 import { LEADGRID_LOGO_BUFFER } from "./leadgrid-brand-assets.js";
 import { loadAccessibleLeadgridLead } from "./leadgrid-lead-access.js";
+import { getLeadgridEmailCompliance } from "./leadgrid-outreach-compliance.js";
 
 type SessionUser = {
   userId: string;
@@ -110,6 +111,7 @@ function proposalEmailHtml(opts: {
   validUntil: string | null;
   /** Hostet logo-URL (org-egen eller Leadgrid-lockup). Null → tekst-navn. */
   logoUrl: string | null;
+  complianceFooter: string;
 }): string {
   const esc = (s: string) =>
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -171,6 +173,7 @@ function proposalEmailHtml(opts: {
 
       <hr style="border:none;border-top:1px solid #e2e0ea;margin:26px 0 16px">
       <p style="font-size:13px;color:#6b6580;margin:0">Vennlig hilsen<br><strong style="color:#151221">${esc(opts.senderName)}</strong><br>${esc(opts.orgName)}</p>
+      <p style="font-size:11px;line-height:1.5;color:#817a93;margin:16px 0 0">${esc(opts.complianceFooter)}</p>
     </div>
   </div>
   <p style="text-align:center;color:#a29cb5;font-size:11px;margin:16px 0 0">Generert med Leadgrid</p>
@@ -442,8 +445,8 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
         return res.status(404).json({ error: "lead_ikke_funnet" });
       }
       const orgId = leadScope.organizationId;
-      const leadR = await pool.query<{ id: string; name: string; email: string | null }>(
-        `SELECT id::text, name, email
+      const leadR = await pool.query<{ id: string; name: string; email: string | null; lead_source: string | null }>(
+        `SELECT id::text, name, email, lead_source
            FROM crm_customers
           WHERE id = $1::uuid
             AND organization_id = $2::uuid
@@ -456,6 +459,19 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
       const toEmail = overrideEmail ?? (lead.email ?? "").trim();
       if (!toEmail || !toEmail.includes("@")) {
         return res.status(400).json({ error: "lead_mangler_epost", detail: "Leaden har ingen e-postadresse — legg til én, eller send `to_email` i body." });
+      }
+      const compliance = await getLeadgridEmailCompliance(pool, {
+        organizationId: orgId,
+        email: toEmail,
+      });
+      if (!compliance.allowed) {
+        return res.status(422).json({
+          error: "email_outreach_compliance_blocked",
+          reason: compliance.reason,
+          address_classification: compliance.addressClassification,
+          is_suppressed: compliance.isSuppressed,
+          detail: "Dokumenter adressetype, samtykke eller gyldig eksisterende kundeforhold før tilbudet sendes.",
+        });
       }
 
       const total = lines.reduce((sum, l) => sum + l.amount_nok, 0);
@@ -513,14 +529,26 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
       }
       const url = `${publicBackendBase()}/api/leadgrid/p/${token}`;
       const senderName = session.name || "Salgsteamet";
+      const processing = compliance.gdprProcessing;
+      const processingDetails = processing.documented
+        ? ` Formål: ${processing.purpose ?? "direkte markedsføring"}. `
+          + `Opplysningen slettes eller vurderes på nytt senest ${processing.retentionUntil?.slice(0, 10)}.`
+        : "";
+      const complianceFooter =
+        `Dette er en markedsføringshenvendelse fra ${orgName}. `
+        + `Kontaktopplysningen er registrert med kilde: ${processing.source ?? (lead.lead_source?.trim() || "Leadgrids CRM-register")}.`
+        + processingDetails + " "
+        + "Svar «nei takk» for å reservere deg mot flere markedsføringshenvendelser "
+        + "fra organisasjonen, eller for å be om innsyn eller sletting.";
       const emailResult = await sendTransactionalEmail({
         to: toEmail,
         subject: `Tilbud: ${title}`,
         html: proposalEmailHtml({
           leadName: lead.name, title, message, lines, totalNok: total,
           senderName, orgName, accent, url, validUntil, logoUrl: emailLogoUrl,
+          complianceFooter,
         }),
-        text: `${title}\n\nTilbud til ${lead.name}.\n\n${message}\n\nSum eks. mva.: ${fmtNok(total)} kr\nMva. 25 %: ${fmtNok(Math.round(total * 0.25))} kr\nTotalt inkl. mva.: ${fmtNok(total + Math.round(total * 0.25))} kr\n\nSe tilbudet: ${url}\n\nVennlig hilsen\n${senderName}\n${orgName}`,
+        text: `${title}\n\nTilbud til ${lead.name}.\n\n${message}\n\nSum eks. mva.: ${fmtNok(total)} kr\nMva. 25 %: ${fmtNok(Math.round(total * 0.25))} kr\nTotalt inkl. mva.: ${fmtNok(total + Math.round(total * 0.25))} kr\n\nSe tilbudet: ${url}\n\nVennlig hilsen\n${senderName}\n${orgName}\n\n—\n${complianceFooter}`,
         fromLabel: orgName,
         replyTo,
         kind: "leadgrid_proposal",
