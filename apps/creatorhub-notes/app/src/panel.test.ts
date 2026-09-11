@@ -10,6 +10,7 @@ const { lest, plassen, kortformen, tidligereLinjer, SETNINGER } = _test;
 
 function avsnitt(kind: string, action: string, ekstra: Partial<Paragraph> = {}): Paragraph {
   return {
+    id: 1,
     start: 0,
     end: 10,
     hash: "abc",
@@ -84,7 +85,7 @@ test("temavalget huskes over omstart", () => {
 function tidligere(forhold: string, hash: string): Tidligere {
   return {
     forhold,
-    gjelder: "abc",
+    gjelder: 1,
     kortform: "Depositum",
     sti: "2026-09-10-laane-app.md",
     tittel: "Låne-app",

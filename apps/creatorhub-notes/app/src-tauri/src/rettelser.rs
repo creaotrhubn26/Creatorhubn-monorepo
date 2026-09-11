@@ -5,9 +5,11 @@
 //! ikke bare svaret hennes, men også hva systemet svarte og hvilken tekst det
 //! gjaldt — det er det som gjør raden til noe man kan lære av senere.
 //!
-//! Nøkkelen er avsnittsteksten, ikke plasseringen. Skriver hun om avsnittet,
-//! gjelder ikke rettelsen lenger; den blir stående i basen som historikk, men
-//! merkes foreldet og fortelles én gang til brukeren.
+//! Nøkkelen er avsnittets identitet, ikke teksten. Retter hun en skrivefeil,
+//! følger rettelsen med — det er hele poenget med `avsnitt`-tabellen. Først
+//! når avsnittet er borte fra notatet gjelder ikke rettelsen lenger; den blir
+//! stående i basen som historikk, men merkes foreldet og fortelles én gang til
+//! brukeren.
 
 use rusqlite::{Connection, Result};
 use serde::{Deserialize, Serialize};
@@ -30,8 +32,11 @@ pub struct Rettelse {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Retting {
+    pub avsnitt_id: i64,
+    /// Notatet linja sto i. Ren historikk: oppslag går på `avsnitt_id`, men
+    /// blir avsnittet borte er dette det eneste som sier hvor den hørte
+    /// hjemme.
     pub sti: String,
-    pub hash: String,
     pub tekst: String,
     pub lest_type: String,
     pub lest_handling: String,
@@ -43,10 +48,10 @@ pub struct Retting {
 /// Egen tabell i den samme basen appen allerede bruker. Den hører til appen,
 /// ikke til indekseren, og lages av appen — indeksen kan fortsatt slettes og
 /// bygges opp igjen fra filene uten at rettelsene ryker.
-const SKJEMA: &str = r#"
+pub const SKJEMA: &str = r#"
 create table if not exists rettelser (
+  avsnitt_id    integer primary key,
   sti           text not null,
-  hash          text not null,
   tekst         text not null,
   lest_type     text not null,
   lest_handling text not null,
@@ -54,9 +59,9 @@ create table if not exists rettelser (
   plass         text not null,
   kortform      text not null,
   tidspunkt     integer not null,
-  foreldet      integer not null default 0,
-  primary key (sti, hash)
+  foreldet      integer not null default 0
 );
+create index if not exists rettelser_sti on rettelser(sti);
 "#;
 
 pub fn sørg_for_tabell(conn: &Connection) -> Result<()> {
@@ -70,13 +75,19 @@ pub(crate) fn nå() -> i64 {
         .unwrap_or(0)
 }
 
-/// Rettelsene som fortsatt gjelder for ett notat, slått opp på avsnittsnøkkel.
-pub fn aktive(conn: &Connection, sti: &str) -> Result<HashMap<String, Rettelse>> {
-    let mut q =
-        conn.prepare("select hash, plass, kortform from rettelser where sti = ?1 and foreldet = 0")?;
+/// Rettelsene som fortsatt gjelder for ett notat, slått opp på avsnitts-id.
+///
+/// Kilden er `avsnitt`, ikke `sti`-kolonnen i raden: flytter et avsnitt seg,
+/// er det `avsnitt.kilde` som er sant om hvor det står nå.
+pub fn aktive(conn: &Connection, sti: &str) -> Result<HashMap<i64, Rettelse>> {
+    let mut q = conn.prepare(
+        "select r.avsnitt_id, r.plass, r.kortform from rettelser r \
+         join avsnitt a on a.id = r.avsnitt_id \
+         where a.kilde = ?1 and r.foreldet = 0",
+    )?;
     let rader = q.query_map([sti], |r| {
         Ok((
-            r.get::<_, String>(0)?,
+            r.get::<_, i64>(0)?,
             Rettelse { plass: r.get(1)?, summary: r.get(2)? },
         ))
     })?;
@@ -86,21 +97,22 @@ pub fn aktive(conn: &Connection, sti: &str) -> Result<HashMap<String, Rettelse>>
 /// Lagrer rettelsen, eller fjerner den om `plass` er `None`.
 pub fn lagre(conn: &Connection, r: &Retting) -> Result<()> {
     let Some(plass) = r.plass.as_deref() else {
-        conn.execute("delete from rettelser where sti = ?1 and hash = ?2", (&r.sti, &r.hash))?;
+        conn.execute("delete from rettelser where avsnitt_id = ?1", [r.avsnitt_id])?;
         return Ok(());
     };
     conn.execute(
         "insert into rettelser \
-           (sti, hash, tekst, lest_type, lest_handling, lest_kortform, plass, kortform, tidspunkt, foreldet) \
+           (avsnitt_id, sti, tekst, lest_type, lest_handling, lest_kortform, plass, kortform, tidspunkt, foreldet) \
          values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0) \
-         on conflict(sti, hash) do update set \
+         on conflict(avsnitt_id) do update set \
+           sti = excluded.sti, tekst = excluded.tekst, \
            plass = excluded.plass, kortform = excluded.kortform, \
            lest_type = excluded.lest_type, lest_handling = excluded.lest_handling, \
            lest_kortform = excluded.lest_kortform, \
            tidspunkt = excluded.tidspunkt, foreldet = 0",
         rusqlite::params![
+            r.avsnitt_id,
             r.sti,
-            r.hash,
             r.tekst,
             r.lest_type,
             r.lest_handling,
@@ -115,19 +127,25 @@ pub fn lagre(conn: &Connection, r: &Retting) -> Result<()> {
 
 /// Merker rettelser som gjaldt avsnitt som ikke lenger finnes i notatet, og
 /// svarer med brukerens egne ord for dem — én gang. Raden blir stående.
-pub fn foreldede(conn: &Connection, sti: &str, nåværende: &HashSet<String>) -> Result<Vec<String>> {
-    let mut q = conn
-        .prepare("select hash, kortform, lest_kortform from rettelser where sti = ?1 and foreldet = 0")?;
-    let rader: Vec<(String, String, String)> = q
+///
+/// Søker på `sti`-kolonnen og ikke på `avsnitt`, fordi raden skal finnes også
+/// etter at avsnittet den pekte på er borte. Det er nettopp de radene denne
+/// funksjonen finnes for.
+pub fn foreldede(conn: &Connection, sti: &str, nåværende: &HashSet<i64>) -> Result<Vec<String>> {
+    let mut q = conn.prepare(
+        "select avsnitt_id, kortform, lest_kortform from rettelser \
+         where sti = ?1 and foreldet = 0",
+    )?;
+    let rader: Vec<(i64, String, String)> = q
         .query_map([sti], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
         .collect::<Result<_>>()?;
 
     let mut ut = Vec::new();
-    for (hash, kortform, lest_kortform) in rader {
-        if nåværende.contains(&hash) {
+    for (id, kortform, lest_kortform) in rader {
+        if nåværende.contains(&id) {
             continue;
         }
-        conn.execute("update rettelser set foreldet = 1 where sti = ?1 and hash = ?2", (sti, &hash))?;
+        conn.execute("update rettelser set foreldet = 1 where avsnitt_id = ?1", [id])?;
         // En fjernet linje har ingen kortform brukeren skrev. Da er systemets
         // egen det eneste hun kan kjenne igjen linja på.
         ut.push(if kortform.is_empty() { lest_kortform } else { kortform });
@@ -137,16 +155,17 @@ pub fn foreldede(conn: &Connection, sti: &str, nåværende: &HashSet<String>) ->
 
 /// Henger rettelsene på avsnittene. Rettelsen vinner: den er skrevet av den
 /// som faktisk vet hva avsnittet betyr.
-pub fn merge(avsnitt: &mut [crate::understand::Paragraph], rettelser: &HashMap<String, Rettelse>) {
+pub fn merge(avsnitt: &mut [crate::understand::Paragraph], rettelser: &HashMap<i64, Rettelse>) {
     for a in avsnitt.iter_mut() {
-        a.correction = rettelser.get(&a.hash).cloned();
+        a.correction = rettelser.get(&a.id).cloned();
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::understand::{self, Memo};
+    use crate::minne;
+    use crate::understand::{self, Memo, Paragraph};
 
     /// Klassifikator uten nettverk, som den falske i `understand`: alt blir
     /// det samme, slik at det bare er rettelsene som skiller linjene.
@@ -165,13 +184,35 @@ mod tests {
     fn base() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         sørg_for_tabell(&conn).unwrap();
+        minne::sørg_for_tabeller(&conn).unwrap();
         conn
     }
 
-    fn retting(hash: &str, tekst: &str, plass: Option<&str>, kortform: &str) -> Retting {
+    /// Leser notatet slik appen gjør det: identitet først, så klassifisering,
+    /// så rettelsene oppå.
+    fn les(conn: &mut Connection, sti: &str, doc: &str) -> Vec<Paragraph> {
+        let biter = understand::split(doc);
+        let tekster: Vec<String> = biter.iter().map(|b| b.text.clone()).collect();
+        let ider = minne::synk(conn, sti, &tekster).unwrap();
+        let mut memo = Memo::new();
+        let mut avsnitt = understand::understand(doc, &Fast, &mut memo).unwrap();
+        understand::sett_ider(&mut avsnitt, &biter, &ider);
+        avsnitt
+    }
+
+    fn nåværende(conn: &Connection, sti: &str) -> HashSet<i64> {
+        conn.prepare("select id from avsnitt where kilde = ?1")
+            .unwrap()
+            .query_map([sti], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_>>()
+            .unwrap()
+    }
+
+    fn retting(id: i64, tekst: &str, plass: Option<&str>, kortform: &str) -> Retting {
         Retting {
+            avsnitt_id: id,
             sti: "notat.md".into(),
-            hash: hash.into(),
             tekst: tekst.into(),
             lest_type: "beslutning".into(),
             lest_handling: "bygg".into(),
@@ -185,17 +226,14 @@ mod tests {
     /// avsnittet er lest på nytt.
     #[test]
     fn rettelse_overlever_ny_lesning_av_uendret_avsnitt() {
-        let conn = base();
+        let mut conn = base();
         let doc = "Kanskje vi burde ha depositum.\n";
-        let mut memo = Memo::new();
 
-        let første = understand::understand(doc, &Fast, &mut memo).unwrap();
-        let hash = første[0].hash.clone();
-        lagre(&conn, &retting(&hash, &første[0].text, Some("uavklart"), "Depositum")).unwrap();
+        let første = les(&mut conn, "notat.md", doc);
+        lagre(&conn, &retting(første[0].id, &første[0].text, Some("uavklart"), "Depositum")).unwrap();
 
         // Ny lesning, samme tekst — hukommelsen tømt, alt klassifisert på nytt.
-        let mut memo = Memo::new();
-        let mut igjen = understand::understand(doc, &Fast, &mut memo).unwrap();
+        let mut igjen = les(&mut conn, "notat.md", doc);
         assert_eq!(igjen[0].summary, "Systemets kortform");
         merge(&mut igjen, &aktive(&conn, "notat.md").unwrap());
         assert_eq!(
@@ -205,36 +243,68 @@ mod tests {
         );
     }
 
+    /// Selve poenget med avsnittsidentitet. Hun retter linja i panelet, og så
+    /// retter hun en skrivefeil i avsnittet. Før overlevde ikke rettelsen det,
+    /// fordi teksten *var* identiteten.
+    #[test]
+    fn rettelse_overlever_at_en_skrivefeil_rettes() {
+        let mut conn = base();
+        let før = "Kartvisningen skal vise alle prosjekter på et norgeskart, med filter på fylke.\n";
+        let etter =
+            "Kartvisningen skal vise alle prosjekter på et norgeskart, med filter på fylker.\n";
+
+        let første = les(&mut conn, "notat.md", før);
+        lagre(
+            &conn,
+            &retting(første[0].id, &første[0].text, Some("uavklart"), "Kartvisning, ikke avgjort"),
+        )
+        .unwrap();
+
+        let mut rettet = les(&mut conn, "notat.md", etter);
+        assert_eq!(rettet[0].id, første[0].id, "en skrivefeil gjør det ikke til et nytt avsnitt");
+        assert_ne!(rettet[0].hash, første[0].hash, "men teksten er en annen");
+
+        merge(&mut rettet, &aktive(&conn, "notat.md").unwrap());
+        assert_eq!(
+            rettet[0].correction,
+            Some(Rettelse {
+                plass: "uavklart".into(),
+                summary: "Kartvisning, ikke avgjort".into()
+            }),
+            "rettelsen hennes skal fortsatt stå"
+        );
+        assert!(
+            foreldede(&conn, "notat.md", &nåværende(&conn, "notat.md")).unwrap().is_empty(),
+            "og hun skal ikke få beskjed om at den ble borte"
+        );
+    }
+
     #[test]
     fn endret_avsnittstekst_gjør_rettelsen_ugyldig_og_sier_ifra() {
-        let conn = base();
-        let mut memo = Memo::new();
-        let før =
-            understand::understand("Kanskje vi burde ha depositum.\n", &Fast, &mut memo).unwrap();
-        lagre(&conn, &retting(&før[0].hash, &før[0].text, Some("uavklart"), "Depositum")).unwrap();
+        let mut conn = base();
+        let før = les(&mut conn, "notat.md", "Kanskje vi burde ha depositum.\n");
+        lagre(&conn, &retting(før[0].id, &før[0].text, Some("uavklart"), "Depositum")).unwrap();
 
-        let mut etter =
-            understand::understand("Vi dropper depositum likevel.\n", &Fast, &mut memo).unwrap();
-        let nåværende: HashSet<String> = etter.iter().map(|a| a.hash.clone()).collect();
+        let mut etter = les(&mut conn, "notat.md", "Alle bilder skal leveres i full oppløsning.\n");
+        assert_ne!(etter[0].id, før[0].id, "en helt annen tanke er et nytt avsnitt");
 
-        let sagt = foreldede(&conn, "notat.md", &nåværende).unwrap();
+        let nå = nåværende(&conn, "notat.md");
+        let sagt = foreldede(&conn, "notat.md", &nå).unwrap();
         assert_eq!(sagt, vec!["Depositum".to_string()], "brukeren skal få vite det");
 
         merge(&mut etter, &aktive(&conn, "notat.md").unwrap());
-        assert_eq!(etter[0].correction, None, "rettelsen gjaldt en annen tekst");
-        assert!(foreldede(&conn, "notat.md", &nåværende).unwrap().is_empty(), "og bare én gang");
+        assert_eq!(etter[0].correction, None, "rettelsen gjaldt et annet avsnitt");
+        assert!(foreldede(&conn, "notat.md", &nå).unwrap().is_empty(), "og bare én gang");
     }
 
     #[test]
     fn fjernet_linje_kommer_ikke_tilbake_for_samme_tekst() {
-        let conn = base();
+        let mut conn = base();
         let doc = "Husk å spørre Kari om fakturaen.\n";
-        let mut memo = Memo::new();
-        let ut = understand::understand(doc, &Fast, &mut memo).unwrap();
-        lagre(&conn, &retting(&ut[0].hash, &ut[0].text, Some(FJERNET), "")).unwrap();
+        let ut = les(&mut conn, "notat.md", doc);
+        lagre(&conn, &retting(ut[0].id, &ut[0].text, Some(FJERNET), "")).unwrap();
 
-        let mut memo = Memo::new();
-        let mut igjen = understand::understand(doc, &Fast, &mut memo).unwrap();
+        let mut igjen = les(&mut conn, "notat.md", doc);
         merge(&mut igjen, &aktive(&conn, "notat.md").unwrap());
         assert_eq!(igjen[0].correction.as_ref().unwrap().plass, FJERNET);
     }
@@ -243,18 +313,18 @@ mod tests {
     /// fjerne raden — og da er linja tilbake til det systemet leste.
     #[test]
     fn angre_gjenoppretter_både_fjernet_og_endret_linje() {
-        let conn = base();
-        let hash = understand::nøkkel("En tanke.");
+        let mut conn = base();
+        let id = les(&mut conn, "notat.md", "En tanke som står her.\n")[0].id;
 
-        lagre(&conn, &retting(&hash, "En tanke.", Some(FJERNET), "")).unwrap();
-        lagre(&conn, &retting(&hash, "En tanke.", None, "")).unwrap();
+        lagre(&conn, &retting(id, "En tanke som står her.", Some(FJERNET), "")).unwrap();
+        lagre(&conn, &retting(id, "En tanke som står her.", None, "")).unwrap();
         assert!(aktive(&conn, "notat.md").unwrap().is_empty(), "angre en sletting");
 
-        lagre(&conn, &retting(&hash, "En tanke.", Some("idé"), "Første")).unwrap();
-        lagre(&conn, &retting(&hash, "En tanke.", Some("uavklart"), "Andre")).unwrap();
-        lagre(&conn, &retting(&hash, "En tanke.", Some("idé"), "Første")).unwrap();
+        lagre(&conn, &retting(id, "En tanke som står her.", Some("idé"), "Første")).unwrap();
+        lagre(&conn, &retting(id, "En tanke som står her.", Some("uavklart"), "Andre")).unwrap();
+        lagre(&conn, &retting(id, "En tanke som står her.", Some("idé"), "Første")).unwrap();
         assert_eq!(
-            aktive(&conn, "notat.md").unwrap().get(&hash).unwrap().summary,
+            aktive(&conn, "notat.md").unwrap().get(&id).unwrap().summary,
             "Første",
             "angre en endring"
         );
@@ -263,15 +333,12 @@ mod tests {
     /// Poenget med å lagre dem: raden skal kunne leses som treningsdata.
     #[test]
     fn raden_holder_både_teksten_systemets_svar_og_brukerens() {
-        let conn = base();
-        let hash = understand::nøkkel("Kanskje vi burde ha depositum.");
-        lagre(
-            &conn,
-            &retting(&hash, "Kanskje vi burde ha depositum.", Some("uavklart"), "Depositum"),
-        )
-        .unwrap();
+        let mut conn = base();
+        let tekst = "Kanskje vi burde ha depositum.";
+        let id = les(&mut conn, "notat.md", tekst)[0].id;
+        lagre(&conn, &retting(id, tekst, Some("uavklart"), "Depositum")).unwrap();
 
-        let (tekst, lest, handling, lest_kort, plass, kort, tid): (
+        let (tekst_ut, lest, handling, lest_kort, plass, kort, tid): (
             String,
             String,
             String,
@@ -297,7 +364,7 @@ mod tests {
                 },
             )
             .unwrap();
-        assert_eq!(tekst, "Kanskje vi burde ha depositum.");
+        assert_eq!(tekst_ut, tekst);
         assert_eq!((lest.as_str(), handling.as_str()), ("beslutning", "bygg"));
         assert_eq!(lest_kort, "Systemets kortform");
         assert_eq!((plass.as_str(), kort.as_str()), ("uavklart", "Depositum"));

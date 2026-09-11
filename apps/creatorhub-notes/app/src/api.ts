@@ -27,7 +27,11 @@ export type Rettelse = { plass: string; summary: string };
 export type Paragraph = {
   start: number;
   end: number;
-  /** Avsnittsteksten som nøkkel. En rettelse henger på denne. */
+  /** Avsnittets identitet. Den tildeles én gang og overlever at teksten
+   *  redigeres, så en rettelse som henger på den blir stående. */
+  id: number;
+  /** Hashen av avsnittsteksten. Ikke identitet — den finner avsnittet igjen i
+   *  fila, og svarer på om teksten er klassifisert før. */
   hash: string;
   text: string;
   summary: string;
@@ -45,7 +49,7 @@ export type Paragraph = {
  *  i notatet som står åpent, `hash` er avsnittet i det andre notatet. */
 export type Tidligere = {
   forhold: string;
-  gjelder: string;
+  gjelder: number;
   kortform: string;
   sti: string;
   tittel: string;
@@ -68,8 +72,8 @@ export const understandNote = (path: string, content: string) =>
 /** `plass: null` tar rettelsen bort igjen — det angre gjør når det ikke var
  *  noen rettelse fra før. */
 export type Retting = {
+  avsnittId: number;
   sti: string;
-  hash: string;
   tekst: string;
   lestType: string;
   lestHandling: string;

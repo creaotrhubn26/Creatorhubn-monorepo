@@ -4,6 +4,7 @@
 //! kaller indekseren som bibliotek. Ingen binær startes, ingen nettverkskall
 //! gjøres: alt her er disk, git og SQLite.
 
+mod migrering;
 mod minne;
 mod rettelser;
 mod understand;
@@ -345,7 +346,17 @@ fn search_notes(query: String) -> Result<Vec<SearchHit>, String> {
 /// gjorde, i stedet for å betale for det på nytt.
 #[tauri::command]
 fn understand_note(content: String, path: String) -> Result<understand::Understanding, String> {
-    let base = base().ok();
+    let mut base = base().ok();
+    let biter = understand::split(&content);
+
+    // Identiteten først: hvert avsnitt får id-en sin, og et avsnitt som bare
+    // har fått rettet en skrivefeil beholder den id-en det hadde. Det er dette
+    // rettelser og relasjoner henger på, og det skjer uavhengig av om
+    // klassifiseringen lykkes.
+    let ider: Option<Vec<i64>> = base.as_mut().and_then(|conn| {
+        let tekster: Vec<String> = biter.iter().map(|c| c.text.clone()).collect();
+        minne::synk(conn, &path, &tekster).ok()
+    });
 
     // Alt som er forstått før hentes inn før klassifiseringen. Det er dette
     // som gjør at et notat fra i går ikke koster et eneste kall i dag.
@@ -355,10 +366,7 @@ fn understand_note(content: String, path: String) -> Result<understand::Understa
         .and_then(|c| minne::eksempler(c, minne::ANTALL_EKSEMPLER).ok())
         .unwrap_or_default();
     if let Some(conn) = &base {
-        let hasher: Vec<String> = understand::split(&content)
-            .iter()
-            .map(|c| understand::nøkkel(&c.text))
-            .collect();
+        let hasher: Vec<String> = biter.iter().map(|c| understand::nøkkel(&c.text)).collect();
         if let Ok(kjente) = minne::kjente(conn, &hasher) {
             for (nøkkel, label) in kjente {
                 memo.entry(nøkkel).or_insert(label);
@@ -370,6 +378,7 @@ fn understand_note(content: String, path: String) -> Result<understand::Understa
     let Ok(mut avsnitt) = understand::understand(&content, &cli, &mut memo) else {
         return Ok(understand::Understanding::off());
     };
+    understand::sett_ider(&mut avsnitt, &biter, ider.as_deref().unwrap_or(&[]));
     // Hukommelsen holdes låst hele veien. Det serialiserer to lagringer som
     // kommer tett — som er det man vil: den andre finner arbeidet den første
     // gjorde, i stedet for å betale for det på nytt.
@@ -381,17 +390,20 @@ fn understand_note(content: String, path: String) -> Result<understand::Understa
     let mut tidligere = Vec::new();
     if let Some(conn) = &base {
         let tittel = derive_title(&path, &content);
-        let _ = minne::lagre(conn, &path, &tittel, &avsnitt);
+        let _ = minne::lagre(conn, &tittel, &avsnitt);
         tidligere = minne::tidligere(conn, &avsnitt, &cli).unwrap_or_default();
 
         // Avsnittene i teksten, ikke linjene i panelet: en linje kan mangle
         // fordi klassifiseringen ikke fikk lest den, og da er rettelsen
         // fortsatt god — teksten står jo der.
-        let nåværende = understand::split(&content)
-            .iter()
-            .map(|c| understand::nøkkel(&c.text))
-            .collect();
-        lest_på_nytt = rettelser::foreldede(conn, &path, &nåværende).unwrap_or_default();
+        //
+        // Bare når identiteten faktisk ble satt. Feilet den, vet vi ikke hvilke
+        // avsnitt som finnes, og å foreldde alle rettelsene på en gjetning er
+        // den ene feilen som koster brukeren noe hun ikke kan skrive om igjen.
+        if let Some(ider) = &ider {
+            let nåværende = ider.iter().copied().collect();
+            lest_på_nytt = rettelser::foreldede(conn, &path, &nåværende).unwrap_or_default();
+        }
         if let Ok(mine) = rettelser::aktive(conn, &path) {
             rettelser::merge(&mut avsnitt, &mine);
         }
@@ -422,8 +434,15 @@ fn finn_avsnitt(path: String, hash: String) -> Result<Option<[usize; 2]>, String
 }
 
 /// Basen appen allerede bruker, med app-tabellene på plass.
+///
+/// Migreringen kjører først og gjør ingenting når skjemaet alt er nytt. Den må
+/// stå foran `sørg_for_*`, som bare lager tabeller som mangler og derfor ville
+/// latt et gammelt skjema stå urørt.
 fn base() -> Result<rusqlite::Connection, String> {
-    let conn = db::open(&db_path()?).map_err(|e| format!("fikk ikke åpnet notatbasen: {e}"))?;
+    let sti = db_path()?;
+    let mut conn = db::open(&sti).map_err(|e| format!("fikk ikke åpnet notatbasen: {e}"))?;
+    migrering::kjør(&mut conn, Some(&sti))
+        .map_err(|e| format!("fikk ikke migrert notatbasen: {e}"))?;
     rettelser::sørg_for_tabell(&conn).map_err(|e| format!("fikk ikke åpnet notatbasen: {e}"))?;
     minne::sørg_for_tabeller(&conn).map_err(|e| format!("fikk ikke åpnet notatbasen: {e}"))?;
     Ok(conn)
@@ -556,16 +575,17 @@ mod tests {
     fn rettelsestabellen_lever_side_om_side_med_indeksen() {
         let tmp = tempfile::tempdir().unwrap();
         let db_file = tmp.path().join("notater.db");
-        let conn = db::open(&db_file).unwrap();
+        let mut conn = db::open(&db_file).unwrap();
         rettelser::sørg_for_tabell(&conn).unwrap();
         rettelser::sørg_for_tabell(&conn).unwrap();
+        minne::sørg_for_tabeller(&conn).unwrap();
 
-        let hash = understand::nøkkel("En tanke.");
+        let id = minne::synk(&mut conn, "notat.md", &["En tanke.".to_string()]).unwrap()[0];
         rettelser::lagre(
             &conn,
             &rettelser::Retting {
+                avsnitt_id: id,
                 sti: "notat.md".into(),
-                hash: hash.clone(),
                 tekst: "En tanke.".into(),
                 lest_type: "beslutning".into(),
                 lest_handling: "bygg".into(),
@@ -576,7 +596,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            rettelser::aktive(&conn, "notat.md").unwrap().get(&hash).unwrap().summary,
+            rettelser::aktive(&conn, "notat.md").unwrap().get(&id).unwrap().summary,
             "Noe annet"
         );
     }
@@ -584,8 +604,8 @@ mod tests {
     #[test]
     fn en_plass_panelet_ikke_har_avvises() {
         let ugyldig = rettelser::Retting {
+            avsnitt_id: 1,
             sti: "notat.md".into(),
-            hash: "0".into(),
             tekst: "En tanke.".into(),
             lest_type: "beslutning".into(),
             lest_handling: "bygg".into(),
@@ -604,25 +624,27 @@ mod tests {
     fn forståelsen_ligger_i_samme_fil_og_overlever_at_den_lukkes() {
         let tmp = tempfile::tempdir().unwrap();
         let db_file = tmp.path().join("notater.db");
-
-        let avsnitt = vec![understand::Paragraph {
-            start: 0,
-            end: 0,
-            hash: understand::nøkkel("Kanskje vi burde ha depositum."),
-            text: "Kanskje vi burde ha depositum.".into(),
-            summary: "Depositum".into(),
-            kind: "tvil".into(),
-            action: "marker_åpent".into(),
-            dependency: None,
-            correction: None,
-        }];
+        let tekst = "Kanskje vi burde ha depositum.";
 
         {
-            let conn = db::open(&db_file).unwrap();
+            let mut conn = db::open(&db_file).unwrap();
             rettelser::sørg_for_tabell(&conn).unwrap();
             minne::sørg_for_tabeller(&conn).unwrap();
             minne::sørg_for_tabeller(&conn).unwrap();
-            minne::lagre(&conn, "notat.md", "Låne-app", &avsnitt).unwrap();
+            let id = minne::synk(&mut conn, "notat.md", &[tekst.to_string()]).unwrap()[0];
+            let avsnitt = vec![understand::Paragraph {
+                id,
+                start: 0,
+                end: 0,
+                hash: understand::nøkkel(tekst),
+                text: tekst.into(),
+                summary: "Depositum".into(),
+                kind: "tvil".into(),
+                action: "marker_åpent".into(),
+                dependency: None,
+                correction: None,
+            }];
+            minne::lagre(&conn, "Låne-app", &avsnitt).unwrap();
         }
 
         // Ny prosess, samme fil.
@@ -630,15 +652,13 @@ mod tests {
         rettelser::sørg_for_tabell(&conn).unwrap();
         minne::sørg_for_tabeller(&conn).unwrap();
 
-        let hasher: Vec<String> = avsnitt.iter().map(|a| a.hash.clone()).collect();
-        let kjente = minne::kjente(&conn, &hasher).unwrap();
+        let kjente = minne::kjente(&conn, &[understand::nøkkel(tekst)]).unwrap();
         assert_eq!(kjente.len(), 1, "det som er lest før skal fortsatt være lest");
         assert_eq!(kjente.values().next().unwrap().summary, "Depositum");
 
         // Og ordsøket over kortformene virker på fila, side om side med
         // indeksens egen `chunk_fts`.
-        let treff =
-            minne::kandidater(&conn, "Depositum tar vi likevel.", "annen", 5).unwrap();
+        let treff = minne::kandidater(&conn, "Depositum tar vi likevel.", 0, 5).unwrap();
         assert_eq!(treff.len(), 1);
         assert_eq!(treff[0].tittel, "Låne-app");
 

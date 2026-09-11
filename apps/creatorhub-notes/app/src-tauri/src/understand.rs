@@ -101,13 +101,21 @@ const ACTIONS: [&str; 4] = ["bygg", "hold", "marker_åpent", "ingenting"];
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Paragraph {
+    /// Avsnittets identitet: raden i `avsnitt`. Den tildeles én gang og
+    /// gjenfinnes ved likhet, så den overlever at brukeren retter en
+    /// skrivefeil. Det er den rettelser og relasjoner henger på.
+    ///
+    /// `0` betyr at basen ikke var tilgjengelig da notatet ble lest. Da lagres
+    /// ingenting for avsnittet — panelet virker, men uten minne.
+    pub id: i64,
     /// Posisjon i dokumentet, talt i UTF-16-enheter — det er slik JavaScript
     /// og CodeMirror teller. Byte-posisjoner ville bommet med ett tegn per
     /// æ, ø og å, og panelet ville markert feil sted.
     pub start: usize,
     pub end: usize,
-    /// Avsnittsteksten som nøkkel. Det er den rettelser henger på, og den er
-    /// stabil så lenge teksten er det — endres avsnittet, er det en ny linje.
+    /// Hashen av avsnittsteksten. Ikke identitet lenger, men fortsatt to ekte
+    /// jobber: oppslag i hukommelsen («har jeg klassifisert denne teksten
+    /// før»), og å finne avsnittet igjen i notatfila.
     pub hash: String,
     /// Avsnittet slik det står. Panelet viser det ikke, men en rettelse
     /// lagres sammen med teksten den gjaldt.
@@ -355,6 +363,7 @@ pub fn understand(
         .filter_map(|(chunk, key)| {
             let label = memo.get(key)?;
             Some(Paragraph {
+                id: 0,
                 start: chunk.start,
                 end: chunk.end,
                 hash: nøkkel(&chunk.text),
@@ -367,6 +376,23 @@ pub fn understand(
             })
         })
         .collect())
+}
+
+/// Kobler avsnittene til id-ene kilden har gitt dem. `chunks` og `ider` er
+/// parvise, og avsnittene er en delmengde av `chunks` — et avsnitt uten merke
+/// faller ut av lesningen, men står fortsatt i dokumentet.
+///
+/// Posisjonen er nøkkelen fordi to avsnitt kan ha nøyaktig samme tekst, men
+/// aldri samme plass.
+pub fn sett_ider(avsnitt: &mut [Paragraph], chunks: &[Chunk], ider: &[i64]) {
+    let plass: HashMap<(usize, usize), i64> = chunks
+        .iter()
+        .zip(ider)
+        .map(|(c, id)| ((c.start, c.end), *id))
+        .collect();
+    for a in avsnitt.iter_mut() {
+        a.id = plass.get(&(a.start, a.end)).copied().unwrap_or(0);
+    }
 }
 
 // ---- kommandolinja -----------------------------------------------------

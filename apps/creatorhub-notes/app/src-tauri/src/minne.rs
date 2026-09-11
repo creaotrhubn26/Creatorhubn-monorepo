@@ -18,6 +18,7 @@
 
 use crate::rettelser::nå;
 use crate::understand::{Chunk, Label, Memo, Paragraph};
+use creatorhub_notes_indexer::identitet::{match_avsnitt, Kjent, Match, Ny};
 use rusqlite::{Connection, Result};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
@@ -29,50 +30,68 @@ use std::collections::{HashMap, HashSet};
 /// FTS5 lagrer bare tokenindeksen, og triggerne under er det som holder den i
 /// takt. `remove_diacritics 0` av samme grunn som der — æøå skal ikke foldes
 /// bort.
-const SKJEMA: &str = r#"
-create table if not exists forstatt (
-  sti       text not null,
-  hash      text not null,
-  tittel    text not null,
-  tekst     text not null,
-  type      text not null,
-  handling  text not null,
-  kortform  text not null,
-  venter    text not null default '',
-  tidspunkt integer not null,
-  primary key (sti, hash)
+///
+/// **Identiteten er raden, ikke teksten.** `avsnitt.id` er det `forstatt`,
+/// `rettelser` og `relasjoner` peker på. `innhold_hash` beholder sin ekte
+/// jobb — «har jeg klassifisert denne teksten før» — og er derfor indeksert,
+/// ikke nøkkel. `autoincrement` er ikke pynt: uten den gjenbruker SQLite
+/// rowid-er, og en rettelse som hang igjen på en slettet id ville plutselig
+/// festet seg på et fremmed avsnitt.
+pub const SKJEMA: &str = r#"
+create table if not exists avsnitt (
+  id           integer primary key autoincrement,
+  kilde        text not null,
+  rekkefolge   integer not null,
+  avsender     text,
+  innhold_hash text not null,
+  tekst        text not null,
+  unique(kilde, rekkefolge)
 );
-create index if not exists forstatt_hash on forstatt(hash);
+create index if not exists avsnitt_hash on avsnitt(innhold_hash);
+create index if not exists avsnitt_kilde on avsnitt(kilde);
+
+create table if not exists forstatt (
+  avsnitt_id integer primary key,
+  tittel     text not null,
+  tekst      text not null,
+  type       text not null,
+  handling   text not null,
+  kortform   text not null,
+  venter     text not null default '',
+  tidspunkt  integer not null
+);
 
 create virtual table if not exists forstatt_fts using fts5(
   kortform,
   tekst,
   content='forstatt',
-  content_rowid='rowid',
+  content_rowid='avsnitt_id',
   tokenize='unicode61 remove_diacritics 0'
 );
 
 create trigger if not exists forstatt_ai after insert on forstatt begin
-  insert into forstatt_fts(rowid, kortform, tekst) values (new.rowid, new.kortform, new.tekst);
+  insert into forstatt_fts(rowid, kortform, tekst)
+    values (new.avsnitt_id, new.kortform, new.tekst);
 end;
 
 create trigger if not exists forstatt_ad after delete on forstatt begin
   insert into forstatt_fts(forstatt_fts, rowid, kortform, tekst)
-    values ('delete', old.rowid, old.kortform, old.tekst);
+    values ('delete', old.avsnitt_id, old.kortform, old.tekst);
 end;
 
 create trigger if not exists forstatt_au after update on forstatt begin
   insert into forstatt_fts(forstatt_fts, rowid, kortform, tekst)
-    values ('delete', old.rowid, old.kortform, old.tekst);
-  insert into forstatt_fts(rowid, kortform, tekst) values (new.rowid, new.kortform, new.tekst);
+    values ('delete', old.avsnitt_id, old.kortform, old.tekst);
+  insert into forstatt_fts(rowid, kortform, tekst)
+    values (new.avsnitt_id, new.kortform, new.tekst);
 end;
 
 create table if not exists relasjoner (
-  hash       text not null,
-  annen_hash text not null,
+  avsnitt_id integer not null,
+  annen_id   integer not null,
   forhold    text not null,
   tidspunkt  integer not null,
-  primary key (hash, annen_hash)
+  primary key (avsnitt_id, annen_id)
 );
 "#;
 
@@ -80,10 +99,105 @@ pub fn sørg_for_tabeller(conn: &Connection) -> Result<()> {
     conn.execute_batch(SKJEMA)
 }
 
+// ---- avsnittsidentitet --------------------------------------------------
+
+/// Gir kilden sine avsnitt, og svarer med id-en hvert av dem skal ha — i samme
+/// rekkefølge som `tekster`.
+///
+/// Uendret tekst treffer eksakt, en rettet skrivefeil treffer på likhet og
+/// beholder id-en, og bare det som ikke ligner på noe fra før får en ny. Det
+/// er dette som gjør at brukerens rettelse overlever at hun retter en
+/// skrivefeil i avsnittet den hang på.
+///
+/// Alt skjer i én transaksjon: radene for kilden slettes og settes inn igjen
+/// med de samme id-ene. Det er enklere enn å flytte `rekkefolge` rundt uten å
+/// bryte `unique(kilde, rekkefolge)` underveis, og `autoincrement` gjør at en
+/// id som forsvinner aldri dukker opp igjen på noe annet.
+pub fn synk(conn: &mut Connection, kilde: &str, tekster: &[String]) -> Result<Vec<i64>> {
+    let kjente: Vec<Kjent> = conn
+        .prepare("select id, rekkefolge, tekst from avsnitt where kilde = ?1 order by rekkefolge")?
+        .query_map([kilde], |r| {
+            Ok(Kjent {
+                id: r.get(0)?,
+                rekkefolge: r.get::<_, i64>(1)? as usize,
+                tekst: r.get(2)?,
+            })
+        })?
+        .collect::<Result<_>>()?;
+
+    let nye: Vec<Ny> = tekster
+        .iter()
+        .enumerate()
+        .map(|(i, t)| Ny { rekkefolge: i, tekst: t.clone() })
+        .collect();
+    let treff = match_avsnitt(&kjente, &nye);
+
+    let beholdt: HashSet<i64> = treff
+        .iter()
+        .filter_map(|m| match m {
+            Match::Samme(id) | Match::Endret(id) => Some(*id),
+            Match::Nytt => None,
+        })
+        .collect();
+
+    let tx = conn.transaction()?;
+    tx.execute("delete from avsnitt where kilde = ?1", [kilde])?;
+
+    let mut ut = Vec::with_capacity(nye.len());
+    for (i, (ny, m)) in nye.iter().zip(&treff).enumerate() {
+        let hash = crate::understand::nøkkel(&ny.tekst);
+        let id = match m {
+            Match::Samme(id) | Match::Endret(id) => {
+                tx.execute(
+                    "insert into avsnitt (id, kilde, rekkefolge, innhold_hash, tekst) \
+                     values (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![id, kilde, i as i64, hash, ny.tekst],
+                )?;
+                // Teksten i `forstatt` er kopien `forstatt_fts` indekserer.
+                // Uten denne ville ordsøket lett i teksten slik den var før
+                // rettelsen.
+                if matches!(m, Match::Endret(_)) {
+                    tx.execute(
+                        "update forstatt set tekst = ?2 where avsnitt_id = ?1",
+                        rusqlite::params![id, ny.tekst],
+                    )?;
+                }
+                *id
+            }
+            Match::Nytt => {
+                tx.execute(
+                    "insert into avsnitt (kilde, rekkefolge, innhold_hash, tekst) \
+                     values (?1, ?2, ?3, ?4)",
+                    rusqlite::params![kilde, i as i64, hash, ny.tekst],
+                )?;
+                tx.last_insert_rowid()
+            }
+        };
+        ut.push(id);
+    }
+
+    // Avsnitt som ikke står i kilden lenger: forståelsen og relasjonene deres
+    // er utledet og ryddes bort. Rettelsen er brukerens egen og blir stående —
+    // `rettelser::foreldede` merker den, og teksten hennes ligger i raden.
+    for k in &kjente {
+        if beholdt.contains(&k.id) {
+            continue;
+        }
+        tx.execute("delete from forstatt where avsnitt_id = ?1", [k.id])?;
+        tx.execute(
+            "delete from relasjoner where avsnitt_id = ?1 or annen_id = ?1",
+            [k.id],
+        )?;
+    }
+    tx.commit()?;
+    Ok(ut)
+}
+
 // ---- forståelsen som overlever -----------------------------------------
 
-/// Det som er klassifisert før, slått opp på avsnittsnøkkel. Nøkkelen er
-/// teksten, ikke notatet, så det samme avsnittet i to notater er én
+/// Det som er klassifisert før, slått opp på innholdshash. Dette er den ene
+/// jobben hashen fortsatt har: «har jeg klassifisert denne teksten før». Det
+/// samme avsnittet i to notater er to avsnitt med hver sin id, men bare én
 /// klassifisering — nøyaktig som hukommelsen i prosessen.
 pub fn kjente(conn: &Connection, hasher: &[String]) -> Result<Memo> {
     if hasher.is_empty() {
@@ -91,7 +205,9 @@ pub fn kjente(conn: &Connection, hasher: &[String]) -> Result<Memo> {
     }
     let plasser = vec!["?"; hasher.len()].join(",");
     let mut q = conn.prepare(&format!(
-        "select hash, type, handling, kortform, venter from forstatt where hash in ({plasser})"
+        "select a.innhold_hash, f.type, f.handling, f.kortform, f.venter \
+         from forstatt f join avsnitt a on a.id = f.avsnitt_id \
+         where a.innhold_hash in ({plasser})"
     ))?;
     let rader = q.query_map(rusqlite::params_from_iter(hasher), |r| {
         let hash: String = r.get(0)?;
@@ -117,24 +233,30 @@ pub fn kjente(conn: &Connection, hasher: &[String]) -> Result<Memo> {
     Ok(ut)
 }
 
-/// Lagrer notatets avsnitt, og rydder bort rader for avsnitt som ikke står i
-/// notatet lenger.
+/// Lagrer det notatets avsnitt er forstått som. Å rydde bort avsnitt som ikke
+/// står i notatet lenger er [`synk`] sin jobb — den vet hvilke id-er som ble
+/// borte, og denne vet bare hva de som står der betyr.
 ///
 /// `tidspunkt` settes bare første gang. Det er datoen linja sier: «du bestemte
 /// det samme 3. september» skal peke på dagen tanken kom, ikke på sist noen
-/// lagret notatet.
-pub fn lagre(conn: &Connection, sti: &str, tittel: &str, avsnitt: &[Paragraph]) -> Result<()> {
-    for a in avsnitt {
+/// lagret notatet. Med identitet som overlever redigering peker den nå på den
+/// dagen også etter at hun har rettet en skrivefeil i avsnittet.
+///
+/// Avsnitt uten id hoppes over. Det betyr at basen ikke var tilgjengelig da
+/// notatet ble lest, og da er det riktigere å lagre ingenting enn å lagre alt
+/// under den samme nullen.
+pub fn lagre(conn: &Connection, tittel: &str, avsnitt: &[Paragraph]) -> Result<()> {
+    for a in avsnitt.iter().filter(|a| a.id > 0) {
         conn.execute(
             "insert into forstatt \
-               (sti, hash, tittel, tekst, type, handling, kortform, venter, tidspunkt) \
-             values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) \
-             on conflict(sti, hash) do update set \
-               tittel = excluded.tittel, type = excluded.type, handling = excluded.handling, \
-               kortform = excluded.kortform, venter = excluded.venter",
+               (avsnitt_id, tittel, tekst, type, handling, kortform, venter, tidspunkt) \
+             values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
+             on conflict(avsnitt_id) do update set \
+               tittel = excluded.tittel, tekst = excluded.tekst, type = excluded.type, \
+               handling = excluded.handling, kortform = excluded.kortform, \
+               venter = excluded.venter",
             rusqlite::params![
-                sti,
-                a.hash,
+                a.id,
                 tittel,
                 a.text,
                 a.kind,
@@ -144,17 +266,6 @@ pub fn lagre(conn: &Connection, sti: &str, tittel: &str, avsnitt: &[Paragraph]) 
                 nå(),
             ],
         )?;
-    }
-
-    let beholdt: HashSet<&str> = avsnitt.iter().map(|a| a.hash.as_str()).collect();
-    let gamle: Vec<String> = conn
-        .prepare("select hash from forstatt where sti = ?1")?
-        .query_map([sti], |r| r.get(0))?
-        .collect::<Result<_>>()?;
-    for hash in gamle {
-        if !beholdt.contains(hash.as_str()) {
-            conn.execute("delete from forstatt where sti = ?1 and hash = ?2", (sti, &hash))?;
-        }
     }
     Ok(())
 }
@@ -206,6 +317,8 @@ fn fts_uttrykk(ord: &[String]) -> String {
 
 #[derive(Clone, Debug)]
 pub struct Kandidat {
+    pub id: i64,
+    /// Innholdshashen, som er det som finner avsnittet igjen i notatfila.
     pub hash: String,
     pub sti: String,
     pub tittel: String,
@@ -223,7 +336,7 @@ pub struct Kandidat {
 pub fn kandidater(
     conn: &Connection,
     tekst: &str,
-    egen_hash: &str,
+    egen_id: i64,
     antall: usize,
 ) -> Result<Vec<Kandidat>> {
     let ord = søkeord(tekst);
@@ -231,25 +344,27 @@ pub fn kandidater(
         return Ok(Vec::new());
     }
     let mut q = conn.prepare(
-        "select f.hash, f.sti, f.tittel, f.tekst, \
+        "select f.avsnitt_id, a.innhold_hash, a.kilde, f.tittel, f.tekst, \
                 coalesce(nullif(r.kortform, ''), f.kortform), f.tidspunkt \
          from (select rowid, bm25(forstatt_fts) as rank from forstatt_fts \
                where forstatt_fts match ?1 order by rank limit ?2) k \
-         join forstatt f on f.rowid = k.rowid \
-         left join rettelser r on r.sti = f.sti and r.hash = f.hash and r.foreldet = 0 \
-         where f.hash <> ?3 and (r.plass is null or r.plass <> 'fjernet') \
+         join forstatt f on f.avsnitt_id = k.rowid \
+         join avsnitt a on a.id = f.avsnitt_id \
+         left join rettelser r on r.avsnitt_id = f.avsnitt_id and r.foreldet = 0 \
+         where f.avsnitt_id <> ?3 and (r.plass is null or r.plass <> 'fjernet') \
          order by k.rank",
     )?;
     let rader = q.query_map(
-        rusqlite::params![fts_uttrykk(&ord), (antall + 6) as i64, egen_hash],
+        rusqlite::params![fts_uttrykk(&ord), (antall + 6) as i64, egen_id],
         |r| {
             Ok(Kandidat {
-                hash: r.get(0)?,
-                sti: r.get(1)?,
-                tittel: r.get(2)?,
-                tekst: r.get(3)?,
-                kortform: r.get(4)?,
-                tidspunkt: r.get(5)?,
+                id: r.get(0)?,
+                hash: r.get(1)?,
+                sti: r.get(2)?,
+                tittel: r.get(3)?,
+                tekst: r.get(4)?,
+                kortform: r.get(5)?,
+                tidspunkt: r.get(6)?,
             })
         },
     )?;
@@ -258,7 +373,7 @@ pub fn kandidater(
     let mut sett = HashSet::new();
     for rad in rader {
         let k = rad?;
-        if sett.insert(k.hash.clone()) {
+        if sett.insert(k.id) {
             ut.push(k);
         }
         if ut.len() == antall {
@@ -408,21 +523,22 @@ pub struct Tidligere {
     /// `motsier`, `bekrefter`, `besvarer` eller [`NEVNT`]. `urelatert` kommer
     /// aldri hit.
     pub forhold: String,
-    /// Nøkkelen til avsnittet i notatet som står åpent.
-    pub gjelder: String,
+    /// Avsnittet i notatet som står åpent.
+    pub gjelder: i64,
     pub kortform: String,
     pub sti: String,
     pub tittel: String,
-    /// Nøkkelen til det tidligere avsnittet, slik at det kan markeres når
-    /// brukeren åpner notatet det står i.
+    /// Innholdshashen til det tidligere avsnittet, slik at det kan markeres
+    /// når brukeren åpner notatet det står i. Posisjonen finnes ved å lete i
+    /// fila etter teksten som gir denne hashen.
     pub hash: String,
     pub tidspunkt: i64,
 }
 
-fn lagret_forhold(conn: &Connection, hash: &str, annen: &str) -> Option<String> {
+fn lagret_forhold(conn: &Connection, id: i64, annen: i64) -> Option<String> {
     conn.query_row(
-        "select forhold from relasjoner where hash = ?1 and annen_hash = ?2",
-        (hash, annen),
+        "select forhold from relasjoner where avsnitt_id = ?1 and annen_id = ?2",
+        (id, annen),
         |r| r.get(0),
     )
     .ok()
@@ -438,25 +554,25 @@ pub fn tidligere(
     avsnitt: &[Paragraph],
     dommer: &dyn Dommer,
 ) -> Result<Vec<Tidligere>> {
-    let tekster: HashMap<&str, &str> =
-        avsnitt.iter().map(|a| (a.hash.as_str(), a.text.as_str())).collect();
+    let tekster: HashMap<i64, &str> =
+        avsnitt.iter().map(|a| (a.id, a.text.as_str())).collect();
     let mut dømt: Vec<Tidligere> = Vec::new();
-    let mut udømte: Vec<(Tidligere, String)> = Vec::new();
+    let mut udømte: Vec<(Tidligere, i64, String)> = Vec::new();
 
-    for a in avsnitt {
-        for k in kandidater(conn, &a.text, &a.hash, PER_AVSNITT)? {
+    for a in avsnitt.iter().filter(|a| a.id > 0) {
+        for k in kandidater(conn, &a.text, a.id, PER_AVSNITT)? {
             let linje = Tidligere {
                 forhold: String::new(),
-                gjelder: a.hash.clone(),
+                gjelder: a.id,
                 kortform: k.kortform,
                 sti: k.sti,
                 tittel: k.tittel,
                 hash: k.hash,
                 tidspunkt: k.tidspunkt,
             };
-            match lagret_forhold(conn, &a.hash, &linje.hash) {
+            match lagret_forhold(conn, a.id, k.id) {
                 Some(forhold) => dømt.push(Tidligere { forhold, ..linje }),
-                None if udømte.len() < MAKS_PAR => udømte.push((linje, k.tekst)),
+                None if udømte.len() < MAKS_PAR => udømte.push((linje, k.id, k.tekst)),
                 None => {}
             }
         }
@@ -465,8 +581,8 @@ pub fn tidligere(
     if !udømte.is_empty() {
         let par: Vec<(String, String)> = udømte
             .iter()
-            .map(|(linje, tekst)| {
-                let nytt = tekster.get(linje.gjelder.as_str()).copied().unwrap_or_default();
+            .map(|(linje, _, tekst)| {
+                let nytt = tekster.get(&linje.gjelder).copied().unwrap_or_default();
                 (nytt.to_string(), tekst.clone())
             })
             .collect();
@@ -476,16 +592,16 @@ pub fn tidligere(
         // svar at det er noe å huske.
         if let Ok(svar) = dommer.døm(&par) {
             let forhold = parse_forhold(&svar, par.len());
-            for ((linje, _), f) in udømte.into_iter().zip(forhold) {
+            for ((linje, annen_id, _), f) in udømte.into_iter().zip(forhold) {
                 // Et par modellen ikke svarte på lagres som urelatert. Det er
                 // det trygge svaret, og uten det ville de samme parene bli
                 // spurt om igjen ved hver eneste lagring.
                 let f = f.unwrap_or_else(|| URELATERT.to_string());
                 conn.execute(
-                    "insert into relasjoner (hash, annen_hash, forhold, tidspunkt) \
+                    "insert into relasjoner (avsnitt_id, annen_id, forhold, tidspunkt) \
                      values (?1, ?2, ?3, ?4) \
-                     on conflict(hash, annen_hash) do update set forhold = excluded.forhold",
-                    rusqlite::params![linje.gjelder, linje.hash, f, nå()],
+                     on conflict(avsnitt_id, annen_id) do update set forhold = excluded.forhold",
+                    rusqlite::params![linje.gjelder, annen_id, f, nå()],
                 )?;
                 dømt.push(Tidligere { forhold: f, ..linje });
             }
@@ -706,21 +822,23 @@ pub fn spør(conn: &Connection, q: &str) -> Result<Option<Svar>> {
         Mønster::Bestemt => "(r.plass = 'forstått' or (r.plass is null and f.handling = 'bygg'))",
         Mønster::Forkastet => {
             "((r.plass is null and f.type = 'uenighet') \
-              or f.hash in (select annen_hash from relasjoner where forhold = 'motsier'))"
+              or f.avsnitt_id in (select annen_id from relasjoner where forhold = 'motsier'))"
         }
     };
 
     let filter = if ord.is_empty() {
         String::new()
     } else {
-        " and f.rowid in (select rowid from forstatt_fts where forstatt_fts match ?1)".to_string()
+        " and f.avsnitt_id in (select rowid from forstatt_fts where forstatt_fts match ?1)"
+            .to_string()
     };
 
     let sql = format!(
-        "select coalesce(nullif(r.kortform, ''), f.kortform), f.sti, f.tittel, f.hash, \
-                f.tidspunkt, f.venter \
+        "select coalesce(nullif(r.kortform, ''), f.kortform), a.kilde, f.tittel, \
+                a.innhold_hash, f.tidspunkt, f.venter \
          from forstatt f \
-         left join rettelser r on r.sti = f.sti and r.hash = f.hash and r.foreldet = 0 \
+         join avsnitt a on a.id = f.avsnitt_id \
+         left join rettelser r on r.avsnitt_id = f.avsnitt_id and r.foreldet = 0 \
          where (r.plass is null or r.plass <> 'fjernet') and {vilkår}{filter} \
          order by f.tidspunkt desc limit 40"
     );
@@ -821,9 +939,10 @@ mod tests {
         conn
     }
 
-    /// Legger inn ett avsnitt slik appen ville gjort det, uten å klassifisere.
-    fn legg_inn(conn: &Connection, sti: &str, tittel: &str, tekst: &str, kortform: &str) -> String {
-        let a = Paragraph {
+    /// Ett avsnitt slik lesningen lager det — uten id, som den gjør.
+    fn p(tekst: &str, kortform: &str) -> Paragraph {
+        Paragraph {
+            id: 0,
             start: 0,
             end: 0,
             hash: understand::nøkkel(tekst),
@@ -833,51 +952,51 @@ mod tests {
             action: "bygg".into(),
             dependency: None,
             correction: None,
-        };
-        let hash = a.hash.clone();
-        // Egen lagring per sti, ellers rydder `lagre` bort de andre radene.
-        let alle: Vec<Paragraph> = hent_for(conn, sti)
-            .into_iter()
-            .chain(std::iter::once(a))
-            .collect();
-        lagre(conn, sti, tittel, &alle).unwrap();
-        hash
+        }
     }
 
-    fn hent_for(conn: &Connection, sti: &str) -> Vec<Paragraph> {
-        conn.prepare("select hash, tekst, type, handling, kortform, venter from forstatt where sti = ?1")
+    /// Gir avsnittene id-ene kilden gir dem, slik appen gjør ved hver lesning.
+    fn med_ider(conn: &mut Connection, sti: &str, mut avsnitt: Vec<Paragraph>) -> Vec<Paragraph> {
+        let tekster: Vec<String> = avsnitt.iter().map(|a| a.text.clone()).collect();
+        let ider = synk(conn, sti, &tekster).unwrap();
+        for (a, id) in avsnitt.iter_mut().zip(ider) {
+            a.id = id;
+        }
+        avsnitt
+    }
+
+    fn tekster_i(conn: &Connection, sti: &str) -> Vec<String> {
+        conn.prepare("select tekst from avsnitt where kilde = ?1 order by rekkefolge")
             .unwrap()
-            .query_map([sti], |r| {
-                let venter: String = r.get(5)?;
-                Ok(Paragraph {
-                    start: 0,
-                    end: 0,
-                    hash: r.get(0)?,
-                    text: r.get(1)?,
-                    kind: r.get(2)?,
-                    action: r.get(3)?,
-                    summary: r.get(4)?,
-                    dependency: if venter.is_empty() { None } else { Some(venter) },
-                    correction: None,
-                })
-            })
+            .query_map([sti], |r| r.get(0))
             .unwrap()
             .collect::<Result<_>>()
             .unwrap()
+    }
+
+    /// Legger ett avsnitt til i en kilde, slik appen ville gjort det: id først,
+    /// så forståelsen.
+    fn legg_inn(conn: &mut Connection, sti: &str, tittel: &str, tekst: &str, kortform: &str) -> i64 {
+        let mut tekster = tekster_i(conn, sti);
+        tekster.push(tekst.to_string());
+        let id = *synk(conn, sti, &tekster).unwrap().last().unwrap();
+        lagre(conn, tittel, &[Paragraph { id, ..p(tekst, kortform) }]).unwrap();
+        id
     }
 
     /// Det hele hviler på: er forståelsen lagret, koster et gammelt notat null
     /// kall etter omstart.
     #[test]
     fn forståelsen_overlever_omstart_og_koster_null_kall() {
-        let conn = base();
+        let mut conn = base();
         let doc = "Vi skal ha innlogging likevel.\n\nDepositum blir for høy terskel.\n";
         let fake = Fake::new();
 
         let mut memo = Memo::new();
         let avsnitt = understand::understand(doc, &fake, &mut memo).unwrap();
         assert_eq!(fake.kall.load(Ordering::Relaxed), 1);
-        lagre(&conn, "notat.md", "Notat", &avsnitt).unwrap();
+        let avsnitt = med_ider(&mut conn, "notat.md", avsnitt);
+        lagre(&conn, "Notat", &avsnitt).unwrap();
 
         // Omstart: prosessen husker ingenting, bare basen gjør det.
         let mut etter = Memo::new();
@@ -893,42 +1012,51 @@ mod tests {
 
     #[test]
     fn avsnitt_som_er_skrevet_om_blir_ryddet_bort() {
-        let conn = base();
+        let mut conn = base();
         let fake = Fake::new();
         let mut memo = Memo::new();
 
         let før = understand::understand("Depositum blir for dyrt.\n", &fake, &mut memo).unwrap();
-        lagre(&conn, "notat.md", "Notat", &før).unwrap();
+        let før = med_ider(&mut conn, "notat.md", før);
+        lagre(&conn, "Notat", &før).unwrap();
         let etter =
             understand::understand("Depositum tar vi likevel.\n", &fake, &mut memo).unwrap();
-        lagre(&conn, "notat.md", "Notat", &etter).unwrap();
+        let etter = med_ider(&mut conn, "notat.md", etter);
+        lagre(&conn, "Notat", &etter).unwrap();
 
+        assert_ne!(før[0].id, etter[0].id, "en helt annen tanke er et nytt avsnitt");
         let rader: i64 = conn
-            .query_row("select count(*) from forstatt where sti = 'notat.md'", [], |r| r.get(0))
+            .query_row(
+                "select count(*) from forstatt f join avsnitt a on a.id = f.avsnitt_id \
+                 where a.kilde = 'notat.md'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(rader, 1, "den gamle teksten skal ikke bli stående som en tanke hun har");
     }
 
     #[test]
     fn ordsøket_finner_samme_emne_og_ikke_bare_et_vanlig_ord() {
-        let conn = base();
+        let mut conn = base();
         legg_inn(
-            &conn,
+            &mut conn,
             "gammelt.md",
             "Låne-app",
             "Kanskje vi burde ha depositum, men jeg er usikker på terskelen.",
             "Depositum",
         );
         legg_inn(
-            &conn,
+            &mut conn,
             "annet.md",
             "Rendering",
             "Kanskje vi skal kjøre rendringen om natta i stedet.",
             "Nattlig rendring",
         );
 
+        // 0 er ingen rad: avsnittet hun skriver nå er ikke lagret ennå.
         let nytt = "Depositum tar vi likevel, det skremmer ingen.";
-        let treff = kandidater(&conn, nytt, &understand::nøkkel(nytt), 5).unwrap();
+        let treff = kandidater(&conn, nytt, 0, 5).unwrap();
         assert_eq!(treff.len(), 1, "«kanskje» alene er ikke et emne");
         assert_eq!(treff[0].kortform, "Depositum");
     }
@@ -996,22 +1124,15 @@ mod tests {
     /// ikke sier noe som er verdt å avbryte skrivingen for.
     #[test]
     fn linja_uten_retning_vises_men_står_nederst() {
-        let conn = base();
-        legg_inn(&conn, "a.md", "Låne-app", "Depositum blir for høy terskel.", "Depositum");
-        legg_inn(&conn, "b.md", "Låne-app", "Skal depositum være valgfritt?", "Valgfritt depositum");
+        let mut conn = base();
+        legg_inn(&mut conn, "a.md", "Låne-app", "Depositum blir for høy terskel.", "Depositum");
+        legg_inn(&mut conn, "b.md", "Låne-app", "Skal depositum være valgfritt?", "Valgfritt depositum");
 
-        let tekst = "Depositum tar vi likevel.";
-        let nytt = vec![Paragraph {
-            start: 0,
-            end: 0,
-            hash: understand::nøkkel(tekst),
-            text: tekst.to_string(),
-            summary: "Depositum".into(),
-            kind: "beslutning".into(),
-            action: "bygg".into(),
-            dependency: None,
-            correction: None,
-        }];
+        let nytt = med_ider(
+            &mut conn,
+            "nytt.md",
+            vec![p("Depositum tar vi likevel.", "Depositum")],
+        );
 
         let dommer = FakeDommer::new(&format!("1|{NEVNT}\n2|besvarer"));
         let ut = tidligere(&conn, &nytt, &dommer).unwrap();
@@ -1022,23 +1143,16 @@ mod tests {
 
     #[test]
     fn urelatert_vises_aldri_og_motsier_står_øverst() {
-        let conn = base();
-        legg_inn(&conn, "a.md", "Låne-app", "Depositum blir for høy terskel.", "Depositum");
-        legg_inn(&conn, "b.md", "Låne-app", "Skal depositum være valgfritt?", "Valgfritt depositum");
-        legg_inn(&conn, "c.md", "Kart", "Kartverket leverer eiendomsdata.", "Eiendomsdata");
+        let mut conn = base();
+        legg_inn(&mut conn, "a.md", "Låne-app", "Depositum blir for høy terskel.", "Depositum");
+        legg_inn(&mut conn, "b.md", "Låne-app", "Skal depositum være valgfritt?", "Valgfritt depositum");
+        legg_inn(&mut conn, "c.md", "Kart", "Kartverket leverer eiendomsdata.", "Eiendomsdata");
 
-        let tekst = "Depositum tar vi likevel.";
-        let nytt = vec![Paragraph {
-            start: 0,
-            end: 0,
-            hash: understand::nøkkel(tekst),
-            text: tekst.to_string(),
-            summary: "Depositum".into(),
-            kind: "beslutning".into(),
-            action: "bygg".into(),
-            dependency: None,
-            correction: None,
-        }];
+        let nytt = med_ider(
+            &mut conn,
+            "nytt.md",
+            vec![p("Depositum tar vi likevel.", "Depositum")],
+        );
 
         // To kandidater: den første motsies, den andre besvares.
         let dommer = FakeDommer::new("1|motsier\n2|besvarer");
@@ -1061,43 +1175,26 @@ mod tests {
 
     #[test]
     fn spørre_søket_finner_uavklarte_og_oppgaver_som_venter() {
-        let conn = base();
+        let mut conn = base();
         let avsnitt = vec![
             Paragraph {
-                start: 0,
-                end: 0,
-                hash: understand::nøkkel("Trenger vi egentlig innlogging?"),
-                text: "Trenger vi egentlig innlogging?".into(),
-                summary: "Innlogging".into(),
                 kind: "spørsmål".into(),
                 action: "marker_åpent".into(),
-                dependency: None,
-                correction: None,
+                ..p("Trenger vi egentlig innlogging?", "Innlogging")
             },
             Paragraph {
-                start: 0,
-                end: 0,
-                hash: understand::nøkkel("Fargekorrigeringen kan ikke starte før klippet er låst."),
-                text: "Fargekorrigeringen kan ikke starte før klippet er låst.".into(),
-                summary: "Starte fargekorrigering".into(),
                 kind: "oppgave".into(),
                 action: "ingenting".into(),
                 dependency: Some("låst klipp".into()),
-                correction: None,
+                ..p(
+                    "Fargekorrigeringen kan ikke starte før klippet er låst.",
+                    "Starte fargekorrigering",
+                )
             },
-            Paragraph {
-                start: 0,
-                end: 0,
-                hash: understand::nøkkel("Pipelinen skal kjøre om natta."),
-                text: "Pipelinen skal kjøre om natta.".into(),
-                summary: "Nattlig pipeline".into(),
-                kind: "beslutning".into(),
-                action: "bygg".into(),
-                dependency: None,
-                correction: None,
-            },
+            p("Pipelinen skal kjøre om natta.", "Nattlig pipeline"),
         ];
-        lagre(&conn, "notat.md", "Notat", &avsnitt).unwrap();
+        let avsnitt = med_ider(&mut conn, "notat.md", avsnitt);
+        lagre(&conn, "Notat", &avsnitt).unwrap();
 
         let uavklart = spør(&conn, "hva er uavklart").unwrap().unwrap();
         assert_eq!(uavklart.overskrift, "Uavklart");
@@ -1120,14 +1217,14 @@ mod tests {
 
     #[test]
     fn rettelsen_vinner_også_i_spørre_søket() {
-        let conn = base();
+        let mut conn = base();
         let tekst = "Vi skal ha innlogging.";
-        let hash = legg_inn(&conn, "notat.md", "Notat", tekst, "Innlogging");
+        let id = legg_inn(&mut conn, "notat.md", "Notat", tekst, "Innlogging");
         rettelser::lagre(
             &conn,
             &rettelser::Retting {
+                avsnitt_id: id,
                 sti: "notat.md".into(),
-                hash: hash.clone(),
                 tekst: tekst.into(),
                 lest_type: "beslutning".into(),
                 lest_handling: "bygg".into(),
@@ -1149,13 +1246,14 @@ mod tests {
 
     #[test]
     fn en_rettelse_blir_et_eksempel() {
-        let conn = base();
+        let mut conn = base();
         let tekst = "ux og ui må være profesjonell men bestemorvennlig";
+        let id = legg_inn(&mut conn, "notat.md", "Notat", tekst, "Bestemorvennlig grensesnitt");
         rettelser::lagre(
             &conn,
             &rettelser::Retting {
+                avsnitt_id: id,
                 sti: "notat.md".into(),
-                hash: understand::nøkkel(tekst),
                 tekst: tekst.into(),
                 lest_type: "begrensning".into(),
                 lest_handling: "hold".into(),
@@ -1175,6 +1273,44 @@ mod tests {
                 rettet: "beslutning|bygg|Bestemorvennlig grensesnitt".into(),
             }]
         );
+    }
+
+    /// Identiteten skal tåle at teksten flytter på seg. Et avsnitt satt inn
+    /// over de andre forskyver `rekkefolge`, men ikke id-ene — det er derfor
+    /// `(kilde, rekkefolge)` ikke kunne være identitet alene.
+    #[test]
+    fn et_avsnitt_satt_inn_over_lar_de_andre_beholde_id_ene() {
+        let mut conn = base();
+        let a = "Kartvisningen skal vise alle prosjekter på et norgeskart, med filter på fylke.";
+        let b = "Vi bør bruke Stripe til betaling fordi det er raskest å sette opp.";
+        let ny = "Møtet med Marius flyttes til torsdag klokka ni.";
+
+        let før = synk(&mut conn, "notat.md", &[a.to_string(), b.to_string()]).unwrap();
+        let etter = synk(
+            &mut conn,
+            "notat.md",
+            &[ny.to_string(), a.to_string(), b.to_string()],
+        )
+        .unwrap();
+
+        assert_eq!(etter[1], før[0], "avsnittet som ble skjøvet ned er det samme");
+        assert_eq!(etter[2], før[1]);
+        assert!(!før.contains(&etter[0]), "bare det innsatte er nytt");
+
+        // Og rekkefølgen i basen er den nye.
+        assert_eq!(tekster_i(&conn, "notat.md")[0], ny);
+    }
+
+    /// En id som er brukt skal aldri brukes om igjen. Uten `autoincrement`
+    /// ville et nytt avsnitt kunne arve rowid-en til et slettet, og med den
+    /// rettelsen som hang på det.
+    #[test]
+    fn en_id_som_forsvinner_kommer_aldri_tilbake_på_noe_annet() {
+        let mut conn = base();
+        let første = synk(&mut conn, "a.md", &["Depositum blir for høy terskel.".into()]).unwrap();
+        synk(&mut conn, "a.md", &[]).unwrap();
+        let senere = synk(&mut conn, "a.md", &["Alle bilder leveres i full oppløsning.".into()]).unwrap();
+        assert_ne!(senere[0], første[0]);
     }
 
     #[test]

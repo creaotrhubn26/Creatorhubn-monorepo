@@ -244,8 +244,8 @@ export function Panel({
       {
         tekst: sagt,
         retting: {
+          avsnittId: p.id,
           sti,
-          hash: p.hash,
           tekst: p.text,
           lestType: p.kind,
           lestHandling: p.action,
@@ -257,8 +257,8 @@ export function Panel({
     ]);
     setRedigerer(null);
     onRett({
+      avsnittId: p.id,
       sti,
-      hash: p.hash,
       tekst: p.text,
       lestType: p.kind,
       lestHandling: p.action,
