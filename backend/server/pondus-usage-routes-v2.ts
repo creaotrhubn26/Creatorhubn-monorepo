@@ -36,16 +36,21 @@ async function accessFor(
   }
 }
 
-async function validateLeadScope(pool: Pool, leadId: string, organizationId: string | null) {
-  if (!organizationId) return false;
+async function validateLeadScope(
+  pool: Pool,
+  leadId: string,
+  organizationId: string | null,
+  projectId: string | null,
+) {
+  if (!organizationId || !projectId) return false;
   const result = await pool.query(
     `SELECT c.id
        FROM crm_customers c
-       LEFT JOIN casting_projects cp ON cp.id=c.project_id
       WHERE c.id=$1::uuid
-        AND COALESCE(c.organization_id::text, cp.organization_id::text)=$2
+        AND c.organization_id=$2::uuid
+        AND c.project_id=$3
       LIMIT 1`,
-    [leadId, organizationId],
+    [leadId, organizationId, projectId],
   );
   return result.rows.length > 0;
 }
@@ -73,21 +78,28 @@ export function registerPondusUsageRoutesV2(deps: PondusUsageRoutesV2Deps): void
       const access = await accessFor(pool, req, res, session);
       if (!access) return;
       if (!access.organizationId) return res.status(400).json({ error: "organization_required" });
+      if (!access.projectId) return res.status(400).json({ error: "project_required" });
       if (!(await isPondusTemplateVisible(pool, templateId, access))) {
         return res.status(404).json({ error: "not_found" });
       }
-      if (leadId && !(await validateLeadScope(pool, leadId, access.organizationId))) {
+      if (leadId && !(await validateLeadScope(
+        pool, leadId, access.organizationId, access.projectId,
+      ))) {
         return res.status(404).json({ error: "lead_not_found" });
       }
 
       if (outcome === "used") {
         const inserted = await pool.query(
           `INSERT INTO pondus_template_usage
-            (usage_session_id, template_id, organization_id, user_id, lead_id, outcome, source)
-           VALUES ($1::uuid,$2::uuid,$3,$4,$5::uuid,'used',$6)
+            (usage_session_id, template_id, organization_id, project_id,
+             user_id, lead_id, outcome, source)
+           VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,$6::uuid,'used',$7)
            ON CONFLICT (usage_session_id) DO NOTHING
            RETURNING id, usage_session_id, used_at, outcome`,
-          [usageSessionId, templateId, access.organizationId, session.userId, leadId, source],
+          [
+            usageSessionId, templateId, access.organizationId, access.projectId,
+            session.userId, leadId, source,
+          ],
         );
         if (inserted.rows[0]) {
           return res.status(201).json({ usage: inserted.rows[0], idempotent: false });
@@ -95,8 +107,8 @@ export function registerPondusUsageRoutesV2(deps: PondusUsageRoutesV2Deps): void
         const existing = await pool.query(
           `SELECT id, usage_session_id, used_at, outcome FROM pondus_template_usage
             WHERE usage_session_id=$1::uuid AND template_id=$2::uuid
-              AND organization_id=$3 AND user_id=$4 LIMIT 1`,
-          [usageSessionId, templateId, access.organizationId, session.userId],
+              AND organization_id=$3::uuid AND project_id=$4 AND user_id=$5 LIMIT 1`,
+          [usageSessionId, templateId, access.organizationId, access.projectId, session.userId],
         );
         if (!existing.rows[0]) return res.status(409).json({ error: "usage_session_conflict" });
         return res.status(200).json({ usage: existing.rows[0], idempotent: true });
@@ -107,9 +119,12 @@ export function registerPondusUsageRoutesV2(deps: PondusUsageRoutesV2Deps): void
             SET outcome=$1, lead_id=COALESCE($2::uuid,lead_id),
                 outcome_updated_at=NOW()
           WHERE usage_session_id=$3::uuid AND template_id=$4::uuid
-            AND organization_id=$5 AND user_id=$6
+            AND organization_id=$5::uuid AND project_id=$6 AND user_id=$7
           RETURNING id, usage_session_id, used_at, outcome`,
-        [outcome, leadId, usageSessionId, templateId, access.organizationId, session.userId],
+        [
+          outcome, leadId, usageSessionId, templateId, access.organizationId,
+          access.projectId, session.userId,
+        ],
       );
       if (updated.rows[0]) return res.json({ usage: updated.rows[0], idempotent: true });
 
@@ -118,12 +133,15 @@ export function registerPondusUsageRoutesV2(deps: PondusUsageRoutesV2Deps): void
       // start-handlingen blir en idempotent no-op og overskriver ikke utfallet.
       const insertedOutcome = await pool.query(
         `INSERT INTO pondus_template_usage
-          (usage_session_id, template_id, organization_id, user_id, lead_id,
+          (usage_session_id, template_id, organization_id, project_id, user_id, lead_id,
            outcome, source, outcome_updated_at)
-         VALUES ($1::uuid,$2::uuid,$3,$4,$5::uuid,$6,$7,NOW())
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,$6::uuid,$7,$8,NOW())
          ON CONFLICT (usage_session_id) DO NOTHING
          RETURNING id, usage_session_id, used_at, outcome`,
-        [usageSessionId, templateId, access.organizationId, session.userId, leadId, outcome, source],
+        [
+          usageSessionId, templateId, access.organizationId, access.projectId,
+          session.userId, leadId, outcome, source,
+        ],
       );
       if (insertedOutcome.rows[0]) {
         return res.status(201).json({ usage: insertedOutcome.rows[0], idempotent: false });
@@ -143,6 +161,7 @@ export function registerPondusUsageRoutesV2(deps: PondusUsageRoutesV2Deps): void
       const access = await accessFor(pool, req, res, session);
       if (!access) return;
       if (!access.organizationId) return res.status(400).json({ error: "organization_required" });
+      if (!access.projectId) return res.status(400).json({ error: "project_required" });
       const period = text(req.query.period);
       const periodDays: Record<string, number> = { "7d": 7, "30d": 30, "90d": 90 };
       const since = period === "ytd"
@@ -159,8 +178,9 @@ export function registerPondusUsageRoutesV2(deps: PondusUsageRoutesV2Deps): void
                 COUNT(*) FILTER (WHERE outcome='won')::int AS won,
                 COUNT(*) FILTER (WHERE outcome IN ('won','lost'))::int AS decided
            FROM pondus_template_usage
-          WHERE organization_id=$1 ${since ? `AND used_at>=${since}` : ""}
-          GROUP BY template_id`, [access.organizationId],
+          WHERE organization_id=$1::uuid AND project_id=$2
+            ${since ? `AND used_at>=${since}` : ""}
+          GROUP BY template_id`, [access.organizationId, access.projectId],
       );
       const totals = await pool.query(
         `SELECT COUNT(*) FILTER (WHERE used_at::date=CURRENT_DATE)::int AS used_today,
@@ -168,7 +188,9 @@ export function registerPondusUsageRoutesV2(deps: PondusUsageRoutesV2Deps): void
                 COUNT(DISTINCT user_id) FILTER (WHERE used_at>NOW()-INTERVAL '30 days')::int AS distinct_users_30d,
                 COUNT(*) FILTER (WHERE outcome IN ('meeting_booked','won')
                                   AND used_at>NOW()-INTERVAL '30 days')::int AS meetings_30d
-           FROM pondus_template_usage WHERE organization_id=$1`, [access.organizationId],
+           FROM pondus_template_usage
+          WHERE organization_id=$1::uuid AND project_id=$2`,
+        [access.organizationId, access.projectId],
       );
       const ratio = (a: unknown, b: unknown) => Number(b) > 0
         ? Math.round((Number(a) / Number(b)) * 100) / 100 : 0;
@@ -203,6 +225,7 @@ export function registerPondusUsageRoutesV2(deps: PondusUsageRoutesV2Deps): void
       const access = await accessFor(pool, req, res, session);
       if (!access) return;
       if (!access.organizationId) return res.status(400).json({ error: "organization_required" });
+      if (!access.projectId) return res.status(400).json({ error: "project_required" });
       if (!canViewPondusAnalytics(access)) {
         return res.status(403).json({ error: "analytics_permission_required" });
       }
@@ -211,8 +234,9 @@ export function registerPondusUsageRoutesV2(deps: PondusUsageRoutesV2Deps): void
       }
       const outcomes = await pool.query(
         `SELECT outcome, COUNT(*)::int AS n FROM pondus_template_usage
-          WHERE template_id=$1::uuid AND organization_id=$2 GROUP BY outcome`,
-        [templateId, access.organizationId],
+          WHERE template_id=$1::uuid AND organization_id=$2::uuid AND project_id=$3
+          GROUP BY outcome`,
+        [templateId, access.organizationId, access.projectId],
       );
       const bySeller = await pool.query(
         `SELECT u.id AS user_id,
@@ -220,17 +244,17 @@ export function registerPondusUsageRoutesV2(deps: PondusUsageRoutesV2Deps): void
                 COUNT(*)::int AS used,
                 COUNT(*) FILTER (WHERE pu.outcome IN ('meeting_booked','won'))::int AS meetings
            FROM pondus_template_usage pu JOIN users u ON u.id=pu.user_id
-          WHERE pu.template_id=$1::uuid AND pu.organization_id=$2
+          WHERE pu.template_id=$1::uuid AND pu.organization_id=$2::uuid AND pu.project_id=$3
           GROUP BY u.id,name ORDER BY used DESC LIMIT 20`,
-        [templateId, access.organizationId],
+        [templateId, access.organizationId, access.projectId],
       );
       const recent = await pool.query(
         `SELECT pu.usage_session_id, pu.used_at, pu.outcome, pu.source,
                 COALESCE(NULLIF(TRIM(u.first_name||' '||COALESCE(u.last_name,'')),''),u.username,u.email) AS user_name
            FROM pondus_template_usage pu JOIN users u ON u.id=pu.user_id
-          WHERE pu.template_id=$1::uuid AND pu.organization_id=$2
+          WHERE pu.template_id=$1::uuid AND pu.organization_id=$2::uuid AND pu.project_id=$3
           ORDER BY pu.used_at DESC LIMIT 20`,
-        [templateId, access.organizationId],
+        [templateId, access.organizationId, access.projectId],
       );
       return res.json({
         outcomes: Object.fromEntries(outcomes.rows.map((row) => [row.outcome, Number(row.n)])),

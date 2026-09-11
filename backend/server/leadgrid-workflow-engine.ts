@@ -39,6 +39,7 @@ import {
 } from "./transactional-email-service.js";
 import { loadAccessibleLeadgridProject } from "./leadgrid-project-access.js";
 import { dispatchRulesForWorkflowEvent } from "./lead-rules-dispatcher.js";
+import { getLeadgridEmailCompliance } from "./leadgrid-outreach-compliance.js";
 
 // ─── Webhook-rate-limit (60 POST/min per destination) ────────────────
 // In-memory sliding-window per destination_id. OK å reset ved process-restart
@@ -172,6 +173,7 @@ interface LeadRow {
   owner_user_id: string | null;
   email: string | null;
   phone: string | null;
+  lead_source: string | null;
 }
 
 /**
@@ -304,7 +306,7 @@ async function fetchLead(
             name AS business_name, lead_score, lead_temperature,
             pipeline_stage, industry_id::text, city,
             deal_amount::text AS deal_amount, deal_probability,
-            owner_user_id, email, phone
+            owner_user_id, email, phone, lead_source
       FROM crm_customers
       WHERE id = $1::uuid
         AND organization_id = $2::uuid
@@ -857,6 +859,22 @@ async function runAction(
       if (!to || !to.includes("@")) {
         return { status: "skipped", message: "no_email" };
       }
+      // Compliance is authoritative and fail-closed. Public availability or a
+      // local-part hint (for example info@) is never enough on its own.
+      const compliance = await getLeadgridEmailCompliance(pool, {
+        organizationId: event.organizationId,
+        email: to,
+      });
+      if (!compliance.allowed) {
+        return {
+          status: "skipped",
+          message: `email_compliance_blocked:${compliance.reason}`,
+          data: {
+            address_classification: compliance.addressClassification,
+            is_suppressed: compliance.isSuppressed,
+          },
+        };
+      }
       if (!isTransactionalEmailConfigured()) {
         // Ingen provider i miljøet (lokal dev) — behold deferred-semantikk
         // så execution-historikken viser hva som VILLE blitt sendt.
@@ -892,7 +910,31 @@ async function runAction(
         return { status: "skipped", message: `unknown_template:${action.template_id}` };
       }
       const subject = renderTemplate(action.subject ?? subjectTpl ?? "Oppfølging", event, lead);
-      const body = renderTemplate(bodyTpl, event, lead);
+      const renderedBody = renderTemplate(bodyTpl, event, lead);
+      let organizationName = "organisasjonen";
+      try {
+        const organization = await pool.query<{ name: string }>(
+          `SELECT name FROM organizations WHERE id = $1::uuid LIMIT 1`,
+          [event.organizationId],
+        );
+        organizationName = organization.rows[0]?.name?.trim() || organizationName;
+      } catch {
+        // The mandatory compliance decision above already succeeded. Branding
+        // lookup is best-effort and must not weaken that decision.
+      }
+      const source = lead.lead_source?.trim() || "Leadgrids CRM-register";
+      const processing = compliance.gdprProcessing;
+      const processingDetails = processing.documented
+        ? ` Formål: ${processing.purpose ?? "direkte markedsføring"}. `
+          + `Opplysningen slettes eller vurderes på nytt senest ${processing.retentionUntil?.slice(0, 10)}.`
+        : "";
+      const complianceFooter =
+        `Dette er en markedsføringshenvendelse fra ${organizationName}. `
+        + `Kontaktopplysningen er registrert med kilde: ${processing.source ?? source}.`
+        + processingDetails + " "
+        + "Svar «nei takk» for å reservere deg mot flere markedsføringshenvendelser "
+        + "fra organisasjonen, eller for å be om innsyn eller sletting.";
+      const body = `${renderedBody}\n\n—\n${complianceFooter}`;
       const result = await sendTransactionalEmail({
         to,
         subject,

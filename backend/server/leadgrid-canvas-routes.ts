@@ -2,7 +2,7 @@
  * Leadgrid Canvas — Pencil-first notater koblet til leads (fase 1).
  *
  * Notatet er en PKDrawing (base64) + tittel/kategori/lead-kobling,
- * org+bruker-scopet. Lazy tabell (samme mønster som møteloggen).
+ * prosjekt+org+bruker-scopet. Lazy tabell (samme mønster som møteloggen).
  * Entitlement: leadgridCanvas (canUse — default PÅ, superadmin kan låse).
  */
 
@@ -10,6 +10,7 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { randomUUID } from "crypto";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
+import { loadAccessibleLeadgridProject } from "./leadgrid-project-access.js";
 import { assertAnyEntitled, LEADGRID_CANVAS_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
 import {
   getLeadgridObjectStorage,
@@ -33,6 +34,7 @@ async function ensureSchema(pool: Pool): Promise<void> {
     CREATE TABLE IF NOT EXISTS leadgrid_canvas_notater (
       id UUID PRIMARY KEY,
       organization_id TEXT NOT NULL,
+      project_id TEXT,
       user_id TEXT NOT NULL,
       tittel TEXT NOT NULL DEFAULT '',
       kategori TEXT NOT NULL DEFAULT 'mote',
@@ -43,8 +45,12 @@ async function ensureSchema(pool: Pool): Promise<void> {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )`);
   await pool.query(`
+    ALTER TABLE leadgrid_canvas_notater
+      ADD COLUMN IF NOT EXISTS project_id TEXT`);
+  await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_leadgrid_canvas_bruker
-      ON leadgrid_canvas_notater (organization_id, user_id, updated_at DESC)`);
+      ON leadgrid_canvas_notater
+        (organization_id, project_id, user_id, updated_at DESC)`);
   // Fase 2 (deling i org): lat selvheler — ingen manuell migrasjon.
   await pool.query(`
     ALTER TABLE leadgrid_canvas_notater
@@ -148,6 +154,30 @@ async function ensureSchema(pool: Pool): Promise<void> {
   schemaReady = true;
 }
 
+type CanvasProjectScope = { organizationId: string; projectId: string };
+
+async function resolveCanvasProjectScope(
+  pool: Pool,
+  req: Request,
+  res: Response,
+  userId: string,
+): Promise<CanvasProjectScope | null> {
+  const query = req.query as Record<string, unknown>;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const raw = query.projectId ?? query.project_id ?? body.projectId ?? body.project_id;
+  const projectId = typeof raw === "string" ? raw.trim() : "";
+  if (!projectId) {
+    res.status(400).json({ error: "project_id_required" });
+    return null;
+  }
+  const project = await loadAccessibleLeadgridProject(pool, projectId, userId);
+  if (!project) {
+    res.status(404).json({ error: "project_not_found" });
+    return null;
+  }
+  return { organizationId: project.organizationId, projectId: project.id };
+}
+
 /** Tøm notater som har ligget >30 dager i papirkurven (best effort). */
 async function tomGamleFraPapirkurv(pool: Pool): Promise<void> {
   try {
@@ -218,15 +248,15 @@ export function registerLeadgridCanvasRoutes(deps: {
 }): void {
   const { app, pool, requireUserSession } = deps;
 
-  /** Alle notatene mine (org+bruker), nyeste først.
+  /** Alle notatene i aktivt prosjekt, nyeste først.
    *  ?papirkurv=1 → mine slettede notater i stedet (siste 30 dager). */
   app.get("/api/leadgrid/canvas", async (req, res) => {
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.json({ notater: [] }); return; }
+      const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       await ensureSchema(pool);
       await tomGamleFraPapirkurv(pool);
       const visPapirkurv = req.query.papirkurv === "1";
@@ -238,10 +268,11 @@ export function registerLeadgridCanvasRoutes(deps: {
                     n.noder, n.sider, n.objekter, n.sokbar_tekst, n.dokumenter, n.slettet_at,
                     '' AS eier_navn
                FROM leadgrid_canvas_notater n
-              WHERE n.organization_id = $1 AND n.user_id = $2
+              WHERE n.organization_id = $1 AND n.project_id = $2
+                AND n.user_id = $3
                 AND n.slettet_at IS NOT NULL
               ORDER BY n.slettet_at DESC LIMIT 100`,
-            [orgId, session.userId])
+            [scope.organizationId, scope.projectId, session.userId])
         : await pool.query(
             `SELECT n.id, n.tittel, n.kategori, n.selskap, n.lead_id,
                     n.drawing_base64, n.updated_at, n.delt, n.user_id,
@@ -250,10 +281,11 @@ export function registerLeadgridCanvasRoutes(deps: {
                     COALESCE(u.name, u.email, '') AS eier_navn
                FROM leadgrid_canvas_notater n
                LEFT JOIN users u ON u.id::text = n.user_id
-              WHERE n.organization_id = $1 AND (n.user_id = $2 OR n.delt)
+              WHERE n.organization_id = $1 AND n.project_id = $2
+                AND (n.user_id = $3 OR n.delt)
                 AND n.slettet_at IS NULL
               ORDER BY n.updated_at DESC LIMIT 100`,
-            [orgId, session.userId]);
+            [scope.organizationId, scope.projectId, session.userId]);
       res.json({
         notater: r.rows.map((row) => ({
           id: row.id,
@@ -295,19 +327,20 @@ export function registerLeadgridCanvasRoutes(deps: {
       const session = await requireUserSession(req, res);
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.status(403).json({ error: "ingen_org" }); return; }
+      const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       const felter = parseFelter((req.body ?? {}) as Record<string, unknown>);
       if (!felter) { res.status(413).json({ error: "tegning_for_stor" }); return; }
       await ensureSchema(pool);
       const id = randomUUID();
       await pool.query(
         `INSERT INTO leadgrid_canvas_notater
-           (id, organization_id, user_id, tittel, kategori, selskap, lead_id,
+           (id, organization_id, project_id, user_id, tittel, kategori, selskap, lead_id,
             drawing_base64, delt, lat, lon, stempler, tekstbokser, figurer,
             papir, noder, sider, objekter, sokbar_tekst, dokumenter)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
-        [id, orgId, session.userId, felter.tittel, felter.kategori,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+        [id, scope.organizationId, scope.projectId, session.userId,
+         felter.tittel, felter.kategori,
          felter.selskap, felter.leadId, felter.drawing, felter.delt,
          felter.lat, felter.lon, felter.stempler, felter.tekstbokser,
          felter.figurer, felter.papir, felter.noder, felter.sider,
@@ -329,12 +362,15 @@ export function registerLeadgridCanvasRoutes(deps: {
       const felter = parseFelter((req.body ?? {}) as Record<string, unknown>);
       if (!felter) { res.status(413).json({ error: "tegning_for_stor" }); return; }
       await ensureSchema(pool);
+      const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       // Versjonér forrige tilstand (best effort — velter aldri lagringen).
       try {
         const forrige = await pool.query<{ drawing_base64: string; kategori: string; objekter: string }>(
           `SELECT drawing_base64, kategori, objekter FROM leadgrid_canvas_notater
-            WHERE id = $1 AND user_id = $2`,
-          [req.params.id, session.userId]);
+            WHERE id = $1 AND organization_id = $2 AND project_id = $3
+              AND user_id = $4`,
+          [req.params.id, scope.organizationId, scope.projectId, session.userId]);
         const rad = forrige.rows[0];
         if (rad && rad.drawing_base64 !== felter.drawing && rad.drawing_base64.length > 0) {
           await pool.query(
@@ -360,12 +396,14 @@ export function registerLeadgridCanvasRoutes(deps: {
                 stempler = $9, tekstbokser = $10, figurer = $11,
                 papir = $12, noder = $13, sider = $14, objekter = $15,
                 sokbar_tekst = $16, dokumenter = $17, updated_at = now()
-          WHERE id = $18 AND user_id = $19 AND slettet_at IS NULL`,
+          WHERE id = $18 AND organization_id = $19 AND project_id = $20
+            AND user_id = $21 AND slettet_at IS NULL`,
         [felter.tittel, felter.kategori, felter.selskap, felter.leadId,
          felter.drawing, felter.delt, felter.lat, felter.lon,
          felter.stempler, felter.tekstbokser, felter.figurer,
          felter.papir, felter.noder, felter.sider, felter.objekter,
-         felter.sokbarTekst, felter.dokumenter, req.params.id, session.userId]);
+         felter.sokbarTekst, felter.dokumenter, req.params.id,
+         scope.organizationId, scope.projectId, session.userId]);
       if (r.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
       res.json({ ok: true });
     } catch (e) {
@@ -380,14 +418,15 @@ export function registerLeadgridCanvasRoutes(deps: {
       const session = await requireUserSession(req, res);
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.json({ versjoner: [] }); return; }
+      const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       await ensureSchema(pool);
       // Tilgang: eier ELLER delt i org-en.
       const eier = await pool.query(
         `SELECT 1 FROM leadgrid_canvas_notater
-          WHERE id = $1 AND organization_id = $2 AND (user_id = $3 OR delt)`,
-        [req.params.id, orgId, session.userId]);
+          WHERE id = $1 AND organization_id = $2 AND project_id = $3
+            AND (user_id = $4 OR delt)`,
+        [req.params.id, scope.organizationId, scope.projectId, session.userId]);
       if (eier.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
       const r = await pool.query(
         `SELECT id, kategori, drawing_base64, created_at
@@ -416,13 +455,15 @@ export function registerLeadgridCanvasRoutes(deps: {
       const session = await requireUserSession(req, res);
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.status(403).json({ error: "ingen_org" }); return; }
+      const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       await ensureSchema(pool);
       if (req.query.permanent === "1") {
         const r = await pool.query(
-          `DELETE FROM leadgrid_canvas_notater WHERE id = $1 AND user_id = $2`,
-          [req.params.id, session.userId]);
+          `DELETE FROM leadgrid_canvas_notater
+            WHERE id = $1 AND organization_id = $2 AND project_id = $3
+              AND user_id = $4`,
+          [req.params.id, scope.organizationId, scope.projectId, session.userId]);
         if (r.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
         await pool.query(
           `DELETE FROM leadgrid_canvas_versjoner WHERE notat_id = $1`,
@@ -432,8 +473,9 @@ export function registerLeadgridCanvasRoutes(deps: {
       }
       const r = await pool.query(
         `UPDATE leadgrid_canvas_notater SET slettet_at = now()
-          WHERE id = $1 AND user_id = $2 AND slettet_at IS NULL`,
-        [req.params.id, session.userId]);
+          WHERE id = $1 AND organization_id = $2 AND project_id = $3
+            AND user_id = $4 AND slettet_at IS NULL`,
+        [req.params.id, scope.organizationId, scope.projectId, session.userId]);
       if (r.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
       res.json({ ok: true });
     } catch (e) {
@@ -449,8 +491,8 @@ export function registerLeadgridCanvasRoutes(deps: {
       const session = await requireUserSession(req, res);
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.status(403).json({ error: "ingen_org" }); return; }
+      const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       await ensureSchema(pool);
       const b = (req.body ?? {}) as Record<string, unknown>;
       const dokId = String(b.id ?? "").slice(0, 64);
@@ -464,8 +506,9 @@ export function registerLeadgridCanvasRoutes(deps: {
       // Eier-sjekk på notatet.
       const eier = await pool.query(
         `SELECT 1 FROM leadgrid_canvas_notater
-          WHERE id = $1 AND organization_id = $2 AND user_id = $3`,
-        [req.params.id, orgId, session.userId]);
+          WHERE id = $1 AND organization_id = $2 AND project_id = $3
+            AND user_id = $4`,
+        [req.params.id, scope.organizationId, scope.projectId, session.userId]);
       if (eier.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
 
       const existing = await pool.query<{
@@ -486,7 +529,7 @@ export function registerLeadgridCanvasRoutes(deps: {
         existing.rows[0] &&
         (
           existing.rows[0].user_id !== session.userId ||
-          existing.rows[0].organization_id !== orgId ||
+          existing.rows[0].organization_id !== scope.organizationId ||
           existing.rows[0].notat_id !== req.params.id
         )
       ) {
@@ -517,7 +560,8 @@ export function registerLeadgridCanvasRoutes(deps: {
 
       const storageObjectId = randomUUID();
       const objectKey = leadgridStorageKeys.canvasDocument({
-        organizationId: orgId,
+        organizationId: scope.organizationId,
+        projectId: scope.projectId,
         userId: session.userId,
         assetId: storageObjectId,
       });
@@ -568,14 +612,18 @@ export function registerLeadgridCanvasRoutes(deps: {
              AND leadgrid_canvas_dokumenter.notat_id = $11::uuid`,
           [
             storageObjectId,
-            orgId,
+            scope.organizationId,
             session.userId,
             uploaded.bucket,
             uploaded.key,
             navn,
             uploaded.sizeBytes,
             uploaded.checksumSha256,
-            JSON.stringify({ noteId: req.params.id, documentId: dokId }),
+            JSON.stringify({
+              projectId: scope.projectId,
+              noteId: req.params.id,
+              documentId: dokId,
+            }),
             dokId,
             req.params.id,
           ],
@@ -633,8 +681,8 @@ export function registerLeadgridCanvasRoutes(deps: {
       const session = await requireUserSession(req, res);
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.status(403).json({ error: "ingen_org" }); return; }
+      const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       await ensureSchema(pool);
       const r = await pool.query<{
         id: string;
@@ -646,9 +694,9 @@ export function registerLeadgridCanvasRoutes(deps: {
         `SELECT d.id, d.navn, d.base64, d.storage_provider, d.storage_key
            FROM leadgrid_canvas_dokumenter d
            JOIN leadgrid_canvas_notater n ON n.id = d.notat_id
-          WHERE d.id = $1 AND n.organization_id = $2
-            AND (n.user_id = $3 OR n.delt)`,
-        [req.params.dokId, orgId, session.userId]);
+          WHERE d.id = $1 AND n.organization_id = $2 AND n.project_id = $3
+            AND (n.user_id = $4 OR n.delt)`,
+        [req.params.dokId, scope.organizationId, scope.projectId, session.userId]);
       const rad = r.rows[0];
       if (!rad) { res.status(404).json({ error: "not_found" }); return; }
       if (rad.storage_provider === "aws_s3") {
@@ -689,8 +737,8 @@ export function registerLeadgridCanvasRoutes(deps: {
       const session = await requireUserSession(req, res);
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.status(403).json({ error: "ingen_org" }); return; }
+      const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       await ensureSchema(pool);
       const existing = await pool.query<{
         storage_provider: string;
@@ -701,8 +749,9 @@ export function registerLeadgridCanvasRoutes(deps: {
            FROM leadgrid_canvas_dokumenter d
            JOIN leadgrid_canvas_notater n ON n.id = d.notat_id
           WHERE d.id = $1 AND d.user_id = $2
-            AND d.organization_id = $3 AND n.organization_id = $3`,
-        [req.params.dokId, session.userId, orgId]);
+            AND d.organization_id = $3 AND n.organization_id = $3
+            AND n.project_id = $4`,
+        [req.params.dokId, session.userId, scope.organizationId, scope.projectId]);
       const document = existing.rows[0];
       if (!document) { res.status(404).json({ error: "not_found" }); return; }
       if (document.storage_provider === "aws_s3") {
@@ -736,7 +785,7 @@ export function registerLeadgridCanvasRoutes(deps: {
       await pool.query(
         `DELETE FROM leadgrid_canvas_dokumenter
           WHERE id = $1 AND user_id = $2 AND organization_id = $3`,
-        [req.params.dokId, session.userId, orgId]);
+        [req.params.dokId, session.userId, scope.organizationId]);
       if (document.storage_object_id) {
         await pool.query(
           `DELETE FROM leadgrid_storage_objects WHERE id = $1::uuid`,
@@ -842,11 +891,14 @@ export function registerLeadgridCanvasRoutes(deps: {
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
       await ensureSchema(pool);
+      const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       const r = await pool.query(
         `UPDATE leadgrid_canvas_notater
             SET slettet_at = NULL, updated_at = now()
-          WHERE id = $1 AND user_id = $2 AND slettet_at IS NOT NULL`,
-        [req.params.id, session.userId]);
+          WHERE id = $1 AND organization_id = $2 AND project_id = $3
+            AND user_id = $4 AND slettet_at IS NOT NULL`,
+        [req.params.id, scope.organizationId, scope.projectId, session.userId]);
       if (r.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
       res.json({ ok: true });
     } catch (e) {

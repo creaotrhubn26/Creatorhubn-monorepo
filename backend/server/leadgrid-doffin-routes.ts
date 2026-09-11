@@ -2,7 +2,7 @@
  * leadgrid-doffin-routes.ts
  *
  * Anbud (Doffin) — tilleggstjeneste: søk i Doffin (Database for offentlige
- * anskaffelser) direkte fra Leadgrid, med lagrede overvåkninger per org.
+ * anskaffelser) direkte fra Leadgrid, med lagrede overvåkninger per prosjekt.
  * Oppdragsgivere kommer med organisasjonsnummer → «Opprett lead fra anbud»
  * på iPad kan koble kunngjøringen rett inn i CRM-et.
  *
@@ -21,7 +21,7 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { randomUUID } from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
-import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
+import { loadAccessibleLeadgridProject } from "./leadgrid-project-access.js";
 import { assertAnyEntitled, LEADGRID_ANBUD_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
 import { sendAPNs } from "./lead-map-apns-client.js";
 import { withAIQuota } from "./leadgrid-ai-queue.js";
@@ -48,7 +48,7 @@ const ORG_MEMBERS_SUBQUERY =
   `SELECT user_id::text FROM organization_members WHERE organization_id = $1::uuid`;
 
 async function matchKunder(
-  pool: Pool, orgId: string, orgnrs: string[],
+  pool: Pool, orgId: string, projectId: string, orgnrs: string[],
 ): Promise<Map<string, KundeMatch>> {
   const unique = [...new Set(orgnrs.filter((o) => /^\d{9}$/.test(o)))];
   if (unique.length === 0) return new Map();
@@ -64,9 +64,10 @@ async function matchKunder(
          LEFT JOIN users u
            ON u.id::text = COALESCE(c.assigned_user_id, c.owner_user_id)
         WHERE c.enrichment_org_nr = ANY($2)
+          AND c.project_id = $3
           AND c.owner_user_id IN (${ORG_MEMBERS_SUBQUERY})
         ORDER BY c.updated_at DESC`,
-      [orgId, unique],
+      [orgId, unique, projectId],
     );
     const map = new Map<string, KundeMatch>();
     for (const row of r.rows) {
@@ -119,22 +120,24 @@ async function ensureSchema(pool: Pool): Promise<void> {
     CREATE TABLE IF NOT EXISTS leadgrid_doffin_watches (
       id UUID PRIMARY KEY,
       organization_id TEXT NOT NULL,
+      project_id TEXT,
       name TEXT NOT NULL,
       query JSONB NOT NULL DEFAULT '{}',
       created_by TEXT NOT NULL DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )`);
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS idx_doffin_watches_org
-      ON leadgrid_doffin_watches (organization_id)`);
   // Fase 2 (2026-08-02): varsler ved nye treff — lat selvheler, ingen
   // manuell migrasjon (samme mønster som NRPS-roster-syncen).
   await pool.query(`
     ALTER TABLE leadgrid_doffin_watches
+      ADD COLUMN IF NOT EXISTS project_id TEXT,
       ADD COLUMN IF NOT EXISTS seen_ids JSONB NOT NULL DEFAULT '[]',
       ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ,
       ADD COLUMN IF NOT EXISTS new_hits_count INT NOT NULL DEFAULT 0`);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_doffin_watches_org
+      ON leadgrid_doffin_watches (organization_id, project_id)`);
   // Nivå 2 (2026-08-03): anbuds-pipeline — anbudet gjennom salgsprosessen
   // (vurderer → går for → tilbud levert → vant/tapt) med frist-motor og
   // team-tildeling. Kunngjørings-feltene denormaliseres inn (Doffin har
@@ -143,6 +146,7 @@ async function ensureSchema(pool: Pool): Promise<void> {
     CREATE TABLE IF NOT EXISTS leadgrid_anbud_pipeline (
       id UUID PRIMARY KEY,
       organization_id TEXT NOT NULL,
+      project_id TEXT,
       doffin_id TEXT NOT NULL,
       tittel TEXT NOT NULL,
       oppdragsgiver TEXT NOT NULL DEFAULT '',
@@ -158,20 +162,48 @@ async function ensureSchema(pool: Pool): Promise<void> {
       created_by TEXT NOT NULL DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      UNIQUE (organization_id, doffin_id)
+      UNIQUE (organization_id, project_id, doffin_id)
     )`);
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS idx_anbud_pipeline_org
-      ON leadgrid_anbud_pipeline (organization_id, status)`);
   // Nivå 3 (2026-08-03): geokoding (Brreg-adresse → Geonorge) + tapt-årsak
   // for læringssløyfen. Lat selvheler som resten.
   await pool.query(`
     ALTER TABLE leadgrid_anbud_pipeline
+      ADD COLUMN IF NOT EXISTS project_id TEXT,
       ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION,
       ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION,
       ADD COLUMN IF NOT EXISTS adresse TEXT,
       ADD COLUMN IF NOT EXISTS tapt_aarsak TEXT`);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_anbud_pipeline_org
+      ON leadgrid_anbud_pipeline (organization_id, project_id, status)`);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_anbud_pipeline_project_doffin
+      ON leadgrid_anbud_pipeline (organization_id, project_id, doffin_id)`);
   schemaReady = true;
+}
+
+type DoffinProjectScope = { organizationId: string; projectId: string };
+
+async function resolveDoffinProjectScope(
+  pool: Pool,
+  req: Request,
+  res: Response,
+  userId: string,
+): Promise<DoffinProjectScope | null> {
+  const query = req.query as Record<string, unknown>;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const raw = query.projectId ?? query.project_id ?? body.projectId ?? body.project_id;
+  const projectId = typeof raw === "string" ? raw.trim() : "";
+  if (!projectId) {
+    res.status(400).json({ error: "project_id_required" });
+    return null;
+  }
+  const project = await loadAccessibleLeadgridProject(pool, projectId, userId);
+  if (!project) {
+    res.status(404).json({ error: "project_not_found" });
+    return null;
+  }
+  return { organizationId: project.organizationId, projectId: project.id };
 }
 
 const TAPT_AARSAKER = new Set(["pris", "kapasitet", "krav", "referanser", "annet"]);
@@ -330,6 +362,8 @@ export function registerLeadgridDoffinRoutes(deps: {
       const session = await requireUserSession(req, res);
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
+      const scope = await resolveDoffinProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       const params = buildUpstreamQuery(req);
       if (params instanceof URLSearchParams === false) {
         res.status(400).json({ error: "bad_request", message: (params as { error: string }).error });
@@ -340,14 +374,12 @@ export function registerLeadgridDoffinRoutes(deps: {
       // i org-ens CRM. Per-request-berikelse — cachen forblir generisk.
       let body = r.body;
       if (r.ok) {
-        const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-        if (orgId) {
-          const hits = (r.body as { kunngjoringer?: { oppdragsgivere?: { orgnr?: string }[] }[] })
-            .kunngjoringer ?? [];
-          const orgnrs = hits.flatMap((k) => (k.oppdragsgivere ?? []).map((o) => String(o.orgnr ?? "")));
-          const matches = await matchKunder(pool, orgId, orgnrs);
-          body = withKundeMatch(r.body, matches);
-        }
+        const hits = (r.body as { kunngjoringer?: { oppdragsgivere?: { orgnr?: string }[] }[] })
+          .kunngjoringer ?? [];
+        const orgnrs = hits.flatMap((k) => (k.oppdragsgivere ?? []).map((o) => String(o.orgnr ?? "")));
+        const matches = await matchKunder(
+          pool, scope.organizationId, scope.projectId, orgnrs);
+        body = withKundeMatch(r.body, matches);
       }
       res.status(r.status).json(body);
     } catch (e) {
@@ -356,18 +388,19 @@ export function registerLeadgridDoffinRoutes(deps: {
     }
   });
 
-  /** Lagrede overvåkninger for org-en. */
+  /** Lagrede overvåkninger for aktivt kundeprosjekt. */
   app.get("/api/leadgrid/doffin/watches", async (req, res) => {
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
+      const scope = await resolveDoffinProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       await ensureSchema(pool);
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.json({ watches: [] }); return; }
       const r = await pool.query(
         `SELECT id, name, query, created_at, new_hits_count FROM leadgrid_doffin_watches
-          WHERE organization_id = $1 ORDER BY created_at DESC`, [orgId]);
+          WHERE organization_id = $1 AND project_id = $2
+          ORDER BY created_at DESC`, [scope.organizationId, scope.projectId]);
       res.json({ watches: r.rows });
     } catch (e) {
       console.error("[doffin] watches failed:", e);
@@ -382,13 +415,13 @@ export function registerLeadgridDoffinRoutes(deps: {
       const session = await requireUserSession(req, res);
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
+      const scope = await resolveDoffinProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       await ensureSchema(pool);
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.status(400).json({ error: "no_org" }); return; }
       await pool.query(
         `UPDATE leadgrid_doffin_watches SET new_hits_count = 0, updated_at = now()
-          WHERE id = $1 AND organization_id = $2`,
-        [String(req.params.id), orgId]);
+          WHERE id = $1 AND organization_id = $2 AND project_id = $3`,
+        [String(req.params.id), scope.organizationId, scope.projectId]);
       res.json({ ok: true });
     } catch (e) {
       console.error("[doffin] mark-seen failed:", e);
@@ -402,23 +435,27 @@ export function registerLeadgridDoffinRoutes(deps: {
       const session = await requireUserSession(req, res);
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
+      const scope = await resolveDoffinProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       await ensureSchema(pool);
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.status(400).json({ error: "no_org" }); return; }
       const name = String(req.body?.name ?? "").trim().slice(0, 120);
       const query = req.body?.query && typeof req.body.query === "object" ? req.body.query : {};
       if (!name) { res.status(400).json({ error: "bad_request", message: "name er påkrevd." }); return; }
       const count = await pool.query(
-        `SELECT COUNT(*)::int AS n FROM leadgrid_doffin_watches WHERE organization_id = $1`, [orgId]);
+        `SELECT COUNT(*)::int AS n FROM leadgrid_doffin_watches
+          WHERE organization_id = $1 AND project_id = $2`,
+        [scope.organizationId, scope.projectId]);
       if ((count.rows[0]?.n ?? 0) >= 25) {
-        res.status(400).json({ error: "too_many_watches", message: "Maks 25 overvåkninger per organisasjon." });
+        res.status(400).json({ error: "too_many_watches", message: "Maks 25 overvåkninger per prosjekt." });
         return;
       }
       const id = randomUUID();
       await pool.query(
-        `INSERT INTO leadgrid_doffin_watches (id, organization_id, name, query, created_by)
-         VALUES ($1,$2,$3,$4,$5)`,
-        [id, orgId, name, JSON.stringify(query), session.userId]);
+        `INSERT INTO leadgrid_doffin_watches
+           (id, organization_id, project_id, name, query, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [id, scope.organizationId, scope.projectId, name,
+         JSON.stringify(query), session.userId]);
       res.json({ ok: true, id });
     } catch (e) {
       console.error("[doffin] create watch failed:", e);
@@ -439,12 +476,14 @@ export function registerLeadgridDoffinRoutes(deps: {
         res.status(503).json({ error: "ai_ikke_konfigurert" });
         return;
       }
+      const scope = await resolveDoffinProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       await ensureSchema(pool);
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.status(400).json({ error: "no_org" }); return; }
       const watches = await pool.query<{ name: string; query: Record<string, unknown> }>(
         `SELECT name, query FROM leadgrid_doffin_watches
-          WHERE organization_id = $1 ORDER BY created_at ASC LIMIT 25`, [orgId]);
+          WHERE organization_id = $1 AND project_id = $2
+          ORDER BY created_at ASC LIMIT 25`,
+        [scope.organizationId, scope.projectId]);
       if (watches.rowCount === 0) {
         res.status(400).json({
           error: "ingen_overvaakninger",
@@ -496,7 +535,7 @@ ${JSON.stringify(items)}`;
              (id, organization_id, user_id, user_name, feature, model,
               input_chars, input_tokens, output_tokens, cost_usd)
            VALUES ($1,$2,$3,$4,'anbud_score',$5,$6,$7,$8,$9)`,
-          [randomUUID(), orgId, session.userId, "", "claude-sonnet-4-6",
+          [randomUUID(), scope.organizationId, session.userId, "", "claude-sonnet-4-6",
            JSON.stringify(items).length, inTok, outTok, cost]);
       } catch { /* logging velter aldri svaret */ }
       const match = text.match(/\{[\s\S]*\}/);
@@ -517,6 +556,8 @@ ${JSON.stringify(items)}`;
       const session = await requireUserSession(req, res);
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
+      const scope = await resolveDoffinProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       const q = new URLSearchParams();
       q.set("numHitsPerPage", "50");
       q.set("status", "AWARDED");
@@ -578,9 +619,9 @@ ${JSON.stringify(items)}`;
       const session = await requireUserSession(req, res);
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
+      const scope = await resolveDoffinProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       await ensureSchema(pool);
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.json({ items: [], stats: null }); return; }
       const r = await pool.query(
         `SELECT p.id, p.doffin_id, p.tittel, p.oppdragsgiver, p.orgnr, p.url,
                 p.frist, p.verdi::float8 AS verdi, p.status, p.assigned_user_id,
@@ -588,10 +629,10 @@ ${JSON.stringify(items)}`;
                 NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), '') AS assigned_navn
            FROM leadgrid_anbud_pipeline p
            LEFT JOIN users u ON u.id::text = p.assigned_user_id
-          WHERE p.organization_id = $1
+          WHERE p.organization_id = $1 AND p.project_id = $2
           ORDER BY CASE WHEN p.status IN ('vant','tapt') THEN 1 ELSE 0 END,
                    p.frist ASC NULLS LAST, p.created_at DESC`,
-        [orgId]);
+        [scope.organizationId, scope.projectId]);
       const vant = r.rows.filter((x) => x.status === "vant").length;
       const tapt = r.rows.filter((x) => x.status === "tapt").length;
       const aapne = r.rows.length - vant - tapt;
@@ -629,9 +670,9 @@ ${JSON.stringify(items)}`;
       const session = await requireUserSession(req, res);
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
+      const scope = await resolveDoffinProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       await ensureSchema(pool);
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.status(400).json({ error: "no_org" }); return; }
       const b = (req.body ?? {}) as Record<string, unknown>;
       const doffinId = String(b.doffin_id ?? "").trim();
       const tittel = String(b.tittel ?? "").trim().slice(0, 300);
@@ -643,12 +684,12 @@ ${JSON.stringify(items)}`;
       const id = randomUUID();
       const r = await pool.query(
         `INSERT INTO leadgrid_anbud_pipeline
-           (id, organization_id, doffin_id, tittel, oppdragsgiver, orgnr, url,
-            frist, verdi, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-         ON CONFLICT (organization_id, doffin_id) DO NOTHING
+           (id, organization_id, project_id, doffin_id, tittel,
+            oppdragsgiver, orgnr, url, frist, verdi, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         ON CONFLICT DO NOTHING
          RETURNING id`,
-        [id, orgId, doffinId, tittel,
+        [id, scope.organizationId, scope.projectId, doffinId, tittel,
          String(b.oppdragsgiver ?? "").slice(0, 200),
          String(b.orgnr ?? "").replace(/\s+/g, "").slice(0, 9),
          String(b.url ?? "").slice(0, 300),
@@ -684,12 +725,12 @@ ${JSON.stringify(items)}`;
       const session = await requireUserSession(req, res);
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
+      const scope = await resolveDoffinProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       await ensureSchema(pool);
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.status(400).json({ error: "no_org" }); return; }
       const b = (req.body ?? {}) as Record<string, unknown>;
       const sets: string[] = [];
-      const vals: unknown[] = [String(req.params.id), orgId];
+      const vals: unknown[] = [String(req.params.id), scope.organizationId, scope.projectId];
       const push = (col: string, v: unknown) => {
         vals.push(v);
         sets.push(`${col} = $${vals.length}`);
@@ -722,7 +763,7 @@ ${JSON.stringify(items)}`;
       sets.push("updated_at = now()");
       const r = await pool.query(
         `UPDATE leadgrid_anbud_pipeline SET ${sets.join(", ")}
-          WHERE id = $1 AND organization_id = $2
+          WHERE id = $1 AND organization_id = $2 AND project_id = $3
           RETURNING tittel, assigned_user_id`,
         vals);
       if (r.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
@@ -735,8 +776,10 @@ ${JSON.stringify(items)}`;
                (recipient_user_id, organization_id, event_type, title, body,
                 triggered_by_user_id, deep_link, meta, email_sent)
              VALUES ($1, $2, 'doffin_anbud_tildelt', $3, $4, $5, 'leadgrid://anbud', $6::jsonb, FALSE)`,
-            [nyTildelt, orgId, "Du er tildelt et anbud", tittel,
-             session.userId, JSON.stringify({ pipeline_id: String(req.params.id) })]);
+            [nyTildelt, scope.organizationId, "Du er tildelt et anbud", tittel,
+             session.userId, JSON.stringify({
+               pipeline_id: String(req.params.id), project_id: scope.projectId,
+             })]);
           const tok = await pool.query<{ token: string }>(
             `SELECT token FROM notification_device_tokens
               WHERE user_id = $1 AND platform = 'apns' AND enabled = TRUE`, [nyTildelt]);
@@ -763,12 +806,13 @@ ${JSON.stringify(items)}`;
       const session = await requireUserSession(req, res);
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
+      const scope = await resolveDoffinProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       await ensureSchema(pool);
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.status(400).json({ error: "no_org" }); return; }
       await pool.query(
-        `DELETE FROM leadgrid_anbud_pipeline WHERE id = $1 AND organization_id = $2`,
-        [String(req.params.id), orgId]);
+        `DELETE FROM leadgrid_anbud_pipeline
+          WHERE id = $1 AND organization_id = $2 AND project_id = $3`,
+        [String(req.params.id), scope.organizationId, scope.projectId]);
       res.json({ ok: true });
     } catch (e) {
       console.error("[doffin] pipeline delete failed:", e);
@@ -786,7 +830,8 @@ ${JSON.stringify(items)}`;
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
       if (!ANTHROPIC_API_KEY) { res.status(503).json({ error: "ai_ikke_konfigurert" }); return; }
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      const scope = await resolveDoffinProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       const tittel = String(req.body?.tittel ?? "").slice(0, 300);
       const beskrivelse = String(req.body?.beskrivelse ?? "").slice(0, 6000);
       const krav = Array.isArray(req.body?.krav)
@@ -825,7 +870,7 @@ ${beskrivelse}`;
              (id, organization_id, user_id, user_name, feature, model,
               input_chars, input_tokens, output_tokens, cost_usd)
            VALUES ($1,$2,$3,$4,'anbud_tilbud',$5,$6,$7,$8,$9)`,
-          [randomUUID(), orgId ?? "", session.userId, "", "claude-sonnet-4-6",
+          [randomUUID(), scope.organizationId, session.userId, "", "claude-sonnet-4-6",
            beskrivelse.length, inTok, outTok, cost]);
       } catch { /* logging velter aldri svaret */ }
       const match = text.match(/\{[\s\S]*\}/);
@@ -845,7 +890,8 @@ ${beskrivelse}`;
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
       if (!ANTHROPIC_API_KEY) { res.status(503).json({ error: "ai_ikke_konfigurert" }); return; }
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      const scope = await resolveDoffinProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       const tittel = String(req.body?.tittel ?? "").slice(0, 300);
       const beskrivelse = String(req.body?.beskrivelse ?? "").slice(0, 6000);
       if (beskrivelse.trim().length < 40) {
@@ -880,7 +926,7 @@ ${beskrivelse}`;
              (id, organization_id, user_id, user_name, feature, model,
               input_chars, input_tokens, output_tokens, cost_usd)
            VALUES ($1,$2,$3,$4,'anbud_oppsummer',$5,$6,$7,$8,$9)`,
-          [randomUUID(), orgId ?? "", session.userId, "", "claude-sonnet-4-6",
+          [randomUUID(), scope.organizationId, session.userId, "", "claude-sonnet-4-6",
            beskrivelse.length, inTok, outTok, cost]);
       } catch { /* logging velter aldri svaret */ }
       const match = text.match(/\{[\s\S]*\}/);
@@ -909,18 +955,32 @@ ${beskrivelse}`;
     try {
       await ensureSchema(pool);
       const watches = await pool.query<{
-        organization_id: string; name: string; query: Record<string, unknown>;
+        organization_id: string; project_id: string;
+        name: string; query: Record<string, unknown>;
       }>(
-        `SELECT organization_id, name, query FROM leadgrid_doffin_watches
-          ORDER BY organization_id, created_at ASC LIMIT 500`);
-      const perOrg = new Map<string, { name: string; query: Record<string, unknown> }[]>();
+        `SELECT organization_id, project_id, name, query
+           FROM leadgrid_doffin_watches
+          WHERE project_id IS NOT NULL
+          ORDER BY organization_id, project_id, created_at ASC LIMIT 500`);
+      type DigestScope = {
+        organizationId: string;
+        projectId: string;
+        watches: { name: string; query: Record<string, unknown> }[];
+      };
+      const perScope = new Map<string, DigestScope>();
       for (const w of watches.rows) {
-        (perOrg.get(w.organization_id) ?? perOrg.set(w.organization_id, []).get(w.organization_id)!)
-          .push({ name: w.name, query: w.query });
+        const key = `${w.organization_id}\u0000${w.project_id}`;
+        const entry = perScope.get(key) ?? {
+          organizationId: w.organization_id,
+          projectId: w.project_id,
+          watches: [],
+        };
+        entry.watches.push({ name: w.name, query: w.query });
+        perScope.set(key, entry);
       }
       const enUkeSiden = Date.now() - 7 * 86_400_000;
       let sendt = 0, hoppet = 0;
-      for (const [orgId, orgWatches] of perOrg) {
+      for (const { organizationId: orgId, projectId, watches: projectWatches } of perScope.values()) {
         try {
           // Mottakere: org-ens ledere med e-post.
           const ledere = await pool.query<{ email: string }>(
@@ -934,7 +994,7 @@ ${beskrivelse}`;
           // Ferske treff per overvåkning (maks 3 watches × 5 treff).
           type DigestTreff = { tittel: string; oppdragsgiver: string; frist: string | null; url: string; kunde: boolean };
           const seksjoner: { watch: string; treff: DigestTreff[] }[] = [];
-          for (const w of orgWatches.slice(0, 3)) {
+          for (const w of projectWatches.slice(0, 3)) {
             const q = new URLSearchParams();
             q.set("numHitsPerPage", "20");
             q.set("status", "ACTIVE");
@@ -960,7 +1020,7 @@ ${beskrivelse}`;
             const orgnrs = hits.flatMap((h) =>
               ((h.oppdragsgivere as { orgnr?: string }[] | undefined) ?? [])
                 .map((o) => String(o.orgnr ?? "")));
-            const matches = await matchKunder(pool, orgId, orgnrs);
+            const matches = await matchKunder(pool, orgId, projectId, orgnrs);
             seksjoner.push({
               watch: w.name,
               treff: hits.map((h) => ({
@@ -976,9 +1036,10 @@ ${beskrivelse}`;
           // Pipeline-frister neste 14 dager.
           const frister = await pool.query<{ tittel: string; frist: string; status: string }>(
             `SELECT tittel, frist::text, status FROM leadgrid_anbud_pipeline
-              WHERE organization_id = $1 AND status IN ('vurderer','gaar_for','tilbud_levert')
+              WHERE organization_id = $1 AND project_id = $2
+                AND status IN ('vurderer','gaar_for','tilbud_levert')
                 AND frist IS NOT NULL AND frist > now() AND frist < now() + INTERVAL '14 days'
-              ORDER BY frist ASC LIMIT 10`, [orgId]);
+              ORDER BY frist ASC LIMIT 10`, [orgId, projectId]);
           if (seksjoner.length === 0 && frister.rowCount === 0) { hoppet++; continue; }
           // Enkel, ærlig HTML — tabell-basert (ingen bilder, ingen sporing).
           const fmt = (iso: string | null) => {
@@ -1027,7 +1088,13 @@ ${beskrivelse}`;
           console.warn("[doffin] digest for org feilet:", orgId, String(orgErr).slice(0, 120));
         }
       }
-      res.json({ ok: true, orger: perOrg.size, sendt, hoppet });
+      res.json({
+        ok: true,
+        orger: new Set([...perScope.values()].map((scope) => scope.organizationId)).size,
+        prosjekter: perScope.size,
+        sendt,
+        hoppet,
+      });
     } catch (e) {
       console.error("[doffin] ukesdigest failed:", e);
       res.status(500).json({ error: "internal_error" });
@@ -1048,11 +1115,13 @@ ${beskrivelse}`;
     try {
       await ensureSchema(pool);
       const watches = await pool.query<{
-        id: string; organization_id: string; name: string;
+        id: string; organization_id: string; project_id: string; name: string;
         query: Record<string, unknown>; created_by: string; seen_ids: string[];
       }>(
-        `SELECT id, organization_id, name, query, created_by, seen_ids
-           FROM leadgrid_doffin_watches ORDER BY created_at ASC LIMIT 200`);
+        `SELECT id, organization_id, project_id, name, query, created_by, seen_ids
+           FROM leadgrid_doffin_watches
+          WHERE project_id IS NOT NULL
+          ORDER BY created_at ASC LIMIT 200`);
       let checked = 0, notified = 0, seeded = 0, failed = 0;
       for (const w of watches.rows) {
         try {
@@ -1094,7 +1163,8 @@ ${beskrivelse}`;
           const freshOrgnrs = fresh.flatMap((h) =>
             ((h.oppdragsgivere as { orgnr?: string }[] | undefined) ?? [])
               .map((o) => String(o.orgnr ?? "")));
-          const kundeMatches = await matchKunder(pool, w.organization_id, freshOrgnrs);
+          const kundeMatches = await matchKunder(
+            pool, w.organization_id, w.project_id, freshOrgnrs);
           // Varsle oppretteren: in-app + push (best effort).
           const first = fresh[0];
           const harKunde = kundeMatches.size > 0;
@@ -1111,7 +1181,11 @@ ${beskrivelse}`;
                 triggered_by_user_id, deep_link, meta, email_sent)
              VALUES ($1, $2, 'doffin_watch_hit', $3, $4, NULL, $5, $6::jsonb, FALSE)`,
             [w.created_by, w.organization_id, title, body, deepLink,
-             JSON.stringify({ watch_id: w.id, new_ids: fresh.map((h) => String(h.id)).slice(0, 20) })]);
+             JSON.stringify({
+               watch_id: w.id,
+               project_id: w.project_id,
+               new_ids: fresh.map((h) => String(h.id)).slice(0, 20),
+             })]);
           notified++;
           try {
             const tokRes = await pool.query<{ token: string }>(
@@ -1144,14 +1218,16 @@ ${beskrivelse}`;
       let fristVarsler = 0;
       try {
         const due = await pool.query<{
-          id: string; organization_id: string; tittel: string; frist: string;
+          id: string; organization_id: string; project_id: string;
+          tittel: string; frist: string;
           assigned_user_id: string | null; created_by: string;
           varslet_7d: boolean; varslet_1d: boolean;
         }>(
-          `SELECT id, organization_id, tittel, frist, assigned_user_id,
+          `SELECT id, organization_id, project_id, tittel, frist, assigned_user_id,
                   created_by, varslet_7d, varslet_1d
              FROM leadgrid_anbud_pipeline
-            WHERE status IN ('vurderer','gaar_for')
+            WHERE project_id IS NOT NULL
+              AND status IN ('vurderer','gaar_for')
               AND frist IS NOT NULL
               AND frist > now()
               AND frist < now() + INTERVAL '7 days'
@@ -1173,7 +1249,11 @@ ${beskrivelse}`;
                 triggered_by_user_id, deep_link, meta, email_sent)
              VALUES ($1, $2, 'doffin_frist', $3, $4, NULL, 'leadgrid://anbud', $5::jsonb, FALSE)`,
             [mottaker, p.organization_id, title, p.tittel,
-             JSON.stringify({ pipeline_id: p.id, dager_igjen: dagerIgjen })]);
+             JSON.stringify({
+               pipeline_id: p.id,
+               project_id: p.project_id,
+               dager_igjen: dagerIgjen,
+             })]);
           await pool.query(
             `UPDATE leadgrid_anbud_pipeline
                 SET ${nivaa1d ? "varslet_1d = TRUE, varslet_7d = TRUE" : "varslet_7d = TRUE"},
@@ -1209,12 +1289,13 @@ ${beskrivelse}`;
       const session = await requireUserSession(req, res);
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
+      const scope = await resolveDoffinProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
       await ensureSchema(pool);
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.status(400).json({ error: "no_org" }); return; }
       const r = await pool.query(
-        `DELETE FROM leadgrid_doffin_watches WHERE id = $1 AND organization_id = $2`,
-        [String(req.params.id), orgId]);
+        `DELETE FROM leadgrid_doffin_watches
+          WHERE id = $1 AND organization_id = $2 AND project_id = $3`,
+        [String(req.params.id), scope.organizationId, scope.projectId]);
       res.json({ ok: true, deleted: r.rowCount ?? 0 });
     } catch (e) {
       console.error("[doffin] delete watch failed:", e);
