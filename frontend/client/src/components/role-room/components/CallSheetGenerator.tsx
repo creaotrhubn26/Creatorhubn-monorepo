@@ -166,6 +166,7 @@ interface CallSheetGeneratorProps {
   crew?: CrewMember[];
   locations?: Location[];
   onGenerate?: (callSheet: CallSheetData) => void;
+  onDeliverySent?: () => void;
 }
 
 const EMPTY_SCENES: SceneBreakdown[] = [];
@@ -565,6 +566,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
   crew = EMPTY_CREW,
   locations = EMPTY_LOCATIONS,
   onGenerate,
+  onDeliverySent,
 }) => {
   const theme = useTheme();
   const responsive = useResponsiveConfig();
@@ -666,13 +668,36 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
     return out;
   }, [callSheet.date, castingCandidates]);
 
+  // The selected production day is the live source while the dialog is open.
+  // Apply 2AD edits immediately; background hydration below only enriches the
+  // sheet with project, role and candidate metadata.
+  useEffect(() => {
+    setCallSheet(createEmptyCallSheet(productionDay));
+    setActiveProductionDay(productionDay);
+    setIsSynced(false);
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!productionDay) return;
+    const dayFields = buildDayCallSheetFields(
+      productionDay,
+      scenes,
+      crew.length ? crew : castingCrew,
+      locations.length ? locations : castingLocations,
+      castingRoles,
+      castingCandidates,
+    );
+    setActiveProductionDay(productionDay);
+    setCallSheet((current) => ({ ...current, ...dayFields }));
+    setIsSynced(true);
+  }, [productionDay, scenes, crew, locations, castingCrew, castingLocations, castingRoles, castingCandidates]);
+
   // Load data from casting service (background, non-blocking)
   useEffect(() => {
     const loadCastingData = async () => {
       // Ikke blokker UI mens registrerte prosjektdata lastes.
       try {
         setIsSynced(false);
-        setCallSheet(createEmptyCallSheet(productionDay));
         const [project, candidates, roles, crewMembers, locs, productionDays, loadedScenes] = await Promise.all([
           castingService.getProject(projectId).catch(() => null),
           castingService.getCandidates(projectId).catch(() => []),
@@ -740,7 +765,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
       // Background load - don't await
       loadCastingData();
     }
-  }, [projectId, productionDay, productionDayId, scenes, crew, locations]);
+  }, [projectId, productionDay?.id, productionDayId]);
 
   const openRecipientPreview = () => {
     if (sendPermission !== 'manage') {
@@ -791,6 +816,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
           ? `Call sheet sendt til alle ${total} mottakere.`
           : `Sendt til ${sent} av ${total}. Sjekk e-postadressene til resten.`,
       });
+      if (sent > 0) onDeliverySent?.();
       setRecipientPreviewOpen(false);
     } catch (error) {
       setSendFeedback({ severity: 'error', text: error instanceof Error ? error.message : 'Kunne ikke sende call sheet.' });

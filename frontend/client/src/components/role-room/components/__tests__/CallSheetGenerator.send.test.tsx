@@ -83,7 +83,8 @@ describe('CallSheetGenerator recipient confirmation', () => {
   });
 
   it('does not send on the first click and only sends the checked recipients after confirmation', async () => {
-    render(<CallSheetGenerator projectId="project-1" productionDayId="day-1" />);
+    const onDeliverySent = vi.fn();
+    render(<CallSheetGenerator projectId="project-1" productionDayId="day-1" onDeliverySent={onDeliverySent} />);
 
     const previewButton = await screen.findByRole('button', { name: 'Kontroller mottakere' });
     await waitFor(() => expect(previewButton).toBeEnabled());
@@ -105,6 +106,31 @@ describe('CallSheetGenerator recipient confirmation', () => {
     expect(payload.html).toContain('Kostyme');
     expect(payload.html).toContain('06:45');
     expect(payload.html).toContain('Bil 2 · Ola');
+    expect(onDeliverySent).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies updated 2AD times immediately from the canonical production-day prop', async () => {
+    const baseDay = (await getProductionDays())?.[0];
+    const sharedProps = {
+      projectId: 'project-1',
+      scenes: await getSceneBreakdowns(),
+      crew: await getCrew(),
+      locations: await getLocations(),
+    };
+    const { rerender } = render(<CallSheetGenerator {...sharedProps} productionDay={baseDay} />);
+
+    expect(await screen.findByText('06:15')).toBeInTheDocument();
+    const updatedDay = {
+      ...baseDay,
+      secondAd: {
+        ...baseDay.secondAd,
+        entries: baseDay.secondAd.entries.map((entry: Record<string, unknown>) => ({ ...entry, callTime: '05:55', transport: 'Bil 4 · Liv' })),
+      },
+    };
+    rerender(<CallSheetGenerator {...sharedProps} productionDay={updatedDay} />);
+
+    expect(await screen.findByText('05:55')).toBeInTheDocument();
+    expect(screen.getByText('Bil 4 · Liv')).toBeInTheDocument();
   });
 
   it('keeps the call sheet visible but disables distribution for the default director role', async () => {
