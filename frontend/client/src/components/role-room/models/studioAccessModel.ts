@@ -196,6 +196,14 @@ export const PRODUCTION_ROLES: readonly ProductionRoleDef[] = [
     },
   },
   {
+    key: 'second_ad', label: '2. regiassistent / 2nd AD', department: 'ledelse',
+    description: 'Eier callsheet-distribusjon, individuelle call-tider og cast movement gjennom opptaksdagen.',
+    preset: {
+      oversikt: V, 'story-arc': V, roles: V, candidates: V, locations: V,
+      callsheet: M, crew: V, 'live-set': M, workspace: V,
+    },
+  },
+  {
     key: 'pa', label: 'Production Assistant (PA)', department: 'ledelse',
     description: 'Praktisk støtte på sett og i logistikk.',
     preset: {

@@ -260,6 +260,7 @@ const DashboardPanel = lazyWithRetry(() => import('./DashboardPanel').then(m => 
 const DirectorWorkspace = lazyWithRetry(() => import('./director/DirectorWorkspace').then(m => ({ default: m.DirectorWorkspace })));
 const CinematographerWorkspace = lazyWithRetry(() => import('./cinematographer/CinematographerWorkspace').then(m => ({ default: m.CinematographerWorkspace })));
 const FirstAssistantDirectorWorkspace = lazyWithRetry(() => import('./assistant-director/FirstAssistantDirectorWorkspace').then(m => ({ default: m.FirstAssistantDirectorWorkspace })));
+const SecondAssistantDirectorWorkspace = lazyWithRetry(() => import('./assistant-director/SecondAssistantDirectorWorkspace').then(m => ({ default: m.SecondAssistantDirectorWorkspace })));
 const SharingPanel = lazyWithRetry(() => import('./SharingPanel').then(m => ({ default: m.SharingPanel })));
 const LiveSetMode = lazyWithRetry(() => import('./LiveSetMode').then(m => ({ default: m.LiveSetMode })));
 
@@ -1478,6 +1479,9 @@ type RoleRoomProjectWorkspaceState = {
       if (['first_ad', 'first_assistant_director', '1st_ad'].includes(normalizedRequestedRole)) {
         return 'first_ad';
       }
+      if (['second_ad', 'second_assistant_director', '2nd_ad'].includes(normalizedRequestedRole)) {
+        return 'second_ad';
+      }
       if (
         [
           'director',
@@ -1501,6 +1505,8 @@ type RoleRoomProjectWorkspaceState = {
     if (normalizedRole === 'content_producer') return 'content_producer';
     if (normalizedRole === 'client_reviewer' || normalizedRole === 'client') return 'client_reviewer';
     if (['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalizedRole)) return 'camera_team';
+    if (['first_ad', 'first_assistant_director', '1st_ad'].includes(normalizedRole)) return 'first_ad';
+    if (['second_ad', 'second_assistant_director', '2nd_ad'].includes(normalizedRole)) return 'second_ad';
     if (
       [
         'director',
@@ -2989,6 +2995,9 @@ type RoleRoomProjectWorkspaceState = {
       first_ad: 'Innspillingsleder / 1st AD',
       first_assistant_director: 'Innspillingsleder / 1st AD',
       '1st_ad': 'Innspillingsleder / 1st AD',
+      second_ad: '2. regiassistent / 2nd AD',
+      second_assistant_director: '2. regiassistent / 2nd AD',
+      '2nd_ad': '2. regiassistent / 2nd AD',
       camera_team: branding.tokens.labels.roleCameraTeamLabel,
       agency: branding.tokens.labels.roleAgencyLabel,
       content_producer: 'Innholdsprodusent',
@@ -3029,6 +3038,7 @@ type RoleRoomProjectWorkspaceState = {
         'casting_director',
         'production_manager',
         'first_ad',
+        'second_ad',
         'camera_team',
         'writer',
         'script_editor',
@@ -3053,6 +3063,7 @@ type RoleRoomProjectWorkspaceState = {
     if (normalized === 'casting_director') return 'casting_director';
     if (normalized === 'production_manager') return 'production_manager';
     if (['first_ad', 'first_assistant_director', '1st_ad'].includes(normalized)) return 'first_ad';
+    if (['second_ad', 'second_assistant_director', '2nd_ad'].includes(normalized)) return 'second_ad';
     if (normalized === 'camera_team' || normalized === 'camera_operator') return 'camera_team';
     if (normalized === 'writer') return 'writer';
     if (normalized === 'script_editor') return 'script_editor';
@@ -3163,6 +3174,11 @@ type RoleRoomProjectWorkspaceState = {
     'first_assistant_director',
     '1st_ad',
   ].includes(normalizedRequestedProjectRole);
+  const hasSecondAssistantDirectorPersona = [
+    'second_ad',
+    'second_assistant_director',
+    '2nd_ad',
+  ].includes(normalizedRequestedProjectRole);
   const accountRoleLabel = adminUser?.role ? getHeaderRoleLabel(adminUser.role) : '';
   const projectRoleLabel = currentUserRole?.role
     ? currentUserRole.role === 'camera_team' && hasCinematographerPersona
@@ -3198,9 +3214,16 @@ type RoleRoomProjectWorkspaceState = {
     '1st_ad',
   ].includes(normalizedCurrentProjectRole)
     && (!isRoleRoomAdminSession || hasFirstAssistantDirectorPersona);
+  const isAssignedSecondAssistantDirectorProjectRole = [
+    'second_ad',
+    'second_assistant_director',
+    '2nd_ad',
+  ].includes(normalizedCurrentProjectRole)
+    && (!isRoleRoomAdminSession || hasSecondAssistantDirectorPersona);
   const canUseDirectorWorkspace = isAssignedDirectorProjectRole || isRoleRoomAdminSession;
   const canUseCinematographerWorkspace = isAssignedCinematographerProjectRole || isRoleRoomAdminSession;
   const canUseFirstAssistantDirectorWorkspace = isAssignedFirstAssistantDirectorProjectRole || isRoleRoomAdminSession;
+  const canUseAssistantDirectorWorkspace = canUseFirstAssistantDirectorWorkspace || isAssignedSecondAssistantDirectorProjectRole;
   const effectiveWorkspaceLens: RoleRoomWorkspaceLens = (
     canUseDirectorWorkspace
     && (workspaceLensPreference === 'director' || (workspaceLensPreference === null && isAssignedDirectorProjectRole))
@@ -3212,10 +3235,10 @@ type RoleRoomProjectWorkspaceState = {
         || (workspaceLensPreference === null && isAssignedCinematographerProjectRole)
       )
       ? 'cinematography'
-      : canUseFirstAssistantDirectorWorkspace
+      : canUseAssistantDirectorWorkspace
         && (
           workspaceLensPreference === 'assistant-direction'
-          || (workspaceLensPreference === null && isAssignedFirstAssistantDirectorProjectRole)
+          || (workspaceLensPreference === null && (isAssignedFirstAssistantDirectorProjectRole || isAssignedSecondAssistantDirectorProjectRole))
         )
         ? 'assistant-direction'
         : 'full';
@@ -5190,6 +5213,7 @@ type RoleRoomProjectWorkspaceState = {
               isAssignedDirectorProjectRole
               || isAssignedCinematographerProjectRole
               || isAssignedFirstAssistantDirectorProjectRole
+              || isAssignedSecondAssistantDirectorProjectRole
             )
             ? 'full'
             : '';
@@ -5249,6 +5273,7 @@ type RoleRoomProjectWorkspaceState = {
     isAssignedCinematographerProjectRole,
     isAssignedDirectorProjectRole,
     isAssignedFirstAssistantDirectorProjectRole,
+    isAssignedSecondAssistantDirectorProjectRole,
     isExternalClientPortalMode,
     workspaceLensPreference,
   ]);
@@ -10888,15 +10913,35 @@ type RoleRoomProjectWorkspaceState = {
               onOpenFullWorkspace={handleOpenFullWorkspace}
             />
           ) : currentProject && effectiveWorkspaceLens === 'assistant-direction' ? (
-            <FirstAssistantDirectorWorkspace
-              key={`first-ad-${currentProject.id}`}
-              project={currentProject}
-              activeSurface={firstAssistantDirectorSurface}
-              readOnly={!permissions.canEditProduction || !canManageTab(CALENDAR_TAB_INDEX)}
-              isSurfaceAvailable={isFirstAssistantDirectorSurfaceAvailable}
-              onNavigate={handleFirstAssistantDirectorNavigate}
-              onOpenFullWorkspace={handleOpenFullWorkspace}
-            />
+            isAssignedSecondAssistantDirectorProjectRole ? (
+              <SecondAssistantDirectorWorkspace
+                key={`second-ad-${currentProject.id}`}
+                project={currentProject}
+                readOnly={!permissions.canEditProduction || !canManageTab(CALENDAR_TAB_INDEX)}
+                onOpenCallSheet={() => handleFirstAssistantDirectorNavigate('call-sheet')}
+                onOpenSchedule={() => handleFirstAssistantDirectorNavigate('shooting-plan')}
+                onOpenLiveSet={() => handleFirstAssistantDirectorNavigate('on-set')}
+                onOpenFullWorkspace={handleOpenFullWorkspace}
+                onSaved={(updatedDay) => {
+                  const apply = (project: CastingProject): CastingProject => ({
+                    ...project,
+                    productionDays: (project.productionDays ?? []).map((day) => day.id === updatedDay.id ? updatedDay : day),
+                  });
+                  setCurrentProject((project) => project ? apply(project) : project);
+                  setProjects((items) => items.map((project) => project.id === currentProject.id ? apply(project) : project));
+                }}
+              />
+            ) : (
+              <FirstAssistantDirectorWorkspace
+                key={`first-ad-${currentProject.id}`}
+                project={currentProject}
+                activeSurface={firstAssistantDirectorSurface}
+                readOnly={!permissions.canEditProduction || !canManageTab(CALENDAR_TAB_INDEX)}
+                isSurfaceAvailable={isFirstAssistantDirectorSurfaceAvailable}
+                onNavigate={handleFirstAssistantDirectorNavigate}
+                onOpenFullWorkspace={handleOpenFullWorkspace}
+              />
+            )
           ) : (
             <>
               {currentProject && canUseDirectorWorkspace ? (

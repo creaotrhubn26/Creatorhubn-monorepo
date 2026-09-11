@@ -91,7 +91,7 @@ export const castingAuthService = {
     if (!userRole) return false;
     
     // Director, producer, production manager, 1st AD, and content producer can edit production
-    return ['director', 'producer', 'production_manager', 'first_ad', 'content_producer'].includes(userRole.role) ||
+    return ['director', 'producer', 'production_manager', 'first_ad', 'second_ad', 'content_producer'].includes(userRole.role) ||
            await this.hasPermission(projectId, 'canEditProduction', userId);
   },
 
@@ -303,6 +303,7 @@ export const castingAuthService = {
           canViewEconomy: false,
         };
       case 'first_ad':
+      case 'second_ad':
         return {
           canViewAll: true,
           canEditCasting: false,
