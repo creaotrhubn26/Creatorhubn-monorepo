@@ -196,6 +196,14 @@ export const PRODUCTION_ROLES: readonly ProductionRoleDef[] = [
     },
   },
   {
+    key: 'second_ad', label: '2. regiassistent / 2nd AD', department: 'ledelse',
+    description: 'Eier callsheet-distribusjon, individuelle call-tider og cast movement gjennom opptaksdagen.',
+    preset: {
+      oversikt: V, 'story-arc': V, roles: V, candidates: V, locations: V,
+      callsheet: M, crew: V, 'live-set': M, workspace: V,
+    },
+  },
+  {
     key: 'pa', label: 'Production Assistant (PA)', department: 'ledelse',
     description: 'Praktisk støtte på sett og i logistikk.',
     preset: {
@@ -636,6 +644,20 @@ export const ROLE_LABELS: Record<string, string> = Object.fromEntries(
   PRODUCTION_ROLES.map((r) => [r.key, r.label]),
 );
 
+const PRODUCTION_ROLE_PRESET_ALIASES: Readonly<Record<string, string>> = {
+  cinematographer: 'dop',
+  director_of_photography: 'dop',
+  'director of photography': 'dop',
+  dp: 'dop',
+  filmfotograf: 'dop',
+};
+
+export function normalizeProductionRolePresetKey(roleKey: string | null | undefined): string | null {
+  const normalized = roleKey?.trim().toLowerCase();
+  if (!normalized) return null;
+  return PRODUCTION_ROLE_PRESET_ALIASES[normalized] ?? normalized;
+}
+
 /** Roller gruppert etter avdeling, i katalog-rekkefølge (for dropdown/matrise). */
 export function rolesByDepartment(): Array<{ department: ProductionDepartment; label: string; roles: ProductionRoleDef[] }> {
   const order: ProductionDepartment[] = [
@@ -653,13 +675,15 @@ export function rolesByDepartment(): Array<{ department: ProductionDepartment; l
 
 /** Har vi et definert preset for denne rollen? */
 export function hasRolePreset(roleKey: string | null | undefined): boolean {
-  return !!(roleKey && PRODUCTION_ROLE_BY_KEY[roleKey]);
+  const normalized = normalizeProductionRolePresetKey(roleKey);
+  return !!(normalized && PRODUCTION_ROLE_BY_KEY[normalized]);
 }
 
 /** Standard tilgangskart for en rolle (fallback for ukjent rolle = generisk crew). */
 export function presetForRole(roleKey: string | null | undefined): TabAccessMap {
-  if (roleKey && PRODUCTION_ROLE_BY_KEY[roleKey]) {
-    return PRODUCTION_ROLE_BY_KEY[roleKey].preset;
+  const normalized = normalizeProductionRolePresetKey(roleKey);
+  if (normalized && PRODUCTION_ROLE_BY_KEY[normalized]) {
+    return PRODUCTION_ROLE_BY_KEY[normalized].preset;
   }
   return PRODUCTION_ROLE_BY_KEY.crew.preset;
 }

@@ -20,7 +20,7 @@ import Check from '@mui/icons-material/Check';
 import Download from '@mui/icons-material/Download';
 import Close from '@mui/icons-material/Close';
 import { apiRequest } from '@/lib/queryClient';
-import { easeVerseWorkspaceUrl } from '@/lib/easeverse';
+import { EASEVERSE_APP_URL, easeVerseWorkspaceUrl } from '@/lib/easeverse';
 import { useTeamAccess } from '@/hooks/useTeamAccess';
 import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
@@ -51,6 +51,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [ptBusy, setPtBusy] = useState(false);
   const [ptDialog, setPtDialog] = useState(false);
   const [ptRelease, setPtRelease] = useState<any | null>(null);
+  const [openingEaseVerse, setOpeningEaseVerse] = useState(false);
   const [release, setRelease] = useState<any | null>(null);      // audio_releases (utgivelse/distribusjon)
   const [validation, setValidation] = useState<any | null>(null); // pre-flight-sjekkliste
   const [relBusy, setRelBusy] = useState(false);
@@ -152,6 +153,18 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     } catch (e: any) { wsAlert(e?.message || 'Kunne ikke prøve synk på nytt'); }
     finally { setPtBusy(false); }
   };
+  const sendPtCommand = async (kind: string, payload: Record<string, unknown>, dedupeKey?: string) => {
+    if (!roomId || !pt?.session?.id || ptBusy) return;
+    setPtBusy(true);
+    try {
+      await apiRequest(`/api/protools/web/commands`, {
+        method: 'POST',
+        body: { audioRoomId: roomId, sessionId: pt.session.id, kind, payload, dedupeKey },
+      });
+      loadPt();
+    } catch (e: any) { wsAlert(e?.message || 'Kunne ikke sende handlingen til Pro Tools'); }
+    finally { setPtBusy(false); }
+  };
 
   const loadEv = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/easeverse-tracks`).then((r: any) => setEv(r || null)).catch(() => {}); };
   const loadMembers = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/members`).then((r: any) => setBandMembers(r?.members || [])).catch(() => {}); };
@@ -190,7 +203,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     loadEv();
     loadMembers();
     loadPt();
-    const ptPoll = setInterval(loadPt, 7000);
+    const ptPoll = setInterval(loadPt, 60000);
     return () => { stop = true; clearInterval(ptPoll); };
   }, [projectId, isReal]);
 
@@ -204,6 +217,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     }
   }, [roomId]);
   useWorkspaceUpdate(projectId, 'sound-room.updated', () => {
+    loadPt();
     loadEv();
     loadMembers();
     if (roomId) {
@@ -243,6 +257,37 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const members = summary?.members || [];
   const current = versions.find((v: any) => v.status === 'under_review') || versions[versions.length - 1] || null;
   const openComments = current?.comment_count ?? null;
+  const easeVerseHref = easeVerseWorkspaceUrl({
+    creatorhubProjectId: projectId,
+    audioReviewProjectId: roomId,
+    externalTrackId: ev?.linkedTrackId || ev?.tracks?.find((track: any) => track.linked)?.id,
+    projectName: proj.title || ev?.tracks?.find((track: any) => track.linked)?.title,
+    returnTo: typeof window !== 'undefined' ? window.location.href : undefined,
+  });
+  const openEaseVerse = async (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    if (openingEaseVerse) return;
+    setOpeningEaseVerse(true);
+    try {
+      const handoff: any = await apiRequest('/api/creatorhub/google/oauth/satellite-transfer', {
+        method: 'POST',
+        body: { browserOrigin: new URL(EASEVERSE_APP_URL).origin },
+      });
+      if (!handoff?.transferId) throw new Error('CreatorHub returnerte ingen innloggingsoverføring.');
+      const integration = new URL(easeVerseHref);
+      const callback = new URL('/auth/callback', EASEVERSE_APP_URL);
+      callback.searchParams.set('chGoogleStatus', 'success');
+      callback.searchParams.set('chGoogleMode', 'login');
+      callback.searchParams.set('chGoogleTransfer', handoff.transferId);
+      callback.searchParams.set('next', `${integration.pathname}${integration.search}`);
+      window.location.assign(callback.toString());
+    } catch {
+      // Preserve the regular shared Google OAuth flow if the one-time Workspace
+      // handoff is temporarily unavailable.
+      window.location.assign(easeVerseHref);
+    }
+  };
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}><CircularProgress sx={{ color: ws.accent }} /></Box>;
 
@@ -254,14 +299,11 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Lyd-review for prosjektet — versjoner, tidsstemplede tilbakemeldinger, A/B-compare og leveranse. Samme «Universal Showcase»-rom klienten/bandet får.</Typography>
         </Box>
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-          <Button component="a" href={easeVerseWorkspaceUrl({
-              creatorhubProjectId: projectId,
-              audioReviewProjectId: roomId,
-              externalTrackId: ev?.linkedTrackId || ev?.tracks?.find((track: any) => track.linked)?.id,
-              projectName: proj.title || ev?.tracks?.find((track: any) => track.linked)?.title,
-              returnTo: typeof window !== 'undefined' ? window.location.href : undefined,
-            })} target="_blank" rel="noopener noreferrer" variant="outlined" startIcon={<OpenInNew sx={{ fontSize: 16 }} />}
-            sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 700 }}>Åpne EaseVerse</Button>
+          <Button component="a" href={easeVerseHref} onClick={openEaseVerse} aria-busy={openingEaseVerse}
+            variant="outlined" startIcon={openingEaseVerse ? <CircularProgress size={15} color="inherit" /> : <OpenInNew sx={{ fontSize: 16 }} />}
+            sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 700 }}>
+            {openingEaseVerse ? 'Åpner EaseVerse…' : 'Åpne EaseVerse'}
+          </Button>
           {roomId && <Button variant="contained" startIcon={<OpenInFull sx={{ fontSize: 17 }} />} onClick={openRoom} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Åpne lydrommet</Button>}
         </Stack>
       </Stack>
@@ -462,14 +504,38 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               {(pt?.markers?.length || 0) > 0 && <WsTag label={`${pt.markers.length} markører`} tone="green" />}
               {Number(pt?.sync?.pending_count || 0) > 0 && <WsTag label={`${pt.sync.pending_count} synk venter`} tone="amber" />}
               {Number(pt?.sync?.pending_count || 0) > 0 && <Button size="small" onClick={retryPtSync} disabled={ptBusy} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700 }}>Prøv igjen</Button>}
+              {pt?.session?.ptsl_status && <WsTag label={pt.session.ptsl_status === 'connected' ? 'PTSL direkte' : pt.session.ptsl_status === 'degraded' ? 'PTSL-bro mangler' : 'Filmodus'} tone={pt.session.ptsl_status === 'connected' ? 'green' : 'neutral'} />}
+              {pt?.session?.protools_tier === 'intro' && <WsTag label={pt.session.intro_preflight?.compatible === false ? 'Intro: må forenkles' : 'Intro-klar'} tone={pt.session.intro_preflight?.compatible === false ? 'amber' : 'green'} />}
             </Stack>
+
+            {pt?.session?.protools_tier === 'intro' && pt.session.intro_preflight?.compatible === false && (
+              <Box sx={{ p: 1.25, borderRadius: `${ws.radiusSm}px`, bgcolor: 'rgba(255,176,32,0.08)', border: `1px solid ${ws.amber}44` }}>
+                <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ws.amber, mb: 0.5 }}>Pro Tools Intro preflight</Typography>
+                {(pt.session.intro_preflight.violations || []).map((v: any) => (
+                  <Typography key={v.category} sx={{ fontSize: 11, color: ws.textDim }}>{v.category}: {v.actual}/{v.limit} · {v.recommendation}</Typography>
+                ))}
+              </Box>
+            )}
+
+            {pt?.session && (
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Button size="small" variant="outlined" disabled={ptBusy} onClick={() => sendPtCommand('export_review', { fileName: `${summary?.project?.title || 'Sound Room'} Mix.wav` }, `export:${Date.now()}`)}
+                  sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 700 }}>Eksporter til review</Button>
+                {(() => {
+                  const keeper = (pt?.artifacts || []).find((a: any) => ['keeper', 'master', 'reference'].includes(a.artifact_kind));
+                  return keeper ? <Button size="small" variant="outlined" disabled={ptBusy} onClick={() => sendPtCommand('import_audio', { artifactId: keeper.id }, `import:${keeper.id}:${Date.now()}`)}
+                    sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 700 }}>Hent keeper/reference</Button> : null;
+                })()}
+              </Stack>
+            )}
 
             {(pt?.markers?.length || 0) > 0 && (
               <Box>
                 <Typography sx={{ fontSize: 11, color: ws.textFaint, mb: 0.5 }}>Markører fra Pro Tools</Typography>
                 <Stack direction="row" spacing={0.75} sx={{ overflowX: 'auto', pb: 0.5 }}>
                   {pt.markers.slice(0, 8).map((m: any, i: number) => (
-                    <Box key={i} sx={{ px: 1, py: 0.5, borderRadius: 1, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}`, flexShrink: 0 }}>
+                    <Box key={i} onClick={() => sendPtCommand('locate', { seconds: Number(m.start_seconds) || 0 }, `marker-locate:${i}:${Date.now()}`)}
+                      sx={{ px: 1, py: 0.5, borderRadius: 1, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}`, flexShrink: 0, cursor: 'pointer', '&:hover': { borderColor: ws.accentBorder } }}>
                       <Typography sx={{ fontSize: 11.5, fontWeight: 700 }} noWrap>{m.name}</Typography>
                       <Typography sx={{ fontSize: 9.5, color: ws.textFaint }}>{fmtTime(m.start_seconds)}</Typography>
                     </Box>

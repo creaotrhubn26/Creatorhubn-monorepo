@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Creatorhub Pro Tools Companion",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "identifier": "com.creatorhub.protools-companion",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -29,8 +29,8 @@
     "active": true,
     "targets": "all",
     "category": "Music",
-    "shortDescription": "Synker Pro Tools-markører og bounces til CreatorHub Sound Room",
-    "longDescription": "Native companion som kjører ved siden av Pro Tools. Overvåker «Export Session Info as Text» (markører + metadata) og «Bounced Files»-mappen (ferdige mikser), og pusher dette inn i den koblede EaseVerse-låtens Sound Room: markører blir review-seksjoner og bounces blir review-versjoner.",
+    "shortDescription": "Kobler Pro Tools direkte til CreatorHub Sound Room og EaseVerse",
+    "longDescription": "Native companion for Pro Tools og Pro Tools Intro. Synker markører, metadata og bounces til Sound Room, mottar tidskodet feedback i sanntid, importerer keeper-/referanselyd og eksporterer mikser via en lokalt lisensiert Avid PTSL-bro med robust filmodus som fallback.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

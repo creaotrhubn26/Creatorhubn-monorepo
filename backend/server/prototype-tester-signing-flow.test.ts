@@ -110,15 +110,56 @@ describe("prototype tester signing receipt", () => {
       signatureMethod: "email_otp_typed_name",
       emailVerifiedAt,
       programEndsAt: "2026-12-02T12:00:00.000Z",
+      verificationUrl: `https://creatorhubn.com/prototype-tester/verify-receipt?receipt=${receiptId}&digest=${agreementDigest}`,
     });
-    expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(pdf.subarray(0, 8).toString()).toBe("%PDF-1.7");
     expect(pdf.length).toBeGreaterThan(25_000);
     const pdfSource = pdf.toString("latin1");
     expect(pdfSource).toContain("CreatorHub signeringskvittering");
     expect(pdfSource).toContain("/Subtype /Image");
+    expect(pdfSource).toContain("/OutputIntents");
+    expect(pdfSource).toContain("pdfaid:part");
+    expect(pdfSource).toContain("pdfaid:conformance");
+    expect(pdfSource).toContain("DejaVuSans");
+    expect(pdfSource).toContain("/StructTreeRoot");
+    expect(pdfSource).toContain("/Marked true");
     expect(pdfSource).toContain("/Outlines");
     expect(pdfSource).toContain("/PageMode /UseOutlines");
     expect(pdfSource.match(/\/Type \/Page\b/g)?.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("verifies a receipt publicly only with both receipt id and full digest", async () => {
+    const query = vi.fn().mockImplementation(async (statement: unknown) => {
+      if (String(statement).includes("agreement_digest = $2")) {
+        return {
+          rows: [{
+            signing_receipt_id: receiptId,
+            agreement_digest: agreementDigest,
+            accepted_at: acceptedAt,
+            signature_method: "email_otp_typed_name",
+            email_verified_at: emailVerifiedAt,
+            accepted_agreements_snapshot: snapshot,
+          }],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const response = await request(appWith({ query })).get(
+      `/api/prototype-tester-agreements/receipts/${receiptId}/verify?digest=${agreementDigest}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      valid: true,
+      receiptId,
+      archiveFormat: "PDF/A-2b",
+      emailVerified: true,
+      documentCount: 4,
+    });
+    expect(response.body).not.toHaveProperty("signerEmail");
+    expect(response.body).not.toHaveProperty("signerName");
   });
 
   it("rejects a logged-in user who does not own the receipt", async () => {

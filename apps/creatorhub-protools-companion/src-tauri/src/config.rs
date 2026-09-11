@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::PathBuf;
 
+use crate::intro_preflight::IntroPreflight;
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_API_BASE: &str = "https://creatorhub-backend-rtbl.onrender.com";
@@ -47,6 +48,10 @@ pub struct AppConfig {
     pub easeverse_project_id: Option<String>,
     #[serde(default)]
     pub suggested_project_name: Option<String>,
+    #[serde(default = "default_protools_tier")]
+    pub protools_tier: String,
+    #[serde(default)]
+    pub intro_preflight: Option<IntroPreflight>,
     /// Filfingerprints som er fullført hos backend, brukt for idempotens over omstart.
     #[serde(default)]
     pub uploaded_bounces: Vec<String>,
@@ -70,6 +75,10 @@ fn default_api_base() -> String {
     DEFAULT_API_BASE.to_string()
 }
 
+fn default_protools_tier() -> String {
+    "intro".to_string()
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         AppConfig {
@@ -86,6 +95,8 @@ impl Default for AppConfig {
             workspace_project_id: None,
             easeverse_project_id: None,
             suggested_project_name: None,
+            protools_tier: default_protools_tier(),
+            intro_preflight: None,
             uploaded_bounces: Vec::new(),
             auto_watch: false,
             pending_bounces: Vec::new(),

@@ -22,6 +22,7 @@ import { requireTeamAccess } from "./team-access";
 import { canAccessProject } from "./project-team-routes";
 import { broadcastSoundRoomUpdated, type SoundRoomUpdateReason } from "./sound-room-events";
 import { enqueueApprovedReferenceSync } from "./music-integration-outbox.js";
+import { latestParentArtifactId, upsertMusicArtifact } from "./music-artifact-lineage.js";
 
 // Innebygd TrueType-font (DejaVu Sans, libre) — sikrer at avtale-PDF rendres
 // identisk i alle visere (pdfkit-standardfonter rendres ikke i alle renderere).
@@ -907,6 +908,47 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
               url: String(linked.file_url), name: linked.file_name ? String(linked.file_name) : null,
               durationSec: linked.duration == null ? null : Number(linked.duration),
             },
+          });
+        }
+        const lineage = await pool.query(
+          `SELECT v.file_url,v.file_name,v.duration,p.id AS audio_review_project_id,p.owner_user_id,
+                  p.easeverse_track_id,p.external_track_id,par.project_id::text AS workspace_project_id,
+                  pcs.id AS companion_session_id,pcs.organization_id,pcs.easeverse_project_id,
+                  existing.id AS parent_artifact_id
+             FROM audio_review_versions v
+             JOIN audio_review_projects p ON p.id=v.project_id
+             LEFT JOIN project_audio_rooms par ON par.audio_review_project_id=p.id
+             LEFT JOIN LATERAL (
+               SELECT s.id,s.organization_id,s.easeverse_project_id FROM protools_companion_sessions s
+                WHERE s.audio_review_project_id=p.id ORDER BY s.last_activity DESC LIMIT 1
+             ) pcs ON TRUE
+             LEFT JOIN LATERAL (
+               SELECT ma.id FROM creatorhub_music_artifacts ma WHERE ma.review_version_id=v.id
+                ORDER BY ma.created_at DESC LIMIT 1
+             ) existing ON TRUE
+            WHERE v.id=$1::uuid AND p.owner_user_id=$2 LIMIT 1`,
+          [versionId, s.userId],
+        ).catch(() => ({ rows: [] }));
+        const linkedArtifact = lineage.rows[0];
+        if (linkedArtifact?.file_url) {
+          await upsertMusicArtifact(pool, {
+            organizationId: linkedArtifact.organization_id || null,
+            ownerUserId: String(linkedArtifact.owner_user_id),
+            workspaceProjectId: linkedArtifact.workspace_project_id || null,
+            audioReviewProjectId: String(linkedArtifact.audio_review_project_id),
+            easeverseTrackId: linkedArtifact.easeverse_track_id || linkedArtifact.external_track_id || null,
+            easeverseProjectId: linkedArtifact.easeverse_project_id || null,
+            companionSessionId: linkedArtifact.companion_session_id || null,
+            reviewVersionId: versionId,
+            parentArtifactId: linkedArtifact.parent_artifact_id || null,
+            kind: approvalType === "mix_approved" ? "keeper" : "master",
+            sourceSystem: "sound_room",
+            sourceArtifactId: `approval:${String(a.rows[0].id)}`,
+            fileName: linkedArtifact.file_name || null,
+            fileUrl: String(linkedArtifact.file_url),
+            status: "approved",
+            metadata: { approvalType, approvalId: String(a.rows[0].id), durationSeconds: linkedArtifact.duration ?? null },
+            createdBy: s.userId,
           });
         }
       }
@@ -1801,7 +1843,9 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     const id = str(req.params.id, 64);
     try {
       const p = await pool.query(
-        `SELECT external_track_id, easeverse_track_id FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [id, s.userId]);
+        `SELECT ar.external_track_id,ar.easeverse_track_id,par.project_id::text AS workspace_project_id
+           FROM audio_review_projects ar LEFT JOIN project_audio_rooms par ON par.audio_review_project_id=ar.id
+          WHERE ar.id=$1::uuid AND ar.owner_user_id=$2 LIMIT 1`, [id, s.userId]);
       if (!p.rows.length) return res.status(404).json({ error: "not_found" });
       const extId = p.rows[0].external_track_id || p.rows[0].easeverse_track_id;
       if (!extId) return res.status(409).json({ error: "no_linked_track" });
@@ -1819,10 +1863,29 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         // §14 supersede: tidligere under_review → superseded
         await pool.query(`UPDATE audio_review_versions SET status='superseded' WHERE project_id=$1::uuid AND status='under_review'`, [id]);
         const vn = await pool.query(`SELECT COALESCE(MAX(version_number),0)+1 AS n FROM audio_review_versions WHERE project_id=$1::uuid`, [id]);
-        await pool.query(
+        const inserted = await pool.query(
           `INSERT INTO audio_review_versions (project_id, version_label, version_number, file_name, file_url, uploaded_by)
-           VALUES ($1::uuid,$2,$3,$4,$5,$6)`,
+           VALUES ($1::uuid,$2,$3,$4,$5,$6) RETURNING id`,
           [id, `Vokal-take ${vn.rows[0].n}`, vn.rows[0].n, str(t.filename, 300) || "take.wav", t.url, "EaseVerse"]);
+        const parentArtifactId = await latestParentArtifactId(pool, {
+          ownerUserId: s.userId, audioReviewProjectId: id,
+          easeverseTrackId: p.rows[0].easeverse_track_id || extId,
+        }).catch(() => null);
+        await upsertMusicArtifact(pool, {
+          ownerUserId: s.userId,
+          workspaceProjectId: p.rows[0].workspace_project_id || null,
+          audioReviewProjectId: id,
+          easeverseTrackId: p.rows[0].easeverse_track_id || extId,
+          reviewVersionId: String(inserted.rows[0].id),
+          parentArtifactId,
+          kind: "take",
+          sourceSystem: "easeverse",
+          sourceArtifactId: `take:${str(t.id, 160) || createHash("sha256").update(String(t.url)).digest("hex")}`,
+          fileName: str(t.filename, 300) || "take.wav",
+          fileUrl: String(t.url),
+          metadata: { producerDecision: t.producerDecision || "keeper", durationSeconds: num(t.durationSec) },
+          createdBy: s.userId,
+        }).catch(() => undefined);
         created++;
       }
       if (created > 0) await pool.query(`UPDATE audio_review_projects SET status='under_review', updated_at=NOW() WHERE id=$1::uuid`, [id]);
@@ -1845,9 +1908,10 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     try {
       await client.query("BEGIN");
       const project = await client.query(
-        `SELECT id FROM audio_review_projects WHERE owner_user_id=$1
-          AND (external_track_id=$2 OR easeverse_track_id::text=$2) AND status<>'archived'
-          ORDER BY updated_at DESC LIMIT 1 FOR UPDATE`, [ownerUserId, externalTrackId]);
+        `SELECT ar.id,ar.easeverse_track_id,par.project_id::text AS workspace_project_id
+           FROM audio_review_projects ar LEFT JOIN project_audio_rooms par ON par.audio_review_project_id=ar.id
+          WHERE ar.owner_user_id=$1 AND (ar.external_track_id=$2 OR ar.easeverse_track_id::text=$2) AND ar.status<>'archived'
+          ORDER BY ar.updated_at DESC LIMIT 1 FOR UPDATE OF ar`, [ownerUserId, externalTrackId]);
       if (!project.rows.length) { await client.query("ROLLBACK"); return res.status(404).json({ error: "linked_sound_room_not_found" }); }
       const projectId = String(project.rows[0].id);
       const duplicate = await client.query(`SELECT id,version_number FROM audio_review_versions WHERE project_id=$1::uuid AND file_url=$2 LIMIT 1`, [projectId, fileUrl]);
@@ -1863,10 +1927,30 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
          VALUES ($1::uuid,$2,$3,$4,$5,$6,$7) RETURNING id`,
         [projectId, str(req.body?.versionLabel, 80) || `Keeper V${versionNumber}`, versionNumber,
          str(req.body?.filename, 300) || "keeper.wav", fileUrl, num(req.body?.durationSec), "EaseVerse"]);
+      const parentArtifactId = await latestParentArtifactId(client, {
+        ownerUserId, audioReviewProjectId: projectId,
+        easeverseTrackId: project.rows[0].easeverse_track_id || externalTrackId,
+      });
+      const artifact = await upsertMusicArtifact(client, {
+        ownerUserId,
+        workspaceProjectId: project.rows[0].workspace_project_id || null,
+        audioReviewProjectId: projectId,
+        easeverseTrackId: project.rows[0].easeverse_track_id || externalTrackId,
+        reviewVersionId: String(created.rows[0].id),
+        parentArtifactId,
+        kind: "keeper",
+        sourceSystem: "easeverse",
+        sourceArtifactId: `keeper:${str(req.body?.takeId, 160) || createHash("sha256").update(fileUrl).digest("hex")}`,
+        fileName: str(req.body?.filename, 300) || "keeper.wav",
+        fileUrl,
+        status: "approved",
+        metadata: { durationSeconds: num(req.body?.durationSec), versionNumber },
+        createdBy: ownerUserId,
+      });
       await client.query(`UPDATE audio_review_projects SET status='under_review',updated_at=NOW() WHERE id=$1::uuid`, [projectId]);
       await client.query("COMMIT");
       void broadcastSoundRoomUpdated(pool, projectId, "version");
-      return res.status(201).json({ applied: "created", projectId, reviewVersionId: created.rows[0].id, versionNumber });
+      return res.status(201).json({ applied: "created", projectId, reviewVersionId: created.rows[0].id, artifactId: artifact.id, versionNumber });
     } catch (error) {
       await client.query("ROLLBACK").catch(() => undefined);
       console.error("[audio-showcase] EaseVerse keeper failed:", error);

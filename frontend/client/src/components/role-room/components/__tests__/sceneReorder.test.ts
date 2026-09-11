@@ -3,7 +3,9 @@ import {
   reorderScenesInContent,
   reorderScenesWithLineMap,
   buildLineCommentAnchor,
+  buildTextSelectionCommentAnchor,
   resolveLineCommentAnchor,
+  resolveScreenplayCommentAnchor,
 } from '../SceneNavigatorSidebar';
 
 // Fountain med 3 scener + preamble (tittel-side). Linjenumre er 1-baserte.
@@ -97,5 +99,62 @@ describe('scene-relativ kommentar-forankring (ingen drift)', () => {
     const anchor = buildLineCommentAnchor(CONTENT, 'm1', 1); // "Title: Test" (preamble)
     expect(anchor).toBe('m1#L:1');
     expect(resolveLineCommentAnchor(CONTENT, 'm1', anchor)).toBe(1);
+  });
+});
+
+describe('tekstutvalgsankre for manusannotasjoner', () => {
+  it('følger valgt tekst når linjer settes inn tidligere i samme scene', () => {
+    const selected = 'Handling C.';
+    const start = CONTENT.indexOf(selected);
+    const anchor = buildTextSelectionCommentAnchor(CONTENT, 'm1', start, start + selected.length);
+    expect(anchor).toMatch(/^m1#r1:/);
+
+    const edited = CONTENT.replace('INT. BIL - DAG\n', 'INT. BIL - DAG\nNy handling.\n');
+    const resolved = resolveScreenplayCommentAnchor(edited, 'm1', anchor!);
+    expect(resolved).toMatchObject({ kind: 'range', quote: selected, startLine: 11, endLine: 11 });
+  });
+
+  it('følger tekstutvalget når hele scenen flyttes', () => {
+    const selected = 'Handling C.';
+    const start = CONTENT.indexOf(selected);
+    const anchor = buildTextSelectionCommentAnchor(CONTENT, 'm1', start, start + selected.length);
+    const reordered = reorderScenesInContent(CONTENT, 2, 0);
+    const resolved = resolveScreenplayCommentAnchor(reordered, 'm1', anchor!);
+
+    expect(resolved?.quote).toBe(selected);
+    expect(resolved?.startLine).toBe(4);
+  });
+
+  it('velger nærmeste forekomst når samme replikk finnes flere ganger', () => {
+    const repeated = `${CONTENT}\nBOB\nJa.\nJa.`;
+    const lastStart = repeated.lastIndexOf('Ja.');
+    const anchor = buildTextSelectionCommentAnchor(repeated, 'm1', lastStart, lastStart + 3);
+    const resolved = resolveScreenplayCommentAnchor(repeated, 'm1', anchor!);
+
+    expect(resolved?.start).toBe(lastStart);
+  });
+
+  it('støtter norske tegn uten å overskride det kompakte ankerformatet', () => {
+    const content = `${CONTENT}\nØYVIND\nÆrlig talt – nå går vi.`;
+    const selected = 'Ærlig talt – nå går vi.';
+    const start = content.indexOf(selected);
+    const anchor = buildTextSelectionCommentAnchor(content, 'm1', start, start + selected.length);
+
+    expect(anchor!.length).toBeLessThan(200);
+    expect(resolveScreenplayCommentAnchor(content, 'm1', anchor!)?.quote).toBe(selected);
+  });
+
+  it('blir eksplisitt foreldreløst når valgt tekst omskrives', () => {
+    const selected = 'Handling C.';
+    const start = CONTENT.indexOf(selected);
+    const anchor = buildTextSelectionCommentAnchor(CONTENT, 'm1', start, start + selected.length);
+    const rewritten = CONTENT.replace(selected, 'En helt annen handling.');
+
+    expect(resolveScreenplayCommentAnchor(rewritten, 'm1', anchor!)).toBeNull();
+  });
+
+  it('avviser tomme utvalg og ankre fra andre manus', () => {
+    expect(buildTextSelectionCommentAnchor(CONTENT, 'm1', 4, 4)).toBeNull();
+    expect(resolveScreenplayCommentAnchor(CONTENT, 'm2', 'm1#L:1')).toBeNull();
   });
 });

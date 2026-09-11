@@ -1,12 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { userCanAccessCastingProject } from "./casting-project-ownership.js";
+import {
+  userCanAccessCastingProject,
+  userCanEditCastingProduction,
+} from "./casting-project-ownership.js";
 
 describe("userCanAccessCastingProject", () => {
   it("accepts canonical owners and project-role members", async () => {
     const query = vi.fn(async (text: string, params?: unknown[]) => {
       expect(text).toContain("FROM casting_projects cp");
       expect(text).toContain("FROM casting_user_roles cur");
+      expect(text).toContain("cur.deactivated_at IS NULL");
+      expect(text).toContain("cur.expires_at IS NULL OR cur.expires_at > NOW()");
       expect(params).toEqual(["project-1", "user-1"]);
       return { rows: [{ project_exists: true, can_access: true }] };
     });
@@ -51,5 +56,57 @@ describe("userCanAccessCastingProject", () => {
       "user-1",
     )).resolves.toBe(false);
     expect(query).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("userCanEditCastingProduction", () => {
+  it("accepts an active 1st AD production grant", async () => {
+    const query = vi.fn(async (text: string, params?: unknown[]) => {
+      expect(text).toContain("'first_ad'");
+      expect(text).toContain("'second_ad'");
+      expect(text).toContain("canEditProduction");
+      expect(text).toContain("cur.deactivated_at IS NULL");
+      expect(text).toContain("cur.expires_at IS NULL OR cur.expires_at > NOW()");
+      expect(params).toEqual(["project-1", "first-ad-1"]);
+      return { rows: [{ project_exists: true, can_edit_production: true }] };
+    });
+
+    await expect(userCanEditCastingProduction(
+      { query },
+      "project-1",
+      "first-ad-1",
+    )).resolves.toBe(true);
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it("denies a canonical project member without production write access", async () => {
+    const query = vi.fn(async () => ({
+      rows: [{ project_exists: true, can_edit_production: false }],
+    }));
+
+    await expect(userCanEditCastingProduction(
+      { query },
+      "project-1",
+      "viewer-1",
+    )).resolves.toBe(false);
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps legacy-only projects owner-only", async () => {
+    const query = vi.fn(async (text: string, params?: unknown[]) => {
+      if (text.includes("FROM casting_projects cp")) {
+        return { rows: [{ project_exists: false, can_edit_production: false }] };
+      }
+      expect(text).toContain("legacy_compat_store");
+      expect(params).toEqual(["casting:project:legacy-1"]);
+      return { rows: [{ store_value: { created_by: "owner-1" } }] };
+    });
+
+    await expect(userCanEditCastingProduction(
+      { query },
+      "legacy-1",
+      "owner-1",
+    )).resolves.toBe(true);
+    expect(query).toHaveBeenCalledTimes(2);
   });
 });

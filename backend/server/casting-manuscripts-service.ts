@@ -17,13 +17,13 @@
  *
  * Eksporterer `createCastingManuscriptsService(deps)`-factory som tar
  * compatStore-funksjoner og returnerer 15 metoder: reads + replace + lookup
- * + clear. `replace*`-metodene oppdaterer både Map og DB atomisk.
+ * + clear. Kritisk manus-, scene- og revisjonsinnhold skrives til DB før
+ * det publiseres i minne-cachen.
  *
  * **Robustness-noter (forbedringer vs. opprinnelig implementasjon):**
  *
- *   - Konsistent feilhåndtering: `replace*`/`clear*`-metodene fanger
- *     compatStore-feil og logger dem uten å miste in-memory-state — bedre
- *     for read-after-write-konsistens når DB er midlertidig nede.
+ *   - Kritiske skriveveier propagerer persistensfeil slik at klienten kan
+ *     beholde en lokal kopi i stedet for å vise falsk skysuksess.
  *   - `clearManuscriptState` lukker DB-deletes i Promise.allSettled
  *     istedenfor Promise.all, så enkelt-feilet-key ikke aborterer hele
  *     cascade. Matcher den oppførselen casting-DELETE allerede gjør for
@@ -32,8 +32,10 @@
  *     find-in-Map → fallback-find-in-DB-patternet i én metode (var dupli-
  *     sert 3 steder i opprinnelig kode).
  *
+ *   - If-Match håndheves i route-laget; servicen bumper manusversjonen på
+ *     writes og returnerer den persisterte versjonen til klienten.
+ *
  * **Ikke endret (samme oppførsel som før):**
- *   - Ingen optimistic locking (TODO: legg til versjons-felt + If-Match)
  *   - Ingen DB-transaksjoner på cascade-delete (compat-store-laget
  *     støtter ikke transaksjoner per nå)
  *   - ID-generering ved `Date.now()` (TODO: vurder crypto.randomUUID()
@@ -59,7 +61,7 @@ export interface CastingManuscriptsServiceDeps {
   compatStoreGet: <T>(storeKey: string) => Promise<T | null>;
   compatStoreSet: (storeKey: string, storeValue: unknown) => Promise<void>;
   // Strict-variant som KASTER ved DB-utilgjengelighet — brukes for
-  // tegnedata (scener) så klienten får 503 i stedet for stille minnetap.
+  // manus, scener og revisjoner så klienten ikke får stille minnetap.
   compatStoreSetStrict?: (storeKey: string, storeValue: unknown) => Promise<void>;
   compatStoreDelete: (storeKey: string) => Promise<void>;
   compatStoreListByPrefix: <T>(
@@ -146,7 +148,11 @@ export interface CastingManuscriptsService {
   withDrawingHistory(existingFrame: unknown, nextFrame: unknown): unknown;
   replaceDialogue(manuscriptId: string, dialogue: JsonBlob[]): Promise<JsonBlob[]>;
   replaceActs(manuscriptId: string, acts: JsonBlob[]): Promise<JsonBlob[]>;
-  replaceRevisions(manuscriptId: string, revisions: JsonBlob[]): Promise<JsonBlob[]>;
+  replaceRevisions(
+    manuscriptId: string,
+    revisions: JsonBlob[],
+    options?: { bumpManuscriptVersion?: boolean },
+  ): Promise<JsonBlob[]>;
 
   // ── Lookups (find-by-id, prøver Map først, så DB) ────────────────
   findDialogueLocation(dialogueId: string): Promise<ManuscriptLocation | null>;
@@ -410,8 +416,8 @@ export function createCastingManuscriptsService(
     const existing = await getManuscript(manuscriptId);
     if (!existing) return; // ingen manuscript = ingen version å bumpe
     const next = { ...existing, version: bumpVersion(existing) };
+    await compatStoreSetStrict(dbLegacyManuscriptKey(manuscriptId), next);
     legacyManuscripts.set(manuscriptId, next);
-    await compatStoreSet(dbLegacyManuscriptKey(manuscriptId), next);
   }
 
   async function replaceManuscript(
@@ -420,8 +426,10 @@ export function createCastingManuscriptsService(
   ): Promise<JsonBlob> {
     const existing = legacyManuscripts.get(manuscriptId);
     const versioned = { ...manuscript, version: bumpVersion(existing) };
+    // Text must never be acknowledged as a cloud save when persistence
+    // failed. Write through to durable storage before publishing in memory.
+    await compatStoreSetStrict(dbLegacyManuscriptKey(manuscriptId), versioned);
     legacyManuscripts.set(manuscriptId, versioned);
-    await compatStoreSet(dbLegacyManuscriptKey(manuscriptId), versioned);
     return versioned;
   }
 
@@ -520,10 +528,15 @@ export function createCastingManuscriptsService(
   async function replaceRevisions(
     manuscriptId: string,
     revisions: JsonBlob[],
+    options: { bumpManuscriptVersion?: boolean } = {},
   ): Promise<JsonBlob[]> {
+    // Revision history is a recovery mechanism, so an in-memory-only write
+    // must fail instead of being presented as durable cloud history.
+    await compatStoreSetStrict(dbLegacyRevisionsKey(manuscriptId), revisions);
     legacyRevisionsByManuscript.set(manuscriptId, revisions);
-    await compatStoreSet(dbLegacyRevisionsKey(manuscriptId), revisions);
-    await bumpManuscriptVersion(manuscriptId);
+    if (options.bumpManuscriptVersion !== false) {
+      await bumpManuscriptVersion(manuscriptId);
+    }
     return revisions;
   }
 

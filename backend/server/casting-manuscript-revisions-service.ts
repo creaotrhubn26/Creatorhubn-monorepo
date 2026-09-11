@@ -46,11 +46,30 @@ export interface RevisionRestoreResult {
   manuscript: Record<string, unknown>;
 }
 
+export interface AutomaticSnapshotOptions {
+  actorUserId: string;
+}
+
 export interface CastingManuscriptRevisionsServiceDeps {
   manuscriptsService: CastingManuscriptsService;
+  /** Test seam for deterministic snapshot timestamps. */
+  now?: () => Date;
+  automaticSnapshotIntervalMs?: number;
+  maxAutomaticSnapshots?: number;
 }
 
 export interface CastingManuscriptRevisionsService {
+  /**
+   * Persists the current cloud state before it is replaced. Automatic
+   * snapshots are time-bucketed and deduplicated so two-second autosaves do
+   * not create an unbounded history.
+   */
+  captureAutomaticSnapshot(
+    manuscriptId: string,
+    currentManuscript: Record<string, unknown>,
+    options: AutomaticSnapshotOptions,
+  ): Promise<Record<string, unknown> | null>;
+
   /**
    * Henter én revisjon med gitt id. Returnerer null hvis ikke funnet.
    */
@@ -84,7 +103,54 @@ export interface CastingManuscriptRevisionsService {
   restoreRevision(
     manuscriptId: string,
     sourceRevisionId: string,
+    actorUserId?: string,
   ): Promise<RevisionRestoreResult | null>;
+}
+
+const DEFAULT_AUTOMATIC_SNAPSHOT_INTERVAL_MS = 5 * 60 * 1000;
+const DEFAULT_MAX_AUTOMATIC_SNAPSHOTS = 24;
+
+const RESTORABLE_MANUSCRIPT_FIELDS = [
+  "content",
+  "title",
+  "subtitle",
+  "author",
+  "status",
+  "format",
+  "pageCount",
+  "wordCount",
+  "coverImage",
+  "coverFocalPoint",
+  "language",
+] as const;
+
+function pickRestorableManuscriptFields(
+  value: Record<string, unknown>,
+): Record<string, unknown> {
+  const nestedSnapshot = value.snapshot && typeof value.snapshot === "object" && !Array.isArray(value.snapshot)
+    ? value.snapshot as Record<string, unknown>
+    : null;
+  const legacyManuscript = value.manuscript && typeof value.manuscript === "object" && !Array.isArray(value.manuscript)
+    ? value.manuscript as Record<string, unknown>
+    : null;
+  const source = nestedSnapshot ?? legacyManuscript ?? value;
+  const result: Record<string, unknown> = {};
+  for (const field of RESTORABLE_MANUSCRIPT_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(source, field)) {
+      result[field] = source[field];
+    }
+  }
+  return result;
+}
+
+function revisionTimestamp(value: Record<string, unknown>): number {
+  const raw = typeof value.createdAt === "string"
+    ? value.createdAt
+    : typeof value.created_at === "string"
+      ? value.created_at
+      : "";
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 /**
@@ -115,6 +181,82 @@ export function createCastingManuscriptRevisionsService(
   deps: CastingManuscriptRevisionsServiceDeps,
 ): CastingManuscriptRevisionsService {
   const { manuscriptsService } = deps;
+  const now = deps.now ?? (() => new Date());
+  const automaticSnapshotIntervalMs = deps.automaticSnapshotIntervalMs
+    ?? DEFAULT_AUTOMATIC_SNAPSHOT_INTERVAL_MS;
+  const maxAutomaticSnapshots = Math.max(
+    1,
+    deps.maxAutomaticSnapshots ?? DEFAULT_MAX_AUTOMATIC_SNAPSHOTS,
+  );
+
+  async function captureAutomaticSnapshot(
+    manuscriptId: string,
+    currentManuscript: Record<string, unknown>,
+    options: AutomaticSnapshotOptions,
+  ): Promise<Record<string, unknown> | null> {
+    const revisions = await manuscriptsService.getRevisions(manuscriptId);
+    const automaticRevisions = revisions.filter(
+      (revision) => revision?.kind === "automatic_snapshot",
+    ) as Record<string, unknown>[];
+    const latestAutomatic = automaticRevisions
+      .slice()
+      .sort((left, right) => revisionTimestamp(right) - revisionTimestamp(left))[0];
+    const currentContent = typeof currentManuscript.content === "string"
+      ? currentManuscript.content
+      : "";
+
+    if (latestAutomatic?.content === currentContent) return null;
+
+    const capturedAt = now();
+    if (
+      latestAutomatic
+      && capturedAt.getTime() - revisionTimestamp(latestAutomatic) < automaticSnapshotIntervalMs
+    ) {
+      return null;
+    }
+
+    const sourceCloudVersion = typeof currentManuscript.version === "number"
+      && Number.isFinite(currentManuscript.version)
+      ? currentManuscript.version
+      : 0;
+    const capturedAtIso = capturedAt.toISOString();
+    const snapshot = pickRestorableManuscriptFields(currentManuscript);
+    const revision: Record<string, unknown> = {
+      id: newEntityId("revision-auto"),
+      manuscriptId,
+      manuscript_id: manuscriptId,
+      projectId: currentManuscript.projectId ?? currentManuscript.project_id,
+      project_id: currentManuscript.project_id ?? currentManuscript.projectId,
+      kind: "automatic_snapshot",
+      version: `cloud-${sourceCloudVersion}`,
+      sourceCloudVersion,
+      changeSummary: `Automatisk sikkerhetskopi av skyversjon ${sourceCloudVersion}`,
+      changesSummary: `Automatisk sikkerhetskopi av skyversjon ${sourceCloudVersion}`,
+      revisionNotes: "Opprettet automatisk før neste synkroniserte skriveendring.",
+      content: currentContent,
+      snapshot,
+      createdBy: options.actorUserId,
+      createdAt: capturedAtIso,
+      updatedAt: capturedAtIso,
+    };
+
+    const automaticIdsToKeep = new Set(
+      automaticRevisions
+        .slice()
+        .sort((left, right) => revisionTimestamp(right) - revisionTimestamp(left))
+        .slice(0, Math.max(0, maxAutomaticSnapshots - 1))
+        .map((entry) => entry.id),
+    );
+    const pruned = revisions.filter((entry) => (
+      entry?.kind !== "automatic_snapshot" || automaticIdsToKeep.has(entry.id)
+    ));
+    await manuscriptsService.replaceRevisions(
+      manuscriptId,
+      [...pruned, revision],
+      { bumpManuscriptVersion: false },
+    );
+    return revision;
+  }
 
   async function getRevisionById(
     manuscriptId: string,
@@ -148,6 +290,7 @@ export function createCastingManuscriptRevisionsService(
   async function restoreRevision(
     manuscriptId: string,
     sourceRevisionId: string,
+    actorUserId?: string,
   ): Promise<RevisionRestoreResult | null> {
     const sourceRevision = await getRevisionById(
       manuscriptId,
@@ -159,37 +302,46 @@ export function createCastingManuscriptRevisionsService(
       await manuscriptsService.getManuscript(manuscriptId);
     if (!currentManuscript) return null;
 
-    // Bygg restored manuscript-state: ta innhold fra source-revisjonen
-    // (metadata-stripped) og merge med eksisterende metadata.
-    const sourceContent = stripMetadata(sourceRevision);
+    // Restore only allow-listed manuscript fields. Revision metadata must
+    // never leak into the manuscript body.
+    const sourceContent = pickRestorableManuscriptFields(sourceRevision);
+    const restoredAt = now().toISOString();
     const restoredManuscript = {
       ...currentManuscript,
       ...sourceContent,
       id: manuscriptId,
       restoredFromRevisionId: sourceRevisionId,
-      restoredAt: new Date().toISOString(),
+      restoredAt,
     };
 
-    // Opprett audit-trail-markør i revisions-array.
+    // Preserve the state being replaced so the restore itself is reversible.
     const markerRevisionId = newEntityId("revision-restore-marker");
-    const now = new Date().toISOString();
     const existingRevisions =
       await manuscriptsService.getRevisions(manuscriptId);
     const marker = {
       id: markerRevisionId,
       manuscriptId,
       manuscript_id: manuscriptId,
-      kind: "restore_marker",
+      projectId: currentManuscript.projectId ?? currentManuscript.project_id,
+      project_id: currentManuscript.project_id ?? currentManuscript.projectId,
+      kind: "before_restore",
+      version: `before-restore-${currentManuscript.version ?? 0}`,
+      content: typeof currentManuscript.content === "string" ? currentManuscript.content : "",
+      snapshot: pickRestorableManuscriptFields(currentManuscript),
+      changeSummary: "Automatisk sikkerhetskopi før gjenoppretting",
+      changesSummary: "Automatisk sikkerhetskopi før gjenoppretting",
       restoredFromRevisionId: sourceRevisionId,
-      restoredAt: now,
-      createdAt: now,
-      updatedAt: now,
+      restoredAt,
+      createdBy: actorUserId,
+      createdAt: restoredAt,
+      updatedAt: restoredAt,
     };
 
-    await manuscriptsService.replaceRevisions(manuscriptId, [
-      ...existingRevisions,
-      marker,
-    ]);
+    await manuscriptsService.replaceRevisions(
+      manuscriptId,
+      [...existingRevisions, marker],
+      { bumpManuscriptVersion: false },
+    );
 
     // Bumper version via replaceManuscript.
     const persisted =
@@ -202,6 +354,7 @@ export function createCastingManuscriptRevisionsService(
   }
 
   return {
+    captureAutomaticSnapshot,
     getRevisionById,
     diffRevisions,
     restoreRevision,

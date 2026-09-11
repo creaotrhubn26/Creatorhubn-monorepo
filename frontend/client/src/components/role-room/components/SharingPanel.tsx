@@ -62,6 +62,8 @@ const mapRoleType = (roleType: UserRoleType): 'admin' | 'editor' | 'viewer' => {
       return 'admin';
     case 'casting_director':
     case 'production_manager':
+    case 'first_ad':
+    case 'second_ad':
     case 'content_producer':
       return 'editor';
     case 'client_reviewer':

@@ -308,6 +308,151 @@ export function resolveLineCommentAnchor(content: string, manuscriptId: string, 
   return Number.isFinite(n) ? n : null;
 }
 
+export interface ResolvedScreenplayCommentAnchor {
+  kind: 'line' | 'range';
+  start: number;
+  end: number;
+  startLine: number;
+  endLine: number;
+  quote: string;
+}
+
+const offsetForLine = (content: string, oneBasedLine: number): number => {
+  if (oneBasedLine <= 1) return 0;
+  const lines = content.split('\n');
+  let offset = 0;
+  for (let index = 0; index < oneBasedLine - 1 && index < lines.length; index += 1) {
+    offset += lines[index].length + 1;
+  }
+  return Math.min(offset, content.length);
+};
+
+const lineForOffset = (content: string, offset: number): number =>
+  content.slice(0, Math.max(0, Math.min(offset, content.length))).split('\n').length;
+
+const encodeAnchorQuote = (quote: string): string => {
+  const encoded = new TextEncoder().encode(quote);
+  // Keep the complete anchor comfortably below the API's limit, including
+  // multibyte names and dialogue. A prefix is enough to relocate the range.
+  let bytes = encoded.slice(0, 72);
+  let safe = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+  while (safe.endsWith('\uFFFD') && bytes.length > 0) {
+    bytes = bytes.slice(0, -1);
+    safe = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+  }
+  const binary = Array.from(new TextEncoder().encode(safe), (byte) => String.fromCharCode(byte)).join('');
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+};
+
+const decodeAnchorQuote = (encoded: string): string | null => {
+  try {
+    const padded = encoded.replace(/-/g, '+').replace(/_/g, '/')
+      + '='.repeat((4 - (encoded.length % 4)) % 4);
+    const binary = atob(padded);
+    return new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Creates a resilient annotation anchor for a non-empty textarea selection.
+ * The position is stored relative to its scene, together with a short UTF-8
+ * quote. Insertions and scene reordering therefore do not move the annotation
+ * to unrelated dialogue. Cross-scene selections use the whole manuscript as
+ * their search scope.
+ */
+export function buildTextSelectionCommentAnchor(
+  content: string,
+  manuscriptId: string,
+  selectionStart: number,
+  selectionEnd: number,
+): string | null {
+  const start = Math.max(0, Math.min(selectionStart, selectionEnd, content.length));
+  const end = Math.max(start, Math.min(Math.max(selectionStart, selectionEnd), content.length));
+  if (start === end) return null;
+  const quote = content.slice(start, end);
+  if (!quote.trim()) return null;
+
+  const startLine = lineForOffset(content, start);
+  const endLine = lineForOffset(content, Math.max(start, end - 1));
+  const scene = parseSceneAnchors(content).find(
+    (candidate) => startLine >= candidate.startLine
+      && startLine < candidate.endLine
+      && endLine < candidate.endLine,
+  );
+  const scopeStart = scene ? offsetForLine(content, scene.startLine) : 0;
+  const scopeId = scene?.sceneId ?? '_';
+  return `${manuscriptId}#r1:${scopeId}:${start - scopeStart}:${end - start}:${encodeAnchorQuote(quote)}`;
+}
+
+/** Resolve both range anchors and legacy line anchors to current text offsets. */
+export function resolveScreenplayCommentAnchor(
+  content: string,
+  manuscriptId: string,
+  anchorRef: string,
+): ResolvedScreenplayCommentAnchor | null {
+  const prefix = `${manuscriptId}#`;
+  if (!anchorRef.startsWith(prefix)) return null;
+  const rest = anchorRef.slice(prefix.length);
+  if (rest.startsWith('r1:')) {
+    const match = rest.match(/^r1:([^:]+):(\d+):(\d+):([A-Za-z0-9_-]+)$/);
+    if (!match) return null;
+    const [, scopeId, rawOffset, rawLength, encodedQuote] = match;
+    const quote = decodeAnchorQuote(encodedQuote);
+    if (!quote) return null;
+    const storedOffset = Number.parseInt(rawOffset, 10);
+    const storedLength = Number.parseInt(rawLength, 10);
+    if (!Number.isFinite(storedOffset) || !Number.isFinite(storedLength) || storedLength < 1) return null;
+
+    let scopeStart = 0;
+    let scopeEnd = content.length;
+    if (scopeId !== '_') {
+      const scene = parseSceneAnchors(content).find((candidate) => candidate.sceneId === scopeId);
+      if (!scene) return null;
+      scopeStart = offsetForLine(content, scene.startLine);
+      scopeEnd = scene.endLine > content.split('\n').length
+        ? content.length
+        : offsetForLine(content, scene.endLine);
+    }
+    const scoped = content.slice(scopeStart, scopeEnd);
+    const candidates: number[] = [];
+    let foundAt = scoped.indexOf(quote);
+    while (foundAt !== -1) {
+      candidates.push(foundAt);
+      foundAt = scoped.indexOf(quote, foundAt + 1);
+    }
+    if (candidates.length === 0) return null;
+    const relativeStart = candidates.reduce((best, candidate) =>
+      Math.abs(candidate - storedOffset) < Math.abs(best - storedOffset) ? candidate : best,
+    );
+    const start = scopeStart + relativeStart;
+    const end = Math.min(scopeEnd, start + storedLength);
+    return {
+      kind: 'range',
+      start,
+      end,
+      startLine: lineForOffset(content, start),
+      endLine: lineForOffset(content, Math.max(start, end - 1)),
+      quote: content.slice(start, end),
+    };
+  }
+
+  const line = resolveLineCommentAnchor(content, manuscriptId, anchorRef);
+  if (line == null || line < 1) return null;
+  const start = offsetForLine(content, line);
+  const newline = content.indexOf('\n', start);
+  const end = newline === -1 ? content.length : newline;
+  return {
+    kind: 'line',
+    start,
+    end,
+    startLine: line,
+    endLine: line,
+    quote: content.slice(start, end),
+  };
+}
+
 /**
  * Som reorderScenesInContent, men returnerer OGSÅ en linje-mapping (1-basert
  * gammel linje → ny linje). Brukes til å re-mappe linje-ankrede kommentarer så

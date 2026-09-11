@@ -142,6 +142,10 @@ import {
 } from './icons/CastingIcons';
 
 import type { CastingProject, Role, Candidate, ContactInfo, Schedule, UserRole, UserRoleType } from '../models/casting';
+import {
+  getCalendarDepartmentForProductionRole,
+  type ProductionCalendarDepartment,
+} from '../config/productionRoleCatalog';
 import { RichTextEditor } from './RichTextEditor';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import { AuditionSchedulePanel } from './AuditionSchedulePanel';
@@ -169,6 +173,22 @@ import {
   TAB_INDEX_TO_KEY,
 } from '../models/studioAccessModel';
 import type { TabAccessMap } from '../models/studioAccessModel';
+import {
+  isDirectorSurface,
+  type DirectorSurface,
+} from './director/directorWorkspaceModel';
+import {
+  isCinematographerSurface,
+  type CinematographerSurface,
+} from './cinematographer/cinematographerWorkspaceModel';
+import {
+  isFirstAssistantDirectorSurface,
+  type FirstAssistantDirectorSurface,
+} from './assistant-director/firstAssistantDirectorWorkspaceModel';
+import {
+  isRoleRoomWorkspaceLens,
+  type RoleRoomWorkspaceLens,
+} from './production/productionWorkspaceLens';
 import { useProducerAccess } from '../hooks/useProducerAccess';
 import { producerWorkflowService } from '../services/producerWorkflowService';
 import {
@@ -237,6 +257,10 @@ const StoryLogicPanel = lazyWithRetry(() => import('./screenplay/StoryLogicPanel
 const RoleManagementPanel = lazyWithRetry(() => import('./RoleManagementPanel').then(m => ({ default: m.RoleManagementPanel })));
 const CandidateManagementPanel = lazyWithRetry(() => import('./CandidateManagementPanel').then(m => ({ default: m.CandidateManagementPanel })));
 const DashboardPanel = lazyWithRetry(() => import('./DashboardPanel').then(m => ({ default: m.DashboardPanel })));
+const DirectorWorkspace = lazyWithRetry(() => import('./director/DirectorWorkspace').then(m => ({ default: m.DirectorWorkspace })));
+const CinematographerWorkspace = lazyWithRetry(() => import('./cinematographer/CinematographerWorkspace').then(m => ({ default: m.CinematographerWorkspace })));
+const FirstAssistantDirectorWorkspace = lazyWithRetry(() => import('./assistant-director/FirstAssistantDirectorWorkspace').then(m => ({ default: m.FirstAssistantDirectorWorkspace })));
+const SecondAssistantDirectorWorkspace = lazyWithRetry(() => import('./assistant-director/SecondAssistantDirectorWorkspace').then(m => ({ default: m.SecondAssistantDirectorWorkspace })));
 const SharingPanel = lazyWithRetry(() => import('./SharingPanel').then(m => ({ default: m.SharingPanel })));
 const LiveSetMode = lazyWithRetry(() => import('./LiveSetMode').then(m => ({ default: m.LiveSetMode })));
 
@@ -348,35 +372,9 @@ interface TabPanelProps {
 }
 
 // Helper function to map CrewRole to Department for calendar
-const mapRoleToDepartment = (role: string): 'regi' | 'produksjon' | 'kamera' | 'lys' | 'grip' | 'lyd' | 'art' | 'hmu' | 'kostyme' | 'personal' => {
-  const roleMap: Record<string, 'regi' | 'produksjon' | 'kamera' | 'lys' | 'grip' | 'lyd' | 'art' | 'hmu' | 'kostyme' | 'personal'> = {
-    director: 'regi',
-    producer: 'produksjon',
-    casting_director: 'produksjon',
-    production_manager: 'produksjon',
-    camera_operator: 'kamera',
-    camera_assistant: 'kamera',
-    cinematographer: 'kamera',
-    drone_pilot: 'kamera',
-    gaffer: 'lys',
-    grip: 'grip',
-    sound_engineer: 'lyd',
-    audio_mixer: 'lyd',
-    video_editor: 'produksjon',
-    colorist: 'produksjon',
-    vfx_artist: 'art',
-    motion_graphics: 'art',
-    production_assistant: 'produksjon',
-    script_supervisor: 'regi',
-    location_manager: 'produksjon',
-    production_designer: 'art',
-    makeup_artist: 'hmu',
-    wardrobe: 'kostyme',
-    stylist: 'kostyme',
-    collaborator: 'produksjon',
-    other: 'personal',
-  };
-  return roleMap[role] || 'personal';
+const mapRoleToDepartment = (role: string): ProductionCalendarDepartment => {
+  if (role === 'other') return 'personal';
+  return getCalendarDepartmentForProductionRole(role);
 };
 
 // Helper function to get an icon for each crew role — used in crew calendars & team displays
@@ -1122,6 +1120,10 @@ type RoleRoomWorkspaceSortState = {
 type RoleRoomProjectWorkspaceState = {
   projectId: string;
   activeTab: number;
+  workspaceLens?: RoleRoomWorkspaceLens;
+  directorSurface?: DirectorSurface;
+  cinematographerSurface?: CinematographerSurface;
+  firstAssistantDirectorSurface?: FirstAssistantDirectorSurface;
   storyArcView: StoryArcView;
   storyArcFocus?: StoryArcNavigationFocus | null;
   contentProducerPlannerSurface?: ContentProducerPlannerSurface;
@@ -1171,6 +1173,10 @@ type RoleRoomProjectWorkspaceState = {
     projectId: string | null;
     lastRealProjectId?: string | null;
     activeTab: number;
+    workspaceLens?: RoleRoomWorkspaceLens;
+    directorSurface?: DirectorSurface;
+    cinematographerSurface?: CinematographerSurface;
+    firstAssistantDirectorSurface?: FirstAssistantDirectorSurface;
     storyArcView: StoryArcView;
     storyArcFocus?: StoryArcNavigationFocus | null;
     contentProducerPlannerSurface?: ContentProducerPlannerSurface;
@@ -1195,6 +1201,45 @@ type RoleRoomProjectWorkspaceState = {
       if (Number.isFinite(parsed) && parsed >= 0) return parsed;
     }
     return 0;
+  });
+  const [workspaceLensPreference, setWorkspaceLensPreference] = useState<RoleRoomWorkspaceLens | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('portal') === 'client') return null;
+    const lens = params.get('lens');
+    return isRoleRoomWorkspaceLens(lens) ? lens : null;
+  });
+  const [directorSurface, setDirectorSurface] = useState<DirectorSurface>(() => {
+    if (typeof window === 'undefined') return 'today';
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('portal') === 'client') return 'today';
+    const surface = params.get('surface');
+    return isDirectorSurface(surface) ? surface : 'today';
+  });
+  const [cinematographerSurface, setCinematographerSurface] = useState<CinematographerSurface>(() => {
+    if (typeof window === 'undefined') return 'today';
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('portal') === 'client') return 'today';
+    const surface = params.get('surface');
+    return isCinematographerSurface(surface) ? surface : 'today';
+  });
+  const [firstAssistantDirectorSurface, setFirstAssistantDirectorSurface] = useState<FirstAssistantDirectorSurface>(() => {
+    if (typeof window === 'undefined') return 'today';
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('portal') === 'client') return 'today';
+    const surface = params.get('surface');
+    return isFirstAssistantDirectorSurface(surface) ? surface : 'today';
+  });
+  const [productionWorkflowIntent, setProductionWorkflowIntent] = useState<{
+    view: 'stripboard' | 'schedule';
+    signal: number;
+  } | null>(null);
+  const [directorSceneId, setDirectorSceneId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('portal') === 'client') return null;
+    const sceneId = params.get('scene');
+    return sceneId?.trim() || null;
   });
   const [lastNonLiveTab, setLastNonLiveTab] = useState(0);
   const [isBrowserFullscreen, setIsBrowserFullscreen] = useState<boolean>(() => (
@@ -1357,6 +1402,12 @@ type RoleRoomProjectWorkspaceState = {
     const normalizedLoginAs = String(sessionAdminUser?.loginAs || '').trim().toLowerCase();
     const normalizedRequestedRole = String(sessionAdminUser?.requestedRole || '').trim().toLowerCase();
     const normalizedRole = String(sessionAdminUser?.role || '').trim().toLowerCase();
+    if (
+      ['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalizedRequestedRole)
+      || ['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalizedRole)
+    ) {
+      return 'cinematographer';
+    }
     const isProducerLogin = normalizedLoginAs === 'content_producer'
       || normalizedRequestedRole === 'content_producer'
       || normalizedRequestedRole === 'client'
@@ -1419,8 +1470,17 @@ type RoleRoomProjectWorkspaceState = {
       if (normalizedRequestedRole === 'client') {
         return 'client_reviewer';
       }
+      if (['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalizedRequestedRole)) {
+        return 'camera_team';
+      }
       if (['film_photographer', 'photographer', 'photo_director', 'photo_assistant'].includes(normalizedRequestedRole)) {
         return 'content_producer';
+      }
+      if (['first_ad', 'first_assistant_director', '1st_ad'].includes(normalizedRequestedRole)) {
+        return 'first_ad';
+      }
+      if (['second_ad', 'second_assistant_director', '2nd_ad'].includes(normalizedRequestedRole)) {
+        return 'second_ad';
       }
       if (
         [
@@ -1444,6 +1504,9 @@ type RoleRoomProjectWorkspaceState = {
     if (normalizedRole === 'admin') return 'producer';
     if (normalizedRole === 'content_producer') return 'content_producer';
     if (normalizedRole === 'client_reviewer' || normalizedRole === 'client') return 'client_reviewer';
+    if (['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalizedRole)) return 'camera_team';
+    if (['first_ad', 'first_assistant_director', '1st_ad'].includes(normalizedRole)) return 'first_ad';
+    if (['second_ad', 'second_assistant_director', '2nd_ad'].includes(normalizedRole)) return 'second_ad';
     if (
       [
         'director',
@@ -1746,6 +1809,11 @@ type RoleRoomProjectWorkspaceState = {
     const projectWorkspaceState = currentProject?.id
       ? persisted?.projectStates?.[currentProject.id] ?? null
       : null;
+    const urlParams = typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search)
+      : new URLSearchParams();
+    const urlLens = urlParams.get('lens');
+    const urlRoleSurface = urlParams.get('surface');
     workspaceRestoreProjectIdRef.current = currentProject?.id ?? null;
     if (typeof window !== 'undefined') {
       window.setTimeout(() => {
@@ -1766,6 +1834,34 @@ type RoleRoomProjectWorkspaceState = {
     setSelectedCandidate(null);
     setSelectedSchedule(null);
     setSelectionPhaseFilter('screening');
+    setWorkspaceLensPreference(
+      isRoleRoomWorkspaceLens(urlLens)
+        ? urlLens
+        : projectWorkspaceState?.workspaceLens
+          ?? (persisted?.projectId === (currentProject?.id ?? null) ? persisted.workspaceLens ?? null : null),
+    );
+    setDirectorSurface(
+      isDirectorSurface(urlRoleSurface)
+        ? urlRoleSurface
+        : projectWorkspaceState?.directorSurface
+          ?? (persisted?.projectId === (currentProject?.id ?? null) ? persisted.directorSurface ?? 'today' : 'today'),
+    );
+    setCinematographerSurface(
+      isCinematographerSurface(urlRoleSurface)
+        ? urlRoleSurface
+        : projectWorkspaceState?.cinematographerSurface
+          ?? (persisted?.projectId === (currentProject?.id ?? null)
+            ? persisted.cinematographerSurface ?? 'today'
+            : 'today'),
+    );
+    setFirstAssistantDirectorSurface(
+      isFirstAssistantDirectorSurface(urlRoleSurface)
+        ? urlRoleSurface
+        : projectWorkspaceState?.firstAssistantDirectorSurface
+          ?? (persisted?.projectId === (currentProject?.id ?? null)
+            ? persisted.firstAssistantDirectorSurface ?? 'today'
+            : 'today'),
+    );
     setSelectionNotesTagExclusions([]);
     setSelectionNotesSaving(false);
     setSelectionGoogleStatus(null);
@@ -1931,6 +2027,7 @@ type RoleRoomProjectWorkspaceState = {
     options?: {
       storyArcView?: StoryArcView;
       storyArcFocus?: StoryArcNavigationFocus | null;
+      directorSurface?: DirectorSurface;
     },
   ) => {
     const commitTab = (nextTab: number) => {
@@ -1947,6 +2044,24 @@ type RoleRoomProjectWorkspaceState = {
       // beholder flushSync — det MÅ committe synkront ifm. fullskjerm-exit.)
       startTransition(() => setActiveTab(nextTab));
     };
+
+    const inferredDirectorSurface: DirectorSurface | null = options?.directorSurface
+      ?? (tabIndex === 0
+        ? 'today'
+        : tabIndex === STORY_ARC_TAB_INDEX
+          ? 'scenes'
+          : tabIndex === STORYBOARD_TAB_INDEX || tabIndex === SHOT_LIST_TAB_INDEX
+            ? 'visual-plan'
+            : tabIndex >= ROLES_TAB_INDEX && tabIndex <= SELECTION_TAB_INDEX
+              ? 'casting'
+              : tabIndex === LIVE_SET_TAB_INDEX
+                ? 'on-set'
+                : tabIndex === PRODUCER_REVIEWS_TAB_INDEX || tabIndex === PRODUCER_EXPORT_TAB_INDEX
+                  ? 'post'
+                  : null);
+    if (inferredDirectorSurface) {
+      setDirectorSurface(inferredDirectorSurface);
+    }
 
     if (tabIndex === SHOT_LIST_TAB_INDEX) {
       setStoryArcView('shot-list');
@@ -1972,6 +2087,145 @@ type RoleRoomProjectWorkspaceState = {
     }
     commitTab(tabIndex);
   }, [activeTab, currentProject, exitLiveSetFullscreen, requestLiveSetFullscreen, toast]);
+
+  const handleDirectorNavigate = useCallback((surface: DirectorSurface) => {
+    setWorkspaceLensPreference('director');
+    setDirectorSurface(surface);
+
+    switch (surface) {
+      case 'today':
+        navigateToTab(0, { directorSurface: surface });
+        return;
+      case 'scenes':
+        navigateToTab(0, { directorSurface: surface });
+        return;
+      case 'casting':
+        navigateToTab(SELECTION_TAB_INDEX, { directorSurface: surface });
+        return;
+      case 'visual-plan':
+        navigateToTab(STORYBOARD_TAB_INDEX, { directorSurface: surface });
+        return;
+      case 'on-set':
+        navigateToTab(LIVE_SET_TAB_INDEX, { directorSurface: surface });
+        return;
+      case 'post':
+        // Coverage review og manusets post-overlevering bor foreløpig i
+        // manusarbeidsflaten. En egen post-komposisjon kobles på samme target.
+        navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'main', directorSurface: surface });
+        return;
+    }
+  }, [navigateToTab]);
+
+  const handleOpenDirectorSceneManuscript = useCallback((sceneId: string) => {
+    setDirectorSceneId(sceneId);
+    navigateToTab(STORY_ARC_TAB_INDEX, {
+      storyArcView: 'story-writer',
+      storyArcFocus: { sceneId },
+      directorSurface: 'scenes',
+    });
+  }, [navigateToTab]);
+
+  const handleOpenDirectorSceneStoryboard = useCallback((sceneId: string) => {
+    setDirectorSceneId(sceneId);
+    navigateToTab(STORY_ARC_TAB_INDEX, {
+      storyArcView: 'main',
+      storyArcFocus: { sceneId },
+      directorSurface: 'scenes',
+    });
+  }, [navigateToTab]);
+
+  const handleOpenDirectorSceneShotList = useCallback((sceneId: string) => {
+    setDirectorSceneId(sceneId);
+    navigateToTab(STORY_ARC_TAB_INDEX, {
+      storyArcView: 'shot-list',
+      storyArcFocus: { sceneId },
+      directorSurface: 'scenes',
+    });
+  }, [navigateToTab]);
+
+  const handleOpenDirectorWorkspace = useCallback(() => {
+    setWorkspaceLensPreference('director');
+    setDirectorSurface('today');
+    navigateToTab(0);
+  }, [navigateToTab]);
+
+  const handleCinematographerNavigate = useCallback((surface: CinematographerSurface) => {
+    setWorkspaceLensPreference('cinematography');
+    setCinematographerSurface(surface);
+
+    switch (surface) {
+      case 'today':
+        navigateToTab(0);
+        return;
+      case 'scenes':
+        navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'main' });
+        return;
+      case 'shot-plan':
+        navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'shot-list' });
+        return;
+      case 'lighting-equipment':
+        navigateToTab(EQUIPMENT_TAB_INDEX);
+        return;
+      case 'camera-crew':
+        setTeamDashboardDefaultSegment('technical');
+        navigateToTab(TEAM_TAB_INDEX);
+        return;
+      case 'on-set':
+        navigateToTab(LIVE_SET_TAB_INDEX);
+        return;
+    }
+  }, [navigateToTab]);
+
+  const handleOpenCinematographerWorkspace = useCallback(() => {
+    setWorkspaceLensPreference('cinematography');
+    setCinematographerSurface('today');
+    navigateToTab(0);
+  }, [navigateToTab]);
+
+  const handleFirstAssistantDirectorNavigate = useCallback((surface: FirstAssistantDirectorSurface) => {
+    setWorkspaceLensPreference('assistant-direction');
+    setFirstAssistantDirectorSurface(surface);
+
+    switch (surface) {
+      case 'today':
+        navigateToTab(0);
+        return;
+      case 'stripboard':
+        setProductionWorkflowIntent((previous) => ({
+          view: 'stripboard',
+          signal: (previous?.signal ?? 0) + 1,
+        }));
+        navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-writer' });
+        return;
+      case 'shooting-plan':
+        navigateToTab(CALENDAR_TAB_INDEX);
+        return;
+      case 'call-sheet':
+        setProductionWorkflowIntent((previous) => ({
+          view: 'schedule',
+          signal: (previous?.signal ?? 0) + 1,
+        }));
+        navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-writer' });
+        return;
+      case 'cast-crew':
+        navigateToTab(TEAM_TAB_INDEX);
+        return;
+      case 'on-set':
+        navigateToTab(LIVE_SET_TAB_INDEX);
+        return;
+    }
+  }, [navigateToTab]);
+
+  const handleOpenFirstAssistantDirectorWorkspace = useCallback(() => {
+    setWorkspaceLensPreference('assistant-direction');
+    setFirstAssistantDirectorSurface('today');
+    navigateToTab(0);
+  }, [navigateToTab]);
+
+  const handleOpenFullWorkspace = useCallback(() => {
+    setWorkspaceLensPreference('full');
+    navigateToTab(0);
+  }, [navigateToTab]);
 
   const openContentProducerPlannerSurface = useCallback((
     surface: ContentProducerPlannerSurface,
@@ -2731,9 +2985,19 @@ type RoleRoomProjectWorkspaceState = {
       owner: branding.tokens.labels.roleOwnerLabel,
       admin: branding.tokens.labels.roleAdminLabel,
       director: branding.tokens.labels.roleDirectorLabel,
+      cinematographer: 'Filmfotograf (DoP)',
+      director_of_photography: 'Filmfotograf (DoP)',
+      dop: 'Filmfotograf (DoP)',
+      dp: 'Filmfotograf (DoP)',
       producer: branding.tokens.labels.roleProducerLabel,
       casting_director: branding.tokens.labels.roleCastingDirectorLabel,
       production_manager: branding.tokens.labels.roleProductionManagerLabel,
+      first_ad: 'Innspillingsleder / 1st AD',
+      first_assistant_director: 'Innspillingsleder / 1st AD',
+      '1st_ad': 'Innspillingsleder / 1st AD',
+      second_ad: '2. regiassistent / 2nd AD',
+      second_assistant_director: '2. regiassistent / 2nd AD',
+      '2nd_ad': '2. regiassistent / 2nd AD',
       camera_team: branding.tokens.labels.roleCameraTeamLabel,
       agency: branding.tokens.labels.roleAgencyLabel,
       content_producer: 'Innholdsprodusent',
@@ -2756,6 +3020,9 @@ type RoleRoomProjectWorkspaceState = {
       if (normalizedRequestedRole === 'client') {
         return 'client_reviewer';
       }
+      if (['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalizedRequestedRole)) {
+        return 'camera_team';
+      }
       return 'content_producer';
     }
     if (normalizedLoginAs === 'production_team' && normalizedRequestedRole) {
@@ -2770,6 +3037,8 @@ type RoleRoomProjectWorkspaceState = {
         'producer',
         'casting_director',
         'production_manager',
+        'first_ad',
+        'second_ad',
         'camera_team',
         'writer',
         'script_editor',
@@ -2790,8 +3059,11 @@ type RoleRoomProjectWorkspaceState = {
     if (normalized === 'producer') return 'producer';
     if (normalized === 'content_producer') return 'content_producer';
     if (normalized === 'client_reviewer') return 'client_reviewer';
+    if (['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalized)) return 'camera_team';
     if (normalized === 'casting_director') return 'casting_director';
     if (normalized === 'production_manager') return 'production_manager';
+    if (['first_ad', 'first_assistant_director', '1st_ad'].includes(normalized)) return 'first_ad';
+    if (['second_ad', 'second_assistant_director', '2nd_ad'].includes(normalized)) return 'second_ad';
     if (normalized === 'camera_team' || normalized === 'camera_operator') return 'camera_team';
     if (normalized === 'writer') return 'writer';
     if (normalized === 'script_editor') return 'script_editor';
@@ -2890,8 +3162,29 @@ type RoleRoomProjectWorkspaceState = {
     return 'Begrenset tilgang';
   }, [buildPermissionStateFromRole]);
 
+  const normalizedRequestedProjectRole = String(adminUser?.requestedRole || '').trim().toLowerCase();
+  const hasCinematographerPersona = [
+    'cinematographer',
+    'director_of_photography',
+    'dop',
+    'dp',
+  ].includes(normalizedRequestedProjectRole);
+  const hasFirstAssistantDirectorPersona = [
+    'first_ad',
+    'first_assistant_director',
+    '1st_ad',
+  ].includes(normalizedRequestedProjectRole);
+  const hasSecondAssistantDirectorPersona = [
+    'second_ad',
+    'second_assistant_director',
+    '2nd_ad',
+  ].includes(normalizedRequestedProjectRole);
   const accountRoleLabel = adminUser?.role ? getHeaderRoleLabel(adminUser.role) : '';
-  const projectRoleLabel = currentUserRole?.role ? getHeaderRoleLabel(currentUserRole.role) : '';
+  const projectRoleLabel = currentUserRole?.role
+    ? currentUserRole.role === 'camera_team' && hasCinematographerPersona
+      ? 'Filmfotograf (DoP)'
+      : getHeaderRoleLabel(currentUserRole.role)
+    : '';
   const headerRoleLabel = projectRoleLabel && accountRoleLabel && projectRoleLabel !== accountRoleLabel
     ? `${accountRoleLabel} (konto) • ${projectRoleLabel} (prosjekt)`
     : projectRoleLabel || accountRoleLabel;
@@ -2905,6 +3198,50 @@ type RoleRoomProjectWorkspaceState = {
   );
   const isScopedRoleRoomLogin = typeof adminUser?.loginAs === 'string'
     && adminUser.loginAs.trim().length > 0;
+  // En vanlig eier/admin får fortsatt full prosjektflate som standard. En
+  // eksplisitt prosjektrolle lander i sin egen arbeidsflate; eier/admin kan
+  // åpne rolleflatene som en bevisst forhåndsvisning.
+  const normalizedCurrentProjectRole = String(currentUserRole?.role || '').trim().toLowerCase();
+  const isAssignedDirectorProjectRole = normalizedCurrentProjectRole === 'director'
+    && (!isRoleRoomAdminSession || mappedSessionProjectRole === 'director');
+  const isAssignedCinematographerProjectRole = (
+    ['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalizedCurrentProjectRole)
+    || (normalizedCurrentProjectRole === 'camera_team' && hasCinematographerPersona)
+  ) && (!isRoleRoomAdminSession || hasCinematographerPersona);
+  const isAssignedFirstAssistantDirectorProjectRole = [
+    'first_ad',
+    'first_assistant_director',
+    '1st_ad',
+  ].includes(normalizedCurrentProjectRole)
+    && (!isRoleRoomAdminSession || hasFirstAssistantDirectorPersona);
+  const isAssignedSecondAssistantDirectorProjectRole = [
+    'second_ad',
+    'second_assistant_director',
+    '2nd_ad',
+  ].includes(normalizedCurrentProjectRole)
+    && (!isRoleRoomAdminSession || hasSecondAssistantDirectorPersona);
+  const canUseDirectorWorkspace = isAssignedDirectorProjectRole || isRoleRoomAdminSession;
+  const canUseCinematographerWorkspace = isAssignedCinematographerProjectRole || isRoleRoomAdminSession;
+  const canUseFirstAssistantDirectorWorkspace = isAssignedFirstAssistantDirectorProjectRole || isRoleRoomAdminSession;
+  const canUseAssistantDirectorWorkspace = canUseFirstAssistantDirectorWorkspace || isAssignedSecondAssistantDirectorProjectRole;
+  const effectiveWorkspaceLens: RoleRoomWorkspaceLens = (
+    canUseDirectorWorkspace
+    && (workspaceLensPreference === 'director' || (workspaceLensPreference === null && isAssignedDirectorProjectRole))
+  )
+    ? 'director'
+    : canUseCinematographerWorkspace
+      && (
+        workspaceLensPreference === 'cinematography'
+        || (workspaceLensPreference === null && isAssignedCinematographerProjectRole)
+      )
+      ? 'cinematography'
+      : canUseAssistantDirectorWorkspace
+        && (
+          workspaceLensPreference === 'assistant-direction'
+          || (workspaceLensPreference === null && (isAssignedFirstAssistantDirectorProjectRole || isAssignedSecondAssistantDirectorProjectRole))
+        )
+        ? 'assistant-direction'
+        : 'full';
   const getProjectRoleDetails = useCallback((project: CastingProject): {
     roleLabel: string;
     accessLabel: string;
@@ -3273,6 +3610,10 @@ type RoleRoomProjectWorkspaceState = {
       const nextStoryArcView = stored.storyArcView;
       const nextStoryArcFocus = normalizeStoryArcNavigationFocus(stored.storyArcFocus);
       const nextContentProducerPlannerSurface = stored.contentProducerPlannerSurface;
+      const nextWorkspaceLens = stored.workspaceLens;
+      const nextDirectorSurface = stored.directorSurface;
+      const nextCinematographerSurface = stored.cinematographerSurface;
+      const nextFirstAssistantDirectorSurface = stored.firstAssistantDirectorSurface;
       const nextProducerMediaFocus = stored.producerMediaFocus;
       const nextContentProducerResumeTarget = stored.contentProducerResumeTarget;
       const storedRecord = stored as RoleRoomWorkspaceState & Record<string, unknown>;
@@ -3410,6 +3751,14 @@ type RoleRoomProjectWorkspaceState = {
         return {
           projectId,
           activeTab: Number.isFinite(record.activeTab) ? record.activeTab : 0,
+          workspaceLens: isRoleRoomWorkspaceLens(record.workspaceLens) ? record.workspaceLens : undefined,
+          directorSurface: isDirectorSurface(record.directorSurface) ? record.directorSurface : 'today',
+          cinematographerSurface: isCinematographerSurface(record.cinematographerSurface)
+            ? record.cinematographerSurface
+            : 'today',
+          firstAssistantDirectorSurface: isFirstAssistantDirectorSurface(record.firstAssistantDirectorSurface)
+            ? record.firstAssistantDirectorSurface
+            : 'today',
           storyArcView: projectStoryArcViewValid ? projectStoryArcView : 'main',
           storyArcFocus: normalizeStoryArcNavigationFocus(record.storyArcFocus),
           contentProducerPlannerSurface: projectPlannerSurfaceValid ? projectPlannerSurface : 'overview',
@@ -3450,6 +3799,14 @@ type RoleRoomProjectWorkspaceState = {
         projectId: lastRealProjectId,
         lastRealProjectId,
         activeTab: Number.isFinite(stored.activeTab) ? stored.activeTab : 0,
+        workspaceLens: isRoleRoomWorkspaceLens(nextWorkspaceLens) ? nextWorkspaceLens : undefined,
+        directorSurface: isDirectorSurface(nextDirectorSurface) ? nextDirectorSurface : 'today',
+        cinematographerSurface: isCinematographerSurface(nextCinematographerSurface)
+          ? nextCinematographerSurface
+          : 'today',
+        firstAssistantDirectorSurface: isFirstAssistantDirectorSurface(nextFirstAssistantDirectorSurface)
+          ? nextFirstAssistantDirectorSurface
+          : 'today',
         storyArcView: storyArcViewValid ? nextStoryArcView : 'main',
         storyArcFocus: nextStoryArcFocus,
         contentProducerPlannerSurface: plannerSurfaceValid ? nextContentProducerPlannerSurface : 'overview',
@@ -3484,7 +3841,7 @@ type RoleRoomProjectWorkspaceState = {
         ? new URLSearchParams(window.location.search)
         : new URLSearchParams();
       const urlAsksForRestore =
-        !!sp.get('tab') || !!sp.get('project') || !!sp.get('surface') || !!sp.get('view');
+        !!sp.get('tab') || !!sp.get('project') || !!sp.get('surface') || !!sp.get('view') || !!sp.get('lens');
       if (!urlAsksForRestore) {
         return;
       }
@@ -3510,11 +3867,18 @@ type RoleRoomProjectWorkspaceState = {
       const urlHasTab = !!sp.get('tab');
       const urlHasSurface = !!sp.get('surface');
       const urlHasView = !!sp.get('view');
+      const urlHasLens = isRoleRoomWorkspaceLens(sp.get('lens'));
+      if (!urlHasLens) {
+        setWorkspaceLensPreference(stored.workspaceLens ?? null);
+      }
       if (!urlHasView) {
         setStoryArcView(stored.storyArcView);
         setStoryArcFocus(stored.storyArcFocus ?? null);
       }
       if (!urlHasSurface) {
+        setDirectorSurface(stored.directorSurface ?? 'today');
+        setCinematographerSurface(stored.cinematographerSurface ?? 'today');
+        setFirstAssistantDirectorSurface(stored.firstAssistantDirectorSurface ?? 'today');
         setContentProducerPlannerSurface(stored.contentProducerPlannerSurface ?? 'overview');
       }
       lastProducerMediaFocusRef.current = stored.producerMediaFocus ?? null;
@@ -4201,10 +4565,13 @@ type RoleRoomProjectWorkspaceState = {
     (res: Awaited<ReturnType<typeof roleRoomProjectTabConfigService.getMyTabs>>): TabAccessMap | null => {
       if (res.tabAccess) return res.tabAccess;
       if (res.role === 'leder') return null;
-      if (hasRolePreset(res.role)) return presetForRole(res.role);
+      const roleForPreset = res.role === 'camera_team' && hasCinematographerPersona
+        ? 'dop'
+        : res.role;
+      if (hasRolePreset(roleForPreset)) return presetForRole(roleForPreset);
       return null;
     },
-    [],
+    [hasCinematographerPersona],
   );
 
   useEffect(() => {
@@ -4222,6 +4589,38 @@ type RoleRoomProjectWorkspaceState = {
     return () => { cancelled = true; };
   }, [currentProject?.id, deriveEffectiveAccess]);
 
+  // The canonical project response is intentionally compact and may omit
+  // production days and screenplay scenes. Hydrate those shared resources once
+  // per project so Director, 1st AD and 2nd AD all plan from the same day →
+  // scene → character graph (instead of each workspace seeing a partial shell).
+  useEffect(() => {
+    const projectId = currentProject?.id;
+    if (!projectId) return;
+    let cancelled = false;
+
+    void Promise.allSettled([
+      castingService.getProductionDays(projectId),
+      castingService.getSceneBreakdowns(projectId),
+    ]).then(([daysResult, scenesResult]) => {
+      if (cancelled) return;
+      const productionDays = daysResult.status === 'fulfilled' ? daysResult.value : null;
+      const sceneBreakdowns = scenesResult.status === 'fulfilled' ? scenesResult.value : null;
+      if (!productionDays && !sceneBreakdowns) return;
+
+      const hydrate = (project: CastingProject): CastingProject => project.id !== projectId
+        ? project
+        : {
+          ...project,
+          ...(productionDays ? { productionDays } : {}),
+          ...(sceneBreakdowns ? { sceneBreakdowns } : {}),
+        };
+      setCurrentProject((project) => project ? hydrate(project) : project);
+      setProjects((items) => items.map(hydrate));
+    });
+
+    return () => { cancelled = true; };
+  }, [currentProject?.id]);
+
   const rbacManageableTabKeys = useMemo(
     () => accessManageableTabKeys(effectiveTabAccess),
     [effectiveTabAccess],
@@ -4238,6 +4637,46 @@ type RoleRoomProjectWorkspaceState = {
     if (!key) return true;
     return rbacManageableTabKeys.has(key);
   }, [effectiveTabAccess, rbacManageableTabKeys]);
+
+  const canAccessTab = (tabIndex: number): boolean => {
+    if (!effectiveTabAccess) return true;
+    const key = TAB_INDEX_TO_KEY[tabIndex];
+    if (!key) return true;
+    return rbacAccessibleTabKeys.has(key);
+  };
+
+  const isCinematographerSurfaceAvailable = (surface: CinematographerSurface): boolean => {
+    switch (surface) {
+      case 'today':
+        return true;
+      case 'scenes':
+        return canAccessTab(STORY_ARC_TAB_INDEX);
+      case 'shot-plan':
+        return canAccessTab(STORY_ARC_TAB_INDEX) && canAccessTab(SHOT_LIST_TAB_INDEX);
+      case 'lighting-equipment':
+        return canAccessTab(EQUIPMENT_TAB_INDEX);
+      case 'camera-crew':
+        return canAccessTab(TEAM_TAB_INDEX);
+      case 'on-set':
+        return canAccessTab(LIVE_SET_TAB_INDEX);
+    }
+  };
+
+  const isFirstAssistantDirectorSurfaceAvailable = (surface: FirstAssistantDirectorSurface): boolean => {
+    switch (surface) {
+      case 'today':
+        return true;
+      case 'stripboard':
+      case 'call-sheet':
+        return canAccessTab(STORY_ARC_TAB_INDEX);
+      case 'shooting-plan':
+        return canAccessTab(CALENDAR_TAB_INDEX);
+      case 'cast-crew':
+        return canAccessTab(TEAM_TAB_INDEX);
+      case 'on-set':
+        return canAccessTab(LIVE_SET_TAB_INDEX);
+    }
+  };
 
   const isViewerLeaderOf = useCallback((p: CastingProject | null): boolean => {
     const uid = getUserId();
@@ -4455,6 +4894,10 @@ type RoleRoomProjectWorkspaceState = {
           [currentProject.id]: {
             projectId: currentProject.id,
             activeTab: displayedActiveTab,
+            workspaceLens: effectiveWorkspaceLens,
+            directorSurface,
+            cinematographerSurface,
+            firstAssistantDirectorSurface,
             storyArcView: displayedActiveTab === STORY_ARC_TAB_INDEX
               ? storyArcView
               : previousProjectState?.storyArcView ?? 'main',
@@ -4485,6 +4928,10 @@ type RoleRoomProjectWorkspaceState = {
       projectId: lastRealProjectId,
       lastRealProjectId,
       activeTab: displayedActiveTab,
+      workspaceLens: effectiveWorkspaceLens,
+      directorSurface,
+      cinematographerSurface,
+      firstAssistantDirectorSurface,
       storyArcView: displayedActiveTab === STORY_ARC_TAB_INDEX ? storyArcView : 'main',
       storyArcFocus: displayedActiveTab === STORY_ARC_TAB_INDEX ? storyArcFocus : null,
       contentProducerPlannerSurface: isContentProducerMode ? contentProducerPlannerSurface : undefined,
@@ -4502,8 +4949,12 @@ type RoleRoomProjectWorkspaceState = {
     buildWorkspaceSortingForCurrentSurface,
     contentProducerPlannerSurface,
     contentProducerResumeTarget,
+    cinematographerSurface,
     currentProject,
+    directorSurface,
+    firstAssistantDirectorSurface,
     displayedActiveTab,
+    effectiveWorkspaceLens,
     getWorkspaceSurfaceKey,
     isContentProducerMode,
     isRestorableWorkspaceProject,
@@ -4531,6 +4982,10 @@ type RoleRoomProjectWorkspaceState = {
     const nextProjectState: RoleRoomProjectWorkspaceState = {
       projectId: project.id,
       activeTab: displayedActiveTab,
+      workspaceLens: effectiveWorkspaceLens,
+      directorSurface,
+      cinematographerSurface,
+      firstAssistantDirectorSurface,
       storyArcView: displayedActiveTab === STORY_ARC_TAB_INDEX
         ? storyArcView
         : previousProjectState?.storyArcView ?? 'main',
@@ -4560,6 +5015,10 @@ type RoleRoomProjectWorkspaceState = {
       projectId: lastRealProjectId,
       lastRealProjectId,
       activeTab: previousState?.activeTab ?? displayedActiveTab,
+      workspaceLens: effectiveWorkspaceLens,
+      directorSurface,
+      cinematographerSurface,
+      firstAssistantDirectorSurface,
       storyArcView: previousState?.storyArcView ?? storyArcView,
       storyArcFocus: previousState?.storyArcFocus ?? storyArcFocus,
       contentProducerPlannerSurface: previousState?.contentProducerPlannerSurface ?? contentProducerPlannerSurface,
@@ -4578,7 +5037,11 @@ type RoleRoomProjectWorkspaceState = {
     authLoaded,
     contentProducerPlannerSurface,
     contentProducerResumeTarget,
+    cinematographerSurface,
+    directorSurface,
+    firstAssistantDirectorSurface,
     displayedActiveTab,
+    effectiveWorkspaceLens,
     getWorkspaceSurfaceKey,
     isContentProducerMode,
     isRestorableWorkspaceProject,
@@ -4745,7 +5208,7 @@ type RoleRoomProjectWorkspaceState = {
     projects,
   ]);
 
-  // URL-state sync for activeTab + project + storyArcView + plannerSurface.
+  // URL-state sync for aktiv fane, prosjekt og den valgte arbeidslinsen.
   // Each navigation writes `?tab=<slug>&project=<id>&view=<storyArcView>
   // &surface=<plannerSurface>` via pushState so the browser back button
   // walks through the in-app navigation instead of jumping straight to
@@ -4771,16 +5234,46 @@ type RoleRoomProjectWorkspaceState = {
     const desiredTabSlug = tabId ? tabId.replace(/^tabpanel-/, '') : String(activeTab);
     const desiredProject = currentProject?.id ?? '';
     const desiredView = storyArcView !== 'main' ? storyArcView : '';
-    const desiredSurface = contentProducerPlannerSurface !== 'overview' ? contentProducerPlannerSurface : '';
+    const desiredLens = effectiveWorkspaceLens === 'director'
+      ? 'director'
+      : effectiveWorkspaceLens === 'cinematography'
+        ? 'cinematography'
+        : effectiveWorkspaceLens === 'assistant-direction'
+          ? 'assistant-direction'
+          : workspaceLensPreference === 'full'
+            && (
+              isAssignedDirectorProjectRole
+              || isAssignedCinematographerProjectRole
+              || isAssignedFirstAssistantDirectorProjectRole
+              || isAssignedSecondAssistantDirectorProjectRole
+            )
+            ? 'full'
+            : '';
+    const desiredSurface = effectiveWorkspaceLens === 'director'
+      ? directorSurface
+      : effectiveWorkspaceLens === 'cinematography'
+        ? cinematographerSurface
+        : effectiveWorkspaceLens === 'assistant-direction'
+          ? firstAssistantDirectorSurface
+          : contentProducerPlannerSurface !== 'overview'
+            ? contentProducerPlannerSurface
+            : '';
+    const desiredScene = effectiveWorkspaceLens === 'director'
+      ? directorSceneId ?? ''
+      : '';
     const currentTabParam = params.get('tab') ?? '';
     const currentProjectParam = params.get('project') ?? '';
     const currentViewParam = params.get('view') ?? '';
     const currentSurfaceParam = params.get('surface') ?? '';
+    const currentLensParam = params.get('lens') ?? '';
+    const currentSceneParam = params.get('scene') ?? '';
     if (
       currentTabParam === desiredTabSlug
       && currentProjectParam === desiredProject
       && currentViewParam === desiredView
       && currentSurfaceParam === desiredSurface
+      && currentLensParam === desiredLens
+      && currentSceneParam === desiredScene
     ) return;
     if (desiredTabSlug) params.set('tab', desiredTabSlug);
     else params.delete('tab');
@@ -4790,11 +5283,32 @@ type RoleRoomProjectWorkspaceState = {
     else params.delete('view');
     if (desiredSurface) params.set('surface', desiredSurface);
     else params.delete('surface');
+    if (desiredLens) params.set('lens', desiredLens);
+    else params.delete('lens');
+    if (desiredScene) params.set('scene', desiredScene);
+    else params.delete('scene');
     const nextSearch = params.toString() ? `?${params.toString()}` : '';
     const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
     if (nextUrl === `${window.location.pathname}${window.location.search}${window.location.hash}`) return;
     window.history.pushState({ rrStateSync: true }, '', nextUrl);
-  }, [bootstrapComplete, activeTab, currentProject?.id, storyArcView, contentProducerPlannerSurface, isExternalClientPortalMode]);
+  }, [
+    bootstrapComplete,
+    activeTab,
+    currentProject?.id,
+    storyArcView,
+    contentProducerPlannerSurface,
+    cinematographerSurface,
+    directorSurface,
+    directorSceneId,
+    effectiveWorkspaceLens,
+    firstAssistantDirectorSurface,
+    isAssignedCinematographerProjectRole,
+    isAssignedDirectorProjectRole,
+    isAssignedFirstAssistantDirectorProjectRole,
+    isAssignedSecondAssistantDirectorProjectRole,
+    isExternalClientPortalMode,
+    workspaceLensPreference,
+  ]);
 
   // Rehydrate activeTab + currentProject when the user hits browser
   // back/forward. Without this, pushing URLs only *writes* history
@@ -4850,7 +5364,24 @@ type RoleRoomProjectWorkspaceState = {
         || urlView === 'shot-list' || urlView === 'planning'
       ) ? urlView : 'main';
       setStoryArcView((previous) => (previous === nextView ? previous : nextView));
+      const urlLens = params.get('lens');
+      const nextLens = isRoleRoomWorkspaceLens(urlLens) ? urlLens : null;
+      setWorkspaceLensPreference((previous) => (previous === nextLens ? previous : nextLens));
+      const nextDirectorSceneId = params.get('scene')?.trim() || null;
+      setDirectorSceneId((previous) => (previous === nextDirectorSceneId ? previous : nextDirectorSceneId));
       const urlSurface = params.get('surface');
+      if (nextLens === 'director' && isDirectorSurface(urlSurface)) {
+        setDirectorSurface((previous) => (previous === urlSurface ? previous : urlSurface));
+        return;
+      }
+      if (nextLens === 'cinematography' && isCinematographerSurface(urlSurface)) {
+        setCinematographerSurface((previous) => (previous === urlSurface ? previous : urlSurface));
+        return;
+      }
+      if (nextLens === 'assistant-direction' && isFirstAssistantDirectorSurface(urlSurface)) {
+        setFirstAssistantDirectorSurface((previous) => (previous === urlSurface ? previous : urlSurface));
+        return;
+      }
       const nextSurface: ContentProducerPlannerSurface = (
         urlSurface === 'overview' || urlSurface === 'project_room' || urlSurface === 'approval'
         || urlSurface === 'delivery' || urlSurface === 'economy'
@@ -5230,7 +5761,7 @@ type RoleRoomProjectWorkspaceState = {
           : null;
 
     const nextRole =
-      normalizedRoleId === 'camera_operator'
+      ['cinematographer', 'director_of_photography', 'dop', 'dp', 'camera_operator'].includes(normalizedRoleId)
         ? 'camera_team'
         : normalizedRoleId === 'client'
           ? 'client_reviewer'
@@ -5617,7 +6148,7 @@ type RoleRoomProjectWorkspaceState = {
     if (isProducerWorkspaceSession) return 'videographer';
 
     const requestedRole = (adminUser.requestedRole || '').trim().toLowerCase();
-    if (['film_photographer', 'director', 'producer', 'casting_director', 'camera_team', 'camera_operator'].includes(requestedRole)) {
+    if (['film_photographer', 'director', 'producer', 'casting_director', 'camera_team', 'camera_operator', 'cinematographer', 'director_of_photography', 'dop', 'dp'].includes(requestedRole)) {
       return 'videographer';
     }
     if (['photographer', 'photo_director', 'photo_assistant', 'client'].includes(requestedRole)) {
@@ -10385,33 +10916,216 @@ type RoleRoomProjectWorkspaceState = {
               workspaceName={branding.appName}
               onCreateProject={() => setProjectCreationModalOpen(true)}
             />
+          ) : currentProject && effectiveWorkspaceLens === 'director' ? (
+            <DirectorWorkspace
+              key={`director-${currentProject.id}`}
+              project={currentProject}
+              roles={roles}
+              candidates={allCandidates}
+              schedules={schedules}
+              activeSurface={directorSurface}
+              selectedSceneId={directorSceneId}
+              readOnly={!permissions.canEditProduction && !permissions.canEditCasting}
+              canComment={permissions.canComment || isRoleRoomAdminSession}
+              onNavigate={handleDirectorNavigate}
+              onSceneChange={setDirectorSceneId}
+              onOpenSceneManuscript={handleOpenDirectorSceneManuscript}
+              onOpenSceneStoryboard={handleOpenDirectorSceneStoryboard}
+              onOpenSceneShotList={handleOpenDirectorSceneShotList}
+              onOpenFullWorkspace={handleOpenFullWorkspace}
+            />
+          ) : currentProject && effectiveWorkspaceLens === 'cinematography' ? (
+            <CinematographerWorkspace
+              key={`cinematographer-${currentProject.id}`}
+              project={currentProject}
+              activeSurface={cinematographerSurface}
+              readOnly={!permissions.canEditShotLists || !canManageTab(SHOT_LIST_TAB_INDEX)}
+              isSurfaceAvailable={isCinematographerSurfaceAvailable}
+              onNavigate={handleCinematographerNavigate}
+              onOpenFullWorkspace={handleOpenFullWorkspace}
+            />
+          ) : currentProject && effectiveWorkspaceLens === 'assistant-direction' ? (
+            isAssignedSecondAssistantDirectorProjectRole ? (
+              <SecondAssistantDirectorWorkspace
+                key={`second-ad-${currentProject.id}`}
+                project={currentProject}
+                readOnly={!permissions.canEditProduction || !canManageTab(CALENDAR_TAB_INDEX)}
+                onOpenCallSheet={() => handleFirstAssistantDirectorNavigate('call-sheet')}
+                onOpenSchedule={() => handleFirstAssistantDirectorNavigate('shooting-plan')}
+                onOpenLiveSet={() => handleFirstAssistantDirectorNavigate('on-set')}
+                onOpenFullWorkspace={handleOpenFullWorkspace}
+                onSaved={(updatedDay) => {
+                  const apply = (project: CastingProject): CastingProject => ({
+                    ...project,
+                    productionDays: (project.productionDays ?? []).map((day) => day.id === updatedDay.id ? updatedDay : day),
+                  });
+                  setCurrentProject((project) => project ? apply(project) : project);
+                  setProjects((items) => items.map((project) => project.id === currentProject.id ? apply(project) : project));
+                }}
+              />
+            ) : (
+              <FirstAssistantDirectorWorkspace
+                key={`first-ad-${currentProject.id}`}
+                project={currentProject}
+                activeSurface={firstAssistantDirectorSurface}
+                readOnly={!permissions.canEditProduction || !canManageTab(CALENDAR_TAB_INDEX)}
+                isSurfaceAvailable={isFirstAssistantDirectorSurfaceAvailable}
+                onNavigate={handleFirstAssistantDirectorNavigate}
+                onOpenFullWorkspace={handleOpenFullWorkspace}
+              />
+            )
           ) : (
-          <DashboardPanel
-            key={currentProject?.id ?? 'no-project'}
-            project={currentProject}
-            roles={roles}
-            candidates={allCandidates}
-            schedules={schedules}
-            onNavigateToTab={navigateToTab}
-            onCreateRole={handleCreateRole}
-            onCreateCandidate={handleCreateCandidate}
-            onCreateSchedule={handleCreateSchedule}
-            onOpenSharing={openSharingModal}
-            onUpdate={async () => {
-              if (currentProject) {
-                const updated = await castingService.getProject(currentProject.id);
-                if (updated) {
-                  setCurrentProject(updated);
-                }
-              }
-            }}
-            onEditCandidate={(candidate) => {
-              setSelectedCandidate(candidate);
-              openCandidateDialog();
-            }}
-            onCandidatesChange={loadProjects}
-            profession={profession}
-          />
+            <>
+              {currentProject && canUseDirectorWorkspace ? (
+                <Box
+                  data-testid="director-workspace-launcher"
+                  sx={{
+                    mx: { xs: 1.5, sm: 2, lg: 3 },
+                    mt: { xs: 1.5, sm: 2 },
+                    px: { xs: 1.5, sm: 2 },
+                    py: 1.25,
+                    display: 'flex',
+                    alignItems: { xs: 'stretch', sm: 'center' },
+                    justifyContent: 'space-between',
+                    flexDirection: { xs: 'column', sm: 'row' },
+                    gap: 1,
+                    borderRadius: 2,
+                    bgcolor: 'rgba(168,85,247,0.08)',
+                    border: '1px solid rgba(168,85,247,0.22)',
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ color: '#f3eaff', fontWeight: 750, fontSize: '0.9rem' }}>
+                      Regissørrom
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(220,205,255,0.72)', fontSize: '0.76rem' }}>
+                      Se dagens scener, castingvalg og visuelle avklaringer i én arbeidsflate.
+                    </Typography>
+                  </Box>
+                  <Button
+                    variant="outlined"
+                    startIcon={<MovieIcon />}
+                    onClick={handleOpenDirectorWorkspace}
+                    sx={{
+                      minHeight: isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE,
+                      color: '#e9d5ff',
+                      borderColor: 'rgba(184,107,255,0.42)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    Åpne regissørvisning
+                  </Button>
+                </Box>
+              ) : null}
+              {currentProject && canUseCinematographerWorkspace ? (
+                <Box
+                  data-testid="cinematographer-workspace-launcher"
+                  sx={{
+                    mx: { xs: 1.5, sm: 2, lg: 3 },
+                    mt: 1,
+                    px: { xs: 1.5, sm: 2 },
+                    py: 1.25,
+                    display: 'flex',
+                    alignItems: { xs: 'stretch', sm: 'center' },
+                    justifyContent: 'space-between',
+                    flexDirection: { xs: 'column', sm: 'row' },
+                    gap: 1,
+                    borderRadius: 2,
+                    bgcolor: 'rgba(14,165,233,0.07)',
+                    border: '1px solid rgba(56,189,248,0.22)',
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ color: '#e0f2fe', fontWeight: 750, fontSize: '0.9rem' }}>
+                      Filmfotografens rom
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(186,230,253,0.72)', fontSize: '0.76rem' }}>
+                      Se bildedekning, kameraspesifikasjoner, lys og teknisk crew i én arbeidsflate.
+                    </Typography>
+                  </Box>
+                  <Button
+                    variant="outlined"
+                    startIcon={<CameraAltIcon />}
+                    onClick={handleOpenCinematographerWorkspace}
+                    sx={{
+                      minHeight: isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE,
+                      color: '#bae6fd',
+                      borderColor: 'rgba(56,189,248,0.42)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    Åpne filmfotografvisning
+                  </Button>
+                </Box>
+              ) : null}
+              {currentProject && canUseFirstAssistantDirectorWorkspace ? (
+                <Box
+                  data-testid="first-ad-workspace-launcher"
+                  sx={{
+                    mx: { xs: 1.5, sm: 2, lg: 3 },
+                    mt: 1,
+                    px: { xs: 1.5, sm: 2 },
+                    py: 1.25,
+                    display: 'flex',
+                    alignItems: { xs: 'stretch', sm: 'center' },
+                    justifyContent: 'space-between',
+                    flexDirection: { xs: 'column', sm: 'row' },
+                    gap: 1,
+                    borderRadius: 2,
+                    bgcolor: 'rgba(249,115,22,0.07)',
+                    border: '1px solid rgba(251,146,60,0.22)',
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ color: '#fff7ed', fontWeight: 750, fontSize: '0.9rem' }}>
+                      Innspillingsledelse · 1st AD
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(254,215,170,0.72)', fontSize: '0.76rem' }}>
+                      Se opptaksrekkefølge, manglende dagsgrunnlag og bekreftet cast og crew i én arbeidsflate.
+                    </Typography>
+                  </Box>
+                  <Button
+                    variant="outlined"
+                    startIcon={<AssignmentIcon />}
+                    onClick={handleOpenFirstAssistantDirectorWorkspace}
+                    sx={{
+                      minHeight: isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE,
+                      color: '#fed7aa',
+                      borderColor: 'rgba(251,146,60,0.42)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    Åpne 1st AD-visning
+                  </Button>
+                </Box>
+              ) : null}
+              <DashboardPanel
+                key={currentProject?.id ?? 'no-project'}
+                project={currentProject}
+                roles={roles}
+                candidates={allCandidates}
+                schedules={schedules}
+                onNavigateToTab={navigateToTab}
+                onCreateRole={handleCreateRole}
+                onCreateCandidate={handleCreateCandidate}
+                onCreateSchedule={handleCreateSchedule}
+                onOpenSharing={openSharingModal}
+                onUpdate={async () => {
+                  if (currentProject) {
+                    const updated = await castingService.getProject(currentProject.id);
+                    if (updated) {
+                      setCurrentProject(updated);
+                    }
+                  }
+                }}
+                onEditCandidate={(candidate) => {
+                  setSelectedCandidate(candidate);
+                  openCandidateDialog();
+                }}
+                onCandidatesChange={loadProjects}
+                profession={profession}
+              />
+            </>
           )}
         </TabPanel>
 
@@ -13475,6 +14189,7 @@ type RoleRoomProjectWorkspaceState = {
                       }}
                       onManuscriptChange={handleManuscriptChange}
                       storyLogicData={storyLogicData}
+                      productionWorkflowIntent={productionWorkflowIntent}
                       onUnsavedStateChange={handleManuscriptUnsavedChange}
                       onSendToApproval={() => {
                         if (!confirmDiscardUnsavedIfNeeded(['manuscript'])) return;

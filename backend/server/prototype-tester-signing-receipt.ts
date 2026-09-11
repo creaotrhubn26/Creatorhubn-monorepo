@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import PDFDocument from "pdfkit";
+import QRCode from "qrcode";
 import { canonicalJsonStringify } from "../../frontend/shared/prototype-tester-agreements.ts";
 
 type ReceiptDocument = {
@@ -34,6 +35,7 @@ export interface PrototypeTesterSigningReceiptInput {
   signatureMethod: string | null;
   emailVerifiedAt: Date | string | null;
   programEndsAt: Date | string | null;
+  verificationUrl?: string | null;
 }
 
 function receiptText(value: unknown, maxLength = 20_000): string {
@@ -103,6 +105,7 @@ function displayDigest(value: unknown): string {
 }
 
 let cachedCreatorHubWordmarkPath: string | null = null;
+let cachedReceiptFontPaths: { regular: string; bold: string } | null = null;
 
 function loadCreatorHubWordmarkPath(): string {
   if (cachedCreatorHubWordmarkPath) return cachedCreatorHubWordmarkPath;
@@ -120,6 +123,28 @@ function loadCreatorHubWordmarkPath(): string {
 
   cachedCreatorHubWordmarkPath = assetPath;
   return cachedCreatorHubWordmarkPath;
+}
+
+function loadReceiptFontPaths(): { regular: string; bold: string } {
+  if (cachedReceiptFontPaths) return cachedReceiptFontPaths;
+  const candidates = [
+    path.resolve(process.cwd(), "server/assets/fonts"),
+    path.resolve(process.cwd(), "backend/server/assets/fonts"),
+    path.resolve(process.cwd(), "../backend/server/assets/fonts"),
+  ];
+  const directory = candidates.find(
+    (candidate) =>
+      fs.existsSync(path.join(candidate, "DejaVuSans.ttf")) &&
+      fs.existsSync(path.join(candidate, "DejaVuSans-Bold.ttf")),
+  );
+  if (!directory) {
+    throw new Error("Innebygde PDF/A-fonter mangler fra deploypakken");
+  }
+  cachedReceiptFontPaths = {
+    regular: path.join(directory, "DejaVuSans.ttf"),
+    bold: path.join(directory, "DejaVuSans-Bold.ttf"),
+  };
+  return cachedReceiptFontPaths;
 }
 
 export function prototypeTesterAgreementDigest(snapshot: unknown): string {
@@ -176,14 +201,29 @@ export function isPrototypeTesterReceiptSnapshotValid(
   );
 }
 
-export function buildPrototypeTesterSigningReceiptPdf(
+export async function buildPrototypeTesterSigningReceiptPdf(
   input: PrototypeTesterSigningReceiptInput,
 ): Promise<Buffer> {
+  const verificationUrl = receiptText(input.verificationUrl, 2048);
+  const verificationQr = verificationUrl
+    ? await QRCode.toBuffer(verificationUrl, {
+        type: "png",
+        errorCorrectionLevel: "M",
+        margin: 1,
+        width: 320,
+        color: { dark: "#0B1426", light: "#FFFFFF" },
+      })
+    : null;
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: "A4",
       margin: 0,
       bufferPages: true,
+      subset: "PDF/A-2b",
+      pdfVersion: "1.7",
+      tagged: true,
+      lang: "nb-NO",
+      displayTitle: true,
       info: {
         Title: "CreatorHub signeringskvittering",
         Author: "CreatorHub Norge",
@@ -191,9 +231,37 @@ export function buildPrototypeTesterSigningReceiptPdf(
         Producer: "CreatorHub Norge",
         Subject: `Prototype-testeravtaler ${receiptText(input.receiptId, 80)}`,
         Keywords:
-          "CreatorHub, signeringskvittering, elektronisk signatur, prototype-tester",
+          "CreatorHub, signeringskvittering, elektronisk signatur, prototype-tester, PDF/A-2b",
       },
     });
+    const receiptFonts = loadReceiptFontPaths();
+    doc.registerFont("ReceiptRegular", receiptFonts.regular);
+    doc.registerFont("ReceiptBold", receiptFonts.bold);
+    doc.registerFont("ReceiptMono", receiptFonts.regular);
+
+    // Keep the visual layout and the assistive-technology reading order in the
+    // same source of truth. PDFKit turns every text call with structParent into
+    // a marked paragraph in the document structure tree. This also covers text
+    // added later (page references and footers) after buffered pages are drawn.
+    const accessibilityRoot = doc.struct("Document");
+    doc.addStructure(accessibilityRoot);
+    const drawText = doc.text.bind(doc);
+    doc.text = ((...args: unknown[]) => {
+      const structuredOptions = (value: unknown) => ({
+        ...(value && typeof value === "object" ? value : {}),
+        structParent: accessibilityRoot,
+      });
+      if (args.length >= 4) {
+        args[3] = structuredOptions(args[3]);
+      } else if (args.length === 3) {
+        args.push(structuredOptions(undefined));
+      } else if (args.length === 2 && typeof args[1] === "object") {
+        args[1] = structuredOptions(args[1]);
+      } else if (args.length === 1) {
+        args.push(structuredOptions(undefined));
+      }
+      return drawText(...(args as [string, ...unknown[]]));
+    }) as typeof doc.text;
     const chunks: Buffer[] = [];
     doc.on("data", (chunk: Buffer) => chunks.push(chunk));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
@@ -236,6 +304,23 @@ export function buildPrototypeTesterSigningReceiptPdf(
       ? formatReceiptTimestamp(input.emailVerifiedAt)
       : "Ikke registrert (eldre aksept)";
 
+    const fitSingleLine = (
+      value: unknown,
+      font: string,
+      maxSize: number,
+      minSize: number,
+      maxWidth: number,
+    ): number => {
+      const text = receiptText(value, 500) || "—";
+      doc.font(font).fontSize(maxSize);
+      const measuredWidth = doc.widthOfString(text);
+      if (measuredWidth <= maxWidth) return maxSize;
+      return Math.max(
+        minSize,
+        Math.floor((maxSize * maxWidth * 10) / measuredWidth) / 10,
+      );
+    };
+
     const drawBrandLockup = (
       x: number,
       y: number,
@@ -274,7 +359,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
       foreground: string,
       options: { align?: "left" | "right"; minWidth?: number } = {},
     ): number => {
-      doc.font("Helvetica-Bold").fontSize(7.6);
+      doc.font("ReceiptBold").fontSize(7.6);
       const width = Math.max(
         options.minWidth || 0,
         doc.widthOfString(label) + 20,
@@ -298,7 +383,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
       doc.roundedRect(x, y + 1, 3, 15, 1.5).fill(COLOR.accent);
       doc
         .fillColor(COLOR.ink)
-        .font("Helvetica-Bold")
+        .font("ReceiptBold")
         .fontSize(11)
         .text(label, x + 12, y, { width: width - 12, lineBreak: false });
     };
@@ -312,7 +397,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
     ) => {
       doc
         .fillColor(COLOR.muted)
-        .font("Helvetica-Bold")
+        .font("ReceiptBold")
         .fontSize(6.8)
         .text(label.toUpperCase(), x, y, {
           width,
@@ -321,7 +406,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
         });
       doc
         .fillColor(COLOR.ink)
-        .font("Helvetica-Bold")
+        .font("ReceiptBold")
         .fontSize(9.5)
         .text(receiptText(value, 500) || "—", x, y + 13, {
           width,
@@ -342,21 +427,21 @@ export function buildPrototypeTesterSigningReceiptPdf(
         .fillAndStroke(COLOR.panel, COLOR.line);
       doc
         .fillColor(COLOR.ink)
-        .font("Helvetica-Bold")
+        .font("ReceiptBold")
         .fontSize(10)
         .text(title, x + 15, y + 15, { width: width - 30, lineBreak: false });
       let cursorY = y + 38;
       for (const row of rows) {
         doc
           .fillColor(COLOR.muted)
-          .font("Helvetica-Bold")
+          .font("ReceiptBold")
           .fontSize(6.6)
           .text(row.label.toUpperCase(), x + 15, cursorY, {
             width: width - 30,
             lineBreak: false,
             characterSpacing: 0.55,
           });
-        doc.fillColor(COLOR.text).font("Helvetica").fontSize(8.7);
+        doc.fillColor(COLOR.text).font("ReceiptRegular").fontSize(8.7);
         const value = receiptText(row.value, 500) || "—";
         const valueY = cursorY + 10;
         const valueHeight = Math.min(
@@ -409,7 +494,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
       }
       doc
         .fillColor(verified ? COLOR.green : COLOR.muted)
-        .font("Helvetica-Bold")
+        .font("ReceiptBold")
         .fontSize(6.6)
         .text(label.toUpperCase(), x + 31, y + 15, {
           width: width - 43,
@@ -418,7 +503,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
         });
       doc
         .fillColor(COLOR.ink)
-        .font("Helvetica-Bold")
+        .font("ReceiptBold")
         .fontSize(8.5)
         .text(value, x + 13, y + 38, {
           width: width - 26,
@@ -439,7 +524,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
       drawBrandLockup(L, 15, { compact: true });
       doc
         .fillColor("#D0D5DD")
-        .font("Helvetica-Bold")
+        .font("ReceiptBold")
         .fontSize(7)
         .text(rightLabel.toUpperCase(), L, 21, {
           width: W,
@@ -450,7 +535,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
       if (rightReference) {
         doc
           .fillColor("#98A2B3")
-          .font("Helvetica")
+          .font("ReceiptRegular")
           .fontSize(7)
           .text(rightReference, L, 37, {
             width: W,
@@ -473,7 +558,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
       drawBrandLockup(L, 25);
       doc
         .fillColor("#D0D5DD")
-        .font("Helvetica-Bold")
+        .font("ReceiptBold")
         .fontSize(7)
         .text("SIGNERINGSBEVIS · PROTOTYPEPROGRAMMET", L, 38, {
           width: W,
@@ -482,17 +567,19 @@ export function buildPrototypeTesterSigningReceiptPdf(
           characterSpacing: 0.8,
         });
 
+      const summaryTitle = "Elektronisk signering bekreftet";
       doc
         .fillColor(COLOR.white)
-        .font("Helvetica-Bold")
-        .fontSize(28)
-        .text("Elektronisk signering bekreftet", L, 104, {
+        .font("ReceiptBold")
+        .fontSize(fitSingleLine(summaryTitle, "ReceiptBold", 28, 22, W))
+        .text(summaryTitle, L, 104, {
           width: W,
           lineBreak: false,
+          ellipsis: true,
         });
       doc
         .fillColor("#D0D5DD")
-        .font("Helvetica")
+        .font("ReceiptRegular")
         .fontSize(10.2)
         .text(
           "Fire dokumenter er akseptert og samlet i én kontrollerbar avtaleversjon.",
@@ -510,25 +597,26 @@ export function buildPrototypeTesterSigningReceiptPdf(
       drawCheckBadge(L + 18, 221, { size: 22 });
       doc
         .fillColor(COLOR.green)
-        .font("Helvetica-Bold")
+        .font("ReceiptBold")
         .fontSize(7)
         .text("ELEKTRONISK SIGNERT AV", L + 50, 222, {
           width: 230,
           characterSpacing: 0.7,
           lineBreak: false,
         });
+      const signerName = receiptText(input.snapshot.signerName, 200) || "—";
       doc
         .fillColor(COLOR.ink)
-        .font("Helvetica-Bold")
-        .fontSize(16)
-        .text(receiptText(input.snapshot.signerName, 200) || "—", L + 50, 240, {
+        .font("ReceiptBold")
+        .fontSize(fitSingleLine(signerName, "ReceiptBold", 16, 10.5, 230))
+        .text(signerName, L + 50, 240, {
           width: 230,
           lineBreak: false,
           ellipsis: true,
         });
       doc
         .fillColor(COLOR.muted)
-        .font("Helvetica")
+        .font("ReceiptRegular")
         .fontSize(8.5)
         .text(
           receiptText(input.snapshot.signerEmail, 320) || "—",
@@ -600,7 +688,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
         doc.circle(tileX + 22, tileY + 27.5, 12).fill(COLOR.navy);
         doc
           .fillColor(COLOR.white)
-          .font("Helvetica-Bold")
+          .font("ReceiptBold")
           .fontSize(8)
           .text(String(index + 1), tileX + 15, tileY + 24, {
             width: 14,
@@ -609,7 +697,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
           });
         doc
           .fillColor(COLOR.ink)
-          .font("Helvetica-Bold")
+          .font("ReceiptBold")
           .fontSize(9)
           .text(agreementLabel(agreement.key), tileX + 43, tileY + 13, {
             width: tileWidth - 56,
@@ -622,7 +710,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
               ? COLOR.blue
               : COLOR.green,
           )
-          .font("Helvetica-Bold")
+          .font("ReceiptBold")
           .fontSize(6.8)
           .text(
             `${bindingNatureLabel(agreement.bindingNature).toUpperCase()} · v${receiptText(agreement.version, 40)}`,
@@ -661,37 +749,48 @@ export function buildPrototypeTesterSigningReceiptPdf(
         input.snapshot.confirmedSigningAuthority === true,
       );
 
-      doc.roundedRect(L, 691, W, 73, 9).fillAndStroke(COLOR.warm, "#FEDF89");
+      doc.roundedRect(L, 684, W, 84, 9).fillAndStroke(COLOR.warm, "#FEDF89");
       doc
         .fillColor(COLOR.accentDark)
-        .font("Helvetica-Bold")
+        .font("ReceiptBold")
         .fontSize(7)
-        .text("KVITTERINGSREFERANSE", L + 16, 707, {
+        .text("KVITTERINGSREFERANSE · PDF/A-2B", L + 16, 698, {
           width: 190,
           lineBreak: false,
           characterSpacing: 0.65,
         });
       doc
         .fillColor(COLOR.ink)
-        .font("Courier-Bold")
+        .font("ReceiptMono")
         .fontSize(8.2)
-        .text(receiptText(input.receiptId, 100), L + 16, 725, {
-          width: 300,
+        .text(receiptText(input.receiptId, 100), L + 16, 715, {
+          width: verificationQr ? W - 100 : 300,
           lineBreak: false,
         });
-      doc
-        .fillColor(COLOR.muted)
-        .font("Helvetica")
-        .fontSize(7.6)
-        .text(
-          `Prototypeperioden er registrert til ${formatReceiptTimestamp(input.programEndsAt)}.`,
-          L + 325,
-          710,
-          {
-            width: W - 341,
-            lineGap: 1.5,
-          },
-        );
+      if (verificationQr) {
+        doc.image(verificationQr, R - 68, 695, { width: 55, height: 55 });
+        doc
+          .fillColor(COLOR.muted)
+          .font("ReceiptRegular")
+          .fontSize(6.2)
+          .text(verificationUrl, L + 16, 735, {
+            width: W - 100,
+            height: 26,
+            lineGap: 1,
+            ellipsis: true,
+          });
+      } else {
+        doc
+          .fillColor(COLOR.muted)
+          .font("ReceiptRegular")
+          .fontSize(7.6)
+          .text(
+            `Prototypeperioden er registrert til ${formatReceiptTimestamp(input.programEndsAt)}.`,
+            L + 325,
+            710,
+            { width: W - 341, lineGap: 1.5 },
+          );
+      }
     };
 
     const documentPageLabelPositions: Array<{ x: number; y: number }> = [];
@@ -704,12 +803,15 @@ export function buildPrototypeTesterSigningReceiptPdf(
       );
       doc
         .fillColor(COLOR.ink)
-        .font("Helvetica-Bold")
+        .font("ReceiptBold")
         .fontSize(23)
         .text("Dokumentkontroll", L, 105, { width: W });
+      drawPill(R, 105, "PDF/A-2B", COLOR.warm, COLOR.accentDark, {
+        align: "right",
+      });
       doc
         .fillColor(COLOR.muted)
-        .font("Helvetica")
+        .font("ReceiptRegular")
         .fontSize(9.5)
         .text(
           "Identitet, dokumentversjoner og teknisk integritetsbevis samlet på én side.",
@@ -757,7 +859,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
       doc.roundedRect(L, 299, W, 108, 10).fillAndStroke(COLOR.navy, COLOR.navy);
       doc
         .fillColor("#D0D5DD")
-        .font("Helvetica-Bold")
+        .font("ReceiptBold")
         .fontSize(6.8)
         .text("INTEGRITETSKONTROLL · SHA-256", L + 17, 316, {
           width: W - 34,
@@ -766,7 +868,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
         });
       doc
         .fillColor(COLOR.white)
-        .font("Courier-Bold")
+        .font("ReceiptMono")
         .fontSize(8.7)
         .text(displayDigest(input.agreementDigest), L + 17, 338, {
           width: W - 34,
@@ -774,7 +876,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
         });
       doc
         .fillColor("#D0D5DD")
-        .font("Helvetica")
+        .font("ReceiptRegular")
         .fontSize(7.5)
         .text(
           "Fingeravtrykket gjelder den komplette lagrede avtaleversjonen: signatar, virksomhet, dokumenttekst og versjoner.",
@@ -809,7 +911,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
         doc.circle(L + 21, rowY + rowHeight / 2, 11).fill(COLOR.navy);
         doc
           .fillColor(COLOR.white)
-          .font("Helvetica-Bold")
+          .font("ReceiptBold")
           .fontSize(8)
           .text(String(index + 1), L + 15, rowY + 19.5, {
             width: 12,
@@ -818,7 +920,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
           });
         doc
           .fillColor(COLOR.ink)
-          .font("Helvetica-Bold")
+          .font("ReceiptBold")
           .fontSize(9.2)
           .text(agreementLabel(agreement.key), L + 43, rowY + 9, {
             width: 275,
@@ -827,7 +929,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
           });
         doc
           .fillColor(COLOR.muted)
-          .font("Helvetica")
+          .font("ReceiptRegular")
           .fontSize(7.2)
           .text(receiptText(agreement.title, 300), L + 43, rowY + 25, {
             width: 275,
@@ -846,7 +948,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
         );
         doc
           .fillColor(COLOR.faint)
-          .font("Helvetica-Bold")
+          .font("ReceiptBold")
           .fontSize(6.5)
           .text("SIDE", R - 50, rowY + 8, {
             width: 38,
@@ -863,7 +965,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
         .fillAndStroke(COLOR.blueSoft, "#B2DDFF");
       doc
         .fillColor(COLOR.blue)
-        .font("Helvetica-Bold")
+        .font("ReceiptBold")
         .fontSize(9)
         .text("Dokumentert signaturnivå", L + 16, 696, {
           width: W - 32,
@@ -871,7 +973,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
         });
       doc
         .fillColor(COLOR.text)
-        .font("Helvetica")
+        .font("ReceiptRegular")
         .fontSize(8.2)
         .text(
           "Enkel elektronisk signatur. Aksepten er dokumentert med e-postkode, skrevet navn, tidspunkt, fullmaktserklæring, dokumentversjoner og kontrollsum. Dette er ikke BankID eller en kvalifisert elektronisk signatur.",
@@ -881,7 +983,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
         );
       doc
         .fillColor(COLOR.faint)
-        .font("Helvetica")
+        .font("ReceiptRegular")
         .fontSize(6.4)
         .text(`Invitasjons-ID ${receiptText(input.inviteId, 100)}`, L, 770, {
           width: W / 2 - 8,
@@ -935,7 +1037,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
       if (continuation) {
         doc
           .fillColor(COLOR.ink)
-          .font("Helvetica-Bold")
+          .font("ReceiptBold")
           .fontSize(12.5)
           .text(agreementLabel(agreement.key), L, 100, {
             width: W - 130,
@@ -958,7 +1060,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
           .stroke();
         doc
           .fillColor(COLOR.faint)
-          .font("Helvetica")
+          .font("ReceiptRegular")
           .fontSize(7.2)
           .text("FORTSETTELSE", L, 134, {
             width: W,
@@ -971,7 +1073,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
       doc.circle(L + 17, 113, 17).fill(COLOR.navy);
       doc
         .fillColor(COLOR.white)
-        .font("Helvetica-Bold")
+        .font("ReceiptBold")
         .fontSize(11)
         .text(String(index + 1), L + 8, 108, {
           width: 18,
@@ -980,7 +1082,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
         });
       doc
         .fillColor(COLOR.accentDark)
-        .font("Helvetica-Bold")
+        .font("ReceiptBold")
         .fontSize(7)
         .text(agreementLabel(agreement.key).toUpperCase(), L + 45, 98, {
           width: W - 45,
@@ -988,7 +1090,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
           characterSpacing: 0.7,
         });
       const title = receiptText(agreement.title, 300);
-      doc.fillColor(COLOR.ink).font("Helvetica-Bold").fontSize(20);
+      doc.fillColor(COLOR.ink).font("ReceiptBold").fontSize(20);
       const titleHeight = Math.min(
         doc.heightOfString(title, { width: W - 45, lineGap: 1 }),
         52,
@@ -1059,14 +1161,14 @@ export function buildPrototypeTesterSigningReceiptPdf(
 
         if (line.startsWith("•")) {
           const bulletText = line.replace(/^•\s*/, "");
-          doc.font("Helvetica").fontSize(9.7);
+          doc.font("ReceiptRegular").fontSize(9.7);
           const height =
             doc.heightOfString(bulletText, { width: W - 24, lineGap: 3 }) + 5;
           ensureSpace(height);
           doc.circle(L + 5, y + 6.5, 2.2).fill(COLOR.accent);
           doc
             .fillColor(COLOR.text)
-            .font("Helvetica")
+            .font("ReceiptRegular")
             .fontSize(9.7)
             .text(bulletText, L + 18, y, { width: W - 18, lineGap: 3 });
           y += height;
@@ -1074,7 +1176,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
         }
 
         if (isAgreementHeading(line)) {
-          doc.font("Helvetica-Bold").fontSize(10.3);
+          doc.font("ReceiptBold").fontSize(10.3);
           const textHeight = doc.heightOfString(line, {
             width: W - 28,
             lineGap: 1.5,
@@ -1088,7 +1190,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
           doc.roundedRect(L, y, 3, height, 1.5).fill(COLOR.accent);
           doc
             .fillColor(COLOR.ink)
-            .font("Helvetica-Bold")
+            .font("ReceiptBold")
             .fontSize(10.3)
             .text(line, L + 15, y + 8, {
               width: W - 28,
@@ -1098,12 +1200,12 @@ export function buildPrototypeTesterSigningReceiptPdf(
           continue;
         }
 
-        doc.font("Helvetica").fontSize(9.7);
+        doc.font("ReceiptRegular").fontSize(9.7);
         const height = doc.heightOfString(line, { width: W, lineGap: 3.1 }) + 5;
         ensureSpace(height);
         doc
           .fillColor(COLOR.text)
-          .font("Helvetica")
+          .font("ReceiptRegular")
           .fontSize(9.7)
           .text(line, L, y, { width: W, lineGap: 3.1, align: "left" });
         y += height;
@@ -1121,7 +1223,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
         drawCheckBadge(L + 16, acceptanceY + 17, { size: 20 });
         doc
           .fillColor(COLOR.green)
-          .font("Helvetica-Bold")
+          .font("ReceiptBold")
           .fontSize(6.8)
           .text("INNGÅR I SIGNERT AVTALEGRUNNLAG", L + 48, acceptanceY + 17, {
             width: 250,
@@ -1130,7 +1232,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
           });
         doc
           .fillColor(COLOR.ink)
-          .font("Helvetica-Bold")
+          .font("ReceiptBold")
           .fontSize(9.2)
           .text(
             receiptText(input.snapshot.signerName, 200),
@@ -1144,7 +1246,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
           );
         doc
           .fillColor(COLOR.muted)
-          .font("Helvetica")
+          .font("ReceiptRegular")
           .fontSize(7.4)
           .text(acceptedAtLabel, L + 48, acceptanceY + 53, {
             width: 250,
@@ -1152,7 +1254,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
           });
         doc
           .fillColor(COLOR.muted)
-          .font("Helvetica-Bold")
+          .font("ReceiptBold")
           .fontSize(6.6)
           .text("SHA-256", R - 156, acceptanceY + 19, {
             width: 140,
@@ -1162,7 +1264,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
           });
         doc
           .fillColor(COLOR.ink)
-          .font("Courier-Bold")
+          .font("ReceiptMono")
           .fontSize(7.5)
           .text(
             `${receiptText(input.agreementDigest, 64).slice(0, 12)}…${receiptText(input.agreementDigest, 64).slice(-12)}`,
@@ -1187,7 +1289,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
     for (const [index, position] of documentPageLabelPositions.entries()) {
       doc
         .fillColor(COLOR.ink)
-        .font("Helvetica-Bold")
+        .font("ReceiptBold")
         .fontSize(8.2)
         .text(
           String(documentStartPages[index] || "—"),
@@ -1216,7 +1318,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
         .stroke();
       doc
         .fillColor(COLOR.faint)
-        .font("Helvetica")
+        .font("ReceiptRegular")
         .fontSize(6.8)
         .text(
           `CreatorHub Norge · Kvittering ${abbreviatedId(input.receiptId)}`,
@@ -1226,7 +1328,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
         );
       doc
         .fillColor(COLOR.muted)
-        .font("Helvetica-Bold")
+        .font("ReceiptBold")
         .fontSize(6.8)
         .text(`SIDE ${pageIndex + 1} / ${range.count}`, R - 80, FOOTER_Y, {
           width: 80,
@@ -1235,6 +1337,7 @@ export function buildPrototypeTesterSigningReceiptPdf(
         });
     }
 
+    accessibilityRoot.end();
     doc.end();
   });
 }
