@@ -814,6 +814,18 @@ struct TeamAreasCard: View {
     /// EKTE team fra leadgrid_sales_teams (senter + radius → sirkelpolygon
     /// med teamets navn og farge). Ingen team = tomt kart, ingen løgn.
     private var effectiveTerritories: [GeoJSONTerritory] {
+        if DemoModeManager.isDentumTour {
+            return TeamData.areas.map { area in
+                GeoJSONTerritory(
+                    memberName: area.memberName,
+                    areaName: area.areaName,
+                    color: UIColor(area.color),
+                    polygon: MKPolygon(
+                        coordinates: area.coords,
+                        count: area.coords.count),
+                    center: area.center)
+            }
+        }
         if DemoModeManager.isActiveNonisolated {
             return TeamData.members.isEmpty ? [] : territories
         }

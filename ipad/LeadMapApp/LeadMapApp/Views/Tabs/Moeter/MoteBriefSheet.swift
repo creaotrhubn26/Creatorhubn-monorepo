@@ -101,7 +101,10 @@ struct MoteBriefSheet: View {
         .task {
             guard !DemoModeManager.isActiveNonisolated,
                   let api = appState.api,
-                  let notater = try? await api.hentCanvasNotater() else { return }
+                  let projectId = appState.activeLeadgridProjectId,
+                  let notater = try? await api.hentCanvasNotater(
+                    projectId: projectId),
+                  appState.activeLeadgridProjectId == projectId else { return }
             guard let match = notater.first(where: {
                 ($0.selskap ?? "").caseInsensitiveCompare(selskap) == .orderedSame
                     && !($0.drawingBase64 ?? "").isEmpty
@@ -393,7 +396,44 @@ struct MoteBriefSheet: View {
     // MARK: Demo
 
     static func demoBrief(selskap: String) -> MoteBriefDTO {
-        MoteBriefDTO(
+        if DemoModeManager.isDentumTour {
+            return MoteBriefDTO(
+                brief: MoteBriefKjerneDTO(
+                    oppsummering: "\(selskap) er en tannklinikk i Oslo og en god kandidat for Dentum-piloten. Klinikken skal vurderes ut fra pasienttilbud, profilkvalitet og om en Dentum-profil kan gjøre den enklere å finne og velge.",
+                    moteMaal: "Avklar interesse for Dentum-piloten og avtal hvem som skal kvalitetssikre klinikkprofilen før publisering.",
+                    sporsmal: [
+                        "Hvilke behandlinger og pasientgrupper er viktigst for klinikken i dag?",
+                        "Hvordan oppdager nye pasienter klinikken, og hvilken informasjon savner de oftest?",
+                        "Hvem skal godkjenne klinikkprofilen og holde den oppdatert?",
+                    ],
+                    innsikt: "Ta utgangspunkt i klinikkens faktiske pasienttilbud. Ikke bruk generiske caser eller påståtte resultater før Dentum-piloten har dokumenterte data.",
+                    innvendinger: [
+                        MoteBriefInnvendingDTO(
+                            innvending: "Vi har allerede en nettside.",
+                            svar: "Forklar at Dentum ikke erstatter nettsiden, men kan gi pasienter en tydelig, kvalitetssikret klinikkprofil."),
+                        MoteBriefInnvendingDTO(
+                            innvending: "Send informasjon på e-post.",
+                            svar: "Bruk kun en verifisert fellesadresse og send en kort forhåndsvisning tilpasset klinikken."),
+                    ],
+                    smalltalkHint: "Spør hvilke behandlinger klinikken ønsker å gjøre enklere for pasienter å forstå og finne."),
+                fakta: MoteBriefFaktaDTO(
+                    selskap: selskap,
+                    orgnr: "999888777",
+                    ansatte: nil,
+                    naering: "Tannhelsetjenester",
+                    kommune: "Oslo",
+                    omsetning: nil,
+                    resultat: nil,
+                    regnskapAar: nil,
+                    aktiveAnbud: [],
+                    forrigeMote: nil,
+                    selgersMaal: "Avklar Dentum-pilot og ansvarlig for profilgodkjenning.",
+                    kjenteBehov: [
+                        "Kvalitetssikret klinikkprofil",
+                        "Tydelig presentasjon av behandlinger",
+                    ]))
+        }
+        return MoteBriefDTO(
             brief: MoteBriefKjerneDTO(
                 oppsummering: "\(selskap) er en elektro-entreprenør i vekst (25–50 ansatte, Oslo) med solid omsetning og positivt resultat. De har nylig lyst ut en rammeavtale på Doffin — de er aktivt i kjøpsmodus.",
                 moteMaal: "Avdekk beslutningsprosessen rundt el-anlegget til kontorbygget og avtal befaring med teknisk sjef innen fredag.",

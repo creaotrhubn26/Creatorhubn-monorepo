@@ -65,8 +65,26 @@ enum LeadCatalog {
     /// Mock-kandidater — KUN i demo-modus. Ellers bygger BookMeetingSheet
     /// listen fra ekte `appState.leads` (se `candidates`-computed der).
     static var all: [LeadCandidate] {
-        DemoModeManager.isActiveNonisolated ? _all : []
+        guard DemoModeManager.isActiveNonisolated else { return [] }
+        return DemoModeManager.isDentumTour ? _dentum : _all
     }
+
+    private static let _dentum: [LeadCandidate] = [
+        LeadCandidate(
+            company: "Majorstuen Tannlegesenter AS",
+            contactName: "Anne Lunde",
+            contactRole: "Daglig leder",
+            location: "Oslo",
+            icon: "cross.case.fill",
+            iconColor: BBrand.blue,
+            leadScore: 86,
+            leadType: "Hot",
+            valueNok: 0,
+            pipelineStage: "Ikke kontaktet",
+            lastContactDays: nil,
+            hasOpenMeeting: true
+        ),
+    ]
 
     /// LeadModel → LeadCandidate-adapter for ekte leads (ikke-demo).
     static func candidate(from lm: LeadModel) -> LeadCandidate {

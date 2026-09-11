@@ -30,8 +30,10 @@ private enum MtBrand {
     static let yellow = Color(red: 0.98, green: 0.75, blue: 0.14)
     static let green = Color(red: 0.20, green: 0.85, blue: 0.60)
     static let blue = Color(red: 0.34, green: 0.60, blue: 0.98)
-    static let textSecondary = Color.white.opacity(0.62)
-    static let textTertiary = Color.white.opacity(0.45)
+    // Tekst på de mørke kortene må også bestå når iPad dimmer innhold
+    // bak sidebaren. De gamle 62/45 %-verdiene feilet kontrastauditen.
+    static let textSecondary = Color.white.opacity(0.78)
+    static let textTertiary = Color.white.opacity(0.64)
 }
 
 // MARK: - Models
@@ -187,18 +189,34 @@ struct PrepItem: Identifiable, Hashable {
 enum MeetingsData {
     /// Demo-mode-gated agenda. Ved demo AV → tom → tomme-tilstander i UI.
     static var agenda: [Meeting] {
-        DemoModeManager.isActiveNonisolated ? _agenda : []
+        guard DemoModeManager.isActiveNonisolated else { return [] }
+        return DemoModeManager.isDentumTour ? _dentumAgenda : _agenda
     }
 
     /// Demo-mode-gated upcoming meetings.
     static var upcoming: [UpcomingMeetingMini] {
-        DemoModeManager.isActiveNonisolated ? _upcoming : []
+        guard DemoModeManager.isActiveNonisolated else { return [] }
+        return DemoModeManager.isDentumTour ? [] : _upcoming
     }
 
     /// Krasj-safe fallback for `@State`-init.
     static var firstOrPlaceholder: Meeting {
-        _agenda[0]
+        (DemoModeManager.isDentumTour ? _dentumAgenda : _agenda)[0]
     }
+
+    private static let _dentumAgenda: [Meeting] = [
+        Meeting(
+            startTime: "10:00", endTime: "10:30",
+            company: "Majorstuen Tannlegesenter AS", location: "Oslo, Norge",
+            contactName: "Anne Lunde", contactRole: "Daglig leder",
+            status: .confirmed,
+            icon: "cross.case.fill", iconColor: MtBrand.purpleLight,
+            address: "Kirkeveien 64 A, 0364 Oslo", meetingRoom: nil,
+            leadScore: 86, leadType: "Varmt lead", valueNok: 0,
+            lat: 59.9298, lon: 10.7147,
+            driveTimeMin: 14, driveDistanceKm: 5, trafficStatus: "Lett trafikk"
+        ),
+    ]
 
     private static let _agenda: [Meeting] = [
         Meeting(
@@ -323,8 +341,15 @@ enum MeetingsData {
 
     /// Mock-forberedelser — KUN i demo-modus (ingen prep-backend enda).
     static var prep: [PrepItem] {
-        DemoModeManager.isActiveNonisolated ? _prep : []
+        guard DemoModeManager.isActiveNonisolated else { return [] }
+        return DemoModeManager.isDentumTour ? _dentumPrep : _prep
     }
+    private static let _dentumPrep: [PrepItem] = [
+        PrepItem(category: "Mål", icon: "target", color: MtBrand.green,
+                 bullets: ["Invitere klinikken til Dentum-piloten", "Avklare hvem som godkjenner klinikkprofilen"]),
+        PrepItem(category: "Forbered", icon: "cross.case.fill", color: MtBrand.purpleLight,
+                 bullets: ["Vis klinikkprofil, priser og ledige timer", "Avtal neste steg med Anne Lunde"]),
+    ]
     private static let _prep: [PrepItem] = [
         PrepItem(category: "Mål",        icon: "target",                  color: MtBrand.green,        bullets: ["Presentere løsningen og skape interesse", "Avklare behov og neste steg"]),
         PrepItem(category: "Behov",      icon: "magnifyingglass.circle.fill", color: MtBrand.blue,     bullets: ["Effektivisere energistyring i bygg", "Redusere driftskostnader"]),
@@ -454,6 +479,7 @@ struct DayWrapper: Identifiable, Hashable {
 }
 
 struct MeetingsView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var selectedID: UUID?
     @State private var upcomingDetail: UpcomingMeetingMini?
     @State private var showAllUpcoming: Bool = false
@@ -520,10 +546,18 @@ struct MeetingsView: View {
     @State private var showStatsModal = false
     @State private var bookDayOfMonth: Int?
     // Header: delt LeadgridTabHeader eier all popover/sheet-state selv.
-    // iPhone (compact): detalj-panelet vises som sheet i stedet for
-    // side-stilt 340pt-kolonne — åpnes når et møte velges.
+    // Smale innholdsvinduer (iPhone, iPad mini, Split View):
+    // detalj-panelet vises som sheet i stedet for en 340pt sidekolonne.
     @State private var phoneDetailOpen: Bool = false
+    @State private var availableContentWidth: CGFloat = 0
     @Environment(AppState.self) private var appState
+
+    /// Ytre Leadgrid-sidebar bruker en del av iPad-bredden. Idiom alene
+    /// er derfor ikke nok: iPad mini og Split View må få kompakt layout.
+    private static let inlineDetailMinimumWidth: CGFloat = 920
+    private var usesCompactMeetingLayout: Bool {
+        DeviceIdiom.isPhone || availableContentWidth < Self.inlineDetailMinimumWidth
+    }
 
     // MARK: Datakilde (uke 2-binding) — demo → mocks, ellers ekte kalender
 
@@ -1059,8 +1093,8 @@ struct MeetingsView: View {
         )) { wrap in
             BookMeetingSheet(dayOfMonth: wrap.day)
         }
-        // iPhone (compact): samme MeetingDetailSidebar som iPad viser til
-        // høyre, presentert som sheet (sidebar-en eier sine egne under-ark).
+        // Samme detaljvisning som på bred iPad, presentert som sheet når
+        // innholdsvinduet er smalt (inkludert iPad mini og Split View).
         .sheet(isPresented: $phoneDetailOpen) {
             MeetingDetailSidebar(
                 meeting: selectedMeeting, calMode: $calMode,
@@ -1068,60 +1102,82 @@ struct MeetingsView: View {
                 .background(MtBrand.bg.ignoresSafeArea())
                 .preferredColorScheme(.dark)
                 .presentationDetents([.large])
+                .accessibilityIdentifier("meeting-detail-sheet")
         }
     }
 
     /// Felles valg-handling — oppdaterer utvalget og åpner detalj-sheeten
-    /// på iPhone (der høyre-panelet ikke vises side-stilt).
+    /// når innholdsvinduet ikke har plass til høyre-panelet.
     private func selectMeeting(_ m: Meeting) {
         selectedID = m.id
-        if DeviceIdiom.isPhone { phoneDetailOpen = true }
+        if usesCompactMeetingLayout { phoneDetailOpen = true }
     }
 
     private var content: some View {
-        HStack(alignment: .top, spacing: 0) {
-            VStack(spacing: 0) {
-                header
-                    .padding(.horizontal, 20).padding(.top, 14)
-                if !erRenDorsalgOrg {
-                    kpiRow
+        GeometryReader { geo in
+            let showsInlineDetail = geo.size.width >= Self.inlineDetailMinimumWidth
+            HStack(alignment: .top, spacing: 0) {
+                VStack(spacing: 0) {
+                    header
                         .padding(.horizontal, 20).padding(.top, 14)
-                }
-
-                ScrollView {
-                    VStack(spacing: 14) {
-                        // Dørsalg: brief-møtene øverst; ren dørsalg-org ser
-                        // KUN disse (ingen lead-møter/agenda).
-                        if dorsalgAktivert {
-                            AnyView(briefCard)
-                        }
-                        if !erRenDorsalgOrg {
-                            agendaCard
-                            upcomingCard
-                        }
-                        // All møteforberedelse er flyttet til høyre sidebar (kontekst-bundet til valgt møte)
+                    if !erRenDorsalgOrg {
+                        kpiRow
+                            .padding(.horizontal, 20).padding(.top, 14)
                     }
-                    .padding(.horizontal, 20).padding(.top, 14)
-                    .padding(.bottom, 20)
+
+                    ScrollView {
+                        VStack(spacing: 14) {
+                            // Dørsalg: brief-møtene øverst; ren dørsalg-org ser
+                            // KUN disse (ingen lead-møter/agenda).
+                            if dorsalgAktivert {
+                                AnyView(briefCard)
+                            }
+                            if !erRenDorsalgOrg {
+                                agendaCard
+                                upcomingCard
+                            }
+                        }
+                        .padding(.horizontal, 20).padding(.top, 14)
+                        .padding(.bottom, DeviceIdiom.isPhone ? 110 : 20)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+
+                if showsInlineDetail && !erRenDorsalgOrg {
+                    if sourceAgenda.isEmpty {
+                        MeetingDetailEmptyState()
+                            .frame(width: 340)
+                    } else {
+                        MeetingDetailSidebar(meeting: selectedMeeting, calMode: $calMode,
+                                             onReschedule: { m in reschedulingMeeting = m },
+                                             naa: naa)
+                            .frame(width: 340)
+                    }
                 }
             }
-            .frame(maxWidth: .infinity)
-
-            // Detail sidebar høyre — iPhone (compact): 340pt side-stilt
-            // kolonne får ikke plass — detaljene vises i stedet som sheet
-            // når et møte velges.
-            if !DeviceIdiom.isPhone && !erRenDorsalgOrg {
-                if sourceAgenda.isEmpty {
-                    MeetingDetailEmptyState()
-                        .frame(width: 340)
-                } else {
-                    MeetingDetailSidebar(meeting: selectedMeeting, calMode: $calMode,
-                                         onReschedule: { m in reschedulingMeeting = m },
-                                         naa: naa)
-                        .frame(width: 340)
-                }
+            // Egen QA-markør i stedet for ID på hele beholderen. En ID på
+            // forelder arves ellers av SwiftUI-knappene og ødelegger både
+            // VoiceOver-navn og presis kontroll av treffområder.
+            .background(alignment: .topLeading) {
+                meetingLayoutMarker(
+                    showsInlineDetail ? "meetings-layout-inline" : "meetings-layout-compact",
+                    label: showsInlineDetail ? "Bred møtelayout" : "Kompakt møtelayout"
+                )
+            }
+            // task kjører etter layoutpasset og unngår state-mutasjon mens
+            // SwiftUI bygger view-hierarkiet.
+            .task(id: geo.size.width) {
+                availableContentWidth = geo.size.width
             }
         }
+    }
+
+    private func meetingLayoutMarker(_ identifier: String, label: String) -> some View {
+        Color.clear
+            .frame(width: 1, height: 1)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(label)
+            .accessibilityIdentifier(identifier)
     }
 
     // MARK: Header — delt LeadgridTabHeader (fasit: Oversikt-fanen)
@@ -1177,6 +1233,7 @@ struct MeetingsView: View {
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 11).padding(.vertical, 7)
+                        .frame(minHeight: 44)
                         .background(
                             LinearGradient(colors: [MtBrand.purple, MtBrand.purpleLight],
                                            startPoint: .leading, endPoint: .trailing),
@@ -1198,6 +1255,7 @@ struct MeetingsView: View {
                             .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
                             .overlay(RoundedRectangle(cornerRadius: 8)
                                 .stroke(MtBrand.stroke, lineWidth: 1))
+                            .frame(width: 44, height: 44)
                     }
                     .buttonStyle(.plain)
                 }
@@ -1277,6 +1335,7 @@ struct MeetingsView: View {
                         .foregroundStyle(MtBrand.red.opacity(0.8))
                         .frame(width: 28, height: 28)
                         .background(MtBrand.red.opacity(0.12), in: Circle())
+                        .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
             }
@@ -1316,11 +1375,12 @@ struct MeetingsView: View {
         }
         let remaining = sourceAgenda.filter { $0.startTime > MeetingMapping.timeString(now) }.count
 
+        let dentum = DemoModeManager.isDentumTour
         return Group {
-            kpiCard(title: "Møter i dag",  value: isDemo ? "5"       : (todayCount > 0 ? "\(todayCount)" : "—"), subtitle: isDemo ? "2 igjen" : (todayCount > 0 ? "\(remaining) igjen" : "Ingen møter i dag"), icon: "calendar", color: MtBrand.purpleLight)
-            kpiCard(title: "Denne uken",   value: isDemo ? "12"      : (weekCount > 0 ? "\(weekCount)" : "—"), subtitle: isDemo ? "3 bekreftet" : (weekCount > 0 ? "booket" : "Ingen data"), icon: "chart.line.uptrend.xyaxis", color: MtBrand.purpleLight)
-            kpiCard(title: "Kommende",     value: isDemo ? "18"      : (next7 > 0 ? "\(next7)" : "—"), subtitle: "neste 7 dager", icon: "clock.fill", color: MtBrand.purpleLight)
-            kpiCard(title: "Booket verdi", value: isDemo ? "2,4M kr" : (bookedValue > 0 ? fmtValue(bookedValue) : "—"), subtitle: isDemo ? "↑ 18% fra forrige uke" : "agenda + kommende", icon: "externaldrive.fill", color: MtBrand.purpleLight, trendPositive: isDemo)
+            kpiCard(title: "Møter i dag",  value: isDemo && !dentum ? "5" : (todayCount > 0 ? "\(todayCount)" : "—"), subtitle: isDemo && !dentum ? "2 igjen" : (todayCount > 0 ? "\(remaining) igjen" : "Ingen møter i dag"), icon: "calendar", color: MtBrand.purpleLight)
+            kpiCard(title: "Denne uken",   value: isDemo && !dentum ? "12" : (dentum ? "\(todayCount)" : (weekCount > 0 ? "\(weekCount)" : "—")), subtitle: isDemo && !dentum ? "3 bekreftet" : ((dentum ? todayCount : weekCount) > 0 ? "booket" : "Ingen data"), icon: "chart.line.uptrend.xyaxis", color: MtBrand.purpleLight)
+            kpiCard(title: "Kommende",     value: isDemo && !dentum ? "18" : (dentum ? "0" : (next7 > 0 ? "\(next7)" : "—")), subtitle: "neste 7 dager", icon: "clock.fill", color: MtBrand.purpleLight)
+            kpiCard(title: "Booket verdi", value: isDemo && !dentum ? "2,4M kr" : (bookedValue > 0 ? fmtValue(bookedValue) : "—"), subtitle: isDemo && !dentum ? "↑ 18% fra forrige uke" : "agenda + kommende", icon: "externaldrive.fill", color: MtBrand.purpleLight, trendPositive: isDemo && !dentum)
         }
     }
 
@@ -1328,7 +1388,8 @@ struct MeetingsView: View {
 
     private var statsButton: some View {
         let todayCount = sourceAgenda.count
-        let subtitle = isDemo ? "5 møter i dag" : "\(todayCount) møter i dag"
+        let count = isDemo && !DemoModeManager.isDentumTour ? 5 : todayCount
+        let subtitle = "\(count) \(count == 1 ? "møte" : "møter") i dag"
         return Button {
             showStatsModal = true
         } label: {
@@ -1441,7 +1502,7 @@ struct MeetingsView: View {
                             Image(systemName: "chevron.left")
                                 .font(.appScaled(size: 11, weight: .bold))
                                 .foregroundStyle(MtBrand.textSecondary)
-                                .frame(width: 26, height: 26)
+                                .frame(width: 44, height: 44)
                                 .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 7))
                         }
                         .buttonStyle(.plain)
@@ -1451,6 +1512,7 @@ struct MeetingsView: View {
                                     .font(.appScaled(size: 10, weight: .bold))
                                     .foregroundStyle(MtBrand.purpleLight)
                                     .padding(.horizontal, 8).padding(.vertical, 6)
+                                    .frame(minWidth: 44, minHeight: 44)
                                     .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 7))
                             }
                             .buttonStyle(.plain)
@@ -1459,7 +1521,7 @@ struct MeetingsView: View {
                             Image(systemName: "chevron.right")
                                 .font(.appScaled(size: 11, weight: .bold))
                                 .foregroundStyle(MtBrand.textSecondary)
-                                .frame(width: 26, height: 26)
+                                .frame(width: 44, height: 44)
                                 .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 7))
                         }
                         .buttonStyle(.plain)
@@ -1487,7 +1549,7 @@ struct MeetingsView: View {
                         agendaRow(m)
                             .overlay(alignment: .topTrailing) {
                                 // Etterarbeids-gjeld: synlig til møtet logges.
-                                if trengerLogg(m) {
+                                if !usesCompactMeetingLayout && trengerLogg(m) {
                                     HStack(spacing: 3) {
                                         Image(systemName: "exclamationmark.circle.fill")
                                             .font(.appScaled(size: 9, weight: .bold))
@@ -1498,11 +1560,12 @@ struct MeetingsView: View {
                                     .padding(.horizontal, 7).padding(.vertical, 3)
                                     .background(MtBrand.yellow, in: Capsule())
                                     .offset(x: -8, y: 6)
+                                    .accessibilityElement(children: .combine)
                                 }
                             }
                             .overlay(alignment: .bottomTrailing) {
                                 // Reisetids-vakta: du rekker ikke kjøreturen hit.
-                                if let varsel = reisetidsAdvarsler[m.id] {
+                                if !usesCompactMeetingLayout, let varsel = reisetidsAdvarsler[m.id] {
                                     HStack(spacing: 3) {
                                         Image(systemName: "car.fill")
                                             .font(.appScaled(size: 9, weight: .bold))
@@ -1514,6 +1577,7 @@ struct MeetingsView: View {
                                     .padding(.horizontal, 7).padding(.vertical, 3)
                                     .background(MtBrand.orange, in: Capsule())
                                     .offset(x: -8, y: -6)
+                                    .accessibilityElement(children: .combine)
                                 }
                             }
                             .contextMenu {
@@ -1595,7 +1659,7 @@ struct MeetingsView: View {
 
     private var calendarCardSubtitle: String {
         // Demo viser mockup-datoene; ellers ekte dato/uke/måned.
-        if isDemo {
+        if isDemo && !DemoModeManager.isDentumTour {
             switch calMode {
             case .agenda: return "Tirsdag 20. mai · \(sourceAgenda.count) møter"
             case .day:    return "Tirsdag 20. mai · 07–19"
@@ -1609,7 +1673,8 @@ struct MeetingsView: View {
         switch calMode {
         case .agenda:
             df.dateFormat = "EEEE d. MMMM"
-            return "\(df.string(from: now).capitalized) · \(sourceAgenda.count) møter"
+            let count = sourceAgenda.count
+            return "\(df.string(from: now).capitalized) · \(count) \(count == 1 ? "møte" : "møter")"
         case .day:
             df.dateFormat = "EEEE d. MMMM"
             return "\(df.string(from: now).capitalized) · 07–19"
@@ -1627,7 +1692,7 @@ struct MeetingsView: View {
     // rad i stedet for full tabellrad.
     @ViewBuilder
     private func agendaRow(_ m: Meeting) -> some View {
-        if DeviceIdiom.isPhone {
+        if usesCompactMeetingLayout {
             agendaRowCompact(m)
         } else {
             agendaRowFull(m)
@@ -1655,7 +1720,7 @@ struct MeetingsView: View {
                         Text(m.company)
                             .font(.appScaled(size: 13, weight: .bold))
                             .foregroundStyle(.white)
-                            .lineLimit(1)
+                            .axLineLimit(1, ax: 3)
                         Spacer(minLength: 6)
                         Text("\(m.startTime)–\(m.endTime)")
                             .font(.appScaled(size: 11, weight: .semibold, design: .rounded))
@@ -1663,19 +1728,30 @@ struct MeetingsView: View {
                             .monospacedDigit()
                     }
                     // Metadata: kontakt + sted + status
-                    HStack(spacing: 6) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(m.contactName)
-                                .font(.appScaled(size: 11, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .lineLimit(1)
-                            Text(m.location)
-                                .font(.appScaled(size: 10))
-                                .foregroundStyle(MtBrand.textSecondary)
-                                .lineLimit(1)
+                    Group {
+                        if dynamicTypeSize.isAccessibilitySize {
+                            VStack(alignment: .leading, spacing: 6) {
+                                meetingContact(m)
+                                statusBadge(m.status)
+                            }
+                        } else {
+                            HStack(spacing: 6) {
+                                meetingContact(m)
+                                Spacer(minLength: 6)
+                                statusBadge(m.status)
+                            }
                         }
-                        Spacer(minLength: 6)
-                        statusBadge(m.status)
+                    }
+                    if trengerLogg(m) {
+                        meetingWarning(
+                            "Ikke logget",
+                            icon: "exclamationmark.circle.fill",
+                            color: MtBrand.yellow,
+                            foreground: .black
+                        )
+                    }
+                    if let warning = reisetidsAdvarsler[m.id] {
+                        meetingWarning(warning, icon: "car.fill", color: MtBrand.orange)
                     }
                 }
             }
@@ -1689,6 +1765,34 @@ struct MeetingsView: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    private func meetingContact(_ meeting: Meeting) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(meeting.contactName)
+                .font(.appScaled(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+            Text(meeting.location)
+                .font(.appScaled(size: 10))
+                .foregroundStyle(MtBrand.textSecondary)
+                .lineLimit(1)
+        }
+    }
+
+    private func meetingWarning(
+        _ text: String,
+        icon: String,
+        color: Color,
+        foreground: Color = .black
+    ) -> some View {
+        Label(text, systemImage: icon)
+            .font(.appScaled(size: 9, weight: .bold))
+            .foregroundStyle(foreground)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(color, in: RoundedRectangle(cornerRadius: 7))
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func agendaRowFull(_ m: Meeting) -> some View {
@@ -1782,6 +1886,8 @@ struct MeetingsView: View {
     private func statusBadge(_ st: Meeting.Status) -> some View {
         Text(st.label)
             .font(.appScaled(size: 10, weight: .bold))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
             .foregroundStyle(st.color)
             .padding(.horizontal, 9).padding(.vertical, 4)
             .background(st.color.opacity(0.18), in: Capsule())
@@ -1826,7 +1932,9 @@ struct MeetingsView: View {
             Text("Ingen møter i dag")
                 .font(.appScaled(size: 14, weight: .semibold))
                 .foregroundStyle(.white)
-            Text("Bok et møte fra en lead, eller skru på demo-modus for eksempler.")
+            Text(DemoModeManager.isDentumTour
+                 ? "Book neste møte fra en godkjent Dentum-lead."
+                 : "Bok et møte fra en lead, eller skru på demo-modus for eksempler.")
                 .font(.appScaled(size: 12))
                 .foregroundStyle(MtBrand.textSecondary)
                 .multilineTextAlignment(.center)
@@ -1859,6 +1967,8 @@ struct MeetingsView: View {
                         Text("Se alle")
                             .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(MtBrand.purpleLight)
+                            .frame(minWidth: 60, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -1866,7 +1976,7 @@ struct MeetingsView: View {
             if hasUpcoming {
                 // iPhone (compact): 4 kort side-ved-side blir uleselig smale
                 // — bruk 2-kolonne-grid i stedet.
-                if DeviceIdiom.isPhone {
+                if usesCompactMeetingLayout {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
                         ForEach(sourceUpcoming.prefix(3)) { u in
                             upcomingMini(u)
@@ -1897,7 +2007,9 @@ struct MeetingsView: View {
                     Text("Ingen kommende møter")
                         .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(MtBrand.textSecondary)
-                    Text("Bok et møte fra en lead, eller skru på demo-modus for eksempler.")
+                    Text(DemoModeManager.isDentumTour
+                         ? "Det finnes ingen flere møter i Dentum-prosjektet ennå."
+                         : "Bok et møte fra en lead, eller skru på demo-modus for eksempler.")
                         .font(.appScaled(size: 10))
                         .foregroundStyle(MtBrand.textTertiary)
                         .multilineTextAlignment(.center)
@@ -1938,7 +2050,8 @@ struct MeetingsView: View {
                         Text(u.company)
                             .font(.appScaled(size: 12, weight: .bold))
                             .foregroundStyle(.white)
-                            .lineLimit(1)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                         Text(u.location)
                             .font(.appScaled(size: 10))
                             .foregroundStyle(MtBrand.textSecondary)
@@ -1953,9 +2066,13 @@ struct MeetingsView: View {
                         Text(u.prepStatus.rawValue)
                             .font(.appScaled(size: 9, weight: .bold))
                     }
-                    .foregroundStyle(u.prepStatus.color)
+                    .foregroundStyle(u.prepStatus == .notStarted ? Color.white : u.prepStatus.color)
+                    .fixedSize(horizontal: true, vertical: true)
                     .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(u.prepStatus.color.opacity(0.18), in: Capsule())
+                    .background(
+                        u.prepStatus.color.opacity(u.prepStatus == .notStarted ? 0.55 : 0.18),
+                        in: Capsule()
+                    )
                     .overlay(Capsule().stroke(u.prepStatus.color.opacity(0.4), lineWidth: 1))
                     Spacer()
                     // Verdi
@@ -1963,6 +2080,8 @@ struct MeetingsView: View {
                         .font(.appScaled(size: 9, weight: .bold, design: .rounded))
                         .foregroundStyle(MtBrand.green)
                         .monospacedDigit()
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: true)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -2264,8 +2383,10 @@ struct MeetingDetailSidebar: View {
                             Image(systemName: favorited ? "star.fill" : "star")
                                 .font(.appScaled(size: 12))
                                 .foregroundStyle(favorited ? MtBrand.yellow : MtBrand.textTertiary)
+                                .frame(width: 44, height: 44)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel(favorited ? "Fjern favoritt" : "Legg til favoritt")
                         .disabled(savingFavorite)
                         .task(id: meeting.id) { loadFavoriteFromLead() }
                     }
@@ -2378,6 +2499,8 @@ struct MeetingDetailSidebar: View {
                 .padding(8)
                 .contentShape(Rectangle())
         }
+        .accessibilityIdentifier("meeting-detail-more")
+        .accessibilityLabel("Flere møtehandlinger")
     }
 
     private func badge(_ label: String, color: Color) -> some View {
@@ -2390,7 +2513,12 @@ struct MeetingDetailSidebar: View {
     }
 
     private var meetingDateLabel: String {
-        if DemoModeManager.isActiveNonisolated { return "Tirsdag 20. mai 2026" }
+        if DemoModeManager.isActiveNonisolated && !DemoModeManager.isDentumTour {
+            return "Tirsdag 20. mai 2026"
+        }
+        if DemoModeManager.isDentumTour {
+            return Date().formatted(.dateTime.weekday(.wide).day().month(.wide).year())
+        }
         guard let scheduledAt = meeting.scheduledAt else { return "Tidspunkt ikke satt" }
         return scheduledAt.formatted(.dateTime.weekday(.wide).day().month(.wide).year())
     }
@@ -2482,6 +2610,7 @@ struct MeetingDetailSidebar: View {
                     .foregroundStyle(color)
             }
             .frame(width: 28, height: 28)
+            .frame(minWidth: 44, minHeight: 44)
         }
         .buttonStyle(.plain)
     }
@@ -2768,6 +2897,9 @@ private struct NewBriefSheet: View {
 
     /// Demo: samme selger-navn som resten av demo-universet.
     private var medlemmer: [(id: String, navn: String)] {
+        if DemoModeManager.isDentumTour {
+            return [("qa-tour-user", "Daniel Qazi")]
+        }
         if DemoModeManager.isActiveNonisolated {
             return [("demo-espen", "Espen Berg"), ("demo-marit", "Marit Johansen"),
                     ("demo-lars", "Lars Erik Moen"), ("demo-helena", "Helena Dahl")]

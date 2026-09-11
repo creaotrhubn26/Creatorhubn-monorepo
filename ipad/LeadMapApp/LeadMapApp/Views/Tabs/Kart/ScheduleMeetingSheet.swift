@@ -475,7 +475,17 @@ struct ScheduleMeetingSheet: View {
                     toggled: .constant(true),
                     locked: true
                 )
-                if DemoModeManager.isActiveNonisolated {
+                if DemoModeManager.isDentumTour {
+                    inviteeRow(
+                        name: "Anne Lunde",
+                        role: "Daglig leder · \(lead.name)",
+                        initials: "AL",
+                        color: SmBrand.purple,
+                        isOrganizer: false,
+                        toggled: $inviteContact,
+                        locked: false
+                    )
+                } else if DemoModeManager.usesGenericFixtures {
                     inviteeRow(
                         name: "Anders Johansen",
                         role: "Daglig leder · \(lead.name)",

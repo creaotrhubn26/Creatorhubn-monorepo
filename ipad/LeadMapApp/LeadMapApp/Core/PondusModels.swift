@@ -210,6 +210,7 @@ struct PondusTemplateDTO: Codable, Hashable, Identifiable, Sendable {
     let analysisMeta: PondusAnalysisMetaDTO?
     let createdBy: String?
     let orgId: UUID?
+    let projectId: String?
     let isPublished: Bool
     let publishedAt: String?
     let publishedBy: String?

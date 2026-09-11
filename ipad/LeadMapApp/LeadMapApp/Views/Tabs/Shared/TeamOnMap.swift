@@ -355,6 +355,21 @@ enum TeamOnMapMock {
     /// som `AssignToTeamMemberSheet` bruker.
     static func members() -> [TeamMemberOnMap] {
         let now = Date()
+        if DemoModeManager.isDentumTour {
+            return [
+                TeamMemberOnMap(
+                    userId: "qa-tour-user",
+                    name: "Daniel Qazi",
+                    role: .seller,
+                    avatarInitials: "DQ",
+                    coordinate: .init(latitude: 59.9298, longitude: 10.7147),
+                    activity: .idle,
+                    destinationCoordinate: nil,
+                    destinationLeadName: nil,
+                    lastSeen: now
+                )
+            ]
+        }
         return [
             TeamMemberOnMap(
                 userId: "u-anne",

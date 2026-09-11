@@ -21,6 +21,7 @@
 import crypto from "crypto";
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import { getLeadgridEmailCompliance } from "./leadgrid-outreach-compliance.js";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
@@ -35,7 +36,10 @@ const CRON_TOKEN = process.env.LEADGRID_CRON_TRIGGER_TOKEN
                 ?? process.env.MIGRATE_TRIGGER_TOKEN
                 ?? "";
 
-const PUBLIC_BASE = process.env.ROLE_ROOM_PUBLIC_URL ?? "https://theroleroom.com";
+const PUBLIC_BASE = process.env.LEADGRID_PUBLIC_URL ?? "https://leadgrid.no";
+const API_BASE = process.env.PUBLIC_API_BASE_URL
+              ?? "https://creatorhub-backend-rtbl.onrender.com";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function isCronAuthorized(req: Request, activeSessions: Map<string, SessionData>): boolean {
   const headerToken = req.headers["x-cron-trigger-token"] as string | undefined;
@@ -58,8 +62,12 @@ interface DripContent {
   text: string;
 }
 
-const DRIPS: Record<1 | 3 | 7 | 14, (orgName: string, contactName: string | null) => DripContent> = {
-  1: (orgName, name) => ({
+const DRIPS: Record<1 | 3 | 7 | 14, (
+  orgName: string,
+  contactName: string | null,
+  unsubscribeUrl: string,
+) => DripContent> = {
+  1: (orgName, name, unsubscribeUrl) => ({
     subject: `Hei${name ? ` ${name}` : ""} — slik utnytter du Leadgrid videre`,
     html: `
       <div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:24px;background:#0a0512;color:#fff;">
@@ -76,12 +84,12 @@ const DRIPS: Record<1 | 3 | 7 | 14, (orgName: string, contactName: string | null
           </a>
         </p>
         <p style="color:rgba(255,255,255,0.5);font-size:12px;margin-top:32px;">
-          Vil du ikke ha flere tips? <a href="${PUBLIC_BASE}/leadgrid/drips/unsubscribe" style="color:rgba(255,255,255,0.5);">Avregistrer</a>.
+          Vil du ikke ha flere tips? <a href="${unsubscribeUrl}" style="color:rgba(255,255,255,0.5);">Avregistrer</a>.
         </p>
       </div>`,
-    text: `Hei${name ? ` ${name}` : ""},\n\nI går la du til din første kunde i ${orgName}. Solo Pro gir deg 10 kunder + 30 auto-onboards/mnd for 199 kr/mnd. Se mer: ${PUBLIC_BASE}/leadgrid`,
+    text: `Hei${name ? ` ${name}` : ""},\n\nI går la du til din første kunde i ${orgName}. Solo Pro gir deg 10 kunder + 30 auto-onboards/mnd for 199 kr/mnd. Se mer: ${PUBLIC_BASE}/leadgrid\n\nAvregistrer: ${unsubscribeUrl}`,
   }),
-  3: (orgName, name) => ({
+  3: (orgName, name, unsubscribeUrl) => ({
     subject: `${orgName} — har du sett klient-portalen?`,
     html: `
       <div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:24px;background:#0a0512;color:#fff;">
@@ -101,10 +109,13 @@ const DRIPS: Record<1 | 3 | 7 | 14, (orgName: string, contactName: string | null
         <p>
           <a href="${PUBLIC_BASE}/leadgrid" style="color:#a78bfa;text-decoration:underline;">Gå til Leadgrid →</a>
         </p>
+        <p style="color:rgba(255,255,255,0.5);font-size:12px;margin-top:32px;">
+          Vil du ikke ha flere tips? <a href="${unsubscribeUrl}" style="color:rgba(255,255,255,0.5);">Avregistrer</a>.
+        </p>
       </div>`,
-    text: `Hei${name ? ` ${name}` : ""},\n\nHar du sjekket kunde-portalen? Hver kunde får en egen lenke hvor de ser score, behov, signaler og live progress.\n\n${PUBLIC_BASE}/leadgrid`,
+    text: `Hei${name ? ` ${name}` : ""},\n\nHar du sjekket kunde-portalen? Hver kunde får en egen lenke hvor de ser score, behov, signaler og live progress.\n\n${PUBLIC_BASE}/leadgrid\n\nAvregistrer: ${unsubscribeUrl}`,
   }),
-  7: (orgName, name) => ({
+  7: (orgName, name, unsubscribeUrl) => ({
     subject: `En uke med Leadgrid — hva er neste steg?`,
     html: `
       <div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:24px;background:#0a0512;color:#fff;">
@@ -128,10 +139,13 @@ const DRIPS: Record<1 | 3 | 7 | 14, (orgName: string, contactName: string | null
         <p style="color:rgba(255,255,255,0.5);font-size:12px;margin-top:32px;">
           Spørsmål? Svar på denne e-posten, så hjelper vi.
         </p>
+        <p style="color:rgba(255,255,255,0.5);font-size:12px;margin-top:12px;">
+          Vil du ikke ha flere tips? <a href="${unsubscribeUrl}" style="color:rgba(255,255,255,0.5);">Avregistrer</a>.
+        </p>
       </div>`,
-    text: `Hei${name ? ` ${name}` : ""},\n\nÉn uke med Leadgrid! Pro-funksjoner: Automation rules, Custom fields, Pitch Deck Studio.\n\nOppgrader: ${PUBLIC_BASE}/leadgrid`,
+    text: `Hei${name ? ` ${name}` : ""},\n\nÉn uke med Leadgrid! Pro-funksjoner: Automation rules, Custom fields, Pitch Deck Studio.\n\nOppgrader: ${PUBLIC_BASE}/leadgrid\n\nAvregistrer: ${unsubscribeUrl}`,
   }),
-  14: (orgName, name) => ({
+  14: (orgName, name, unsubscribeUrl) => ({
     subject: `Et siste tilbud — 30% rabatt første mnd Solo Pro`,
     html: `
       <div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:24px;background:#0a0512;color:#fff;">
@@ -149,10 +163,10 @@ const DRIPS: Record<1 | 3 | 7 | 14, (orgName: string, contactName: string | null
           </a>
         </p>
         <p style="color:rgba(255,255,255,0.5);font-size:12px;margin-top:32px;">
-          Vil du ikke ha flere tilbud? <a href="${PUBLIC_BASE}/leadgrid/drips/unsubscribe" style="color:rgba(255,255,255,0.5);">Avregistrer</a>.
+          Vil du ikke ha flere tilbud? <a href="${unsubscribeUrl}" style="color:rgba(255,255,255,0.5);">Avregistrer</a>.
         </p>
       </div>`,
-    text: `Hei${name ? ` ${name}` : ""},\n\n30% rabatt første måned på Solo Pro. Kode: LEADGRID30. Gyldig i 7 dager.\n\n${PUBLIC_BASE}/leadgrid`,
+    text: `Hei${name ? ` ${name}` : ""},\n\n30% rabatt første måned på Solo Pro. Kode: LEADGRID30. Gyldig i 7 dager.\n\n${PUBLIC_BASE}/leadgrid\n\nAvregistrer: ${unsubscribeUrl}`,
   }),
 };
 
@@ -192,7 +206,13 @@ export function registerLeadgridDripsRoutes({ app, pool, activeSessions }: Deps)
     }
 
     const start = Date.now();
-    const results = { processed: 0, sent: 0, skipped: 0, errors: 0 };
+    const results = {
+      processed: 0,
+      sent: 0,
+      skipped: 0,
+      compliance_blocked: 0,
+      errors: 0,
+    };
 
     try {
       // Hent aktive drypp som ikke er konvertert eller avregistrert
@@ -232,9 +252,31 @@ export function registerLeadgridDripsRoutes({ app, pool, activeSessions }: Deps)
 
         if (toSend.length === 0) { results.skipped++; continue; }
 
+        // These messages advertise paid Leadgrid functionality. Account
+        // ownership alone is not treated as marketing permission: the same
+        // organization-wide evidence and suppression list used by lead
+        // outreach is authoritative here as well.
+        try {
+          const compliance = await getLeadgridEmailCompliance(pool, {
+            organizationId: row.organization_id,
+            email: row.user_email,
+          });
+          if (!compliance.allowed) {
+            results.skipped++;
+            results.compliance_blocked++;
+            continue;
+          }
+        } catch (error) {
+          console.error("[drip-compliance]", error);
+          results.errors++;
+          continue;
+        }
+
+        const unsubscribeUrl = `${API_BASE}/api/leadgrid/drips/unsubscribe/${encodeURIComponent(row.id)}`;
+
         for (const day of toSend) {
           try {
-            const content = DRIPS[day](row.org_name, row.user_name);
+            const content = DRIPS[day](row.org_name, row.user_name, unsubscribeUrl);
             await sendTransactionalEmail({
               to: row.user_email,
               subject: content.subject,
@@ -280,22 +322,27 @@ export function registerLeadgridDripsRoutes({ app, pool, activeSessions }: Deps)
     res.json({ ok: true });
   });
 
-  // ---------- Avregistrere (offentlig — token i URL) ----------
-  app.get("/api/leadgrid/drips/unsubscribe", async (req, res) => {
-    const email = req.query.email as string;
-    if (!email) return res.status(400).send("Mangler e-post");
+  // ---------- Avregistrere (offentlig — UUIDv4-bærertoken i URL) ----------
+  app.get("/api/leadgrid/drips/unsubscribe/:id", async (req, res) => {
+    const id = String(req.params.id ?? "").trim();
+    if (!UUID.test(id)) return res.status(400).send("Ugyldig lenke");
     await pool.query(
-      `UPDATE onboarding_drips
-          SET unsubscribed_at = now()
-        WHERE user_id IN (SELECT id FROM users WHERE LOWER(email) = LOWER($1))`,
-      [email],
+      `UPDATE onboarding_drips SET unsubscribed_at = COALESCE(unsubscribed_at, now())
+        WHERE id = $1::uuid`,
+      [id],
     );
     res.send(`
       <html><body style="font-family:system-ui;padding:60px;text-align:center;background:#0a0512;color:#fff;">
         <h1>Avregistrert</h1>
-        <p>Vi sender ikke flere drypp-mails til ${email}.</p>
+        <p>Vi sender ikke flere markedsføringsdrypp til denne mottakeren.</p>
       </body></html>
     `);
+  });
+
+  // Den gamle e-postbaserte ruten lot andre avregistrere en vilkårlig
+  // adresse og reflekterte adressen i HTML. Den er derfor bevisst stengt.
+  app.get("/api/leadgrid/drips/unsubscribe", (_req, res) => {
+    res.status(410).send("Denne avmeldingslenken er utløpt.");
   });
 
   // ---------- Plan-grace expire ----------

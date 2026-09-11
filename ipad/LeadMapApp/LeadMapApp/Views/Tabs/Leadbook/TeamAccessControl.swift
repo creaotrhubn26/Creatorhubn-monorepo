@@ -364,6 +364,7 @@ enum TeamAccessData {
     /// overrides (RBAC-backend mangler enda). Tom liste → tom-tilstand.
     @MainActor
     static var members: [LBTeamMember] {
+        if DemoModeManager.isDentumTour { return _dentumMembers }
         if DemoModeManager.isActiveNonisolated { return _members }
         return TeamLiveStore.shared.memberDTOs.map { dto in
             let initials = dto.name.split(separator: " ")
@@ -380,6 +381,18 @@ enum TeamAccessData {
             )
         }
     }
+    private static let _dentumMembers: [LBTeamMember] = [
+        LBTeamMember(
+            name: "Daniel Qazi",
+            initials: "DQ",
+            avatarColor: LBrand.purple,
+            email: "daniel@creatorhubn.com",
+            title: "Prosjektadmin",
+            role: .salgssjef,
+            overrides: [:],
+            active: true
+        ),
+    ]
     private static let _members: [LBTeamMember] = [
         LBTeamMember(name: "Lars Kristensen", initials: "LK", avatarColor: LBrand.purple,
                    email: "lars@leadgrid.no", title: "Salgssjef", role: .salgssjef, overrides: [:], active: true),
@@ -838,7 +851,7 @@ struct TeamAccessControlView: View {
     private struct AuditEntry: Identifiable { let id = UUID(); let icon: String; let tint: Color; let title: String; let actor: String; let timeAgo: String }
     /// Mock-audit — KUN i demo-modus (audit-backend mangler enda).
     private var auditEntries: [AuditEntry] {
-        DemoModeManager.isActiveNonisolated ? mockAuditEntries : []
+        DemoModeManager.usesGenericFixtures ? mockAuditEntries : []
     }
     private var mockAuditEntries: [AuditEntry] {[
         .init(icon: "person.badge.plus", tint: LBrand.green, title: "Inviterte Sofie Vik som Spectator", actor: "Lars Kristensen", timeAgo: "2 t siden"),
@@ -1359,7 +1372,7 @@ struct FeatureCatalogView: View {
 
     /// Mock-oppdagede funksjoner — KUN i demo-modus (manifest-scan mangler).
     static var sampleDiscovered: [DiscoveredFeature] {
-        DemoModeManager.isActiveNonisolated ? _sampleDiscovered : []
+        DemoModeManager.usesGenericFixtures ? _sampleDiscovered : []
     }
     private static let _sampleDiscovered: [DiscoveredFeature] = [
         DiscoveredFeature(

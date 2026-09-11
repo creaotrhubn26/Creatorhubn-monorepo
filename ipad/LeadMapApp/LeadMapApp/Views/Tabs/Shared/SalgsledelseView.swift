@@ -64,6 +64,30 @@ struct SalgsledelseView: View {
                     )
                 }
         }
+        if DemoModeManager.isDentumTour {
+            return TeamData.members.enumerated().map { index, member in
+                TopSellersSheet.Seller(
+                    rank: index + 1,
+                    name: member.name,
+                    title: "Dentum-prosjektet",
+                    avatarColor: member.color,
+                    won: 0,
+                    leads: member.leads,
+                    trend: 0,
+                    totalValue: Double(member.valueNok),
+                    topDeals: [],
+                    regions: [TopSellersSheet.RegionStat(
+                        city: member.area,
+                        count: member.leads,
+                        valueShare: member.leads > 0 ? 1 : 0
+                    )],
+                    industries: [TopSellersSheet.IndustryStat(
+                        name: "Tannhelse",
+                        count: member.leads,
+                        color: TBrand.purple
+                    )])
+            }
+        }
         if DemoModeManager.isActiveNonisolated {
             return SalgsledelseSellersFactory.mockSellers(currentUser: currentUserName)
         }
@@ -178,12 +202,20 @@ struct SalgsledelseView: View {
 
     private var inner: some View {
         VStack(spacing: 0) {
+            HStack {
+                ProjectContextPill()
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(LBrand.bg)
+
             // Cockpit-strip m/ 5 salgssjef-CTA-er (Pakke 10.1):
             // Godkjenning · Team-forecast · Coaching · Kjøregodtgjørelse · Ruter.
             // TeamRoutesTodaySheet's «Naviger dit» starter den EKTE Kart-nav-
             // motoren (POV/Kjøre, MKDirections, POI langs rute) via
             // AppState.requestNavigation.
-            if DemoModeManager.isActiveNonisolated {
+            if DemoModeManager.isActiveNonisolated && !DemoModeManager.isDentumTour {
                 SalgssjefCockpitStrip()
             }
 
@@ -216,7 +248,9 @@ struct SalgsledelseView: View {
             // Full Salgsledelse-suite (4 sub-tabs: Provisjon/Konkurranser/
             // Premie-katalog/Tildel premier) portet fra preview.
             // embedded: true → skjuler X-lukkeknappen (arv fra sheet-modus).
-            if DemoModeManager.isActiveNonisolated {
+            if DemoModeManager.isDentumTour {
+                dentumPilotSummary
+            } else if DemoModeManager.isActiveNonisolated {
                 SalesLeadershipSheet(
                     sellers: sellers,
                     currentUserName: currentUserName,
@@ -226,6 +260,82 @@ struct SalgsledelseView: View {
                 SalesManagementWorkspaceView()
             }
         }
+    }
+
+    /// Dentum er et ferskt pilotprosjekt. Salgsledelse skal derfor vise
+    /// prosjektets faktiske oppstart, ikke den globale demoens provisjoner,
+    /// konkurranser og premiekatalog.
+    private var dentumPilotSummary: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Dentum-piloten")
+                        .font(.appScaled(size: 22, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text("Salgsoppsettet aktiveres når piloten får sine første utfall.")
+                        .font(.appScaled(size: 12))
+                        .foregroundStyle(LBrand.textSecondary)
+                }
+
+                HStack(spacing: 10) {
+                    dentumMetric("1", "Godkjent lead", LBrand.purpleLight)
+                    dentumMetric("1", "Pilotmøte", LBrand.blue)
+                    dentumMetric("0", "Vunnet", LBrand.green)
+                }
+
+                HStack(spacing: 12) {
+                    Circle()
+                        .fill(LBrand.purple.opacity(0.25))
+                        .frame(width: 46, height: 46)
+                        .overlay(Text("DQ").font(.appScaled(size: 13, weight: .bold)).foregroundStyle(LBrand.purpleLight))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Ansvarlig i prosjektet")
+                            .font(.appScaled(size: 10, weight: .semibold))
+                            .foregroundStyle(LBrand.textTertiary)
+                        Text("Daniel Qazi")
+                            .font(.appScaled(size: 15, weight: .bold))
+                            .foregroundStyle(.white)
+                        Text("Dentum · Oslo")
+                            .font(.appScaled(size: 11))
+                            .foregroundStyle(LBrand.textSecondary)
+                    }
+                    Spacer()
+                    Text("Pilot")
+                        .font(.appScaled(size: 10, weight: .bold))
+                        .foregroundStyle(LBrand.purpleLight)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(LBrand.purple.opacity(0.16), in: Capsule())
+                }
+                .padding(16)
+                .background(LBrand.card, in: RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(LBrand.stroke, lineWidth: 1))
+
+                ContentUnavailableView(
+                    "Ingen provisjon eller konkurranser ennå",
+                    systemImage: "chart.bar.doc.horizontal",
+                    description: Text("Legg inn satser, mål og premier når Dentum går fra pilot til aktiv salgsdrift.")
+                )
+                .frame(maxWidth: .infinity, minHeight: 280)
+                .background(LBrand.card, in: RoundedRectangle(cornerRadius: 14))
+            }
+            .padding(16)
+        }
+        .background(LBrand.bg)
+    }
+
+    private func dentumMetric(_ value: String, _ label: String, _ tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(value)
+                .font(.appScaled(size: 22, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+            Text(label)
+                .font(.appScaled(size: 10, weight: .semibold))
+                .foregroundStyle(tint)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(tint.opacity(0.25), lineWidth: 1))
     }
 }
 

@@ -59,11 +59,15 @@ struct LeadRow: Identifiable, Hashable {
     var projectId: String? = nil
     var email: String? = nil
     var phone: String? = nil
+    var city: String? = nil
+    var websiteURL: String? = nil
+    var organizationNumber: String? = nil
     var notes: String? = nil
     var nextAction: String? = nil
     var lastVisitAt: Date? = nil
     var nextFollowUpAt: Date? = nil
     var isFavorite: Bool = false
+    var leadSource: String? = nil
 
     /// Telefon/e-post m/ demo-fallback: mock-rader (backendId == nil) viser
     /// demo-kontakten; ekte leads uten data gir nil → knappen skjules i
@@ -179,11 +183,15 @@ extension LeadRow {
             projectId: lead.projectId,
             email: lead.email,
             phone: lead.phone,
+            city: lead.city,
+            websiteURL: lead.websiteUrl,
+            organizationNumber: lead.organizationNumber,
             notes: lead.notes,
             nextAction: lead.nextAction,
             lastVisitAt: lead.lastVisitAt,
             nextFollowUpAt: lead.nextFollowUpAt,
-            isFavorite: lead.isFavorite ?? false
+            isFavorite: lead.isFavorite ?? false,
+            leadSource: lead.leadSource
         )
     }
 }
@@ -240,8 +248,18 @@ struct LeadFileItem: Identifiable, Hashable {
 enum LeadsData {
     /// Mock-aktiviteter — KUN i demo-modus. Ellers tom liste + ærlig tom-tilstand i viewet.
     static var activities: [LeadActivityItem] {
-        DemoModeManager.isActiveNonisolated ? _activities : []
+        guard DemoModeManager.isActiveNonisolated else { return [] }
+        return DemoModeManager.isDentumTour ? _dentumActivities : _activities
     }
+    private static let _dentumActivities: [LeadActivityItem] = [
+        LeadActivityItem(
+            icon: "person.badge.plus",
+            title: "Lead godkjent i Discovery",
+            subtitle: "Daniel Qazi · Dentum-prosjektet",
+            timestamp: "i dag",
+            color: Color(red: 0.66, green: 0.32, blue: 0.99)
+        ),
+    ]
     private static let _activities: [LeadActivityItem] = [
         LeadActivityItem(icon: "phone.fill",        title: "Telefonsamtale m/ Jonas",   subtitle: "Lars K. · 15 min · Snakket om tilbudet", timestamp: "i dag 10:14",  color: Color(red: 0.20, green: 0.85, blue: 0.60)),
         LeadActivityItem(icon: "envelope.open.fill", title: "E-post åpnet",              subtitle: "Tilbud — del 2 sett 3 ganger",            timestamp: "i går 14:22",  color: Color(red: 0.34, green: 0.60, blue: 0.98)),
@@ -252,8 +270,17 @@ enum LeadsData {
 
     /// Mock-notater — KUN i demo-modus.
     static var notes: [LeadNoteItem] {
-        DemoModeManager.isActiveNonisolated ? _notes : []
+        guard DemoModeManager.isActiveNonisolated else { return [] }
+        return DemoModeManager.isDentumTour ? _dentumNotes : _notes
     }
+    private static let _dentumNotes: [LeadNoteItem] = [
+        LeadNoteItem(
+            author: "Daniel Qazi", initials: "DQ",
+            authorColor: Color(red: 0.75, green: 0.45, blue: 1.0),
+            body: "Godkjent kandidat for Dentum-piloten. Tilpass første kontakt til klinikkens pasienttilbud før utsending.",
+            timestamp: "i dag", pinned: true
+        ),
+    ]
     private static let _notes: [LeadNoteItem] = [
         LeadNoteItem(
             author: "Lars Kristensen", initials: "LK",
@@ -277,7 +304,8 @@ enum LeadsData {
 
     /// Mock-filer — KUN i demo-modus.
     static var files: [LeadFileItem] {
-        DemoModeManager.isActiveNonisolated ? _files : []
+        guard DemoModeManager.usesGenericFixtures else { return [] }
+        return _files
     }
     private static let _files: [LeadFileItem] = [
         LeadFileItem(name: "Tilbud_NordicElektro_v3.pdf",     kind: .pdf,         size: "1.2 MB", uploadedAt: "i går 14:18"),
@@ -301,14 +329,46 @@ enum LeadsData {
         LeadRow(company: "Eiendomsdrift AS",       category: "Eiendom",             contactName: "Anne-Lise Berg", contactRole: "Driftsleder",   leadScore: 25, status: .notContacted, ownerName: "Lars K.",   ownerInitials: "LK", ownerColor: LdBrand.purple,       nextFollowUp: nil,                  nextFollowUpOverdue: false, valueNok: 30_000,  companyColor: LdBrand.purpleLight),
     ]
 
+    /// Deterministisk Dentum-case for native E2E. Denne brukes bare når
+    /// DEBUG-testharnessen ber om `QA_TOUR=dentum-outreach`; produksjon og
+    /// vanlig demo beholder de eksisterende radene.
+    private static let dentumOutreachLead = LeadRow(
+        id: UUID(uuidString: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")!,
+        company: "Majorstuen Tannlegesenter AS",
+        category: "Tannhelse",
+        contactName: "Anne Lunde",
+        contactRole: "Daglig leder",
+        leadScore: 86,
+        status: .notContacted,
+        ownerName: "Daniel Qazi",
+        ownerInitials: "DQ",
+        ownerColor: LdBrand.purple,
+        nextFollowUp: nil,
+        nextFollowUpOverdue: false,
+        valueNok: 0,
+        companyColor: LdBrand.blue,
+        backendId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        projectId: "dentum-oslo",
+        email: "post@majorstuentannlegesenter.example",
+        phone: "+47 22 00 00 00",
+        city: "Oslo",
+        websiteURL: "https://majorstuentannlegesenter.example",
+        organizationNumber: "999888777",
+        leadSource: "Discovery v2 · klinikkens nettside"
+    )
+
     /// Demo-mode-gated computed getter
     static var leads: [LeadRow] {
-        DemoModeManager.isActiveNonisolated ? _leads : []
+        guard DemoModeManager.isActiveNonisolated else { return [] }
+        if ProcessInfo.processInfo.environment["QA_TOUR"] == "dentum-outreach" {
+            return [dentumOutreachLead]
+        }
+        return _leads
     }
 
     /// Krasj-safe fallback for `@State`-init + selectedLead-getter.
     static var firstOrPlaceholder: LeadRow {
-        _leads[0]
+        DemoModeManager.isDentumTour ? dentumOutreachLead : _leads[0]
     }
 }
 
@@ -422,7 +482,9 @@ struct LeadsView: View {
     var body: some View {
         ZStack {
             LdBrand.bg.ignoresSafeArea()
-            content
+            GeometryReader { proxy in
+                content(isCompact: DeviceIdiom.isPhone || proxy.size.width < 1_180)
+            }
         }
         .preferredColorScheme(.dark)
         .onAppear {
@@ -522,7 +584,7 @@ struct LeadsView: View {
         didApplyRoleDefault = true
     }
 
-    private var content: some View {
+    private func content(isCompact: Bool) -> some View {
         HStack(alignment: .top, spacing: 0) {
             // Hovedinnhold venstre
             VStack(spacing: 0) {
@@ -541,7 +603,7 @@ struct LeadsView: View {
                         .padding(.horizontal, 20).padding(.top, 14)
 
                     ScrollView {
-                        leadsTable
+                        leadsTable(isCompact: isCompact)
                             .padding(.horizontal, 20).padding(.top, 12)
                         if totalLeadsCount > 0 {
                             pagination
@@ -555,7 +617,7 @@ struct LeadsView: View {
                         // tab-baren — ekstra bunn-luft så alt kan scrolles helt
                         // fram (samme mønster som Salgsledelse i OversiktView).
                         // iPad har sidebar-layout uten dette problemet — urørt.
-                        if DeviceIdiom.isPhone {
+                        if isCompact {
                             Color.clear.frame(height: 72)
                         }
                     }
@@ -566,7 +628,7 @@ struct LeadsView: View {
             // Detail sidebar høyre — tom-tilstand når ingen leads finnes.
             // iPhone (compact): 340pt side-stilt kolonne får ikke plass —
             // detaljene vises i stedet som sheet når en rad velges.
-            if !DeviceIdiom.isPhone, workspaceScope == .all {
+            if !isCompact, workspaceScope == .all {
                 if sourceLeads.isEmpty {
                     LeadDetailEmptyState(onAddLead: { addLeadOpen = true })
                         .frame(width: 340)
@@ -648,7 +710,9 @@ struct LeadsView: View {
         // appState.leads (trend skjules — vi har ikke historikk-serie her,
         // og en gjettet pil ville lyve om vekst). Tomt → "—".
         let isDemo = DemoModeManager.isActiveNonisolated
+        let isDentumQA = ProcessInfo.processInfo.environment["QA_TOUR"] == "dentum-outreach"
         let real = appState.leads
+        let dentum = sourceLeads
         let cal = Calendar.current
         let weekAgo = cal.date(byAdding: .day, value: -7, to: Date()) ?? Date()
         func fmt(_ n: Int) -> String {
@@ -656,12 +720,39 @@ struct LeadsView: View {
             return f.string(from: NSNumber(value: n)) ?? "\(n)"
         }
         func realValue(_ n: Int) -> String { real.isEmpty ? "—" : fmt(n) }
+        func value(dentumCount: Int, demoValue: String, realCount: Int) -> String {
+            if isDentumQA { return fmt(dentumCount) }
+            return isDemo ? demoValue : realValue(realCount)
+        }
         return Group {
-            kpiCard(.totalLeads,     icon: "person.3.fill",      iconColor: LdBrand.purple,      title: "Totalt leads", value: isDemo ? "1 248" : realValue(real.count), trend: isDemo ? "+18 %" : nil)
-            kpiCard(.newLeads,       icon: "sparkles",           iconColor: LdBrand.green,       title: "Nye leads",    value: isDemo ? "842"   : realValue(real.filter { $0.createdAt >= weekAgo }.count), trend: isDemo ? "+16 %" : nil)
-            kpiCard(.contacted,      icon: "phone.fill",         iconColor: LdBrand.blue,        title: "Kontaktet",    value: isDemo ? "542"   : realValue(real.filter { $0.status != .unvisited }.count), trend: isDemo ? "+11 %" : nil)
-            kpiCard(.meetingsBooked, icon: "calendar",           iconColor: LdBrand.purpleLight, title: "Møter avtalt", value: isDemo ? "236"   : realValue(real.filter { $0.status == .meetingBooked }.count), trend: isDemo ? "+12 %" : nil)
-            kpiCard(.won,            icon: "trophy.fill",        iconColor: LdBrand.yellow,      title: "Vunnet",       value: isDemo ? "68"    : realValue(real.filter { $0.status == .won }.count), trend: isDemo ? "+24 %" : nil)
+            kpiCard(.totalLeads, icon: "person.3.fill", iconColor: LdBrand.purple,
+                    title: "Totalt leads",
+                    value: value(dentumCount: dentum.count, demoValue: "1 248", realCount: real.count),
+                    trend: isDemo && !isDentumQA ? "+18 %" : nil)
+            kpiCard(.newLeads, icon: "sparkles", iconColor: LdBrand.green,
+                    title: "Nye leads",
+                    value: value(
+                        dentumCount: dentum.filter { [.newLead, .notContacted].contains($0.status) }.count,
+                        demoValue: "842",
+                        realCount: real.filter { $0.createdAt >= weekAgo }.count),
+                    trend: isDemo && !isDentumQA ? "+16 %" : nil)
+            kpiCard(.contacted, icon: "phone.fill", iconColor: LdBrand.blue,
+                    title: "Kontaktet",
+                    value: value(
+                        dentumCount: dentum.filter { ![.newLead, .notContacted].contains($0.status) }.count,
+                        demoValue: "542",
+                        realCount: real.filter { $0.status != .unvisited }.count),
+                    trend: isDemo && !isDentumQA ? "+11 %" : nil)
+            kpiCard(.meetingsBooked, icon: "calendar", iconColor: LdBrand.purpleLight,
+                    title: "Møter avtalt",
+                    value: value(dentumCount: 0, demoValue: "236",
+                                 realCount: real.filter { $0.status == .meetingBooked }.count),
+                    trend: isDemo && !isDentumQA ? "+12 %" : nil)
+            kpiCard(.won, icon: "trophy.fill", iconColor: LdBrand.yellow,
+                    title: "Vunnet",
+                    value: value(dentumCount: 0, demoValue: "68",
+                                 realCount: real.filter { $0.status == .won }.count),
+                    trend: isDemo && !isDentumQA ? "+24 %" : nil)
         }
     }
 
@@ -669,10 +760,15 @@ struct LeadsView: View {
 
     private var statsButton: some View {
         let isDemo = DemoModeManager.isActiveNonisolated
+        let isDentumQA = ProcessInfo.processInfo.environment["QA_TOUR"] == "dentum-outreach"
         let real = appState.leads
         let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-        let leadsText = isDemo ? "1 248 leads" : "\(real.count) leads"
-        let newCount = isDemo ? 842 : real.filter { $0.createdAt >= weekAgo }.count
+        let leadsText = isDentumQA
+            ? "\(sourceLeads.count) \(sourceLeads.count == 1 ? "lead" : "leads")"
+            : (isDemo ? "1 248 leads" : "\(real.count) leads")
+        let newCount = isDentumQA
+            ? sourceLeads.filter { [.newLead, .notContacted].contains($0.status) }.count
+            : (isDemo ? 842 : real.filter { $0.createdAt >= weekAgo }.count)
         return Button {
             showStatsModal = true
         } label: {
@@ -786,24 +882,13 @@ struct LeadsView: View {
     // MARK: Søk + filtre
 
     private var searchAndFilters: some View {
-        // iPhone: søkefelt + 5 chips + 4 knapper får ikke plass i én rad
-        // på compact width — søkefeltet får egen linje og resten legges
-        // i en horisontal scroller. iPad/Mac beholder én rad som før.
-        Group {
-            if DeviceIdiom.isPhone {
-                VStack(spacing: 8) {
-                    searchField
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            filterChipsRow
-                            actionButtonsRow
-                        }
-                    }
-                }
-            } else {
+        // Søk + ni kontroller kan ikke komprimeres lesbart i detaljkolonnen
+        // på iPad mini eller Split View. Søk får alltid en egen rad; filtre
+        // beholder naturlig størrelse i en horisontal scroller på alle idiomer.
+        VStack(spacing: 8) {
+            searchField
+            ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    searchField
-                        .frame(maxWidth: .infinity)
                     filterChipsRow
                     actionButtonsRow
                 }
@@ -977,11 +1062,11 @@ struct LeadsView: View {
         return Array(filteredLeads[from..<to])
     }
 
-    private var leadsTable: some View {
+    private func leadsTable(isCompact: Bool) -> some View {
         VStack(spacing: 0) {
-            // iPhone: kolonne-headeren hører til den brede tabell-layouten
+            // Kompakt: kolonne-headeren hører til den brede tabell-layouten
             // — kompakt-radene har ikke kolonner å overskrive.
-            if !DeviceIdiom.isPhone { tableHeader }
+            if !isCompact { tableHeader }
             if sourceLeads.isEmpty {
                 // Uke 2: skill «laster»/«feilet»/«ekte tom» via
                 // appState.leadsLoadState (samme mønster som prosjekt-kortet)
@@ -1000,11 +1085,12 @@ struct LeadsView: View {
                         lead: lead,
                         isSelected: selectedLeadID == lead.id,
                         isChecked: selectedRowIDs.contains(lead.id),
+                        compactLayout: isCompact,
                         onTap: {
                             selectedLeadID = lead.id
-                            // iPhone: ingen side-stilt sidebar — åpne
+                            // Kompakt skjerm: ingen side-stilt sidebar — åpne
                             // detaljene som sheet.
-                            if DeviceIdiom.isPhone { phoneDetailOpen = true }
+                            if isCompact { phoneDetailOpen = true }
                         },
                         onCheck: {
                             if selectedRowIDs.contains(lead.id) {
@@ -1285,6 +1371,7 @@ struct LeadTableRow: View {
     let lead: LeadRow
     let isSelected: Bool
     let isChecked: Bool
+    let compactLayout: Bool
     let onTap: () -> Void
     let onCheck: () -> Void
     /// «Loggfør aktivitet» i radmenyen — parent velger raden og åpner
@@ -1296,14 +1383,20 @@ struct LeadTableRow: View {
     /// er ikke observerbar).
     @State private var favoriteTick = 0
     @State private var contactHandoffRequest: LeadgridExternalContactRequest?
+    @State private var emailTemplateOpen = false
 
     var body: some View {
-        // iPhone (compact width): kolonnene får ikke plass side-ved-side —
-        // render en enklere, stablet rad i stedet for full tabellrad.
-        if DeviceIdiom.isPhone {
-            compactBody
-        } else {
-            fullBody
+        Group {
+            // iPhone (compact width): kolonnene får ikke plass side-ved-side —
+            // render en enklere, stablet rad i stedet for full tabellrad.
+            if compactLayout {
+                compactBody
+            } else {
+                fullBody
+            }
+        }
+        .sheet(isPresented: $emailTemplateOpen) {
+            EmailTemplatePicker(lead: lead, toEmail: lead.displayEmail ?? "")
         }
     }
 
@@ -1355,6 +1448,7 @@ struct LeadTableRow: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("lead.row.\(lead.id.uuidString.lowercased())")
     }
 
     private var fullBody: some View {
@@ -1468,8 +1562,9 @@ struct LeadTableRow: View {
                         }
                         if let mail = lead.displayEmail {
                             Button { email(mail) } label: {
-                                Label("Send e-post", systemImage: "envelope.fill")
+                                Label("Lag tilpasset e-post", systemImage: "envelope.fill")
                             }
+                            .accessibilityIdentifier("lead.outreach.open")
                         }
                         // «Planlegg møte» fjernet 2026-07-17: var død knapp —
                         // ingen møte-bookingsflate tilgjengelig fra radmenyen.
@@ -1498,7 +1593,12 @@ struct LeadTableRow: View {
                         if DemoModeManager.isActiveNonisolated {
                             // Demo-gated mock — navn uten backend-effekt.
                             Menu {
-                                ForEach(["Kari Nordmann", "Mikkel Berg", "Anniken Sørli"], id: \.self) { n in
+                                ForEach(
+                                    DemoModeManager.isDentumTour
+                                        ? ["Daniel Qazi"]
+                                        : ["Kari Nordmann", "Mikkel Berg", "Anniken Sørli"],
+                                    id: \.self
+                                ) { n in
                                     Button {} label: { Label(n, systemImage: "person.crop.circle") }
                                 }
                             } label: {
@@ -1652,10 +1752,8 @@ struct LeadTableRow: View {
     }
 
     private func email(_ address: String) {
-        guard let url = URL(string: "mailto:\(address)") else { return }
-        contactHandoffRequest = .init(
-            url: url, channel: .email, leadId: lead.backendId,
-            leadProjectId: lead.projectId)
+        guard !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        emailTemplateOpen = true
     }
 
     private func scoreColor(_ score: Int) -> Color {
@@ -1796,6 +1894,7 @@ struct LeadDetailSidebar: View {
     // Re-evaluer favoritt-label/stjerne etter toggle.
     @State private var favoriteTick = 0
     @State private var contactHandoffRequest: LeadgridExternalContactRequest?
+    @State private var emailTemplateOpen = false
 
     var body: some View {
         ScrollView {
@@ -1939,6 +2038,9 @@ struct LeadDetailSidebar: View {
                 }
             )
         }
+        .sheet(isPresented: $emailTemplateOpen) {
+            EmailTemplatePicker(lead: lead, toEmail: lead.displayEmail ?? "")
+        }
         // Arkiv-dialogen fjernet 2026-07-17: «Arkiver» var toast-fasade uten
         // API — dialogen lot som leaden ble flyttet til arkiv.
         .overlay(alignment: .top) {
@@ -2020,7 +2122,7 @@ struct LeadDetailSidebar: View {
                         .foregroundStyle(.white)
                     // 2026-07-17: «↑12»-trenden var mock også i ekte modus —
                     // score-historikk finnes ikke, så den vises kun i demo.
-                    if lead.leadScore > 0 && DemoModeManager.isActiveNonisolated {
+                    if lead.leadScore > 0 && DemoModeManager.usesGenericFixtures {
                         HStack(spacing: 3) {
                             Image(systemName: "arrow.up")
                                 .font(.appScaled(size: 10, weight: .bold))
@@ -2275,7 +2377,11 @@ struct LeadDetailSidebar: View {
                 contactRow(icon: "phone", text: phone, color: LdBrand.green)
             }
             if let mail = lead.displayEmail {
-                contactRow(icon: "envelope", text: mail, color: LdBrand.blue)
+                Button { email(mail) } label: {
+                    contactRow(icon: "envelope", text: mail, color: LdBrand.blue)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("lead.outreach.open")
             }
             if lead.backendId == nil {
                 contactRow(icon: "link", text: "LinkedIn-profil", color: LdBrand.purpleLight)
@@ -2306,13 +2412,15 @@ struct LeadDetailSidebar: View {
             // QA-runde 2: radene var hardkodet mock («Elektroinstallasjon /
             // Oslo / 25-50») for ALLE leads — nå ekte kategori, og mock kun
             // i demo-modus.
-            if DemoModeManager.isActiveNonisolated {
+            if DemoModeManager.isActiveNonisolated
+                && ProcessInfo.processInfo.environment["QA_TOUR"] != "dentum-outreach" {
                 metaRow("Bransje", "Elektroinstallasjon")
                 metaRow("Sted", "Oslo, Norge")
                 metaRow("Ansatte", "25-50")
                 metaRow("Omsetning", "10-20 mill. NOK")
             } else {
                 metaRow("Bransje", lead.category == "—" ? "Ikke kategorisert" : lead.category)
+                if let city = lead.city { metaRow("Sted", city) }
                 metaRow("Eier", lead.ownerName)
             }
             // «Se mer informasjon» fjernet 2026-07-17: var død knapp — det
@@ -2412,7 +2520,7 @@ struct LeadDetailSidebar: View {
             }
             // Mock-beskrivelsen vises kun i demo-modus — ekte leads har
             // ingen oppfølgings-beskrivelse i dette feltet.
-            if DemoModeManager.isActiveNonisolated {
+            if DemoModeManager.usesGenericFixtures {
                 Text("Telefonmøte med Jonas Eide")
                     .font(.appScaled(size: 11))
                     .foregroundStyle(LdBrand.textSecondary)
@@ -2442,7 +2550,7 @@ struct LeadDetailSidebar: View {
                     .monospacedDigit()
                 // 2026-07-17: «Høy» sannsynlighet var mock også i ekte modus —
                 // ingen sannsynlighets-modell bak; vises kun i demo.
-                if lead.valueNok > 0 && DemoModeManager.isActiveNonisolated {
+                if lead.valueNok > 0 && DemoModeManager.usesGenericFixtures {
                     Text("Høy")
                         .font(.appScaled(size: 9, weight: .bold))
                         .foregroundStyle(LdBrand.green)
@@ -2788,8 +2896,9 @@ struct LeadDetailSidebar: View {
                     }
                     if let mail = lead.displayEmail {
                         Button { email(mail) } label: {
-                            Label("Send e-post", systemImage: "envelope.fill")
+                            Label("Lag tilpasset e-post", systemImage: "envelope.fill")
                         }
+                        .accessibilityIdentifier("lead.outreach.open")
                     }
                     // Tilbudssending (funn #7) — kun for backend-leads
                     // (mock-rader har ingen crm-id å knytte tilbudet til).
@@ -2885,10 +2994,8 @@ struct LeadDetailSidebar: View {
     }
 
     private func email(_ address: String) {
-        guard let url = URL(string: "mailto:\(address)") else { return }
-        contactHandoffRequest = .init(
-            url: url, channel: .email, leadId: lead.backendId,
-            leadProjectId: lead.projectId)
+        guard !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        emailTemplateOpen = true
     }
 
     private func sectionTitle(_ s: String) -> some View {

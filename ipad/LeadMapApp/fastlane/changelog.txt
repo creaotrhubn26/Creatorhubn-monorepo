@@ -1,30 +1,12 @@
-Leadgrid 2.1
+Leadgrid 2.2
 
-• Ett felles og mer oversiktlig skjema for nye leads i både Kart og Leads.
-• Feltspesifikke feilmeldinger for organisasjonsnummer, e-post, nettside og tekstlengder før lagring.
-• Mer konsistent oppførsel ved opprettelse og redigering av leads.
-• Ny Leadgrid-assistent med seks ferdigheter: duplikatsøk, BRREG-berikelse, besøkslogg, offline-synk, oppfølgingsplan og datakvalitet.
-• Alle agentforslag må bekreftes før de utføres, med tydelig personverninformasjon og sikker organisasjonsavgrensning.
-• Stabilitets- og ytelsesforbedringer i Kart og Oversikt.
-• Pondus har fått én samlet samtalecoach på tvers av Oversikt, Maler og Pondus.
-• Nye forklarbare kvalitetsscorer, sikker versjonshistorikk og serververifisert quiz.
-• Pondus-økter synkroniseres idempotent etter nettverksbrudd, med samme økt fra start til utfall.
-• Bedre organisasjonsavgrensning, ledertilgang og stabil åpning fra Siri og Apple Watch.
-• Leadbook-eksempler har fått paginert oversikt, komplett detaljvisning og sikre lenker med full ID.
-• Selgere kan opprette og se egne kladder; publisering, redigering og coaching følger tydelige roller.
-• Opptak krever sporbar samtykkekobling i samme organisasjon, og sletting følger GDPR-flyten.
-• Leadbook-handlinger tåler nettverksbrudd med idempotent kø, synlig feilstatus og prøv-igjen.
-• Academy og Leadbook viser nå bare ekte serverdata, med trygg tomtilstand og reell fremdrift.
-• Min profil bruker nå ekte kontodata overalt, med trygg redigering, feltspesifikke feil og korrekt «Mine leads»-statistikk.
-• Profilbilder lastes opp sikkert, vises konsekvent i header og kart, og ryddes fra lagring ved bytte eller sletting.
-• Opprett et komplett prosjekt og en redigerbar Discovery-profil ved å skrive inn kundens domene.
-• Super Admin kan finjustere og opprette flere Discovery-profiler før prosjektet åpnes direkte i Discovery.
-• Super Admin kan opprette eller velge kundebedrift, utpeke kundeadmin og opprette eller velge salgsteam i samme flyt.
-• Eier-, medlem- og lesertilgang kobles eksplisitt til riktig prosjekt, med synlig status for aktive, sendte og aksepterte invitasjoner.
-• Inviterte brukere får organisasjons-, prosjekt- og eventuell teamtilgang atomisk når invitasjonen godtas.
-• The Role Room får seks ferdige Discovery-profiler for produksjonsselskap, reklame- og innholdsbyrå, casting, filmutdanning, dansestudio og skuespillere/talenter.
-• Nettstedsinnhold kvalifiseres før kandidater foreslås, og alle aktive profiler kan kjøres samlet med treffhistorikk på tvers.
-• Skuespillere behandles som personprospekter etter eksplisitt godkjenning – aldri som automatisk opprettede talentkontoer – med reservasjons- og 90-dagers personvernflyt.
-• Super Admin kan korrigere prosjektnavn, kategori, beskrivelse og målgruppe før prosjektet opprettes eller gjenbrukes.
-• Super Admin kan velge prototype-status og organisasjonslagring når et medlem inviteres til et kundeprosjekt.
-• Organisasjonen eier abonnement og lagringskvote, og betalingsproblemer gir trygg lesemodus uten automatisk filsletting.
+• Ny enkel Discovery-flyt med tre tydelige steg, og avansertmodus for alle detaljer.
+• Opprett eller gjenbruk et kundeprosjekt ved å skrive inn domenet, med forslag til komplett Discovery-profil.
+• Dentum har fått sju e-postmaler for tannklinikker, automatisk tilpasset valgt lead, kontaktperson, område og status.
+• E-post kan finjusteres i Leadgrid før den åpnes i brukerens valgte e-postapp.
+• Ny personvernkontroll for e-post: verifiserte fellesadresser, dokumentert samtykke/kundeforhold og en organisasjonsomfattende «nei takk»-sperre.
+• Strengere prosjektisolasjon holder Dentum og andre kunder adskilt, også for Pondus-maler, økter og statistikk.
+• Leadbook, Møter, Pondus, Kvalitet og Anbud er forbedret for iPad mini og kompakte visninger.
+• Aktivt prosjekt vises nå i alle hovedfaner, og Anbud-headeren er rettet på iPad mini.
+• Bedre navigasjon og støtte for store tekststørrelser på iPhone og iPad.
+• Kandidater må fortsatt godkjennes før de blir leads.

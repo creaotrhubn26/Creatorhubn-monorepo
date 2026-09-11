@@ -3,7 +3,7 @@
 // Tre kommunikasjons-pickere som åpnes fra FollowUpDetailSheet:
 //   - VideoMeetingPicker:    FaceTime / Google Meet (ekte tjeneste-handoff)
 //   - SMSPicker:             Vanlig SMS / WhatsApp
-//   - EmailTemplatePicker:   6 maler → velg Apple Mail / Outlook → mailto: pre-fylt
+//   - EmailTemplatePicker:   prosjekt- og leadtilpassede maler → ekstern e-postapp
 
 import SwiftUI
 
@@ -615,7 +615,278 @@ struct SMSPicker: View {
     }
 }
 
-// MARK: - EmailTemplatePicker (6 maler + app-velger)
+// MARK: - Lead-aware outreach templates
+
+enum LeadOutreachAccent: Hashable {
+    case purpleLight, blue, green, yellow, orange, purple
+
+    var color: Color {
+        switch self {
+        case .purpleLight: return FcBrand.purpleLight
+        case .blue: return FcBrand.blue
+        case .green: return FcBrand.green
+        case .yellow: return FcBrand.yellow
+        case .orange: return FcBrand.orange
+        case .purple: return FcBrand.purple
+        }
+    }
+}
+
+struct LeadOutreachTemplate: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let description: String
+    let icon: String
+    let accent: LeadOutreachAccent
+    let subject: String
+    let body: String
+}
+
+struct LeadOutreachContext: Hashable {
+    let projectName: String
+    let company: String
+    let category: String
+    let contactName: String
+    let contactRole: String
+    let city: String?
+    let websiteURL: String?
+    let organizationNumber: String?
+    let status: LeadRow.LeadStatus
+    let senderName: String
+
+    init(lead: LeadRow, projectName: String?, senderName: String) {
+        self.projectName = projectName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        self.company = lead.company.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.category = lead.category.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.contactName = lead.contactName.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.contactRole = lead.contactRole.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.city = lead.city?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        self.websiteURL = lead.websiteURL?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        self.organizationNumber = lead.organizationNumber?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        self.status = lead.status
+        let normalizedSender = senderName.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.senderName = normalizedSender.isEmpty || normalizedSender == "Gjest"
+            ? "Salgsteamet"
+            : normalizedSender
+    }
+
+    var firstName: String? {
+        contactName.split(separator: " ").first.map(String.init)
+    }
+
+    var greeting: String {
+        firstName.map { "Hei \($0)," } ?? "Hei,"
+    }
+
+    var location: String { city ?? "området deres" }
+}
+
+struct LeadOutreachKit: Hashable {
+    let title: String
+    let audience: String
+    let isDentum: Bool
+    let recommendedTemplateID: String
+    let templates: [LeadOutreachTemplate]
+    let personalizationFacts: [String]
+}
+
+enum LeadOutreachTemplateEngine {
+    static func makeKit(context c: LeadOutreachContext) -> LeadOutreachKit {
+        let isDentum = c.projectName.localizedCaseInsensitiveContains("dentum")
+        if isDentum {
+            return LeadOutreachKit(
+                title: "Dentum-oppsett",
+                audience: "7 maler for tannklinikker",
+                isDentum: true,
+                recommendedTemplateID: dentumRecommendation(for: c.status),
+                templates: dentumTemplates(c),
+                personalizationFacts: facts(c)
+            )
+        }
+        return LeadOutreachKit(
+            title: c.projectName.isEmpty ? "Standardoppsett" : "\(c.projectName)-oppsett",
+            audience: "6 generelle B2B-maler",
+            isDentum: false,
+            recommendedTemplateID: genericRecommendation(for: c.status),
+            templates: genericTemplates(c),
+            personalizationFacts: facts(c)
+        )
+    }
+
+    private static func facts(_ c: LeadOutreachContext) -> [String] {
+        [c.company, c.firstName, c.contactRole.nilIfEmpty, c.city, c.websiteURL]
+            .compactMap { $0 }
+    }
+
+    private static func dentumRecommendation(for status: LeadRow.LeadStatus) -> String {
+        switch status {
+        case .contacted: return "dentum-follow-up"
+        case .interested: return "dentum-next-step"
+        case .hot, .warm: return "dentum-short-call"
+        case .newLead, .notContacted: return "dentum-pilot"
+        }
+    }
+
+    private static func genericRecommendation(for status: LeadRow.LeadStatus) -> String {
+        switch status {
+        case .contacted: return "generic-follow-up"
+        case .interested: return "generic-proposal"
+        case .hot, .warm: return "generic-short-call"
+        case .newLead, .notContacted: return "generic-introduction"
+        }
+    }
+
+    private static func dentumTemplates(_ c: LeadOutreachContext) -> [LeadOutreachTemplate] {
+        let signoff = "Med vennlig hilsen,\n\(c.senderName)\nDentum"
+        return [
+            LeadOutreachTemplate(
+                id: "dentum-pilot",
+                title: "Invitasjon til pilot",
+                description: "Første kontakt med et konkret og uforpliktende tilbud.",
+                icon: "sparkles",
+                accent: .purpleLight,
+                subject: "Kan \(c.company) bli med i Dentum-piloten?",
+                body: """
+                \(c.greeting)
+
+                Jeg tar kontakt fra Dentum, en uavhengig markedsplass som hjelper pasienter i \(c.location) med å sammenligne priser, anmeldelser og ledige timer hos tannleger.
+
+                Vi vil gjerne invitere \(c.company) med i pilotperioden. Det er gratis og uforpliktende å være med i piloten. Dere styrer selv veiledende priser og åpningstider, og vi hjelper med å sette opp klinikkprofilen.
+
+                Har du tid til en kort prat på 15 minutter denne uken?
+
+                \(signoff)
+                """
+            ),
+            LeadOutreachTemplate(
+                id: "dentum-profile",
+                title: "Klinikkprofil",
+                description: "Forklarer hva Dentum setter opp for klinikken.",
+                icon: "building.2.crop.circle.fill",
+                accent: .blue,
+                subject: "Vi setter opp Dentum-profilen for \(c.company)",
+                body: """
+                \(c.greeting)
+
+                En Dentum-profil gjør det enklere for pasienter i \(c.location) å finne \(c.company), se veiledende priser og gå videre til ledige timer eller en uforpliktende forespørsel.
+
+                Oppsettet er enkelt: dere sender oss prisene, åpningstidene og informasjonen dere vil vise. Vi setter opp profilen og sender den til godkjenning før publisering.
+
+                Skal jeg sende en kort oversikt over det vi trenger fra dere?
+
+                \(signoff)
+                """
+            ),
+            LeadOutreachTemplate(
+                id: "dentum-demand",
+                title: "Synlighet og forespørsler",
+                description: "Knytter klinikken til pasienter som aktivt leter.",
+                icon: "person.3.fill",
+                accent: .green,
+                subject: "Mer synlighet for \(c.company) i \(c.location)",
+                body: """
+                \(c.greeting)
+
+                Pasienter bruker Dentum for å sammenligne tannklinikker, priser og ledige timer før de tar kontakt. Vi ønsker å gjøre \(c.company) synlig når noen aktivt leter etter tannbehandling i \(c.location).
+
+                Klinikken kan motta uforpliktende forespørsler med ønsket behandling og tidspunkt. Dere bestemmer selv om og hvordan dere følger dem opp.
+
+                Kan vi ta en kort gjennomgang av hvordan dette vil se ut for klinikken deres?
+
+                \(signoff)
+                """
+            ),
+            LeadOutreachTemplate(
+                id: "dentum-prices",
+                title: "Priser og tillit",
+                description: "Fokuserer på kontroll og tydelig pristransparens.",
+                icon: "list.bullet.clipboard.fill",
+                accent: .yellow,
+                subject: "Veiledende priser for \(c.company) på Dentum",
+                body: """
+                \(c.greeting)
+
+                Dentum lar \(c.company) vise egne veiledende priser på vanlige behandlinger. Prisene er deres, kan oppdateres, og endelig pris fastsettes fortsatt av klinikken etter undersøkelse.
+
+                Målet er å gi pasienten et tryggere sammenligningsgrunnlag og klinikken en ryddig profil med tydelige forventninger før første kontakt.
+
+                Vil du at jeg lager et uforpliktende profilutkast med prisfeltene klare?
+
+                \(signoff)
+                """
+            ),
+            LeadOutreachTemplate(
+                id: "dentum-short-call",
+                title: "Be om kort prat",
+                description: "Kort variant for en varm eller prioritert lead.",
+                icon: "phone.arrow.up.right.fill",
+                accent: .orange,
+                subject: "15 minutter om \(c.company) på Dentum?",
+                body: """
+                \(c.greeting)
+
+                Jeg vil gjerne vise hvordan \(c.company) kan presenteres på Dentum med klinikkprofil, veiledende priser, ledige timer og pasientforespørsler samlet på ett sted.
+
+                Det tar 15 minutter å gå gjennom, og pilotperioden er gratis og uforpliktende. Passer det med en kort prat denne eller neste uke?
+
+                \(signoff)
+                """
+            ),
+            LeadOutreachTemplate(
+                id: "dentum-follow-up",
+                title: "Vennlig oppfølging",
+                description: "Følger opp uten å anta at klinikken har sagt ja.",
+                icon: "hand.wave.fill",
+                accent: .purple,
+                subject: "Følger opp Dentum for \(c.company)",
+                body: """
+                \(c.greeting)
+
+                Jeg følger kort opp muligheten for å vise \(c.company) på Dentum. Vi hjelper med hele profiloppsettet, og det er gratis og uforpliktende å delta i pilotperioden.
+
+                Er det noe du vil ha avklart før vi eventuelt lager et profilutkast, eller passer det bedre at jeg tar kontakt på et senere tidspunkt?
+
+                \(signoff)
+                """
+            ),
+            LeadOutreachTemplate(
+                id: "dentum-next-step",
+                title: "Neste steg",
+                description: "For en interessert klinikk som vil se oppsettet.",
+                icon: "checkmark.seal.fill",
+                accent: .green,
+                subject: "Neste steg for \(c.company) på Dentum",
+                body: """
+                \(c.greeting)
+
+                Neste steg er at vi lager et profilutkast for \(c.company). For å gjøre det trenger vi kontaktinformasjon, åpningstider, behandlingsområder, veiledende priser og lenken dere ønsker å bruke for timebestilling.
+
+                Dere får kontrollere alt før noe publiseres. Send gjerne informasjonen i svar på denne e-posten, så setter vi opp første utkast.
+
+                \(signoff)
+                """
+            ),
+        ]
+    }
+
+    private static func genericTemplates(_ c: LeadOutreachContext) -> [LeadOutreachTemplate] {
+        let signoff = "Med vennlig hilsen,\n\(c.senderName)"
+        return [
+            .init(id: "generic-introduction", title: "Første kontakt", description: "Kort introduksjon til en ny lead.", icon: "sparkles", accent: .purpleLight, subject: "Kort spørsmål til \(c.company)", body: "\(c.greeting)\n\nJeg tar kontakt fordi jeg gjerne vil forstå prioriteringene til \(c.company) og se om løsningen vår kan være relevant.\n\nHar du tid til en kort og uforpliktende prat denne uken?\n\n\(signoff)"),
+            .init(id: "generic-follow-up", title: "Vennlig oppfølging", description: "Følger opp forrige kontakt.", icon: "hand.wave.fill", accent: .purpleLight, subject: "Følger opp — \(c.company)", body: "\(c.greeting)\n\nBare en kort oppfølging for å høre om du ønsker mer informasjon, eller om det passer bedre at jeg tar kontakt senere.\n\nJeg er fleksibel hvis du vil ta en kort prat denne uken.\n\n\(signoff)"),
+            .init(id: "generic-proposal", title: "Påminnelse om tilbud", description: "Sjekker at tilbudet kom frem.", icon: "doc.text.fill", accent: .blue, subject: "Tilbud — \(c.company)", body: "\(c.greeting)\n\nJeg ville bare sjekke at tilbudet kom frem og høre om det er noe du vil ha avklart eller justert.\n\nHvis dere ønsker å gå videre, kan vi sammen avklare en realistisk fremdrift.\n\n\(signoff)"),
+            .init(id: "generic-short-call", title: "Be om kort prat", description: "Foreslår en 15-minutters avklaring.", icon: "bubble.left.and.bubble.right.fill", accent: .green, subject: "15 minutter om \(c.company)?", body: "\(c.greeting)\n\nHar du tid til en 15-minutters prat denne uken? Jeg vil gjerne høre hva som er viktigst for dere, så vi raskt kan avklare om vi passer.\n\nHvilke tidspunkt passer best?\n\n\(signoff)"),
+            .init(id: "generic-missed-call", title: "Returkall", description: "Etter et ubesvart anrop.", icon: "phone.down.fill", accent: .orange, subject: "Prøvde å ringe — \(c.company)", body: "\(c.greeting)\n\nJeg prøvde å ringe, men kom ikke gjennom. Er det et bedre tidspunkt i dag eller i morgen, eller vil du heller ta det på e-post?\n\n\(signoff)"),
+            .init(id: "generic-meeting-prep", title: "Møteforberedelse", description: "Sender en enkel agenda før møtet.", icon: "calendar.badge.checkmark", accent: .purple, subject: "Agenda for møtet med \(c.company)", body: "\(c.greeting)\n\nSer frem til møtet. Forslag til kort agenda:\n\n1. Status og behov hos dere\n2. Relevant løsning\n3. Spørsmål og eventuell vei videre\n\nSi gjerne fra om du vil legge til noe.\n\n\(signoff)"),
+        ]
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+// MARK: - EmailTemplatePicker (lead-tilpassede maler + app-velger)
 
 struct EmailTemplatePicker: View {
     let lead: LeadRow
@@ -623,7 +894,7 @@ struct EmailTemplatePicker: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
     @Environment(\.scenePhase) private var scenePhase
-    @State private var selectedTemplate: EmailTemplate = .followUp
+    @State private var selectedTemplateID = ""
     @State private var subject: String = ""
     @State private var messageBody: String = ""
     @State private var emailApp: EmailApp = .appleMail
@@ -635,121 +906,33 @@ struct EmailTemplatePicker: View {
     @State private var completionAlertTitle = "Kunne ikke loggføre"
     @State private var isRecordingCompletion = false
     @State private var isOpeningExternalApp = false
+    @State private var compliance: LeadgridEmailCompliance?
+    @State private var isLoadingCompliance = false
+    @State private var complianceError: String?
+    @State private var complianceEditorPresented = false
 
-    enum EmailTemplate: String, CaseIterable, Hashable {
-        case followUp = "Vennlig oppfølging"
-        case proposalReminder = "Påminnelse om tilbud"
-        case quickChat = "Be om kort prat"
-        case referenceRequest = "Be om referanse"
-        case missedCall = "Returkall — ikke besvart"
-        case meetingPrep = "Møte-forberedelse"
-        var icon: String {
-            switch self {
-            case .followUp:         return "hand.wave.fill"
-            case .proposalReminder: return "doc.text.fill"
-            case .quickChat:        return "bubble.left.and.bubble.right.fill"
-            case .referenceRequest: return "star.bubble.fill"
-            case .missedCall:       return "phone.down.fill"
-            case .meetingPrep:      return "calendar.badge.checkmark"
-            }
-        }
-        var color: Color {
-            switch self {
-            case .followUp:         return FcBrand.purpleLight
-            case .proposalReminder: return FcBrand.blue
-            case .quickChat:        return FcBrand.green
-            case .referenceRequest: return FcBrand.yellow
-            case .missedCall:       return FcBrand.orange
-            case .meetingPrep:      return FcBrand.purple
-            }
-        }
+    /// Bruk bare aktivt prosjekts malpakke når leadet faktisk tilhører
+    /// prosjektet. Dette hindrer at en stale/mis-skopet rad får Dentum-copy.
+    private var outreachProjectName: String? {
+        guard let project = appState.activeLeadgridProject else { return nil }
+        guard let leadProjectID = lead.projectId else { return project.name }
+        return leadProjectID == project.id ? project.name : nil
+    }
 
-        func subject(lead: LeadRow) -> String {
-            switch self {
-            case .followUp:         return "Følger opp — \(lead.company)"
-            case .proposalReminder: return "Tilbud — \(lead.company)"
-            case .quickChat:        return "Har du tid til en kort prat?"
-            case .referenceRequest: return "Spørsmål om referanse"
-            case .missedCall:       return "Prøvde å ringe — \(lead.company)"
-            case .meetingPrep:      return "Klar for møtet — agenda"
-            }
-        }
+    private var outreachContext: LeadOutreachContext {
+        LeadOutreachContext(
+            lead: lead,
+            projectName: outreachProjectName,
+            senderName: appState.displayName
+        )
+    }
 
-        func body(lead: LeadRow, contactName: String, senderName: String) -> String {
-            let firstName = contactName.split(separator: " ").first.map(String.init) ?? contactName
-            switch self {
-            case .followUp:
-                return """
-                Hei \(firstName),
+    private var outreachKit: LeadOutreachKit {
+        LeadOutreachTemplateEngine.makeKit(context: outreachContext)
+    }
 
-                Bare en kort melding for å høre hvordan det går med vurderingen av tilbudet vårt. Er det noe jeg kan svare ut, eller en annen vinkel jeg burde forklare?
-
-                Jeg er fleksibel hvis du vil ta en kort prat denne uka.
-
-                Med vennlig hilsen,
-                \(senderName)
-                """
-            case .proposalReminder:
-                return """
-                Hei \(firstName),
-
-                Jeg ville bare sjekke at tilbudet jeg sendte for noen dager siden kom frem og at du har hatt tid til å se på det. Hvis det er noe som er uklart eller noe du vil at jeg endrer, gi gjerne beskjed.
-
-                Hvis dere ønsker å gå videre, kan vi sammen avklare en realistisk fremdrift.
-
-                Med vennlig hilsen,
-                \(senderName)
-                """
-            case .quickChat:
-                return """
-                Hei \(firstName),
-
-                Har du tid til en 15-min prat denne uka? Jeg vil gjerne høre kort hva som er prioritetene deres for 2026, så jeg kan se om vi i det hele tatt passer dere best.
-
-                Hvilke tidspunkt passer best for deg?
-
-                Mvh,
-                \(senderName)
-                """
-            case .referenceRequest:
-                return """
-                Hei \(firstName),
-
-                Ville det vært greit at jeg kontakter deg dersom en potensiell kunde senere ønsker å høre om erfaringen deres med oss? Jeg deler ingen kontaktinformasjon uten at vi avtaler det først.
-
-                Tusen takk for å vurdere det!
-
-                Mvh,
-                \(senderName)
-                """
-            case .missedCall:
-                return """
-                Hei \(firstName),
-
-                Prøvde å ringe deg nå men kom ikke gjennom. Jeg ringer gjerne tilbake — er det et bedre tidspunkt for deg i ettermiddag/morgen?
-
-                Alternativt kan du svare med 1-2 ord på hva som passer.
-
-                Mvh,
-                \(senderName)
-                """
-            case .meetingPrep:
-                return """
-                Hei \(firstName),
-
-                Ser frem til møtet vårt! For at det skal bli mest mulig nyttig, har jeg satt opp en kort agenda:
-
-                1. Kort status — der dere står i dag
-                2. Demonstrasjon av løsningen
-                3. Pris og veien videre
-
-                Si fra om du vil legge til noe.
-
-                Mvh,
-                \(senderName)
-                """
-            }
-        }
+    private var selectedTemplate: LeadOutreachTemplate? {
+        outreachKit.templates.first { $0.id == selectedTemplateID }
     }
 
     enum EmailApp: String, CaseIterable, Hashable {
@@ -777,6 +960,7 @@ struct EmailTemplatePicker: View {
             ScrollView {
                 VStack(spacing: 14) {
                     leadHeader
+                    complianceCard
                     templatesGrid
                     previewCard
                     appPicker
@@ -785,7 +969,8 @@ struct EmailTemplatePicker: View {
                 .padding(20)
             }
             .background(FcBrand.bg.ignoresSafeArea())
-            .navigationTitle("E-post-mal")
+            .navigationTitle("Klar e-post")
+            .accessibilityIdentifier("outreach.email-sheet")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -798,12 +983,25 @@ struct EmailTemplatePicker: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .safeAreaInset(edge: .bottom, spacing: 0) { startBar }
             .onAppear {
-                applyTemplate(selectedTemplate)
+                let initial = outreachKit.templates.first {
+                    $0.id == outreachKit.recommendedTemplateID
+                } ?? outreachKit.templates[0]
+                selectedTemplateID = initial.id
+                applyTemplate(initial)
             }
-            .onChange(of: selectedTemplate) { _, new in
-                if !customized {
+            .onChange(of: selectedTemplateID) { _, _ in
+                if !customized, let new = selectedTemplate {
                     applyTemplate(new)
                 }
+            }
+            .task(id: complianceTaskID) {
+                await loadCompliance()
+            }
+            .sheet(isPresented: $complianceEditorPresented) {
+                LeadgridEmailComplianceEditor(
+                    lead: lead,
+                    email: toEmail,
+                    compliance: $compliance)
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -846,36 +1044,156 @@ struct EmailTemplatePicker: View {
         }
     }
 
-    private func applyTemplate(_ t: EmailTemplate) {
-        subject = t.subject(lead: lead)
-        messageBody = t.body(
-            lead: lead,
-            contactName: lead.contactName,
-            senderName: appState.displayName)
+    private func applyTemplate(_ template: LeadOutreachTemplate?) {
+        guard let template else { return }
+        subject = template.subject
+        messageBody = template.body
+        customized = false
+    }
+
+    private var complianceTaskID: String {
+        "\(lead.backendId ?? "missing")|\(lead.projectId ?? "missing")|\(appState.activeOrganizationId ?? "missing")|\(toEmail.lowercased())"
+    }
+
+    @MainActor
+    private func loadCompliance() async {
+        if ProcessInfo.processInfo.environment["QA_TOUR"] == "dentum-outreach" {
+            compliance = ProcessInfo.processInfo.environment["QA_OUTREACH_COMPLIANCE"] == "named-person"
+                ? .qaNamedPersonBlocked(email: toEmail)
+                : .dentumQAVerifiedShared(email: toEmail)
+            complianceError = nil
+            return
+        }
+        guard let api = appState.api,
+              let leadID = lead.backendId,
+              let projectID = lead.projectId,
+              let organizationID = appState.activeOrganizationId
+        else {
+            compliance = nil
+            complianceError = "Leadgrid må være innlogget i riktig kundeprosjekt for å kontrollere adressen."
+            return
+        }
+        isLoadingCompliance = true
+        defer { isLoadingCompliance = false }
+        do {
+            let result = try await api.fetchOutreachCompliance(
+                leadId: leadID,
+                projectId: projectID,
+                organizationId: organizationID)
+            let returnedEmail = (result.normalizedEmail ?? result.email)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            guard returnedEmail == toEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() else {
+                compliance = nil
+                complianceError = "E-postadressen er endret. Lukk arket og åpne leaden på nytt."
+                return
+            }
+            compliance = result
+            complianceError = nil
+        } catch {
+            compliance = nil
+            complianceError = "Kontrollen kunne ikke hentes. Markedsførings-e-post er blokkert til Leadgrid har kontakt med serveren."
+        }
+    }
+
+    private var complianceCard: some View {
+        let allowed = compliance?.permitsMarketing(to: toEmail) == true
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: allowed ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+                    .font(.appScaled(size: 18, weight: .semibold))
+                    .foregroundStyle(allowed ? FcBrand.green : FcBrand.orange)
+                VStack(alignment: .leading, spacing: 4) {
+                    if isLoadingCompliance {
+                        Text("Kontrollerer utsendelsesgrunnlag …")
+                            .accessibilityIdentifier("outreach.compliance.loading")
+                    } else if let compliance {
+                        Text(compliance.statusTitle)
+                            .accessibilityIdentifier("outreach.compliance.status")
+                        Text(compliance.guidance)
+                            .font(.appScaled(size: 10))
+                            .foregroundStyle(FcBrand.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text("E-post er blokkert")
+                            .accessibilityIdentifier("outreach.compliance.status")
+                        Text(complianceError ?? "Utsendelsesgrunnlaget er ikke kontrollert.")
+                            .font(.appScaled(size: 10))
+                            .foregroundStyle(FcBrand.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .font(.appScaled(size: 12, weight: .bold))
+                .foregroundStyle(.white)
+                Spacer(minLength: 0)
+            }
+            Button {
+                complianceEditorPresented = true
+            } label: {
+                Text(allowed ? "Se dokumentasjon og reservasjon" : "Kontroller og dokumenter")
+                    .font(.appScaled(size: 11, weight: .bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+            }
+            .buttonStyle(.bordered)
+            .tint(allowed ? FcBrand.green : FcBrand.orange)
+            .accessibilityIdentifier("outreach.compliance.edit")
+            Text("Personlige adresser og uavklarte adresser kan fortsatt lagres og kvalifiseres som leads, men de kan ikke brukes til markedsføring.")
+                .font(.appScaled(size: 9))
+                .foregroundStyle(FcBrand.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .background((allowed ? FcBrand.green : FcBrand.orange).opacity(0.09), in: RoundedRectangle(cornerRadius: 13))
+        .overlay(
+            RoundedRectangle(cornerRadius: 13)
+                .stroke((allowed ? FcBrand.green : FcBrand.orange).opacity(0.35), lineWidth: 1)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("outreach.compliance.card")
     }
 
     private var leadHeader: some View {
-        HStack(spacing: 11) {
-            ZStack {
-                Circle().fill(FcBrand.purple.opacity(0.25))
-                Text(initials(lead.contactName))
-                    .font(.appScaled(size: 13, weight: .bold))
-                    .foregroundStyle(FcBrand.purpleLight)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 11) {
+                ZStack {
+                    Circle().fill(FcBrand.purple.opacity(0.25))
+                    Text(initials(lead.contactName))
+                        .font(.appScaled(size: 13, weight: .bold))
+                        .foregroundStyle(FcBrand.purpleLight)
+                }
+                .frame(width: 42, height: 42)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Til: \(lead.contactName.isEmpty ? lead.company : lead.contactName)")
+                        .font(.appScaled(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text(toEmail)
+                        .font(.appScaled(size: 11))
+                        .foregroundStyle(FcBrand.textSecondary)
+                }
+                Spacer()
             }
-            .frame(width: 42, height: 42)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Til: \(lead.contactName)")
-                    .font(.appScaled(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-                Text(toEmail)
-                    .font(.appScaled(size: 11))
-                    .foregroundStyle(FcBrand.textSecondary)
+            .padding(12)
+            .background(FcBrand.card, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(FcBrand.stroke, lineWidth: 1))
+
+            // Prosjekt-/bransjemerket er eget innhold, ikke et overlay.
+            // Overlayet traff mottakerkortets kant på iPad mini.
+            HStack(spacing: 5) {
+                Image(systemName: outreachKit.isDentum ? "cross.case.fill" : "wand.and.stars")
+                Text(outreachKit.title)
+                Text("·")
+                Text(outreachContext.category)
             }
-            Spacer()
+            .font(.appScaled(size: 9, weight: .bold))
+            .foregroundStyle(FcBrand.purpleLight)
+            .padding(.horizontal, 9).padding(.vertical, 5)
+            .background(FcBrand.purple.opacity(0.18), in: Capsule())
+            .padding(.leading, 10)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(outreachKit.title) · \(outreachContext.category)")
+            .accessibilityIdentifier("outreach.kit")
         }
-        .padding(12)
-        .background(FcBrand.card, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(FcBrand.stroke, lineWidth: 1))
     }
 
     private var templatesGrid: some View {
@@ -888,39 +1206,50 @@ struct EmailTemplatePicker: View {
                     .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
-                Text("\(EmailTemplate.allCases.count) maler")
+                Text(outreachKit.audience)
                     .font(.appScaled(size: 10))
                     .foregroundStyle(FcBrand.textSecondary)
+                    .accessibilityIdentifier("outreach.audience")
             }
             let cols = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
             LazyVGrid(columns: cols, spacing: 8) {
-                ForEach(EmailTemplate.allCases, id: \.self) { t in
+                ForEach(outreachKit.templates) { t in
                     templateCard(t)
                 }
             }
         }
     }
 
-    private func templateCard(_ t: EmailTemplate) -> some View {
-        let isSelected = selectedTemplate == t
+    private func templateCard(_ t: LeadOutreachTemplate) -> some View {
+        let isSelected = selectedTemplateID == t.id
         return Button {
-            selectedTemplate = t
             customized = false
+            selectedTemplateID = t.id
+            applyTemplate(t)
         } label: {
             HStack(spacing: 9) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(t.color.opacity(isSelected ? 0.30 : 0.15))
+                        .fill(t.accent.color.opacity(isSelected ? 0.30 : 0.15))
                     Image(systemName: t.icon)
                         .font(.appScaled(size: 13, weight: .semibold))
-                        .foregroundStyle(t.color)
+                        .foregroundStyle(t.accent.color)
                 }
                 .frame(width: 32, height: 32)
-                Text(t.rawValue)
-                    .font(.appScaled(size: 11, weight: .bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(t.title)
+                        .font(.appScaled(size: 11, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    if isSelected {
+                        Text(t.description)
+                            .font(.appScaled(size: 9))
+                            .foregroundStyle(FcBrand.textSecondary)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                    }
+                }
                 Spacer(minLength: 0)
             }
             .padding(10)
@@ -928,11 +1257,12 @@ struct EmailTemplatePicker: View {
             .background(FcBrand.card, in: RoundedRectangle(cornerRadius: 11))
             .overlay(
                 RoundedRectangle(cornerRadius: 11)
-                    .stroke(isSelected ? t.color.opacity(0.5) : FcBrand.stroke,
+                    .stroke(isSelected ? t.accent.color.opacity(0.5) : FcBrand.stroke,
                             lineWidth: isSelected ? 1.5 : 1)
             )
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("outreach.template.\(t.id)")
     }
 
     private var previewCard: some View {
@@ -946,7 +1276,7 @@ struct EmailTemplatePicker: View {
                     .foregroundStyle(.white)
                 Spacer()
                 if customized {
-                    Button { applyTemplate(selectedTemplate); customized = false } label: {
+                    Button { applyTemplate(selectedTemplate) } label: {
                         Text("Tilbakestill")
                             .font(.appScaled(size: 10, weight: .semibold))
                             .foregroundStyle(FcBrand.purpleLight)
@@ -965,7 +1295,10 @@ struct EmailTemplatePicker: View {
                     .padding(.horizontal, 10).padding(.vertical, 9)
                     .background(FcBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(FcBrand.stroke, lineWidth: 1))
-                    .onChange(of: subject) { _, _ in customized = true }
+                    .onChange(of: subject) { _, newValue in
+                        if newValue != selectedTemplate?.subject { customized = true }
+                    }
+                    .accessibilityIdentifier("outreach.subject")
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text("INNHOLD")
@@ -979,7 +1312,22 @@ struct EmailTemplatePicker: View {
                     .padding(10)
                     .background(FcBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(FcBrand.stroke, lineWidth: 1))
-                    .onChange(of: messageBody) { _, _ in customized = true }
+                    .onChange(of: messageBody) { _, newValue in
+                        if newValue != selectedTemplate?.body { customized = true }
+                    }
+                    .accessibilityIdentifier("outreach.body")
+            }
+            if !outreachKit.personalizationFacts.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("TILPASSET MED")
+                        .font(.appScaled(size: 9, weight: .bold))
+                        .foregroundStyle(FcBrand.textTertiary)
+                    Text(outreachKit.personalizationFacts.joined(separator: " · "))
+                        .font(.appScaled(size: 10))
+                        .foregroundStyle(FcBrand.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("outreach.personalization")
+                }
             }
         }
         .padding(14)
@@ -1038,7 +1386,7 @@ struct EmailTemplatePicker: View {
 
     private var startBar: some View {
         Button {
-            sendEmail()
+            Task { await sendEmail() }
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: emailApp.icon)
@@ -1056,12 +1404,15 @@ struct EmailTemplatePicker: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("outreach.open-mail")
         .disabled(
             isRecordingCompletion
                 || isOpeningExternalApp
                 || completionPresentation.hasPendingConfirmation
                 || completionConfirmationPresented
-                || contactAttempt.isFinalized)
+                || contactAttempt.isFinalized
+                || isLoadingCompliance
+                || compliance?.permitsMarketing(to: toEmail) != true)
         .padding(.horizontal, 20).padding(.vertical, 12)
         .background(
             FcBrand.bg.opacity(0.95)
@@ -1069,10 +1420,20 @@ struct EmailTemplatePicker: View {
         )
     }
 
-    private func sendEmail() {
+    @MainActor
+    private func sendEmail() async {
         guard !isOpeningExternalApp,
               !completionPresentation.hasPendingConfirmation,
               !completionConfirmationPresented else { return }
+        await loadCompliance()
+        guard let compliance,
+              compliance.permitsMarketing(to: toEmail) else {
+            completionAlertTitle = "E-post er blokkert"
+            completionError = compliance?.guidance
+                ?? complianceError
+                ?? "Dokumenter lovlig utsendelsesgrunnlag før e-postappen åpnes."
+            return
+        }
         let actionId = UUID()
         let scope = LeadgridExternalContactScope.resolve(
             activeOrganizationId: appState.activeOrganizationId,
@@ -1080,7 +1441,16 @@ struct EmailTemplatePicker: View {
             leadId: lead.backendId,
             leadProjectId: lead.projectId)
         let encSubj = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let encBody = messageBody.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let organizationName = appState.activeOrganization?.name ?? "organisasjonen"
+        let source = lead.leadSource?.trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty ?? "Leadgrids CRM-register"
+        let processing = compliance.gdprProcessing
+        let processingDetails = processing.documented
+            ? " Formål: \(processing.purpose ?? "direkte markedsføring"). Opplysningen slettes eller vurderes på nytt senest \(processing.retentionUntil.map { String($0.prefix(10)) } ?? "etter organisasjonens lagringsrutine")."
+            : ""
+        let footer = "Dette er en markedsføringshenvendelse fra \(organizationName). Kontaktopplysningen er registrert med kilde: \(processing.source ?? source).\(processingDetails) Svar «nei takk» for å reservere deg mot flere markedsføringshenvendelser fra organisasjonen, eller for å be om innsyn eller sletting."
+        let completeBody = "\(messageBody)\n\n—\n\(footer)"
+        let encBody = completeBody.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let urlString: String
         switch emailApp {
         case .appleMail:
@@ -1235,5 +1605,500 @@ struct EmailTemplatePicker: View {
 
     private func initials(_ name: String) -> String {
         name.split(separator: " ").prefix(2).map { String($0.prefix(1)) }.joined().uppercased()
+    }
+}
+
+// MARK: - Enkel dokumentasjon av utsendelsesgrunnlag
+
+private struct LeadgridEmailComplianceEditor: View {
+    let lead: LeadRow
+    let email: String
+    @Binding var compliance: LeadgridEmailCompliance?
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
+    @State private var classificationEvidence = ""
+    @State private var consentSource = "Skjema eller skriftlig bekreftelse"
+    @State private var consentEvidence = ""
+    @State private var consentOccurredAt = Date()
+    @State private var relationship = ""
+    @State private var similarServices = ""
+    @State private var customerEvidence = ""
+    @State private var electronicAddressProvidedAt = Date()
+    @State private var collectionOptOutOfferedAt = Date()
+    @State private var customerAttestationConfirmed = false
+    @State private var gdprLegalBasis = "legitimate_interests"
+    @State private var gdprPurpose = "Kvalifisere en relevant bedriftskontakt"
+    @State private var gdprSource = ""
+    @State private var gdprCollectedAt = Date()
+    @State private var gdprRetentionUntil = Calendar.current.date(
+        byAdding: .day, value: 90, to: Date()) ?? Date()
+    @State private var interestGoal = ""
+    @State private var necessityAssessment = ""
+    @State private var balancingAssessment = ""
+    @State private var safeguards = ""
+    @State private var privacyNoticeSent = false
+    @State private var privacyNoticeReference = ""
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+    @State private var suppressionConfirmation = false
+
+    private let consentWording =
+        "Jeg samtykker til at virksomheten kan sende meg markedsføring på denne e-postadressen. Samtykket kan trekkes tilbake når som helst."
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    statusCard
+                    addressTypeCard
+                    consentCard
+                    gdprCard
+                    existingCustomerCard
+                    suppressionCard
+                }
+                .padding(20)
+            }
+            .background(FcBrand.bg.ignoresSafeArea())
+            .navigationTitle("Kan vi sende e-post?")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Ferdig") { dismiss() }
+                }
+            }
+            .disabled(isSaving)
+            .alert("Kunne ikke lagre", isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(errorMessage ?? "Ukjent feil")
+            }
+            .confirmationDialog(
+                "Sperr adressen i hele organisasjonen?",
+                isPresented: $suppressionConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Ja, registrer «nei takk»", role: .destructive) {
+                    Task { await suppress() }
+                }
+                Button("Avbryt", role: .cancel) {}
+            } message: {
+                Text("Adressen kan fortsatt ligge på leaden, men kan ikke kontaktes fra dette eller andre prosjekter.")
+            }
+            .onAppear {
+                if gdprSource.isEmpty {
+                    gdprSource = lead.leadSource ?? ""
+                }
+            }
+        }
+    }
+
+    private var statusCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(email)
+                .font(.appScaled(size: 13, weight: .bold))
+                .foregroundStyle(.white)
+            Text(compliance?.statusTitle ?? "Ikke kontrollert")
+                .font(.appScaled(size: 15, weight: .bold))
+                .foregroundStyle(compliance?.allowed == true ? FcBrand.green : FcBrand.orange)
+                .accessibilityIdentifier("outreach.compliance.editor.status")
+            Text(compliance?.guidance ?? "Velg riktig dokumentasjon under. Leadgrid tillater ikke markedsføring før kontrollen er fullført.")
+                .font(.appScaled(size: 11))
+                .foregroundStyle(FcBrand.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if compliance?.addressClassification == .namedPerson {
+                Label(
+                    compliance?.gdprProcessing.documented == true
+                        ? "GDPR-grunnlag er dokumentert"
+                        : "GDPR-grunnlag mangler",
+                    systemImage: compliance?.gdprProcessing.documented == true
+                        ? "checkmark.circle.fill"
+                        : "circle.dashed")
+                    .font(.appScaled(size: 10, weight: .semibold))
+                    .foregroundStyle(compliance?.gdprProcessing.documented == true
+                        ? FcBrand.green : FcBrand.orange)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(FcBrand.card, in: RoundedRectangle(cornerRadius: 13))
+    }
+
+    private var addressTypeCard: some View {
+        complianceSection(
+            number: "1",
+            title: "Hvem tilhører adressen?",
+            explanation: "At en adresse står på nettet er ikke nok. Kontroller om den faktisk er en felles inngang til virksomheten."
+        ) {
+            field("Hvor kontrollerte du dette?", text: $classificationEvidence)
+            HStack(spacing: 10) {
+                actionButton("Fellesadresse", color: FcBrand.green) {
+                    await setClassification(.verifiedShared)
+                }
+                actionButton("Personadresse", color: FcBrand.orange) {
+                    await setClassification(.namedPerson)
+                }
+            }
+        }
+    }
+
+    private var consentCard: some View {
+        complianceSection(
+            number: "2",
+            title: "Har personen sagt ja?",
+            explanation: "Ikke send en salgs-e-post for å spørre om samtykke. Registrer bare et samtykke du allerede kan dokumentere."
+        ) {
+            Text(consentWording)
+                .font(.appScaled(size: 10))
+                .foregroundStyle(FcBrand.textSecondary)
+                .padding(10)
+                .background(FcBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
+            field("Kilde, for eksempel signert skjema", text: $consentSource)
+            field("Bevis eller referanse", text: $consentEvidence)
+            DatePicker(
+                "Når ble samtykket gitt?",
+                selection: $consentOccurredAt,
+                in: ...Date(),
+                displayedComponents: [.date, .hourAndMinute])
+                .font(.appScaled(size: 11))
+                .foregroundStyle(.white)
+            actionButton("Lagre dokumentert samtykke", color: FcBrand.blue) {
+                await recordConsent()
+            }
+        }
+    }
+
+    private var existingCustomerCard: some View {
+        complianceSection(
+            number: "4",
+            title: "Eksisterende kunde?",
+            explanation: "Bruk bare dette snevre unntaket når adressen ble gitt ved et salg, reservasjonsmulighet ble tilbudt, og innholdet gjelder egne tilsvarende tjenester."
+        ) {
+            field("Beskriv kundeforholdet", text: $relationship)
+            field("Hvilke tilsvarende tjenester gjelder det?", text: $similarServices)
+            field("Dokumentkilde", text: $customerEvidence)
+            DatePicker(
+                "Når ble adressen gitt?",
+                selection: $electronicAddressProvidedAt,
+                in: ...Date(),
+                displayedComponents: .date)
+                .font(.appScaled(size: 11))
+                .foregroundStyle(.white)
+            DatePicker(
+                "Når ble «nei takk» tilbudt?",
+                selection: $collectionOptOutOfferedAt,
+                in: ...Date(),
+                displayedComponents: .date)
+                .font(.appScaled(size: 11))
+                .foregroundStyle(.white)
+            Toggle(
+                "Jeg bekrefter at alle vilkårene over er oppfylt",
+                isOn: $customerAttestationConfirmed)
+                .font(.appScaled(size: 10, weight: .semibold))
+                .tint(FcBrand.purpleLight)
+            actionButton("Dokumenter kundeunntaket", color: FcBrand.purpleLight) {
+                await recordExistingCustomer()
+            }
+        }
+    }
+
+    private var gdprCard: some View {
+        complianceSection(
+            number: "3",
+            title: "Dokumenter GDPR-grunnlaget",
+            explanation: "Dette er separat fra retten til å sende markedsføring. Berettiget interesse gir ikke i seg selv lov til å sende e-post."
+        ) {
+            Picker("Behandlingsgrunnlag", selection: $gdprLegalBasis) {
+                Text("Berettiget interesse").tag("legitimate_interests")
+                Text("Samtykke").tag("consent")
+                Text("Avtale").tag("contract")
+            }
+            .pickerStyle(.segmented)
+            field("Formålet med behandlingen", text: $gdprPurpose)
+            field("Hvor kom opplysningen fra?", text: $gdprSource)
+            DatePicker(
+                "Innsamlet",
+                selection: $gdprCollectedAt,
+                in: ...Date(),
+                displayedComponents: .date)
+                .font(.appScaled(size: 11))
+                .foregroundStyle(.white)
+            DatePicker(
+                "Slett eller vurder på nytt",
+                selection: $gdprRetentionUntil,
+                in: gdprCollectedAt...,
+                displayedComponents: .date)
+                .font(.appScaled(size: 11))
+                .foregroundStyle(.white)
+            if gdprLegalBasis == "legitimate_interests" {
+                Text("Treleddet interesseavveining")
+                    .font(.appScaled(size: 11, weight: .bold))
+                    .foregroundStyle(FcBrand.purpleLight)
+                field("1. Hvilken legitim interesse?", text: $interestGoal)
+                field("2. Hvorfor er behandlingen nødvendig?", text: $necessityAssessment)
+                field("3. Hvorfor veier interessen tyngre?", text: $balancingAssessment)
+                field("Tiltak som beskytter personen", text: $safeguards)
+            }
+            Toggle("Personverninformasjon er gitt", isOn: $privacyNoticeSent)
+                .font(.appScaled(size: 10, weight: .semibold))
+                .tint(FcBrand.green)
+            if privacyNoticeSent {
+                field("Lenke eller annen dokumentasjon", text: $privacyNoticeReference)
+            } else {
+                Text("Ved indirekte innsamling må personen få informasjon om formål, kilde, lagringstid og rettigheter senest når opplysningen brukes til kontakt.")
+                    .font(.appScaled(size: 9))
+                    .foregroundStyle(FcBrand.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            actionButton("Lagre behandlingsgrunnlag", color: FcBrand.green) {
+                await recordGdprProcessing()
+            }
+        }
+    }
+
+    private var suppressionCard: some View {
+        complianceSection(
+            number: "5",
+            title: "Har mottakeren sagt nei?",
+            explanation: "En protest mot direkte markedsføring skal respekteres i hele organisasjonen, på tvers av alle prosjekter."
+        ) {
+            Button(role: .destructive) {
+                suppressionConfirmation = true
+            } label: {
+                Label("Registrer «nei takk»", systemImage: "hand.raised.fill")
+                    .font(.appScaled(size: 12, weight: .bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+            }
+            .buttonStyle(.bordered)
+            .tint(FcBrand.red)
+            .accessibilityIdentifier("outreach.compliance.suppress")
+        }
+    }
+
+    private func complianceSection<Content: View>(
+        number: String,
+        title: String,
+        explanation: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(spacing: 9) {
+                Text(number)
+                    .font(.appScaled(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 25, height: 25)
+                    .background(FcBrand.purple, in: Circle())
+                Text(title)
+                    .font(.appScaled(size: 14, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            Text(explanation)
+                .font(.appScaled(size: 10))
+                .foregroundStyle(FcBrand.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            content()
+        }
+        .padding(14)
+        .background(FcBrand.card, in: RoundedRectangle(cornerRadius: 13))
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(FcBrand.stroke, lineWidth: 1))
+    }
+
+    private func field(_ placeholder: String, text: Binding<String>) -> some View {
+        TextField(placeholder, text: text)
+            .textFieldStyle(.plain)
+            .font(.appScaled(size: 11))
+            .foregroundStyle(.white)
+            .padding(11)
+            .background(FcBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(FcBrand.stroke, lineWidth: 1))
+    }
+
+    private func actionButton(
+        _ title: String,
+        color: Color,
+        action: @escaping @MainActor () async -> Void
+    ) -> some View {
+        Button {
+            Task { await action() }
+        } label: {
+            Text(title)
+                .font(.appScaled(size: 11, weight: .bold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+        }
+        .buttonStyle(.bordered)
+        .tint(color)
+    }
+
+    @MainActor
+    private func scope() throws -> (APIClient, String, String, String) {
+        guard let api = appState.api,
+              let leadID = lead.backendId,
+              let projectID = lead.projectId,
+              let organizationID = appState.activeOrganizationId
+        else { throw LeadgridOutreachComplianceScopeError.missingProject }
+        return (api, leadID, projectID, organizationID)
+    }
+
+    @MainActor
+    private func setClassification(_ classification: LeadgridEmailAddressClassification) async {
+        guard !classificationEvidence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "Skriv hvor du kontrollerte hvem adressen tilhører."
+            return
+        }
+        await save {
+            let (api, leadID, projectID, organizationID) = try scope()
+            return try await api.setOutreachAddressClassification(
+                leadId: leadID,
+                projectId: projectID,
+                organizationId: organizationID,
+                classification: classification,
+                source: "manual_verification",
+                evidence: classificationEvidence)
+        }
+    }
+
+    @MainActor
+    private func recordConsent() async {
+        guard !consentEvidence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !consentSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            errorMessage = "Oppgi både kilde og bevis for samtykket."
+            return
+        }
+        await save {
+            let (api, leadID, projectID, organizationID) = try scope()
+            return try await api.recordOutreachConsent(
+                leadId: leadID,
+                projectId: projectID,
+                organizationId: organizationID,
+                request: .init(
+                    action: "grant",
+                    contactName: lead.contactName.isEmpty ? lead.company : lead.contactName,
+                    purpose: "direct_marketing_email",
+                    consentText: consentWording,
+                    consentVersion: "leadgrid-2.2-2026-09-10",
+                    source: consentSource,
+                    evidence: consentEvidence,
+                    occurredAt: ISO8601DateFormatter().string(from: consentOccurredAt),
+                    expiresAt: nil))
+        }
+    }
+
+    @MainActor
+    private func recordExistingCustomer() async {
+        guard !customerEvidence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !relationship.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !similarServices.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              customerAttestationConfirmed
+        else {
+            errorMessage = "Beskriv kundeforholdet, tilsvarende tjenester og dokumentkilden."
+            return
+        }
+        await save {
+            let (api, leadID, projectID, organizationID) = try scope()
+            return try await api.recordOutreachExistingCustomer(
+                leadId: leadID,
+                projectId: projectID,
+                organizationId: organizationID,
+                request: .init(
+                    source: customerEvidence,
+                    relationship: relationship,
+                    similarServices: similarServices,
+                    electronicAddressProvidedAt: ISO8601DateFormatter().string(
+                        from: electronicAddressProvidedAt),
+                    collectionOptOutOfferedAt: ISO8601DateFormatter().string(
+                        from: collectionOptOutOfferedAt)))
+        }
+    }
+
+    @MainActor
+    private func recordGdprProcessing() async {
+        let required = [gdprPurpose, gdprSource]
+        guard required.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
+              gdprRetentionUntil > gdprCollectedAt
+        else {
+            errorMessage = "Oppgi formål, kilde og en fremtidig dato for sletting eller ny vurdering."
+            return
+        }
+        if gdprLegalBasis == "legitimate_interests" {
+            let assessment = [
+                interestGoal, necessityAssessment, balancingAssessment, safeguards,
+            ]
+            guard assessment.allSatisfy({
+                !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }) else {
+                errorMessage = "Fyll ut alle tre delene av interesseavveiningen og beskyttelsestiltakene."
+                return
+            }
+        }
+        if privacyNoticeSent,
+           privacyNoticeReference.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            errorMessage = "Legg inn en lenke eller annen dokumentasjon på personverninformasjonen."
+            return
+        }
+        await save {
+            let (api, leadID, projectID, organizationID) = try scope()
+            let noticeTime = privacyNoticeSent
+                ? ISO8601DateFormatter().string(from: Date())
+                : nil
+            return try await api.recordOutreachGdprProcessing(
+                leadId: leadID,
+                projectId: projectID,
+                organizationId: organizationID,
+                request: .init(
+                    dataSubjectName: lead.contactName.isEmpty ? lead.company : lead.contactName,
+                    legalBasis: gdprLegalBasis,
+                    purpose: gdprPurpose,
+                    source: gdprSource,
+                    collectedAt: ISO8601DateFormatter().string(from: gdprCollectedAt),
+                    retentionUntil: ISO8601DateFormatter().string(from: gdprRetentionUntil),
+                    legitimateInterestGoal: gdprLegalBasis == "legitimate_interests" ? interestGoal : nil,
+                    necessityAssessment: gdprLegalBasis == "legitimate_interests" ? necessityAssessment : nil,
+                    balancingAssessment: gdprLegalBasis == "legitimate_interests" ? balancingAssessment : nil,
+                    safeguards: gdprLegalBasis == "legitimate_interests" ? safeguards : nil,
+                    indirectCollection: true,
+                    privacyNoticeStatus: privacyNoticeSent ? "sent" : "pending",
+                    privacyNoticeSentAt: noticeTime,
+                    privacyNoticeMethod: privacyNoticeSent ? "documented_notice" : nil,
+                    privacyNoticeReference: privacyNoticeSent ? privacyNoticeReference : nil))
+        }
+    }
+
+    @MainActor
+    private func suppress() async {
+        await save {
+            let (api, leadID, projectID, organizationID) = try scope()
+            return try await api.suppressOutreachEmail(
+                leadId: leadID,
+                projectId: projectID,
+                organizationId: organizationID,
+                reason: "recipient_objection",
+                source: "manual_recipient_request",
+                notes: "Mottakeren ba om å ikke motta direkte markedsføring.")
+        }
+    }
+
+    @MainActor
+    private func save(
+        _ operation: @escaping @MainActor () async throws -> LeadgridEmailCompliance
+    ) async {
+        guard !isSaving else { return }
+        if ProcessInfo.processInfo.environment["QA_TOUR"] == "dentum-outreach" {
+            compliance = .dentumQAVerifiedShared(email: email)
+            return
+        }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            compliance = try await operation()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }

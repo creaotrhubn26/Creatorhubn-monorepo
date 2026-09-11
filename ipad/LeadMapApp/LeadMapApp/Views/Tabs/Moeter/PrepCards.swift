@@ -197,19 +197,19 @@ enum PrepData {
     /// Alle PrepData-settene er mock — KUN i demo-modus. Ellers tomme
     /// lister + ærlige tom-tilstander i kortene (ingen prep-backend enda).
     static var checklist: [PrepChecklistItem] {
-        DemoModeManager.isActiveNonisolated ? _checklist : []
+        DemoModeManager.usesGenericFixtures ? _checklist : []
     }
     static var stakeholders: [PrepStakeholder] {
-        DemoModeManager.isActiveNonisolated ? _stakeholders : []
+        DemoModeManager.usesGenericFixtures ? _stakeholders : []
     }
     static var talkingPoints: [TalkingPoint] {
-        DemoModeManager.isActiveNonisolated ? _talkingPoints : []
+        DemoModeManager.usesGenericFixtures ? _talkingPoints : []
     }
     static var questions: [PrepQuestion] {
-        DemoModeManager.isActiveNonisolated ? _questions : []
+        DemoModeManager.usesGenericFixtures ? _questions : []
     }
     static var interactions: [PrepInteraction] {
-        DemoModeManager.isActiveNonisolated ? _interactions : []
+        DemoModeManager.usesGenericFixtures ? _interactions : []
     }
 
     private static let _checklist: [PrepChecklistItem] = [
@@ -1414,9 +1414,15 @@ struct PrepCoreModal: View {
     private func last() async {
         if DemoModeManager.isActiveNonisolated {
             if maal.isEmpty {
-                maal = "Avdekk beslutningsprosessen og avtal befaring med teknisk sjef innen fredag."
-                behov = ["Kortere responstid på service", "Samlet el-leveranse i én avtale",
-                         "Forutsigbar pris (rammeavtale)"]
+                if DemoModeManager.isDentumTour {
+                    maal = "Bekreft at klinikkprofilen og behandlingene er riktige, og avtal godkjenningsrunde for Dentum-piloten."
+                    behov = ["Korrekt behandlingsoversikt", "Godkjent klinikkprofil",
+                             "Verifisert fellesadresse før utsendelse"]
+                } else {
+                    maal = "Avdekk beslutningsprosessen og avtal befaring med teknisk sjef innen fredag."
+                    behov = ["Kortere responstid på service", "Samlet el-leveranse i én avtale",
+                             "Forutsigbar pris (rammeavtale)"]
+                }
             }
             return
         }
