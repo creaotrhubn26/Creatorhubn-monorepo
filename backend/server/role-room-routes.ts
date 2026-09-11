@@ -4886,6 +4886,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       case 'first_ad':
       case 'first_assistant_director':
       case '1st_ad':
+      case 'second_ad':
+      case 'second_assistant_director':
+      case '2nd_ad':
         return {
           canViewAll: true,
           canEditCasting: false,
@@ -5074,6 +5077,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       'first_ad',
       'first_assistant_director',
       '1st_ad',
+      'second_ad',
+      'second_assistant_director',
+      '2nd_ad',
       'content_producer',
       'client_reviewer',
     ].includes(effectiveRoleRecord.role)) return true;
@@ -5101,6 +5107,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       'first_ad',
       'first_assistant_director',
       '1st_ad',
+      'second_ad',
+      'second_assistant_director',
+      '2nd_ad',
       'content_producer',
     ].includes(effectiveRoleRecord.role)) return true;
     return effectiveRoleRecord.permissions.canEditProduction === true;

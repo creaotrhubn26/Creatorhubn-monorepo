@@ -29,3 +29,18 @@ describe('1st AD role contract', () => {
     expect(USER_ROLE_LABELS.first_ad).toBe('Innspillingsleder / 1st AD');
   });
 });
+
+describe('2nd AD role contract', () => {
+  it('can manage production-day operations without creative or roster ownership', () => {
+    expect(castingAuthService.getDefaultPermissions('second_ad')).toMatchObject({
+      canViewAll: true,
+      canEditProduction: true,
+      canManageCrew: false,
+      canEditCasting: false,
+      canEditScript: false,
+      canEditShotLists: false,
+    });
+    expect(DEFAULT_TABS_BY_ROLE.second_ad).toEqual(expect.arrayContaining(['shooting', 'schedule', 'crew', 'roles']));
+    expect(USER_ROLE_LABELS.second_ad).toBe('2. regiassistent / 2nd AD');
+  });
+});

@@ -5,13 +5,13 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createRoleRoomRouter } from './role-room-routes.js';
 
-function createApp(role: 'first_ad' | 'producer') {
+function createApp(role: 'first_ad' | 'second_ad' | 'producer') {
   const query = vi.fn(async (text: string) => {
     if (text.includes('SELECT role, permissions')) {
       return {
         rows: [{
           role,
-          permissions: role === 'first_ad'
+          permissions: role === 'first_ad' || role === 'second_ad'
             ? { canEditProduction: true, canManageCrew: false }
             : { canEditProduction: true, canManageCrew: true },
         }],
@@ -62,5 +62,15 @@ describe('1st AD project-role boundary', () => {
 
     expect(response.status).toBe(201);
     expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO casting_user_roles'))).toBe(true);
+  });
+
+  it('keeps 2nd AD scoped to operations and denies role promotion', async () => {
+    const { app, query, token } = createApp('second_ad');
+    const response = await request(app)
+      .post('/api/role-room/projects/project-1/roles')
+      .set('authorization', `Bearer ${token}`)
+      .send({ userId: 'target-user', role: 'producer' });
+    expect(response.status).toBe(403);
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO casting_user_roles'))).toBe(false);
   });
 });

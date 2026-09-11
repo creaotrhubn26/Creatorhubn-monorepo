@@ -17,6 +17,9 @@ const day: ProductionDay = {
     source: 'yr_api',
     forecast: [{ date: '2026-07-01', temperature: 19, humidity: 60, windSpeed: 3, precipitation: 0, symbol: 'Lettskyet' }],
   },
+  secondAd: {
+    entries: [{ id: 'cast-ada', personType: 'cast', personId: 'candidate-1', name: 'Ada Skuespiller', roleName: 'NORA', pickupTime: '05:45', callTime: '06:15', makeupTime: '06:30', onSetTime: '07:30', status: 'acknowledged' }],
+  },
 };
 
 const scenes: SceneBreakdown[] = [
@@ -51,6 +54,7 @@ describe('buildDayCallSheetFields (auto-fyll call-sheet fra produksjonsdag)', ()
     expect(roles).toEqual(['NORA', 'TOBIAS']);
     const nora = f.cast?.find((c) => c.role === 'NORA');
     expect(nora?.scenes).toEqual(['1', '2']); // NORA i begge
+    expect(nora).toMatchObject({ id: 'candidate-1', name: 'Ada Skuespiller', pickupTime: '05:45', callTime: '06:15', makeupTime: '06:30', onSetTime: '07:30' });
   });
 
   it('tar kun dagens crew (c1) med dagens call-time', () => {

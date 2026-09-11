@@ -63,6 +63,7 @@ describe("userCanEditCastingProduction", () => {
   it("accepts an active 1st AD production grant", async () => {
     const query = vi.fn(async (text: string, params?: unknown[]) => {
       expect(text).toContain("'first_ad'");
+      expect(text).toContain("'second_ad'");
       expect(text).toContain("canEditProduction");
       expect(text).toContain("cur.deactivated_at IS NULL");
       expect(text).toContain("cur.expires_at IS NULL OR cur.expires_at > NOW()");
