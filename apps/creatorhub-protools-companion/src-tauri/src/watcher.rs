@@ -161,7 +161,14 @@ async fn drain_session_info(cfg: &SharedConfig, app: &AppHandle) {
 
 async fn drain_one_bounce(cfg: &SharedConfig, app: &AppHandle) {
     let item = {
-        let current = cfg.lock().unwrap();
+        let mut current = cfg.lock().unwrap();
+        // ExportMix can emit several modify events while replacing its
+        // temporary output with the final WAV. Reconcile on every drain, not
+        // only at app startup, so a transient fingerprint cannot retry forever
+        // after the final file has already been uploaded.
+        if reconcile_pending_bounces(&mut current) > 0 {
+            let _ = config::save(&current);
+        }
         current
             .pending_bounces
             .iter()
@@ -263,6 +270,38 @@ mod tests {
 
         assert_eq!(reconcile_pending_bounces(&mut current), 1);
         assert!(current.pending_bounces.is_empty());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn runtime_reconciliation_keeps_only_the_final_fingerprint() {
+        let path = std::env::temp_dir().join(format!(
+            "creatorhub-watcher-runtime-reconcile-{}-{}.wav",
+            std::process::id(),
+            now_ms()
+        ));
+        std::fs::write(&path, b"final bounce").unwrap();
+        let final_fingerprint = processing::file_fingerprint(&path).unwrap();
+
+        let mut current = AppConfig::default();
+        current.pending_bounces.push(PendingBounce {
+            path: path.to_string_lossy().into_owned(),
+            fingerprint: "temporary-write:20:1".into(),
+            attempt_count: 5,
+            next_attempt_at_ms: 0,
+            last_error: Some("already uploaded".into()),
+        });
+        current.pending_bounces.push(PendingBounce {
+            path: path.to_string_lossy().into_owned(),
+            fingerprint: final_fingerprint.clone(),
+            attempt_count: 0,
+            next_attempt_at_ms: 0,
+            last_error: None,
+        });
+
+        assert_eq!(reconcile_pending_bounces(&mut current), 1);
+        assert_eq!(current.pending_bounces.len(), 1);
+        assert_eq!(current.pending_bounces[0].fingerprint, final_fingerprint);
         let _ = std::fs::remove_file(path);
     }
 }

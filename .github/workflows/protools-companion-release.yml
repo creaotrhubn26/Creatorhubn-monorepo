@@ -363,6 +363,7 @@ jobs:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARTIFACT_SIGNING_RESOURCE_GROUP: ${{ vars.AZURE_ARTIFACT_SIGNING_RESOURCE_GROUP }}
           ARTIFACT_SIGNING_ENDPOINT: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
           ARTIFACT_SIGNING_ACCOUNT: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
           ARTIFACT_SIGNING_PROFILE: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
@@ -373,6 +374,7 @@ jobs:
             AZURE_CLIENT_ID = $env:AZURE_CLIENT_ID
             AZURE_TENANT_ID = $env:AZURE_TENANT_ID
             AZURE_SUBSCRIPTION_ID = $env:AZURE_SUBSCRIPTION_ID
+            AZURE_ARTIFACT_SIGNING_RESOURCE_GROUP = $env:ARTIFACT_SIGNING_RESOURCE_GROUP
             AZURE_ARTIFACT_SIGNING_ENDPOINT = $env:ARTIFACT_SIGNING_ENDPOINT
             AZURE_ARTIFACT_SIGNING_ACCOUNT = $env:ARTIFACT_SIGNING_ACCOUNT
             AZURE_ARTIFACT_SIGNING_PROFILE = $env:ARTIFACT_SIGNING_PROFILE
@@ -383,6 +385,39 @@ jobs:
           }
           if (-not [Uri]::IsWellFormedUriString($env:ARTIFACT_SIGNING_ENDPOINT, [UriKind]::Absolute)) {
             throw 'AZURE_ARTIFACT_SIGNING_ENDPOINT must be an absolute URI'
+          }
+
+      - name: Sign in to Azure with GitHub OIDC
+        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify active Azure Artifact Signing profile
+        env:
+          ARTIFACT_SIGNING_RESOURCE_GROUP: ${{ vars.AZURE_ARTIFACT_SIGNING_RESOURCE_GROUP }}
+          ARTIFACT_SIGNING_ACCOUNT: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          ARTIFACT_SIGNING_PROFILE: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          az extension add --name artifact-signing --upgrade --only-show-errors
+          $profileJson = az artifact-signing certificate-profile show `
+            --resource-group $env:ARTIFACT_SIGNING_RESOURCE_GROUP `
+            --account-name $env:ARTIFACT_SIGNING_ACCOUNT `
+            --name $env:ARTIFACT_SIGNING_PROFILE `
+            --only-show-errors `
+            --output json
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Azure Artifact Signing certificate profile was not found. Complete identity validation and create the configured Public Trust profile before running a release.'
+          }
+          $profile = $profileJson | ConvertFrom-Json
+          if ($profile.provisioningState -ne 'Succeeded') {
+            throw "Azure Artifact Signing profile is not provisioned: $($profile.provisioningState)"
+          }
+          if ($null -ne $profile.status -and $profile.status -ne 'Active') {
+            throw "Azure Artifact Signing profile is not active: $($profile.status)"
           }
 
       - name: Build Windows application without installers
@@ -400,13 +435,6 @@ jobs:
           if ($signature.Status -ne 'NotSigned') {
             throw "Expected an unsigned pre-signing binary, got $($signature.Status): $app"
           }
-
-      - name: Sign in to Azure with GitHub OIDC
-        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Authenticode-sign Windows application
         uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
