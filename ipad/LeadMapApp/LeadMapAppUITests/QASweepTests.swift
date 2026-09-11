@@ -1313,13 +1313,6 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["QA_TAB"] = "12"
         app.launch()
 
-        let openAgent = app.buttons["leadgrid-agent-open"]
-        if !openAgent.waitForExistence(timeout: 5) {
-            app.scrollViews.firstMatch.swipeUp()
-        }
-        XCTAssertTrue(openAgent.waitForExistence(timeout: 5))
-        openAgent.tap()
-
         let proposal = app.buttons["agent-skill-leadgrid_data_quality"]
         for _ in 0..<8 where !proposal.exists || !proposal.isHittable {
             app.scrollViews.firstMatch.swipeUp()

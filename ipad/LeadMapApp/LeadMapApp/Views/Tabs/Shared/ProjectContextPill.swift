@@ -192,6 +192,8 @@ struct ProjectContextPill: View {
         }
         .padding(.horizontal, DeviceIdiom.isPhone ? 8 : 12)
         .padding(.vertical, 10)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
         .background(
             hasActiveProject ? Self.purple.opacity(0.85) : Self.card,
             in: RoundedRectangle(cornerRadius: 12)
