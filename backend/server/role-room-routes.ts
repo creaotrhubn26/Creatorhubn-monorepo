@@ -4287,6 +4287,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       `SELECT role
        FROM casting_user_roles
        WHERE project_id = $1
+         AND deactivated_at IS NULL
          AND (expires_at IS NULL OR expires_at > NOW())
          AND (
            LOWER(COALESCE(email, '')) = LOWER($2)
@@ -4882,6 +4883,25 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           canRequestChanges: false,
           canViewEconomy: false,
         };
+      case 'first_ad':
+      case 'first_assistant_director':
+      case '1st_ad':
+        return {
+          canViewAll: true,
+          canEditCasting: false,
+          canEditProduction: true,
+          canManageCrew: false,
+          canManageLocations: false,
+          canEditShots: false,
+          canEditShotLists: false,
+          canApprove: false,
+          canEditScript: false,
+          canLockScript: false,
+          canRunTableRead: false,
+          canComment: true,
+          canRequestChanges: true,
+          canViewEconomy: false,
+        };
       case 'camera_team':
         return {
           canViewAll: false,
@@ -4970,6 +4990,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
        FROM casting_user_roles
        WHERE project_id = $1
          AND user_id = ANY($2::text[])
+         AND deactivated_at IS NULL
          AND (expires_at IS NULL OR expires_at > NOW())
        LIMIT 1`,
       [projectId, identifiers],
@@ -4982,6 +5003,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          FROM casting_user_roles
          WHERE project_id = '__global__'
            AND user_id = ANY($1::text[])
+           AND deactivated_at IS NULL
            AND (expires_at IS NULL OR expires_at > NOW())
          LIMIT 1`,
         [identifiers],
@@ -5049,6 +5071,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       'director',
       'producer',
       'production_manager',
+      'first_ad',
+      'first_assistant_director',
+      '1st_ad',
       'content_producer',
       'client_reviewer',
     ].includes(effectiveRoleRecord.role)) return true;
@@ -5069,8 +5094,24 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (requireScope(req, 'admin')) return true;
     const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
     if (!effectiveRoleRecord) return false;
-    if (['director', 'producer', 'production_manager', 'content_producer'].includes(effectiveRoleRecord.role)) return true;
+    if ([
+      'director',
+      'producer',
+      'production_manager',
+      'first_ad',
+      'first_assistant_director',
+      '1st_ad',
+      'content_producer',
+    ].includes(effectiveRoleRecord.role)) return true;
     return effectiveRoleRecord.permissions.canEditProduction === true;
+  }
+
+  function canManageProjectRoles(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
+    if (requireScope(req, 'admin')) return true;
+    const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+    if (!effectiveRoleRecord) return false;
+    if (['director', 'producer', 'production_manager'].includes(effectiveRoleRecord.role)) return true;
+    return effectiveRoleRecord.permissions.canManageCrew === true;
   }
 
   function canReadStoryLogic(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
@@ -12983,7 +13024,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const result = await pool.query(
-        'SELECT * FROM casting_user_roles WHERE project_id = $1 ORDER BY created_at',
+        `SELECT * FROM casting_user_roles
+          WHERE project_id = $1
+            AND deactivated_at IS NULL
+            AND (expires_at IS NULL OR expires_at > NOW())
+          ORDER BY created_at`,
         [req.params.projectId]
       );
       res.json(result.rows);
@@ -12999,7 +13044,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
     {
       const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
-      if (!canWriteProducerData(req, roleRecord)) {
+      if (!canManageProjectRoles(req, roleRecord)) {
         res.status(403).json({ error: 'Mangler tilgang til å endre roller i prosjektet' });
         return;
       }
@@ -13041,7 +13086,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   router.delete('/projects/:projectId/roles/:userId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
-      if (!canWriteProducerData(req, roleRecord)) {
+      if (!canManageProjectRoles(req, roleRecord)) {
         res.status(403).json({ error: 'Mangler tilgang til å endre roller for prosjektet' });
         return;
       }
@@ -18487,6 +18532,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
                 SELECT 1 FROM casting_user_roles r
                  WHERE r.project_id = p.id
                    AND r.user_id = ANY($2::text[])
+                   AND r.deactivated_at IS NULL
                    AND (r.expires_at IS NULL OR r.expires_at > NOW())
               )
             )

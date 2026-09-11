@@ -194,11 +194,16 @@ export const castingUserRoles = pgTable('casting_user_roles', {
   role: varchar('role', { length: 50 }).notNull(),
   permissions: jsonb('permissions').default({}),
   addedBy: varchar('added_by', { length: 255 }),
+  expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }),
+  deactivatedAt: timestamp('deactivated_at', { withTimezone: true, mode: 'string' }),
+  deactivatedByUserId: varchar('deactivated_by_user_id', { length: 255 }),
+  deactivationReason: text('deactivation_reason'),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
   uniqueIndex('casting_user_roles_project_user_unique').using('btree', table.projectId, table.userId),
   index('casting_user_roles_user_id_idx').using('btree', table.userId),
+  index('idx_cur_project_active').using('btree', table.projectId, table.deactivatedAt),
 ]);
 
 // ── Consent Management ───────────────────────────────────────

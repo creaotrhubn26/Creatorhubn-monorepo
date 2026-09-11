@@ -10,6 +10,7 @@ export type UserRoleType =
   | 'producer'
   | 'casting_director'
   | 'production_manager'
+  | 'first_ad'
   | 'camera_team'
   | 'content_producer'
   | 'client_reviewer'

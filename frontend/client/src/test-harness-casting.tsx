@@ -190,6 +190,43 @@ function buildCinematographerSeedProject(): CastingProject {
   } as CastingProject;
 }
 
+function buildFirstAssistantDirectorSeedProject(): CastingProject {
+  const project = buildDirectorSeedProject();
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const date = [
+    tomorrow.getFullYear(),
+    String(tomorrow.getMonth() + 1).padStart(2, '0'),
+    String(tomorrow.getDate()).padStart(2, '0'),
+  ].join('-');
+
+  return {
+    ...project,
+    locations: [{ id: 'first-ad-location', name: 'Fjellstue' }],
+    crew: [
+      { id: 'first-ad-lead', name: 'Ada Innspilling', role: 'first_ad', status: 'confirmed' },
+      { id: 'first-ad-pa', name: 'Pia Produksjon', role: 'production_assistant', status: 'invited' },
+    ],
+    productionDays: [{
+      id: 'first-ad-production-day-1',
+      projectId: project.id,
+      date,
+      scenes: ['director-scene-1'],
+      locationId: 'first-ad-location',
+      crew: ['first-ad-lead', 'first-ad-pa'],
+      props: [],
+      callTime: '07:30',
+      status: 'planned',
+    }],
+    userRoles: [{
+      id: 'first-ad-user-role',
+      projectId: project.id,
+      userId: 'e2e-test-user',
+      role: 'first_ad',
+    }],
+  } as CastingProject;
+}
+
 /**
  * Wrapper that pre-seeds a mock auth session before rendering CastingPlannerPanel.
  * This prevents the "no adminUser → redirect to /casting.html" path that fires
@@ -210,23 +247,30 @@ function SessionSeeder({ children }: { children: ReactNode }) {
       const seedFlag = searchParams.get('seed');
       const isContentProducerSession = sessionMode === 'content-producer';
       const isCinematographerSession = sessionMode === 'cinematographer';
+      const isFirstAssistantDirectorSession = sessionMode === 'first-ad';
 
       // Pre-seed admin user so CastingPlannerPanel won't redirect when isStandalone=true
       await authSessionService.setAdminUser({
         id: 'e2e-test-user',
         email: 'e2e@test.local',
-        role: isCinematographerSession ? 'cinematographer' : 'admin',
+        role: isFirstAssistantDirectorSession
+          ? 'first_ad'
+          : isCinematographerSession
+            ? 'cinematographer'
+            : 'admin',
         display_name: 'E2E Tester',
         loginAs: isContentProducerSession
           ? 'content_producer'
-          : isCinematographerSession
+          : isCinematographerSession || isFirstAssistantDirectorSession
             ? 'production_team'
             : undefined,
         requestedRole: isContentProducerSession
           ? 'content_producer'
           : isCinematographerSession
             ? 'cinematographer'
-            : null,
+            : isFirstAssistantDirectorSession
+              ? 'first_ad'
+              : null,
       });
       // Lokal backend (NODE_ENV≠production) godtar dette dev-token-et som
       // «local-admin» (getLocalDevelopmentSession) → /api/casting-ruter passerer
@@ -246,7 +290,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
       // 'photographer' ellers — vi setter begge for å være trygge.
       await settingsService.setSetting(
         'roleRoom_onboardingCompleted',
-        { photographer: true, producer: true, director: true, cinematographer: true, general: true },
+        { photographer: true, producer: true, director: true, cinematographer: true, first_ad: true, general: true },
         { userId: 'e2e-test-user' },
       );
 
@@ -255,12 +299,14 @@ function SessionSeeder({ children }: { children: ReactNode }) {
         ? 'roleRoom_workspaceState_content_producer'
         : 'roleRoom_workspaceState_production_team';
 
-      if (seedFlag === 'basic' || seedFlag === 'demo' || seedFlag === 'story-writer' || seedFlag === 'director' || seedFlag === 'cinematographer') {
+      if (seedFlag === 'basic' || seedFlag === 'demo' || seedFlag === 'story-writer' || seedFlag === 'director' || seedFlag === 'cinematographer' || seedFlag === 'first-ad') {
         try {
           const seedProject = seedFlag === 'director'
             ? buildDirectorSeedProject()
             : seedFlag === 'cinematographer'
               ? buildCinematographerSeedProject()
+              : seedFlag === 'first-ad'
+                ? buildFirstAssistantDirectorSeedProject()
               : buildBasicSeedProject();
           await castingService.saveProject(seedProject);
 
@@ -278,9 +324,9 @@ function SessionSeeder({ children }: { children: ReactNode }) {
             { userId: 'e2e-test-user' },
           );
 
-          if (seedFlag === 'story-writer' || seedFlag === 'director' || seedFlag === 'cinematographer') {
+          if (seedFlag === 'story-writer' || seedFlag === 'director' || seedFlag === 'cinematographer' || seedFlag === 'first-ad') {
             const now = new Date().toISOString();
-            const isDirectorSeed = seedFlag === 'director' || seedFlag === 'cinematographer';
+            const isDirectorSeed = seedFlag === 'director' || seedFlag === 'cinematographer' || seedFlag === 'first-ad';
             await settingsService.setSetting(
               'virtualStudio_manuscripts',
               [{
