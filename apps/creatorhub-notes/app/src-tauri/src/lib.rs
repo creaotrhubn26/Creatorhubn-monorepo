@@ -596,6 +596,56 @@ mod tests {
         assert!(rett_avsnitt(ugyldig).is_err(), "vokabularet vårt er ikke en plass");
     }
 
+    /// Forståelsen bor i den samme fila som indeksen og rettelsene. Den skal
+    /// legges på toppen av det skjemaet uten å kollidere med `chunk_fts`, tåle
+    /// å bli laget igjen ved hver oppstart, og fortsatt være der etter at
+    /// basen er lukket og åpnet på nytt — det er hele poenget med å lagre den.
+    #[test]
+    fn forståelsen_ligger_i_samme_fil_og_overlever_at_den_lukkes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_file = tmp.path().join("notater.db");
+
+        let avsnitt = vec![understand::Paragraph {
+            start: 0,
+            end: 0,
+            hash: understand::nøkkel("Kanskje vi burde ha depositum."),
+            text: "Kanskje vi burde ha depositum.".into(),
+            summary: "Depositum".into(),
+            kind: "tvil".into(),
+            action: "marker_åpent".into(),
+            dependency: None,
+            correction: None,
+        }];
+
+        {
+            let conn = db::open(&db_file).unwrap();
+            rettelser::sørg_for_tabell(&conn).unwrap();
+            minne::sørg_for_tabeller(&conn).unwrap();
+            minne::sørg_for_tabeller(&conn).unwrap();
+            minne::lagre(&conn, "notat.md", "Låne-app", &avsnitt).unwrap();
+        }
+
+        // Ny prosess, samme fil.
+        let conn = db::open(&db_file).unwrap();
+        rettelser::sørg_for_tabell(&conn).unwrap();
+        minne::sørg_for_tabeller(&conn).unwrap();
+
+        let hasher: Vec<String> = avsnitt.iter().map(|a| a.hash.clone()).collect();
+        let kjente = minne::kjente(&conn, &hasher).unwrap();
+        assert_eq!(kjente.len(), 1, "det som er lest før skal fortsatt være lest");
+        assert_eq!(kjente.values().next().unwrap().summary, "Depositum");
+
+        // Og ordsøket over kortformene virker på fila, side om side med
+        // indeksens egen `chunk_fts`.
+        let treff =
+            minne::kandidater(&conn, "Depositum tar vi likevel.", "annen", 5).unwrap();
+        assert_eq!(treff.len(), 1);
+        assert_eq!(treff[0].tittel, "Låne-app");
+
+        let uavklart = minne::spør(&conn, "hva er uavklart").unwrap().unwrap();
+        assert_eq!(uavklart.treff.len(), 1);
+    }
+
     /// Hele poenget med staging før indeksering: et notat som nettopp ble
     /// skrevet, og aldri committet, skal kunne finnes igjen med søk.
     #[test]
