@@ -546,6 +546,10 @@ interface ManuscriptPanelProps {
   targetDurationMinutes?: number;
   /** Lagre ny mål-lengde på prosjektet (null = fjern). */
   onTargetDurationChange?: (minutes: number | null) => void;
+  productionWorkflowIntent?: {
+    view: 'stripboard' | 'schedule';
+    signal: number;
+  } | null;
 }
 
 type ManuscriptTabValue = 'editor' | 'acts' | 'scenes' | 'characters' | 'dialogue' | 'breakdown' | 'revisions' | 'timeline' | 'production' | 'productionview';
@@ -653,6 +657,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   onSendToApproval,
   targetDurationMinutes,
   onTargetDurationChange,
+  productionWorkflowIntent,
 }) => {
   const { showToast, showSuccess, showError, showWarning, showInfo } = useToast();
   const branding = useBrandingSettings();
@@ -696,6 +701,18 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   }, []);
   
   const [activeTab, setActiveTab] = useState<ManuscriptTabValue>('editor');
+  const lastProductionWorkflowSignalRef = useRef(0);
+
+  useEffect(() => {
+    if (
+      !productionWorkflowIntent
+      || productionWorkflowIntent.signal <= lastProductionWorkflowSignalRef.current
+    ) {
+      return;
+    }
+    lastProductionWorkflowSignalRef.current = productionWorkflowIntent.signal;
+    setActiveTab('productionview');
+  }, [productionWorkflowIntent]);
   const [manuscripts, setManuscripts] = useState<Manuscript[]>([]);
   const [selectedManuscript, setSelectedManuscript] = useState<Manuscript | null>(null);
   const [acts, setActs] = useState<Act[]>([]);
@@ -4100,6 +4117,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   acts={acts}
                   projectId={activeProjectId}
                   storyLogicData={storyLogicData}
+                  externalWorkflowView={productionWorkflowIntent?.view}
+                  externalWorkflowOpenSignal={productionWorkflowIntent?.signal}
                   onSceneUpdate={async (updatedScene) => {
                     // Update local state
                     setScenes(scenes.map(s => s.id === updatedScene.id ? updatedScene : s));
@@ -7563,6 +7582,7 @@ export const ManuscriptPanel = React.memo(ManuscriptPanelComponent, (prevProps, 
   if (prevProps.projectId !== nextProps.projectId) return false;
   if (prevProps.onManuscriptChange !== nextProps.onManuscriptChange) return false;
   if (prevProps.targetDurationMinutes !== nextProps.targetDurationMinutes) return false;
+  if (prevProps.productionWorkflowIntent?.signal !== nextProps.productionWorkflowIntent?.signal) return false;
   
   // All checks passed - props are effectively equal, skip re-render
   return true;

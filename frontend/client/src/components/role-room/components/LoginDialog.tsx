@@ -34,6 +34,7 @@ import {
   AccountBalanceOutlined as DanceStudioOwnerIcon,
   AccessibilityNewOutlined as DanceFreelanceIcon,
   MailOutlineOutlined as DanceInviteHolderIcon,
+  AssignmentTurnedInOutlined as FirstAdIcon,
 } from '@mui/icons-material';
 import { ROLE_ROOM_BRAND_ASSETS } from '../config/branding';
 import { ROLE_ROOM_LANDING_CONFIG } from '../config/landing';
@@ -221,6 +222,7 @@ const ROLE_CARDS: Record<string, {
   director:          { label: 'Regissør',      icon: '/role-room-assets/roleroom_director.webp',         video: '/role-room-assets/roleroom_director.mp4' },
   cinematographer:   { label: 'Filmfotograf (DoP)', icon: '/role-room-assets/roleroom_cinemag.webp', video: '/role-room-assets/roleroom_cinemag.mp4' },
   producer:          { label: 'Produsent',     icon: '/role-room-assets/roleroom_producer.webp', video: '/role-room-assets/roleroom_producer.mp4' },
+  first_ad:          { label: 'Innspillingsleder / 1st AD', glyph: <FirstAdIcon sx={{ fontSize: 'inherit' }} /> },
   casting_director:  { label: 'Casting Director', icon: '/role-room-assets/roleroom_casting_director.webp', video: '/role-room-assets/roleroom_casting_director.mp4', videoPosition: '60% 15%' },
   camera_operator:   { label: 'Kamera',        icon: '/role-room-assets/roleroom_cinemag.webp', video: '/role-room-assets/roleroom_cinemag.mp4' },
   talent:            { label: 'Skuespiller',   icon: '/role-room-assets/roleroom_skuespiller.webp', video: '/role-room-assets/roleroom_skuespiller.mov' },
@@ -594,6 +596,7 @@ const BRREG_LOOKUP_DEBOUNCE_MS = 450;
 const PRODUCTION_TEAM_ROLE_IDS = [
   'producer',
   'director',
+  'first_ad',
   'cinematographer',
   'casting_director',
   'camera_operator',
@@ -931,7 +934,7 @@ const productionTeamCategories = [
     id: 'kjerne',
     label: 'Kjerne & ledelse',
     description: 'Start med rollen som best beskriver hvem som leder produksjonen og eier hovedflyten i prosjektet.',
-    roleIds: ['producer', 'director', 'cinematographer', 'casting_director', 'photo_director'],
+    roleIds: ['producer', 'director', 'first_ad', 'cinematographer', 'casting_director', 'photo_director'],
   },
   {
     id: 'produksjon',

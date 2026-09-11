@@ -27,7 +27,11 @@ import {
 import type { Pool } from 'pg';
 import { randomBytes } from 'node:crypto';
 import { loadPersistedAuthSession } from './auth-session-store.js';
-import { userOwnsCastingProject } from './casting-project-ownership.js';
+import {
+  userCanAccessCastingProject,
+  userCanEditCastingProduction,
+  userOwnsCastingProject,
+} from './casting-project-ownership.js';
 
 interface SessionData {
   userId: string;
@@ -155,16 +159,38 @@ export function createCastingProductionRouter(
   const router = Router();
   const auth = requireAuth(pool, deps.activeSessions);
 
-  // Gate every sub-resource on ownership of the parent project. Auth alone
-  // only proves *a* logged-in user; without this any tenant could read/write/
-  // delete another tenant's props and production days by id (cross-tenant IDOR).
+  // Props remain owner-scoped. Production days also support active project
+  // members, with an explicit production-write check for mutations. Auth alone
+  // only proves *a* logged-in user and cannot prevent cross-tenant IDOR.
   async function ensureProjectOwner(
     req: Request,
     res: Response,
-    projectId: string | null | undefined,
+    projectId: unknown,
   ): Promise<boolean> {
     const userId = (req as AuthedRequest).userId;
-    if (!projectId || !(await userOwnsCastingProject(pool, String(projectId), userId))) {
+    const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : '';
+    if (!normalizedProjectId || !(await userOwnsCastingProject(pool, normalizedProjectId, userId))) {
+      res.status(404).json({ error: 'not_found' });
+      return false;
+    }
+    return true;
+  }
+
+  async function ensureProductionAccess(
+    req: Request,
+    res: Response,
+    projectId: unknown,
+    mode: 'read' | 'write',
+  ): Promise<boolean> {
+    const userId = (req as AuthedRequest).userId;
+    const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : '';
+    const allowed = normalizedProjectId
+      ? mode === 'write'
+        ? await userCanEditCastingProduction(pool, normalizedProjectId, userId)
+        : await userCanAccessCastingProject(pool, normalizedProjectId, userId)
+      : false;
+    if (!allowed) {
+      // Keep project existence private across tenants.
       res.status(404).json({ error: 'not_found' });
       return false;
     }
@@ -236,7 +262,7 @@ export function createCastingProductionRouter(
   router.get('/projects/:projectId/production-days', auth, async (req, res) => {
     try {
       await schemaReady(pool);
-      if (!(await ensureProjectOwner(req, res, req.params.projectId))) return;
+      if (!(await ensureProductionAccess(req, res, req.params.projectId, 'read'))) return;
       const result = await pool.query(
         'SELECT * FROM casting_production_days WHERE project_id = $1 ORDER BY date',
         [req.params.projectId],
@@ -253,7 +279,7 @@ export function createCastingProductionRouter(
       const b = (req.body ?? {}) as Record<string, any>;
       const projectId = b.projectId || b.project_id;
       if (!projectId) { res.status(400).json({ error: 'projectId er påkrevd' }); return; }
-      if (!(await ensureProjectOwner(req, res, projectId))) return;
+      if (!(await ensureProductionAccess(req, res, projectId, 'write'))) return;
       const id = String(b.id || genId('pday'));
       const result = await pool.query(
         `INSERT INTO casting_production_days
@@ -291,7 +317,7 @@ export function createCastingProductionRouter(
         [req.params.dayId],
       );
       if (owns.rowCount === 0) { res.status(404).json({ error: 'Produksjonsdag ikke funnet' }); return; }
-      if (!(await ensureProjectOwner(req, res, owns.rows[0].project_id))) return;
+      if (!(await ensureProductionAccess(req, res, owns.rows[0].project_id, 'write'))) return;
       const result = await pool.query('DELETE FROM casting_production_days WHERE id = $1', [req.params.dayId]);
       if (result.rowCount === 0) { res.status(404).json({ error: 'Produksjonsdag ikke funnet' }); return; }
       res.json({ ok: true });
