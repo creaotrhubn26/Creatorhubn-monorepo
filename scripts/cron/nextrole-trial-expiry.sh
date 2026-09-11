@@ -2,7 +2,7 @@
 # Creatorhub daglig cron-trigger.
 #
 # Render kjører dette daglig (se render.yaml schedule "0 9 * * *").
-# Kaller tre interne endepunkter sekvensielt:
+# Kaller fire interne arbeidsflyter sekvensielt:
 #
 #   1. check-trial-expiry — sender trialExpiringEmail til brukere med
 #      ~3 dager igjen av trial.
@@ -11,6 +11,8 @@
 #   3. role-room reconcile-seats (dry-run) — sammenligner Stripe-quantity
 #      mot aktive medlemmer pr. produksjonsteam-eier. Drift logges som
 #      billing-alert i admin-panelet. Apply kjøres manuelt fra admin.
+#   4. affiliate-payouts — kjøres kun den første i måneden og bare når
+#      utbetalingsflagget er eksplisitt aktivert.
 #
 # Alle er idempotente — de logger hva som er sendt og dropper duplikater.
 #
@@ -18,6 +20,8 @@
 #   BACKEND_URL                       base-URL til creatorhub-backend
 #   NEXTROLE_CRON_SECRET              NextRole-secret (auto-injectet)
 #   ROLE_ROOM_RECONCILE_CRON_TOKEN    Reconcile-token (auto-injectet)
+#   ROLE_ROOM_AFFILIATE_PAYOUT_CRON_SECRET  Affiliate payout-token
+#   ROLE_ROOM_AFFILIATE_PAYOUTS_ENABLED     Global utbetalingsbryter
 
 set -e
 
@@ -58,5 +62,19 @@ if [ -n "${ROLE_ROOM_RECONCILE_CRON_TOKEN}" ]; then
 else
   echo "[creatorhub-cron] ROLE_ROOM_RECONCILE_CRON_TOKEN ikke satt — hopper over reconcile"
 fi
+
+# Affiliateoppgjør: månedlig, med separat hemmelighet og global kill switch.
+case "${ROLE_ROOM_AFFILIATE_PAYOUTS_ENABLED:-false}" in
+  1|true|TRUE|yes|YES|on|ON)
+    if [ "$(date -u +%d)" = "01" ]; then
+      if [ -n "${ROLE_ROOM_AFFILIATE_PAYOUT_CRON_SECRET}" ]; then
+        call_endpoint "/api/internal/role-room/affiliate-payouts/run" \
+          "x-cron-secret: ${ROLE_ROOM_AFFILIATE_PAYOUT_CRON_SECRET}"
+      else
+        echo "[creatorhub-cron] affiliate payouts er aktivert, men cron-secret mangler — hopper over"
+      fi
+    fi
+    ;;
+esac
 
 echo "[creatorhub-cron] done"

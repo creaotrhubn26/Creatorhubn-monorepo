@@ -58,6 +58,8 @@ export async function userCanAccessCastingProject(
                     FROM casting_user_roles cur
                    WHERE cur.project_id = cp.id
                      AND cur.user_id = $2
+                     AND cur.deactivated_at IS NULL
+                     AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
                 )
               )
          ) AS can_access`,
@@ -70,6 +72,68 @@ export async function userCanAccessCastingProject(
   } catch {
     // A legacy-only install may not have the canonical tables yet. The
     // compat-store check below remains fail-closed and owner-only.
+  }
+  return userOwnsCastingProject(pool, projectId, userId);
+}
+
+/**
+ * True when the user may mutate production-day data for a canonical project.
+ *
+ * Project membership alone is deliberately not enough: the member must either
+ * have an explicit `canEditProduction` grant or one of the production-owner
+ * roles whose default contract includes that grant. Expired/deactivated rows
+ * are ignored. Legacy-only projects remain owner-only.
+ */
+export async function userCanEditCastingProduction(
+  pool: QueryablePool,
+  projectId: string,
+  userId: string | null | undefined,
+): Promise<boolean> {
+  if (!projectId || !userId) return false;
+  try {
+    const result = await pool.query(
+      `SELECT
+         EXISTS (
+           SELECT 1
+             FROM casting_projects cp
+            WHERE cp.id = $1
+         ) AS project_exists,
+         EXISTS (
+           SELECT 1
+             FROM casting_projects cp
+             LEFT JOIN casting_user_roles cur
+               ON cur.project_id = cp.id
+              AND cur.user_id = $2
+              AND cur.deactivated_at IS NULL
+              AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
+            WHERE cp.id = $1
+              AND (
+                cp.created_by = $2
+                OR (
+                  cur.user_id IS NOT NULL
+                  AND (
+                    cur.role IN (
+                      'director',
+                      'producer',
+                      'production_manager',
+                      'content_producer',
+                      'first_ad',
+                      'first_assistant_director',
+                      '1st_ad'
+                    )
+                    OR cur.permissions -> 'canEditProduction' = 'true'::jsonb
+                  )
+                )
+              )
+         ) AS can_edit_production`,
+      [projectId, userId],
+    );
+    const status = result.rows[0];
+    if (status?.project_exists === true) {
+      return status.can_edit_production === true;
+    }
+  } catch {
+    // Legacy-only installs fall back to the strict owner check below.
   }
   return userOwnsCastingProject(pool, projectId, userId);
 }

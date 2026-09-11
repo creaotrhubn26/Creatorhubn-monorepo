@@ -286,6 +286,8 @@ interface ProductionManuscriptViewProps {
   onScenesReorder?: (scenes: SceneBreakdown[]) => void;
   onManuscriptUpdate?: (manuscript: Manuscript) => void;
   onClose?: () => void;
+  externalWorkflowView?: 'stripboard' | 'schedule';
+  externalWorkflowOpenSignal?: number;
 }
 
 // ============================================
@@ -807,6 +809,8 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   onScenesReorder,
   onManuscriptUpdate,
   onClose,
+  externalWorkflowView,
+  externalWorkflowOpenSignal = 0,
 }) => {
   // 7-Tier Responsive
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
@@ -947,6 +951,20 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   }, [projectId]);
 
   const [workflowUI, dispatchWorkflow] = useReducer(workflowReducer, workflowInit);
+  const lastExternalWorkflowOpenSignalRef = useRef(0);
+
+  useEffect(() => {
+    if (
+      !externalWorkflowView
+      || externalWorkflowOpenSignal <= lastExternalWorkflowOpenSignalRef.current
+    ) {
+      return;
+    }
+    lastExternalWorkflowOpenSignalRef.current = externalWorkflowOpenSignal;
+    dispatchWorkflow({
+      type: externalWorkflowView === 'stripboard' ? 'OPEN_STRIPBOARD' : 'OPEN_SCHEDULE',
+    });
+  }, [externalWorkflowOpenSignal, externalWorkflowView]);
 
   // Persist workflow view preference on change
   useEffect(() => {

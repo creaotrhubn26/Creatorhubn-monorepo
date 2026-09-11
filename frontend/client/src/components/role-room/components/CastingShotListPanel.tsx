@@ -830,6 +830,7 @@ export function CastingShotListPanel({
       producer: 'Produsent',
       casting_director: 'Castingansvarlig',
       production_manager: 'Produsentleder',
+      first_ad: 'Innspillingsleder / 1st AD',
       camera_team: 'Kamerateam',
       content_producer: 'Innholdsprodusent',
       client_reviewer: 'Klient-revisor',

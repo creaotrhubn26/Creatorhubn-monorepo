@@ -2,6 +2,7 @@ export const ROLE_ROOM_WORKSPACE_LENSES = [
   'full',
   'director',
   'cinematography',
+  'assistant-direction',
 ] as const;
 
 export type RoleRoomWorkspaceLens = (typeof ROLE_ROOM_WORKSPACE_LENSES)[number];
