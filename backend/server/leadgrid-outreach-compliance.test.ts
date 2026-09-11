@@ -145,6 +145,27 @@ describe("Leadgrid outbound email compliance", () => {
     expect(decision.reason).toBe("blocked_gdpr_basis_missing");
   });
 
+  it("does not reuse consent recorded for another purpose as marketing permission", () => {
+    const decision = evaluateLeadgridEmailCompliance(facts({
+      email: "kari@klinikk.no",
+      addressClassification: "named_person",
+      consent: {
+        action: "grant",
+        contactName: "Kari Nordmann",
+        purpose: "service_updates",
+        consentText: "Jeg samtykker til driftsmeldinger.",
+        consentVersion: "v1",
+        source: "customer_portal",
+        evidence: "event-42",
+        occurredAt: "2026-09-01T10:00:00.000Z",
+        expiresAt: null,
+      },
+      gdprProcessing: documentedGdpr(),
+    }));
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toBe("blocked_named_person_without_permission");
+  });
+
   it("requires every part of the narrow existing-customer attestation", () => {
     const customer = {
       active: true,

@@ -106,7 +106,7 @@ describe("Leadgrid outreach compliance routes", () => {
         address_classification: "named_person",
         consent_action: "grant",
         consent_contact_name: "Named Dentist",
-        consent_purpose: "Product information",
+        consent_purpose: "direct_marketing_email",
         consent_text: "Full signed wording",
         consent_version: "2026-09",
         consent_source: "Signed form",
@@ -190,5 +190,28 @@ describe("Leadgrid outreach compliance routes", () => {
       "Footer labels this address as clinic reception",
       "daniel",
     ]);
+  });
+
+  it("rejects consent that does not explicitly cover marketing email", async () => {
+    const query = vi.fn();
+    const routes = setup(query);
+    const out = response();
+    await routes.get("POST /api/admin-room/lead-map/leads/:id/outreach-compliance/consents")!(
+      request({ body: {
+        action: "grant",
+        contact_name: "Kari Nordmann",
+        purpose: "service_updates",
+        consent_text: "Jeg samtykker til driftsmeldinger.",
+        consent_version: "v1",
+        source: "customer_portal",
+        evidence: "event-42",
+        occurred_at: "2026-09-01T10:00:00.000Z",
+      } }),
+      out.res,
+      vi.fn(),
+    );
+    expect(out.status).toBe(422);
+    expect(out.body).toMatchObject({ error: "invalid_consent_evidence" });
+    expect(query).not.toHaveBeenCalled();
   });
 });

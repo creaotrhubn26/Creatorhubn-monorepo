@@ -35,6 +35,7 @@ const SUPPRESSION_REASONS = new Set([
   "hard_bounce",
   "complaint",
 ]);
+const DIRECT_MARKETING_EMAIL_PURPOSE = "direct_marketing_email";
 
 function requiredText(value: unknown, maxLength: number): string | null {
   if (typeof value !== "string") return null;
@@ -217,12 +218,16 @@ export function registerLeadgridOutreachComplianceRoutes(deps: {
         ? null
         : requiredInstant(req.body.expires_at);
       if (
-        !action || !contactName || !purpose || !consentText || !consentVersion
+        !action || !contactName || purpose !== DIRECT_MARKETING_EMAIL_PURPOSE
+        || !consentText || !consentVersion
         || !source || !evidence || !occurredAt
         || (req.body?.expires_at != null && !expiresAt)
         || (expiresAt && new Date(expiresAt) <= new Date(occurredAt))
       ) {
-        return res.status(422).json({ error: "invalid_consent_evidence" });
+        return res.status(422).json({
+          error: "invalid_consent_evidence",
+          detail: "Samtykket må uttrykkelig gjelde markedsføring på e-post.",
+        });
       }
       try {
         const lead = await scopedLead(req, current.userId);

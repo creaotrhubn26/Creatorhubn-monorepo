@@ -98,6 +98,8 @@ const SHARED_LOCAL_PARTS = new Set([
   "support",
 ]);
 
+const DIRECT_MARKETING_EMAIL_PURPOSE = "direct_marketing_email";
+
 export function normalizeLeadgridEmail(value: string | null | undefined): string | null {
   if (typeof value !== "string") return null;
   const email = value.trim().toLowerCase();
@@ -177,6 +179,7 @@ export function evaluateLeadgridEmailCompliance(
     && Boolean(gdpr.retentionUntil)
     && new Date(gdpr.retentionUntil!).getTime() > now.getTime();
   const consentIsActive = facts.consent?.action === "grant"
+    && facts.consent.purpose === DIRECT_MARKETING_EMAIL_PURPOSE
     && (!facts.consent.expiresAt || new Date(facts.consent.expiresAt) > now);
   if (consentIsActive && gdprRecordIsActive) {
     return {
