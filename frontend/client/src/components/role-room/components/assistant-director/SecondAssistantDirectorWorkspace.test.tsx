@@ -1,20 +1,17 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CastingProject, ProductionDay } from '../../models/casting';
 import { SecondAssistantDirectorWorkspace } from './SecondAssistantDirectorWorkspace';
 
-const { getProductionDays, getSceneBreakdowns, saveProductionDay } = vi.hoisted(() => ({
-  getProductionDays: vi.fn(),
-  getSceneBreakdowns: vi.fn(),
+const { saveProductionDay } = vi.hoisted(() => ({
   saveProductionDay: vi.fn(),
 }));
 
 vi.mock('../../services/castingService', () => ({
   castingService: {
-    getProductionDays,
-    getSceneBreakdowns,
     saveProductionDay,
   },
 }));
@@ -45,20 +42,28 @@ const productionDay: ProductionDay = {
   },
 };
 
-const renderWorkspace = () => render(
+const projectWithDay: CastingProject = {
+  ...project,
+  productionDays: [productionDay],
+  sceneBreakdowns: [],
+};
+
+const renderWorkspace = (
+  workspaceProject: CastingProject = projectWithDay,
+  overrides: Partial<ComponentProps<typeof SecondAssistantDirectorWorkspace>> = {},
+) => render(
   <SecondAssistantDirectorWorkspace
-    project={project}
+    project={workspaceProject}
     onOpenCallSheet={() => {}}
     onOpenSchedule={() => {}}
     onOpenLiveSet={() => {}}
     onOpenFullWorkspace={() => {}}
+    {...overrides}
   />,
 );
 
 describe('SecondAssistantDirectorWorkspace', () => {
   beforeEach(() => {
-    getProductionDays.mockReset();
-    getSceneBreakdowns.mockReset().mockResolvedValue([]);
     saveProductionDay.mockReset();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
@@ -70,20 +75,27 @@ describe('SecondAssistantDirectorWorkspace', () => {
     vi.unstubAllGlobals();
   });
 
-  it('loads canonical production days when the project shell has none', async () => {
-    getProductionDays.mockResolvedValue([productionDay]);
-
+  it('renders the production days supplied by the canonical project state', async () => {
     renderWorkspace();
 
-    expect(screen.getByText('Henter produksjonsdager…')).toBeInTheDocument();
     expect(await screen.findByLabelText('Felles dagsmerknad')).toHaveValue('Opprinnelig dagsmerknad');
     expect(screen.getByText('2026-09-14 · 07:00')).toBeInTheDocument();
     expect(screen.queryByText('Ingen produksjonsdag er registrert. Opprett en dag i opptaksplanen før cast movement kan føres.')).not.toBeInTheDocument();
-    expect(getProductionDays).toHaveBeenCalledWith(project.id);
   });
 
-  it('persists a second AD note into the fetched production day', async () => {
-    getProductionDays.mockResolvedValue([productionDay]);
+  it('shows a loading state while the parent hydrates canonical production data', () => {
+    renderWorkspace(project, { dataLoading: true });
+    expect(screen.getByText('Henter produksjonsdager…')).toBeInTheDocument();
+  });
+
+  it('opens the call sheet directly for the selected canonical day', async () => {
+    const onOpenCallSheet = vi.fn();
+    renderWorkspace(projectWithDay, { onOpenCallSheet });
+    fireEvent.click(await screen.findByRole('button', { name: 'Callsheet og utsending' }));
+    expect(onOpenCallSheet).toHaveBeenCalledWith(productionDay.id);
+  });
+
+  it('persists a second AD note into the canonical production day', async () => {
     saveProductionDay.mockResolvedValue(undefined);
 
     renderWorkspace();
@@ -122,10 +134,9 @@ describe('SecondAssistantDirectorWorkspace', () => {
         }],
       },
     };
-    getProductionDays.mockResolvedValue([movementDay]);
     saveProductionDay.mockResolvedValue(undefined);
 
-    renderWorkspace();
+    renderWorkspace({ ...projectWithDay, productionDays: [movementDay] });
 
     fireEvent.change(await screen.findByLabelText('Henting'), { target: { value: '05:45' } });
     fireEvent.change(screen.getByLabelText('Call'), { target: { value: '06:15' } });
@@ -155,5 +166,47 @@ describe('SecondAssistantDirectorWorkspace', () => {
         }),
       }),
     ));
+  });
+
+  it('shows recipient delivery states and reminds only missing acknowledgements', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ deliveries: [{
+          id: '11111111-1111-4111-8111-111111111111',
+          revision: 2,
+          createdAt: '2026-09-11T08:00:00.000Z',
+          total: 3,
+          sent: 2,
+          failed: 1,
+          acknowledged: 1,
+          recipients: [
+            { id: '22222222-2222-4222-8222-222222222222', name: 'Ada', email: 'ada@example.test', deliveryStatus: 'sent', acknowledgedAt: '2026-09-11T08:05:00.000Z', reminderCount: 0 },
+            { id: '33333333-3333-4333-8333-333333333333', name: 'Bo', email: 'bo@example.test', deliveryStatus: 'sent', acknowledgedAt: null, reminderCount: 0 },
+            { id: '44444444-4444-4444-8444-444444444444', name: 'Cam', email: 'cam@example.test', deliveryStatus: 'failed', acknowledgedAt: null, reminderCount: 0 },
+          ],
+        }] }),
+      })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ reminded: 1, total: 1 }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ deliveries: [] }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWorkspace();
+
+    expect(await screen.findByText('Sendt 2/3')).toBeInTheDocument();
+    expect(screen.getByText('Feilet 1/3')).toBeInTheDocument();
+    expect(screen.getByText('Bekreftet 1/3')).toBeInTheDocument();
+    expect(screen.getByText(/Ada · ada@example\.test/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Purr manglende (1)' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/role-room/call-sheet-deliveries/11111111-1111-4111-8111-111111111111/remind',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ recipientIds: ['33333333-3333-4333-8333-333333333333'] }),
+      }),
+    ));
+    expect(await screen.findByText('Påminnelse sendt til 1 mottaker.')).toBeInTheDocument();
   });
 });

@@ -798,7 +798,21 @@ export const roleRoomCallSheetRecipients = pgTable('role_room_call_sheet_recipie
   tokenHash: varchar('token_hash', { length: 64 }).notNull(), deliveryStatus: varchar('delivery_status', { length: 24 }).default('pending').notNull(),
   failureReason: varchar('failure_reason', { length: 80 }), providerMessageId: varchar('provider_message_id', { length: 255 }),
   sentAt: timestamp('sent_at', { withTimezone: true, mode: 'string' }), acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true, mode: 'string' }),
+  reminderCount: integer('reminder_count').default(0).notNull(),
+  lastRemindedAt: timestamp('last_reminded_at', { withTimezone: true, mode: 'string' }),
   expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }).default(sql`now() + interval '14 days'`).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [uniqueIndex('idx_rr_call_sheet_recipients_token').using('btree', table.tokenHash), index('idx_rr_call_sheet_recipients_delivery').using('btree', table.deliveryId)]);
+
+export const roleRoomCallSheetRecipientTokens = pgTable('role_room_call_sheet_recipient_tokens', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  recipientId: uuid('recipient_id').notNull().references(() => roleRoomCallSheetRecipients.id, { onDelete: 'cascade' }),
+  tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }).default(sql`now() + interval '14 days'`).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true, mode: 'string' }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('idx_rr_call_sheet_recipient_tokens_hash').using('btree', table.tokenHash),
+  index('idx_rr_call_sheet_recipient_tokens_recipient').using('btree', table.recipientId, table.createdAt),
+]);

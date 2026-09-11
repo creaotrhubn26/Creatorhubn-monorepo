@@ -316,11 +316,22 @@ jobs:
                 exit 1
               fi
             fi
-            verified_sha=$(curl -fsS --connect-timeout 3 --max-time 20 \
-              -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
-              "$api/git/ref/heads/$branch" | jq -er '.object.sha')
+            verified_sha=""
+            for attempt in 1 2 3 4 5 6; do
+              if verified_sha=$(curl -fsS --connect-timeout 3 --max-time 20 \
+                -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+                -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
+                "$api/git/ref/heads/$branch" | jq -er '.object.sha') && \
+                 [ "$verified_sha" = "$PROMOTION_TARGET" ]; then
+                break
+              fi
+              if [ "$attempt" -lt 6 ]; then
+                echo "::notice::Waiting for GitHub to expose $branch at the updated commit (attempt $attempt/6, observed ${verified_sha:-unavailable})"
+                sleep $((attempt * 2))
+              fi
+            done
             if [ "$verified_sha" != "$PROMOTION_TARGET" ]; then
-              echo "::error::$branch did not remain at the verified target"
+              echo "::error::$branch did not reach the verified target after 6 read-back attempts (observed ${verified_sha:-unavailable})"
               exit 1
             fi
             echo "$label -> $PROMOTION_TARGET"
@@ -335,6 +346,6 @@ jobs:
           set -euo pipefail
           {
             printf '### Promotert: %s\n\n' "$PROMOTED_BRAND"
-            printf 'Commit: `%s`\n\n' "$TARGET_SHA"
-            printf '%s\n' 'Backend-SHA og eventuell Leadgrid-smoke er verifisert. creatorhubn.com er upåvirket.'
+            printf 'Commit: %s\n\n' "$TARGET_SHA"
+            printf '%s\n' "Backend-SHA og eventuell Leadgrid-smoke er verifisert. creatorhubn.com er upåvirket."
           } >> "$GITHUB_STEP_SUMMARY"

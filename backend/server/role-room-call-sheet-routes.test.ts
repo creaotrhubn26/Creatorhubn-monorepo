@@ -67,6 +67,88 @@ describe('role-room call sheet receipts', () => {
     expect(query.mock.calls[0][1][0]).not.toBe(token);
   });
 
+  it('returns recipient-level sent, failed and acknowledged delivery status', async () => {
+    const deliveryId = '11111111-1111-4111-8111-111111111111';
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes('COUNT(r.id)')) return { rows: [{
+        id: deliveryId,
+        production_day_id: 'day-1',
+        revision: 3,
+        subject: 'Troll · dag 1',
+        created_at: '2026-09-11T08:00:00.000Z',
+        total: 2,
+        sent: 1,
+        failed: 1,
+        acknowledged: 1,
+      }] };
+      if (sql.includes('FROM role_room_call_sheet_recipients WHERE delivery_id=ANY')) return { rows: [{
+        id: '22222222-2222-4222-8222-222222222222',
+        delivery_id: deliveryId,
+        recipient_name: 'Ada',
+        recipient_email: 'ada@example.test',
+        delivery_status: 'sent',
+        failure_reason: null,
+        sent_at: '2026-09-11T08:00:01.000Z',
+        acknowledged_at: '2026-09-11T08:05:00.000Z',
+        reminder_count: 1,
+        last_reminded_at: '2026-09-11T08:04:00.000Z',
+      }] };
+      throw new Error(`Unexpected SQL: ${sql}`);
+    });
+
+    const response = await request(createApp(query)).get('/api/role-room/projects/project-1/call-sheet-deliveries?productionDayId=day-1');
+
+    expect(response.status).toBe(200);
+    expect(response.body.deliveries[0]).toMatchObject({ total: 2, sent: 1, failed: 1, acknowledged: 1 });
+    expect(response.body.deliveries[0].recipients[0]).toMatchObject({
+      name: 'Ada',
+      deliveryStatus: 'sent',
+      reminderCount: 1,
+    });
+  });
+
+  it('reminds only unacknowledged sent recipients with a new hashed capability', async () => {
+    const deliveryId = '11111111-1111-4111-8111-111111111111';
+    const recipientId = '22222222-2222-4222-8222-222222222222';
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes('SELECT id,project_id,subject')) return { rows: [{ id: deliveryId, project_id: 'project-1', subject: 'Troll · dag 1' }] };
+      if (sql.includes("delivery_status='sent' AND acknowledged_at IS NULL")) return { rows: [{ id: recipientId, recipient_name: '<Ada>', recipient_email: 'ada@example.test' }] };
+      if (sql.includes('INSERT INTO role_room_call_sheet_recipient_tokens')) return { rows: [{ id: '33333333-3333-4333-8333-333333333333' }] };
+      if (sql.includes('SET reminder_count=reminder_count+1')) return { rows: [] };
+      throw new Error(`Unexpected SQL: ${sql}`);
+    });
+
+    const response = await request(createApp(query)).post(`/api/role-room/call-sheet-deliveries/${deliveryId}/remind`).send({ recipientIds: [recipientId] });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ deliveryId, reminded: 1, total: 1 });
+    const tokenInsert = query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO role_room_call_sheet_recipient_tokens'));
+    expect(tokenInsert?.[1]?.[1]).toMatch(/^[a-f0-9]{64}$/);
+    expect(sendTransactionalEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'ada@example.test',
+      subject: 'Påminnelse · Troll · dag 1',
+    }));
+    const mail = sendTransactionalEmail.mock.calls[0][0];
+    expect(mail.html).toContain('&lt;Ada&gt;');
+    expect(mail.html).not.toContain('<Ada>');
+    expect(mail.text).toContain('/api/role-room/call-sheets/acknowledge/');
+  });
+
+  it('does not let a viewer use a delivery id to send reminders', async () => {
+    resolveTabAccessLevel.mockResolvedValue('view');
+    const deliveryId = '11111111-1111-4111-8111-111111111111';
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes('SELECT id,project_id,subject')) return { rows: [{ id: deliveryId, project_id: 'project-1', subject: 'Troll · dag 1' }] };
+      throw new Error(`No recipient lookup expected after access rejection: ${sql}`);
+    });
+
+    const response = await request(createApp(query)).post(`/api/role-room/call-sheet-deliveries/${deliveryId}/remind`).send({});
+
+    expect(response.status).toBe(403);
+    expect(sendTransactionalEmail).not.toHaveBeenCalled();
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
   it('denies a director without an explicit manage override from sending', async () => {
     resolveTabAccessLevel.mockResolvedValue(null);
     const query = vi.fn(async (sql: string) => {
