@@ -33,7 +33,7 @@ Den kanoniske flyten er:
 | Companion-feedback | ✅ | Companion viser kommentarer, tasks og godkjenninger, kan locate/svare/løse, og reagerer på den brukeravgrensede WebSocket-strømmen; 60 sekunders polling er kun fallback. |
 | Realtime-sikkerhet | ✅ | Web-klienten henter en tilfeldig 30-sekunders engangsticket før WebSocket-oppkobling; OAuth-token legges ikke i URL-en. |
 | Legacy EaseVerse-paring | ✅ | Gamle Clerk-/lokale Companion-kort er fjernet fra aktiv EaseVerse-UI. Paring administreres i Workspace/Sound Room. |
-| Desktop-distribusjon | 🟡 | macOS DMG-er er Developer ID-signert/notarisert. Windows x64-pipelinen krever gyldig Authenticode før publisering; offentlig v0.1.2 er fortsatt usignert mens Azure Public Trust-validering fullføres. |
+| Desktop-distribusjon | 🟡 | macOS-DMG-er for v0.1.3 er Developer ID-signert/notarisert i et GitHub-utkast. Windows x64 bygget, men publisering stoppet før Authenticode fordi den konfigurerte Public Trust-profilen ennå ikke finnes i Azure. Releasen forblir utkast til profilen er opprettet og Windows-smoken passerer. |
 
 ## 3. Systemkart og ansvar
 
@@ -217,9 +217,25 @@ Før produksjonsrelease skal følgende passere:
 - Azure Artifact Signing bruker en ferdig identitetsvalidert Public Trust-profil.
 - Repository secrets: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`.
 - Repository variables: `AZURE_ARTIFACT_SIGNING_ENDPOINT`,
-  `AZURE_ARTIFACT_SIGNING_ACCOUNT`, `AZURE_ARTIFACT_SIGNING_PROFILE`.
+  `AZURE_ARTIFACT_SIGNING_RESOURCE_GROUP`, `AZURE_ARTIFACT_SIGNING_ACCOUNT`,
+  `AZURE_ARTIFACT_SIGNING_PROFILE`.
 - Release-pipelinen signerer app-EXE-en før bundling, signerer deretter EXE/MSI og
   avviser releasen dersom Authenticode eller RFC3161-tidsstempelet ikke er gyldig.
+- Azure-profilen kontrolleres etter OIDC-innlogging og før native Windows-bygg,
+  slik at manglende/ikke-aktiv profil feiler tidlig.
+
+### Verifisert live-flyt 11. september 2026
+
+- Pro Tools Intro 2026.4.1 åpnet en dedikert test-`.ptx`, og PTSL svarte på
+  `127.0.0.1:31416` gjennom lokalt lisensiert Avid-klient.
+- Companion-testen utførte locate, opprettet markør, importerte en WAV og
+  eksporterte en reell 24-bit/48 kHz WAV via `ExportMix`.
+- Watcheren lastet den ferdige filen opp til produksjons-backenden; Sound Room
+  opprettet review-versjon 7 og en `protools`-artefakt med foreldrelenke.
+- Den separate EaseVerse-sync-workeren rapporterte fersk `healthy` heartbeat.
+- Testen fant og rettet to avvik i kildekoden: Sound Room skal lese bitdybde,
+  samplerate og varighet fra den faktiske WAV-filen, og midlertidige
+  filfingeravtrykk skal ryddes også under runtime, ikke bare etter omstart.
 
 Logg aldri verdiene, og eksponer dem ikke gjennom `EXPO_PUBLIC_*` eller frontend-bundlen.
 
