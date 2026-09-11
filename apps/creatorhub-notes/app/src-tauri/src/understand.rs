@@ -126,14 +126,21 @@ pub struct Understanding {
     /// Rettelser som gjaldt avsnitt som siden er skrevet om. Panelet sier
     /// ifra én gang, med brukerens egne ord, at linja er lest på nytt.
     pub reread: Vec<String>,
+    /// Det hun har tenkt om det samme før. Tom til svarene kommer.
+    pub earlier: Vec<crate::minne::Tidligere>,
 }
 
 impl Understanding {
     pub fn off() -> Self {
-        Understanding { on: false, paragraphs: Vec::new(), reread: Vec::new() }
+        Understanding {
+            on: false,
+            paragraphs: Vec::new(),
+            reread: Vec::new(),
+            earlier: Vec::new(),
+        }
     }
     pub fn on(paragraphs: Vec<Paragraph>, reread: Vec<String>) -> Self {
-        Understanding { on: true, paragraphs, reread }
+        Understanding { on: true, paragraphs, reread, earlier: Vec::new() }
     }
 }
 
@@ -164,10 +171,9 @@ pub trait Classifier {
 /// avsnitt som ikke er endret aldri klassifiseres på nytt.
 pub type Memo = HashMap<u64, Label>;
 
-/// Én hukommelse for hele appen, på tvers av notater.
-///
-/// ponytail: lever bare mens appen kjører. Å legge den i sqlite ville spart
-/// én runde per notat etter omstart — verdt det først om oppstart blir dyrt.
+/// Én hukommelse for hele appen, på tvers av notater. Den er bare det raske
+/// laget: det som står her ligger også i `forstatt`-tabellen, og det er den
+/// som gjør at forståelsen overlever at appen lukkes.
 pub fn memo() -> &'static Mutex<Memo> {
     static M: OnceLock<Mutex<Memo>> = OnceLock::new();
     M.get_or_init(Default::default)
@@ -359,7 +365,18 @@ pub fn understand(
 
 // ---- kommandolinja -----------------------------------------------------
 
-pub struct Cli;
+/// Kommandolinja, med de rettelsene brukeren har gjort til nå. De legges ved
+/// prompten som eksempler: har hun rettet «bestemorvennlig» én gang, skal
+/// neste krav av samme slag lande riktig uten at hun retter det igjen.
+pub struct Cli {
+    pub eksempler: Vec<crate::minne::Eksempel>,
+}
+
+impl Cli {
+    pub fn new(eksempler: Vec<crate::minne::Eksempel>) -> Self {
+        Cli { eksempler }
+    }
+}
 
 /// Hvor `claude` ligger. En app startet fra Finder arver ikke skallets PATH,
 /// så de vanlige stedene sjekkes direkte før vi håper på PATH.
@@ -383,49 +400,79 @@ fn binary() -> std::path::PathBuf {
     "claude".into()
 }
 
-pub fn prompt(texts: &[String]) -> String {
+pub fn prompt(texts: &[String], eksempler: &[crate::minne::Eksempel]) -> String {
     let avsnitt = texts
         .iter()
         .enumerate()
         .map(|(i, t)| format!("{}. {t}", i + 1))
         .collect::<Vec<_>>()
         .join("\n\n");
-    format!("{SYSTEM}\n\nAvsnittene:\n\n{avsnitt}")
+
+    // Rettelsene står etter taksonomien og før avsnittene: de er unntakene fra
+    // regelen, og gir bare mening når regelen alt er lest.
+    let lært = if eksempler.is_empty() {
+        String::new()
+    } else {
+        let linjer = eksempler
+            .iter()
+            .map(|e| format!("«{}»\ndu svarte {}, hun rettet det til {}", e.tekst, e.lest, e.rettet))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        format!(
+            "\n\nBrukeren har rettet disse tidligere. Ligner et avsnitt på et av dem, \
+             følg rettelsen hennes:\n\n{linjer}"
+        )
+    };
+
+    format!("{SYSTEM}{lært}\n\nAvsnittene:\n\n{avsnitt}")
+}
+
+/// Ett kall til kommandolinja. Ingen verktøy, ingen arbeidskatalog med et
+/// git-repo i: kommandoen skal lese en prompt og skrive tekst, ingenting
+/// annet.
+pub fn kjør(prompt: &str) -> Result<String, String> {
+    let mut barn = std::process::Command::new(binary())
+        .args(["-p", "--model", MODEL, "--output-format", "text"])
+        .arg(prompt)
+        .current_dir(std::env::temp_dir())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("startet ikke: {e}"))?;
+
+    let mut ut = barn.stdout.take().ok_or("ingen utdata")?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut s = String::new();
+        let _ = ut.read_to_string(&mut s);
+        let _ = tx.send(s);
+    });
+
+    match rx.recv_timeout(TIMEOUT) {
+        Ok(svar) => {
+            let _ = barn.wait();
+            Ok(svar)
+        }
+        Err(_) => {
+            let _ = barn.kill();
+            let _ = barn.wait();
+            Err("tok for lang tid".into())
+        }
+    }
 }
 
 impl Classifier for Cli {
     fn ask(&self, texts: &[String]) -> Result<String, String> {
-        // Ingen verktøy, ingen arbeidskatalog med et git-repo i: kommandoen
-        // skal lese en prompt og skrive tekst, ingenting annet.
-        let mut barn = std::process::Command::new(binary())
-            .args(["-p", "--model", MODEL, "--output-format", "text"])
-            .arg(prompt(texts))
-            .current_dir(std::env::temp_dir())
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .map_err(|e| format!("startet ikke: {e}"))?;
+        kjør(&prompt(texts, &self.eksempler))
+    }
+}
 
-        let mut ut = barn.stdout.take().ok_or("ingen utdata")?;
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let mut s = String::new();
-            let _ = ut.read_to_string(&mut s);
-            let _ = tx.send(s);
-        });
-
-        match rx.recv_timeout(TIMEOUT) {
-            Ok(svar) => {
-                let _ = barn.wait();
-                Ok(svar)
-            }
-            Err(_) => {
-                let _ = barn.kill();
-                let _ = barn.wait();
-                Err("tok for lang tid".into())
-            }
-        }
+/// Samme kommandolinje, annen prompt: hva forholdet er mellom et avsnitt hun
+/// skriver nå og ett hun skrev før.
+impl crate::minne::Dommer for Cli {
+    fn døm(&self, par: &[(String, String)]) -> Result<String, String> {
+        kjør(&crate::minne::relasjonsprompt(par))
     }
 }
 
@@ -567,12 +614,31 @@ mod tests {
     /// nummerert slik svaret refererer til dem.
     #[test]
     fn prompten_har_taksonomien_regelen_og_nummererte_avsnitt() {
-        let p = prompt(&["Vi skal ha innlogging.".into(), "Kanskje depositum.".into()]);
+        let p = prompt(&["Vi skal ha innlogging.".into(), "Kanskje depositum.".into()], &[]);
         assert!(p.contains("velg det som gjør minst"));
         assert!(p.contains("marker_åpent"));
         assert!(p.contains("<nummer>|<type>|<handling>|<kortform>"));
         assert!(p.contains("1. Vi skal ha innlogging."));
         assert!(p.contains("2. Kanskje depositum."));
+    }
+
+    /// Sløyfa som gjør at appen kjenner *henne* og ikke bare språket: har hun
+    /// rettet en linje, står rettelsen i prompten neste gang.
+    #[test]
+    fn en_rettelse_står_som_eksempel_i_neste_prompt() {
+        let eksempler = vec![crate::minne::Eksempel {
+            tekst: "ux og ui må være bestemorvennlig".into(),
+            lest: "begrensning|hold|Bestemorvennlig grensesnitt".into(),
+            rettet: "beslutning|bygg|Bestemorvennlig grensesnitt".into(),
+        }];
+        let p = prompt(&["Det må være enkelt nok for mor.".into()], &eksempler);
+        assert!(p.contains("ux og ui må være bestemorvennlig"));
+        assert!(p.contains("du svarte begrensning|hold|Bestemorvennlig grensesnitt"));
+        assert!(p.contains("hun rettet det til beslutning|bygg|Bestemorvennlig grensesnitt"));
+        assert!(p.contains("velg det som gjør minst"), "regelen skal fortsatt stå");
+
+        // Uten rettelser skal prompten være nøyaktig som før.
+        assert!(!prompt(&["En tanke.".into()], &[]).contains("rettet det til"));
     }
 
     #[test]
@@ -614,7 +680,7 @@ mod tests {
             "Kanskje vi burde ha depositum, men jeg er usikker.".to_string(),
             "Kunden ønsker innlogging, men jeg er uenig.".to_string(),
         ];
-        let svar = Cli.ask(&tekster).expect("claude svarte ikke");
+        let svar = Cli::new(Vec::new()).ask(&tekster).expect("claude svarte ikke");
         let ut = parse(&svar, 3);
         eprintln!("{svar}");
         assert!(ut.iter().all(Option::is_some), "alle tre skal ha et merke");

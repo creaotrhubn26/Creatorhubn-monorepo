@@ -4,6 +4,7 @@
 //! kaller indekseren som bibliotek. Ingen binær startes, ingen nettverkskall
 //! gjøres: alt her er disk, git og SQLite.
 
+mod minne;
 mod rettelser;
 mod understand;
 
@@ -344,16 +345,45 @@ fn search_notes(query: String) -> Result<Vec<SearchHit>, String> {
 /// gjorde, i stedet for å betale for det på nytt.
 #[tauri::command]
 fn understand_note(content: String, path: String) -> Result<understand::Understanding, String> {
+    let base = base().ok();
+
+    // Alt som er forstått før hentes inn før klassifiseringen. Det er dette
+    // som gjør at et notat fra i går ikke koster et eneste kall i dag.
     let mut memo = understand::memo().lock().unwrap_or_else(|e| e.into_inner());
-    let Ok(mut avsnitt) = understand::understand(&content, &understand::Cli, &mut memo) else {
+    let eksempler = base
+        .as_ref()
+        .and_then(|c| minne::eksempler(c, minne::ANTALL_EKSEMPLER).ok())
+        .unwrap_or_default();
+    if let Some(conn) = &base {
+        let hasher: Vec<String> = understand::split(&content)
+            .iter()
+            .map(|c| understand::nøkkel(&c.text))
+            .collect();
+        if let Ok(kjente) = minne::kjente(conn, &hasher) {
+            for (nøkkel, label) in kjente {
+                memo.entry(nøkkel).or_insert(label);
+            }
+        }
+    }
+
+    let cli = understand::Cli::new(eksempler);
+    let Ok(mut avsnitt) = understand::understand(&content, &cli, &mut memo) else {
         return Ok(understand::Understanding::off());
     };
+    // Hukommelsen holdes låst hele veien. Det serialiserer to lagringer som
+    // kommer tett — som er det man vil: den andre finner arbeidet den første
+    // gjorde, i stedet for å betale for det på nytt.
 
     // Rettelsene er det beste vi har, men de er ikke verdt å felle panelet
     // for: klarer vi ikke å åpne basen, står linjene der som systemet leste
     // dem, og brukeren merker ingenting annet.
     let mut lest_på_nytt = Vec::new();
-    if let Ok(conn) = base() {
+    let mut tidligere = Vec::new();
+    if let Some(conn) = &base {
+        let tittel = derive_title(&path, &content);
+        let _ = minne::lagre(conn, &path, &tittel, &avsnitt);
+        tidligere = minne::tidligere(conn, &avsnitt, &cli).unwrap_or_default();
+
         // Avsnittene i teksten, ikke linjene i panelet: en linje kan mangle
         // fordi klassifiseringen ikke fikk lest den, og da er rettelsen
         // fortsatt god — teksten står jo der.
@@ -361,18 +391,41 @@ fn understand_note(content: String, path: String) -> Result<understand::Understa
             .iter()
             .map(|c| understand::nøkkel(&c.text))
             .collect();
-        lest_på_nytt = rettelser::foreldede(&conn, &path, &nåværende).unwrap_or_default();
-        if let Ok(mine) = rettelser::aktive(&conn, &path) {
+        lest_på_nytt = rettelser::foreldede(conn, &path, &nåværende).unwrap_or_default();
+        if let Ok(mine) = rettelser::aktive(conn, &path) {
             rettelser::merge(&mut avsnitt, &mine);
         }
     }
-    Ok(understand::Understanding::on(avsnitt, lest_på_nytt))
+
+    let mut ut = understand::Understanding::on(avsnitt, lest_på_nytt);
+    ut.earlier = tidligere;
+    Ok(ut)
 }
 
-/// Basen appen allerede bruker, med rettelsestabellen på plass.
+/// Svarer på et spørsmål om det som er forstått, når søket er ett. Er det et
+/// vanlig søk, svarer den ingenting, og fritekstsøket står alene.
+#[tauri::command]
+fn spor_notater(query: String) -> Result<Option<minne::Svar>, String> {
+    let conn = base()?;
+    minne::spør(&conn, &query).map_err(|e| format!("klarte ikke å søke: {e}"))
+}
+
+/// Hvor et avsnitt står i et notat. Brukes når en linje under «Tidligere om
+/// dette» åpner notatet den peker på.
+#[tauri::command]
+fn finn_avsnitt(path: String, hash: String) -> Result<Option<[usize; 2]>, String> {
+    let dir = notes_dir()?;
+    let full = resolve_in(&dir, &path)?;
+    let innhold =
+        std::fs::read_to_string(&full).map_err(|e| format!("kunne ikke lese {path}: {e}"))?;
+    Ok(minne::posisjon(&innhold, &hash).map(|(a, b)| [a, b]))
+}
+
+/// Basen appen allerede bruker, med app-tabellene på plass.
 fn base() -> Result<rusqlite::Connection, String> {
     let conn = db::open(&db_path()?).map_err(|e| format!("fikk ikke åpnet notatbasen: {e}"))?;
     rettelser::sørg_for_tabell(&conn).map_err(|e| format!("fikk ikke åpnet notatbasen: {e}"))?;
+    minne::sørg_for_tabeller(&conn).map_err(|e| format!("fikk ikke åpnet notatbasen: {e}"))?;
     Ok(conn)
 }
 
@@ -406,7 +459,9 @@ pub fn run() {
             search_notes,
             reindex,
             understand_note,
-            rett_avsnitt
+            rett_avsnitt,
+            spor_notater,
+            finn_avsnitt
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
