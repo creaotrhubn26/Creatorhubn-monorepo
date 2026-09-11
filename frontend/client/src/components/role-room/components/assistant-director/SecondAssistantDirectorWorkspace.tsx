@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -69,10 +69,13 @@ export function SecondAssistantDirectorWorkspace({
   onOpenFullWorkspace,
   onSaved,
 }: Props) {
-  const productionDays = useMemo(
+  const embeddedProductionDays = useMemo(
     () => (Array.isArray(project.productionDays) ? project.productionDays : []),
     [project.productionDays],
   );
+  const [productionDays, setProductionDays] = useState<ProductionDay[]>(embeddedProductionDays);
+  const [productionDaysLoading, setProductionDaysLoading] = useState(embeddedProductionDays.length === 0);
+  const [productionDaysError, setProductionDaysError] = useState<string | null>(null);
   const initialDay = useMemo(() => selectSecondAdProductionDay(productionDays), [productionDays]);
   const [dayId, setDayId] = useState(initialDay?.id ?? '');
   const selectedDay = productionDays.find((day) => day.id === dayId) ?? initialDay;
@@ -87,11 +90,45 @@ export function SecondAssistantDirectorWorkspace({
   const [deliveries, setDeliveries] = useState<DeliverySummary[]>([]);
   const [deliveriesLoading, setDeliveriesLoading] = useState(false);
 
-  const loadDeliveries = async () => {
-    if (!selectedDay) return;
+  useEffect(() => {
+    let cancelled = false;
+    setProductionDays(embeddedProductionDays);
+    setProductionDaysLoading(true);
+    setProductionDaysError(null);
+
+    void castingService.getProductionDays(project.id)
+      .then((days) => {
+        if (cancelled) return;
+        setProductionDays(days);
+        setDayId((current) => (
+          days.some((day) => day.id === current)
+            ? current
+            : selectSecondAdProductionDay(days)?.id ?? ''
+        ));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setProductionDaysError(
+          error instanceof Error
+            ? error.message
+            : 'Kunne ikke hente produksjonsdagene.',
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setProductionDaysLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [embeddedProductionDays, project.id]);
+
+  const selectedDayId = selectedDay?.id;
+  const loadDeliveries = useCallback(async () => {
+    if (!selectedDayId) return;
     setDeliveriesLoading(true);
     try {
-      const response = await fetch(`/api/role-room/projects/${encodeURIComponent(project.id)}/call-sheet-deliveries?productionDayId=${encodeURIComponent(selectedDay.id)}`, {
+      const response = await fetch(`/api/role-room/projects/${encodeURIComponent(project.id)}/call-sheet-deliveries?productionDayId=${encodeURIComponent(selectedDayId)}`, {
         headers: { ...roleRoomAgentDefaultHeaders() },
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -102,15 +139,18 @@ export function SecondAssistantDirectorWorkspace({
     } finally {
       setDeliveriesLoading(false);
     }
-  };
+  }, [project.id, selectedDayId]);
 
   useEffect(() => {
     setEntries(derivedEntries);
     setNotes(selectedDay?.secondAd?.notes ?? '');
-    setFeedback(null);
   }, [derivedEntries, selectedDay?.id, selectedDay?.secondAd?.notes]);
 
-  useEffect(() => { void loadDeliveries(); }, [project.id, selectedDay?.id]);
+  useEffect(() => {
+    setFeedback(null);
+  }, [project.id, selectedDay?.id]);
+
+  useEffect(() => { void loadDeliveries(); }, [loadDeliveries]);
 
   const stats = useMemo(() => secondAdReadiness(entries), [entries]);
   const patchEntry = (id: string, patch: Partial<SecondAdMovementEntry>) => {
@@ -142,6 +182,7 @@ export function SecondAssistantDirectorWorkspace({
     };
     try {
       await castingService.saveProductionDay(project.id, updated);
+      setProductionDays((current) => current.map((day) => day.id === updated.id ? updated : day));
       onSaved?.(updated);
       setFeedback({ type: 'success', text: 'Dagsstatusen er lagret.' });
     } catch (error) {
@@ -169,7 +210,12 @@ export function SecondAssistantDirectorWorkspace({
           <Button variant="outlined" startIcon={<OnSetIcon />} onClick={onOpenLiveSet} sx={{ color: '#ccfbf1', borderColor: 'rgba(45,212,191,.3)' }}>Live Set</Button>
         </Stack>
 
-        {productionDays.length === 0 ? (
+        {productionDaysError ? (
+          <Alert severity="error" sx={{ mb: 2 }}>{productionDaysError}</Alert>
+        ) : null}
+        {productionDaysLoading && productionDays.length === 0 ? (
+          <Alert severity="info">Henter produksjonsdager…</Alert>
+        ) : productionDays.length === 0 ? (
           <Alert severity="info">Ingen produksjonsdag er registrert. Opprett en dag i opptaksplanen før cast movement kan føres.</Alert>
         ) : (
           <>
