@@ -19,6 +19,7 @@ pub mod db;
 pub mod embed;
 pub mod eval;
 pub mod gitsrc;
+pub mod identitet;
 pub mod index;
 pub mod ordbank;
 pub mod search;
