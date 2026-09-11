@@ -202,7 +202,9 @@ function loadIdPortenConfig(env: NodeJS.ProcessEnv): ProductConfig['idporten'] {
     clientId,
     keyId,
     privateKeyPem,
-    scopes: env.IDPORTEN_SCOPES ?? 'openid skatteetaten:mvameldingvalidering',
+    // Validering: skatteetaten:mvameldingvalidering. Innsending via Altinn 3:
+    // altinn:instances.read/write (Skatteetaten MVA-produksjon: ID-porten m/ representasjon, IKKE Maskinporten).
+    scopes: env.IDPORTEN_SCOPES ?? 'openid skatteetaten:mvameldingvalidering altinn:instances.read altinn:instances.write',
     redirectUri: env.IDPORTEN_REDIRECT_URI ?? `${base}/idporten/callback`,
   };
 }
