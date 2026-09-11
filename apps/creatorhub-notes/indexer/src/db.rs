@@ -10,23 +10,6 @@ create table if not exists meta (
   value text not null
 );
 
-create table if not exists notes (
-  id    text primary key,
-  path  text not null unique,
-  mtime integer not null,
-  type  text,
-  title text
-);
-
-create table if not exists entities (
-  id         integer primary key,
-  kind       text not null,
-  name       text not null,
-  source_ref text,
-  repo       text,
-  unique(kind, source_ref)
-);
-
 create table if not exists chunks (
   id         integer primary key,
   source     text not null,
@@ -41,21 +24,18 @@ create table if not exists path_state (
   path     text primary key,
   blob_sha text not null
 );
+"#;
 
-create table if not exists anchors (
-  note_id    text not null,
-  entity_id  integer not null,
-  confidence real not null default 0,
-  confirmed  integer not null default 0,
-  primary key (note_id, entity_id)
-);
-
-create table if not exists edges (
-  from_entity integer not null,
-  to_entity   integer not null,
-  kind        text not null,
-  primary key (from_entity, to_entity, kind)
-);
+/// `notes`, `entities`, `anchors` og `edges` var tegnet før vi visste hvordan
+/// dataene ville se ut, og ingen kode har noen gang lest eller skrevet dem.
+/// Grafen finnes, men i appen: `forstatt` er entitetene, `relasjoner` er
+/// kantene. Å la et tomt skjema stå er en felle for neste leser, så det ryddes
+/// bort her — i baser som allerede har tabellene også.
+const DØDT: &str = r#"
+drop table if exists anchors;
+drop table if exists edges;
+drop table if exists entities;
+drop table if exists notes;
 "#;
 
 /// Fulltekstindeks over `chunks.text`, uten embedder og uten nettverk.
@@ -94,6 +74,7 @@ pub fn open(path: &Path) -> Result<Connection> {
     let conn = Connection::open(path)?;
     conn.pragma_update(None, "journal_mode", "WAL")?;
     conn.execute_batch(SCHEMA)?;
+    conn.execute_batch(DØDT)?;
     conn.execute_batch(&format!(
         "create virtual table if not exists chunk_vec using vec0(embedding float[{}]);",
         EMBEDDING_DIM

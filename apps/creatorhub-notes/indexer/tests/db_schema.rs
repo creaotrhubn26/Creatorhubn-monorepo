@@ -11,12 +11,25 @@ fn open_creates_schema_and_is_idempotent() {
         let count: i64 = conn
             .query_row(
                 "select count(*) from sqlite_master where name in \
-                 ('chunks','entities','anchors','edges','notes','meta')",
+                 ('chunks','path_state','meta')",
                 [],
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(count, 6, "all six base tables should exist");
+        assert_eq!(count, 3, "the three base tables should exist");
+
+        // Den døde grafen skal være borte, og skal bli borte også i en base
+        // som allerede har den.
+        conn.execute_batch("create table notes (id text primary key);").unwrap();
+        let dødt: i64 = conn
+            .query_row(
+                "select count(*) from sqlite_master where name in \
+                 ('notes','entities','anchors','edges')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(dødt, 1, "testen skal faktisk ha laget noe å rydde bort");
 
         db::set_meta(&conn, "last_sha", "abc123").unwrap();
         assert_eq!(
@@ -32,6 +45,15 @@ fn open_creates_schema_and_is_idempotent() {
         db::get_meta(&conn, "last_sha").unwrap(),
         Some("abc123".to_string())
     );
+    let dødt: i64 = conn
+        .query_row(
+            "select count(*) from sqlite_master where name in \
+             ('notes','entities','anchors','edges')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(dødt, 0, "den døde grafen skal være ryddet bort");
 
     // The vector table accepts a 1024-dimension embedding.
     conn.execute(

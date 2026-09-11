@@ -47,24 +47,45 @@ hva som ble bestemt, og hva som ble forkastet.
 Markdown er sannheten. SQLite er en index som alltid kan gjenbygges fra filer
 og git. Slettes indeksen, mistes ingenting.
 
+> **Rettet 12. september 2026.** Det som sto her beskrev en entitets- og
+> ankergraf — `notes`, `entities`, `anchors`, `edges` — som aldri ble noe annet
+> enn et tomt skjema. Ingen kode leste eller skrev dem på noe tidspunkt.
+> Tabellene er slettet, og det som står under er det som faktisk finnes.
+> Grafen finnes også, men bygget av data vi har: `forstatt` er entitetene,
+> `relasjoner` er kantene.
+
 ```
-note.md    frontmatter: id, created, type, anchors[], status
+note.md    frontmatter: id, created, type, status
            brødtekst: ren markdown, ingen proprietær syntaks
 
-sqlite:
-  notes      id, path, mtime, type, title
-  chunks     note_id | entity_id, text, embedding(vec)
-  entities   id, kind(feature|pipeline|file|symbol|pr|commit|decision),
-             name, source_ref, repo
-  anchors    note_id, entity_id, confidence, confirmed(bool)
-  edges      entity_id -> entity_id, kind(supersedes|blocks|part_of)
+sqlite, indeksen (indexer/src/db.rs):
+  meta        key, value                       sist indekserte commit
+  chunks      source, path, start_line, end_line, text
+  chunk_fts   fulltekst over chunks.text       (fts5, ekstern-innhold)
+  chunk_vec   embedding(vec[1024])             ubrukt i appen, brukt av kodeindeksen
+  path_state  path, blob_sha                   inkrementell indeksering
+
+sqlite, appen (app/src-tauri/src/{minne,rettelser}.rs):
+  avsnitt      id, kilde, rekkefolge, avsender, innhold_hash, tekst
+  forstatt     avsnitt_id, tittel, tekst, type, handling, kortform, venter, tidspunkt
+  forstatt_fts fulltekst over kortform + tekst  (fts5, ekstern-innhold)
+  rettelser    avsnitt_id, sti, tekst, lest_*, plass, kortform, tidspunkt, foreldet
+  relasjoner   avsnitt_id, annen_id, forhold, tidspunkt
 ```
+
+**`avsnitt.id` er identiteten.** Den tildeles én gang og gjenfinnes ved likhet
+neste gang kilden leses, så den overlever at brukeren retter en skrivefeil.
+`innhold_hash` er cache-nøkkelen — «har jeg klassifisert denne teksten før» —
+og ikke identitet. Begrunnelsen står i
+`2026-09-12-notatlosning-arkitektur.md`, målingen i
+`klassifiseringstest/IDENTITET.md`.
 
 Én `chunks`-tabell for både notater og kode gir ett felles vektorrom. Derfor kan
 et notat finne en PR fra august, og en fil finne notatet som handler om den.
 
-En beslutning er ikke egen tabell, men en entitet utledet fra et notat.
-«Vi forkastet X fordi Y» blir dermed søkbart på linje med kode.
+En beslutning er ikke egen tabell: den er et avsnitt `forstatt` har lest som
+`beslutning`. «Vi forkastet X fordi Y» blir søkbart gjennom `relasjoner`, der
+`motsier` er kanten som bærer det.
 
 ## Plassering
 
