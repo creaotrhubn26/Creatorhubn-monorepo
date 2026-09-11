@@ -1,4 +1,5 @@
 import type {
+  Candidate,
   CastingProject,
   CrewMember,
   Location,
@@ -140,8 +141,18 @@ function scenePageCount(scene: SceneBreakdown): number {
     : 0;
 }
 
-function isFilledRole(role: Role): boolean {
-  return role.status === 'filled' || role.status === 'cast' || role.status === 'confirmed';
+function isFilledRole(role: Role, candidates: Candidate[]): boolean {
+  return role.status === 'filled'
+    || role.status === 'cast'
+    || role.status === 'confirmed'
+    || typeof role.assignedCandidateId === 'string'
+    || typeof role.assigned_candidate_id === 'string'
+    || candidates.some((candidate) => {
+      const assigned = candidate.assignedRoles ?? candidate.assigned_roles ?? [];
+      return candidate.roleId === role.id
+        || candidate.role_id === role.id
+        || (Array.isArray(assigned) && assigned.includes(role.id));
+    });
 }
 
 function isConfirmedCrew(member: CrewMember): boolean {
@@ -158,7 +169,12 @@ export function buildFirstAssistantDirectorBrief({
   const crew = Array.isArray(project.crew) ? project.crew : [];
   const crewById = new Map(crew.map((member) => [member.id, member]));
   const roles = Array.isArray(project.roles) ? project.roles : [];
-  const roleByName = new Map(roles.map((role) => [normalizeName(role.name), role]));
+  const candidates = Array.isArray(project.candidates) ? project.candidates : [];
+  const roleByReference = new Map<string, Role>();
+  for (const role of roles) {
+    roleByReference.set(role.id, role);
+    roleByReference.set(normalizeName(role.name), role);
+  }
   const locations = Array.isArray(project.locations) ? project.locations : [];
   const days = nonCancelledProductionDays(project);
   const upcomingDays = days.filter((day) => isUpcomingProductionDay(day, today));
@@ -181,16 +197,16 @@ export function buildFirstAssistantDirectorBrief({
       .map((sceneId) => sceneById.get(sceneId))
       .filter((scene): scene is SceneBreakdown => Boolean(scene));
     const missingSceneCount = Math.max(0, sceneIds.length - dayScenes.length);
-    const requiredCharacters = new Set(
-      dayScenes.flatMap((scene) => (Array.isArray(scene.characters) ? scene.characters : []))
-        .map(normalizeName)
-        .filter(Boolean),
-    );
-    const unresolvedCastCount = Array.from(requiredCharacters)
-      .filter((character) => {
-        const role = roleByName.get(character);
-        return !role || !isFilledRole(role);
-      }).length;
+    const requiredCharacters = new Map<string, Role | undefined>();
+    for (const reference of dayScenes.flatMap((scene) => (Array.isArray(scene.characters) ? scene.characters : []))) {
+      const value = String(reference ?? '').trim();
+      if (!value) continue;
+      const role = roleByReference.get(value) ?? roleByReference.get(normalizeName(value));
+      const key = role?.id || normalizeName(value);
+      if (!requiredCharacters.has(key)) requiredCharacters.set(key, role);
+    }
+    const unresolvedCastCount = [...requiredCharacters.values()]
+      .filter((role) => !role || !isFilledRole(role, candidates)).length;
     const assignedCrew = (Array.isArray(selected.day.crew) ? selected.day.crew : [])
       .map((crewId) => crewById.get(crewId))
       .filter((member): member is CrewMember => Boolean(member));
@@ -327,6 +343,26 @@ export function buildFirstAssistantDirectorBrief({
         tone: 'upcoming',
         target: 'cast-crew',
         actionLabel: 'Følg opp crew',
+      });
+    }
+
+    const selectedDay = days.find((day) => day.id === productionDay.id);
+    const movementEntries = Array.isArray(selectedDay?.secondAd?.entries)
+      ? selectedDay.secondAd.entries
+      : [];
+    if (movementEntries.length > 0) {
+      const acknowledged = movementEntries.filter((entry) => [
+        'acknowledged', 'arrived', 'makeup', 'wardrobe', 'ready', 'on_set', 'wrapped',
+      ].includes(entry.status)).length;
+      const ready = movementEntries.filter((entry) => ['ready', 'on_set', 'wrapped'].includes(entry.status)).length;
+      items.push({
+        id: 'second-ad-day-status',
+        title: `${ready}/${movementEntries.length} medvirkende er klare for sett`,
+        description: `${acknowledged}/${movementEntries.length} har bekreftet eller kommet videre i dagsflyten. Oppdateres fra 2nd ADs individuelle tider og status.`,
+        sourceLabel: '2nd AD dagsstatus',
+        tone: acknowledged === movementEntries.length ? 'ready' : 'attention',
+        target: 'on-set',
+        actionLabel: 'Åpne Live Set',
       });
     }
   }

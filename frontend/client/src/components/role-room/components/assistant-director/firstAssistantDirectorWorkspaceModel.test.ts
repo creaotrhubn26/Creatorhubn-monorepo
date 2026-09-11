@@ -161,4 +161,34 @@ describe('firstAssistantDirectorWorkspaceModel', () => {
     expect(isFirstAssistantDirectorSurface('camera')).toBe(false);
     expect(isFirstAssistantDirectorSurface(null)).toBe(false);
   });
+
+  it('resolves role IDs from manuscript scenes and surfaces the 2nd AD handoff', () => {
+    const handoffProject: CastingProject = {
+      ...project,
+      roles: [{ id: 'role-nora', name: 'NORA', assignedCandidateId: 'candidate-nora' }],
+      sceneBreakdowns: [{ id: 'scene-1', sceneNumber: 1, characters: ['role-nora'] }],
+      productionDays: [{
+        ...project.productionDays![0],
+        scenes: ['scene-1'],
+        secondAd: {
+          entries: [{
+            id: 'cast:candidate-nora', personType: 'cast', personId: 'candidate-nora',
+            name: 'Ada', roleName: 'NORA', callTime: '06:30', onSetTime: '07:00', status: 'ready',
+          }],
+        },
+      }],
+    };
+
+    const brief = buildFirstAssistantDirectorBrief({
+      project: handoffProject,
+      now: new Date('2026-09-10T12:00:00.000Z'),
+    });
+
+    expect(brief.productionDay?.unresolvedCastCount).toBe(0);
+    expect(brief.items.find((item) => item.id === 'second-ad-day-status')).toMatchObject({
+      title: '1/1 medvirkende er klare for sett',
+      sourceLabel: '2nd AD dagsstatus',
+      target: 'on-set',
+    });
+  });
 });

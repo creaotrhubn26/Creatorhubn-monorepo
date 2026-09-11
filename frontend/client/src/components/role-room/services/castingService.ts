@@ -2768,7 +2768,45 @@ export const castingService = {
   async getSceneBreakdowns(projectId: string): Promise<SceneBreakdown[]> {
     projectId = normalizeRequiredProjectId(projectId, 'getSceneBreakdowns');
     const project = await this.getProject(projectId);
-    return Array.isArray(project?.sceneBreakdowns) ? project.sceneBreakdowns : [];
+    const embedded = Array.isArray(project?.sceneBreakdowns) ? project.sceneBreakdowns : [];
+    if (embedded.length > 0) return embedded;
+
+    // Canonical projects do not necessarily duplicate screenplay scenes on the
+    // project shell. Production days still reference those scene IDs, so fall
+    // back to the authenticated manuscript APIs and merge the scene lists.
+    // This keeps Director, 1st AD, 2nd AD and call sheets on one source of truth.
+    const manuscriptResponse = await fetch(
+      `/api/casting/manuscripts?projectId=${encodeURIComponent(projectId)}`,
+      { headers: { ...getRoleRoomAuthHeaders() } },
+    );
+    if (!manuscriptResponse.ok) {
+      throw new Error(`Kunne ikke hente manus for sceneoversikt (${manuscriptResponse.status})`);
+    }
+    const manuscripts = await manuscriptResponse.json() as Array<{ id?: unknown }>;
+    const manuscriptIds = Array.isArray(manuscripts)
+      ? manuscripts
+        .map((manuscript) => typeof manuscript?.id === 'string' ? manuscript.id.trim() : '')
+        .filter(Boolean)
+      : [];
+    if (manuscriptIds.length === 0) return [];
+
+    const sceneLists = await Promise.all(manuscriptIds.map(async (manuscriptId) => {
+      const response = await fetch(
+        `/api/casting/manuscripts/${encodeURIComponent(manuscriptId)}/scenes`,
+        { headers: { ...getRoleRoomAuthHeaders() } },
+      );
+      if (!response.ok) {
+        throw new Error(`Kunne ikke hente scener fra manus (${response.status})`);
+      }
+      const scenes = await response.json();
+      return Array.isArray(scenes) ? scenes as SceneBreakdown[] : [];
+    }));
+
+    const byId = new Map<string, SceneBreakdown>();
+    for (const scene of sceneLists.flat()) {
+      if (scene && typeof scene.id === 'string' && scene.id.trim()) byId.set(scene.id, scene);
+    }
+    return [...byId.values()];
   },
 
   /**
@@ -5307,4 +5345,3 @@ export const castingService = {
     return template;
   },
 };
-

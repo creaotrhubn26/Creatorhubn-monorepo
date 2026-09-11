@@ -73,15 +73,24 @@ export function SecondAssistantDirectorWorkspace({
     () => (Array.isArray(project.productionDays) ? project.productionDays : []),
     [project.productionDays],
   );
+  const embeddedSceneBreakdowns = useMemo(
+    () => (Array.isArray(project.sceneBreakdowns) ? project.sceneBreakdowns : []),
+    [project.sceneBreakdowns],
+  );
   const [productionDays, setProductionDays] = useState<ProductionDay[]>(embeddedProductionDays);
+  const [sceneBreakdowns, setSceneBreakdowns] = useState(embeddedSceneBreakdowns);
   const [productionDaysLoading, setProductionDaysLoading] = useState(embeddedProductionDays.length === 0);
   const [productionDaysError, setProductionDaysError] = useState<string | null>(null);
   const initialDay = useMemo(() => selectSecondAdProductionDay(productionDays), [productionDays]);
   const [dayId, setDayId] = useState(initialDay?.id ?? '');
   const selectedDay = productionDays.find((day) => day.id === dayId) ?? initialDay;
+  const operationalProject = useMemo(
+    () => ({ ...project, sceneBreakdowns }),
+    [project, sceneBreakdowns],
+  );
   const derivedEntries = useMemo(
-    () => selectedDay ? buildSecondAdMovementEntries(project, selectedDay) : [],
-    [project, selectedDay],
+    () => selectedDay ? buildSecondAdMovementEntries(operationalProject, selectedDay) : [],
+    [operationalProject, selectedDay],
   );
   const [entries, setEntries] = useState<SecondAdMovementEntry[]>(derivedEntries);
   const [notes, setNotes] = useState(selectedDay?.secondAd?.notes ?? '');
@@ -122,6 +131,20 @@ export function SecondAssistantDirectorWorkspace({
       cancelled = true;
     };
   }, [embeddedProductionDays, project.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSceneBreakdowns(embeddedSceneBreakdowns);
+    void castingService.getSceneBreakdowns(project.id)
+      .then((scenes) => {
+        if (!cancelled) setSceneBreakdowns(scenes.length > 0 ? scenes : embeddedSceneBreakdowns);
+      })
+      .catch(() => {
+        // The production-day controls remain usable if manuscript loading is
+        // temporarily unavailable; embedded scenes are retained as fallback.
+      });
+    return () => { cancelled = true; };
+  }, [embeddedSceneBreakdowns, project.id]);
 
   const selectedDayId = selectedDay?.id;
   const loadDeliveries = useCallback(async () => {
@@ -259,7 +282,7 @@ export function SecondAssistantDirectorWorkspace({
                       {entry.personType === 'cast' ? <><Typography sx={{ fontWeight: 750 }}>{entry.name}</Typography><Typography sx={{ color: roleTokens.textMuted, fontSize: '.78rem' }}>{entry.roleName}</Typography></> : <Stack direction="row" gap={.5} alignItems="center"><TextField fullWidth required size="small" disabled={readOnly} label={entry.personType === 'stand_in' ? 'Stand-in' : 'Statist'} value={entry.name} onChange={(event) => patchEntry(entry.id, { name: event.target.value })} sx={fieldSx} /><Button aria-label="Fjern person" disabled={readOnly} onClick={() => setEntries((current) => current.filter((item) => item.id !== entry.id))} sx={{ minWidth: 40, color: '#fca5a5' }}><DeleteIcon /></Button></Stack>}
                     </Box>
                     {(['pickupTime', 'callTime', 'makeupTime', 'wardrobeTime', 'onSetTime'] as const).map((key) => <TextField key={key} type="time" size="small" disabled={readOnly} label={{ pickupTime: 'Henting', callTime: 'Call', makeupTime: 'Sminke', wardrobeTime: 'Kostyme', onSetTime: 'På sett' }[key]} value={entry[key] || ''} onChange={(event) => patchEntry(entry.id, { [key]: event.target.value })} InputLabelProps={{ shrink: true }} sx={fieldSx} />)}
-                    <FormControl size="small" sx={fieldSx}><InputLabel>Status</InputLabel><Select disabled={readOnly} value={entry.status} label="Status" onChange={(event) => patchEntry(entry.id, { status: event.target.value as SecondAdMovementEntry['status'] })}>{SECOND_AD_STATUSES.map((status) => <MenuItem key={status} value={status}>{SECOND_AD_STATUS_LABELS[status]}</MenuItem>)}</Select></FormControl>
+                    <FormControl size="small" sx={fieldSx}><InputLabel id={`second-ad-status-${entry.id}`}>Status</InputLabel><Select labelId={`second-ad-status-${entry.id}`} disabled={readOnly} value={entry.status} label="Status" onChange={(event) => patchEntry(entry.id, { status: event.target.value as SecondAdMovementEntry['status'] })}>{SECOND_AD_STATUSES.map((status) => <MenuItem key={status} value={status}>{SECOND_AD_STATUS_LABELS[status]}</MenuItem>)}</Select></FormControl>
                   </Box>
                   <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 2fr' }, gap: 1.25, mt: 1.25 }}>
                     <TextField size="small" disabled={readOnly} label="Transport / sjåfør" value={entry.transport || ''} onChange={(event) => patchEntry(entry.id, { transport: event.target.value })} sx={fieldSx} />
