@@ -1072,6 +1072,11 @@ export interface ProductionDay {
     source: 'fallback' | 'yr_api';
   };
   secondAd?: SecondAssistantDirectorOperations;
+  productionManagement?: ProductionManagementOperations;
+  /** Server-owned optimistic concurrency counter for production-management edits. */
+  managementVersion?: number;
+  managementUpdatedAt?: string;
+  managementUpdatedBy?: string;
   lastModifiedBy?: string;
   createdBy?: string;
   changeLog?: Array<{
@@ -1083,6 +1088,72 @@ export interface ProductionDay {
   createdAt?: string;
   updatedAt?: string;
   [key: string]: unknown;
+}
+
+export type ProductionManagementDayStatus = 'not_started' | 'ready' | 'at_risk' | 'completed';
+export type ProductionManagementCallSheetApproval = 'not_ready' | 'ready_for_review' | 'approved';
+export type ProductionManagementCheckpointStatus = 'not_started' | 'in_progress' | 'ready' | 'blocked';
+export type ProductionManagementIssueStatus = 'open' | 'in_progress' | 'resolved';
+export type ProductionManagementIssueSeverity = 'low' | 'medium' | 'high' | 'critical';
+export type ProductionManagementCostStatus = 'draft' | 'pending' | 'approved' | 'rejected';
+export type ProductionManagementCrewStatus = 'pending' | 'confirmed' | 'declined';
+
+export interface ProductionManagementCrewConfirmation {
+  crewId: string;
+  status: ProductionManagementCrewStatus;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionManagementCheckpoint {
+  id: string;
+  category: 'location' | 'transport' | 'catering' | 'equipment' | 'permit';
+  title: string;
+  status: ProductionManagementCheckpointStatus;
+  owner?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionManagementIssue {
+  id: string;
+  title: string;
+  severity: ProductionManagementIssueSeverity;
+  status: ProductionManagementIssueStatus;
+  owner?: string;
+  dueAt?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionManagementCostItem {
+  id: string;
+  category: string;
+  title: string;
+  estimatedCost: number;
+  actualCost: number;
+  status: ProductionManagementCostStatus;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionManagementActivityEntry {
+  id: string;
+  type: 'workspace_saved';
+  message: string;
+  actorUserId?: string;
+  createdAt: string;
+}
+
+export interface ProductionManagementOperations {
+  dayStatus: ProductionManagementDayStatus;
+  callSheetApproval: ProductionManagementCallSheetApproval;
+  crewConfirmations: ProductionManagementCrewConfirmation[];
+  checkpoints: ProductionManagementCheckpoint[];
+  issues: ProductionManagementIssue[];
+  costItems: ProductionManagementCostItem[];
+  notes?: string;
+  activity: ProductionManagementActivityEntry[];
 }
 
 export type SecondAdMovementStatus =

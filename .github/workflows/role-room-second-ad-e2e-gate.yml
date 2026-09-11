@@ -1,4 +1,4 @@
-name: Role Room 2nd AD E2E Gate
+name: Role Room Production E2E Gate
 
 on:
   pull_request:
@@ -6,10 +6,16 @@ on:
       - 'frontend/client/src/components/role-room/**'
       - 'frontend/client/src/test-harness-casting.tsx'
       - 'frontend/e2e/role-room-second-ad-troll.spec.ts'
+      - 'frontend/e2e/role-room-production-manager-troll.spec.ts'
       - 'frontend/package.json'
       - 'backend/server/role-room-call-sheet-routes.ts'
+      - 'backend/server/casting-production-routes.ts'
+      - 'backend/server/casting-production-routes.test.ts'
+      - 'backend/server/casting-project-ownership.ts'
+      - 'backend/server/casting-project-ownership.test.ts'
       - 'backend/migrations/0583_role_room_call_sheet_reminders.sql'
       - 'backend/migrations/0584_role_room_call_sheet_revisions.sql'
+      - 'backend/migrations/0585_role_room_production_management.sql'
       - 'backend/migrations/role-room-schema.ts'
       - 'scripts/role-room-*-live-e2e.mjs'
       - 'scripts/role-room-live-smoke.mjs'
@@ -18,7 +24,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: role-room-second-ad-e2e-${{ github.ref }}
+  group: role-room-production-e2e-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -26,7 +32,7 @@ permissions:
 
 jobs:
   authenticated-troll-flow:
-    name: Authenticated Troll callsheet flow
+    name: Authenticated Troll production flows
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     defaults:
@@ -58,7 +64,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-role-room-second-ad
+          name: playwright-report-role-room-production
           path: frontend/playwright-report
           if-no-files-found: ignore
           retention-days: 14
@@ -67,7 +73,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-results-role-room-second-ad
+          name: playwright-results-role-room-production
           path: frontend/test-results
           if-no-files-found: ignore
           retention-days: 14
