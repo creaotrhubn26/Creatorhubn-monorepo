@@ -31,6 +31,82 @@ pub struct BounceResult {
     pub sections_synced: i64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct WavMetadata {
+    pub(crate) sample_rate: u32,
+    pub(crate) bit_depth: u16,
+    pub(crate) duration_seconds: f64,
+}
+
+fn little_u16(bytes: &[u8], offset: usize) -> Option<u16> {
+    Some(u16::from_le_bytes(
+        bytes.get(offset..offset + 2)?.try_into().ok()?,
+    ))
+}
+
+fn little_u32(bytes: &[u8], offset: usize) -> Option<u32> {
+    Some(u32::from_le_bytes(
+        bytes.get(offset..offset + 4)?.try_into().ok()?,
+    ))
+}
+
+/// Read the fields needed by Sound Room directly from a RIFF/WAVE bounce.
+///
+/// A Pro Tools session may use 32-bit float while ExportMix intentionally
+/// renders a 24-bit review file. Using session metadata for the bounce would
+/// therefore label a valid 24-bit file as 32-bit in Sound Room.
+pub(crate) fn wav_metadata(bytes: &[u8]) -> Option<WavMetadata> {
+    if bytes.get(0..4)? != b"RIFF" || bytes.get(8..12)? != b"WAVE" {
+        return None;
+    }
+
+    let mut cursor = 12usize;
+    let mut format: Option<(u32, u16, u16)> = None;
+    let mut data_size: Option<u32> = None;
+    while cursor.checked_add(8)? <= bytes.len() {
+        let chunk_id = bytes.get(cursor..cursor + 4)?;
+        let chunk_size = little_u32(bytes, cursor + 4)?;
+        let data_start = cursor.checked_add(8)?;
+        let data_end = data_start.checked_add(chunk_size as usize)?;
+        if data_end > bytes.len() {
+            return None;
+        }
+
+        if chunk_id == b"fmt " && chunk_size >= 16 {
+            let sample_rate = little_u32(bytes, data_start + 4)?;
+            let block_align = little_u16(bytes, data_start + 12)?;
+            let container_bits = little_u16(bytes, data_start + 14)?;
+            let valid_bits = if chunk_size >= 20 {
+                little_u16(bytes, data_start + 18).unwrap_or(0)
+            } else {
+                0
+            };
+            let bit_depth = if valid_bits > 0 && valid_bits <= container_bits {
+                valid_bits
+            } else {
+                container_bits
+            };
+            if sample_rate == 0 || block_align == 0 || bit_depth == 0 {
+                return None;
+            }
+            format = Some((sample_rate, block_align, bit_depth));
+        } else if chunk_id == b"data" {
+            data_size = Some(chunk_size);
+        }
+
+        let padded_size = (chunk_size as usize).checked_add((chunk_size % 2) as usize)?;
+        cursor = data_start.checked_add(padded_size)?;
+    }
+
+    let (sample_rate, block_align, bit_depth) = format?;
+    let duration_seconds = data_size? as f64 / (sample_rate as f64 * block_align as f64);
+    Some(WavMetadata {
+        sample_rate,
+        bit_depth,
+        duration_seconds,
+    })
+}
+
 fn require<'a>(opt: &'a Option<String>, what: &str) -> Result<&'a str, String> {
     opt.as_deref()
         .filter(|s| !s.is_empty())
@@ -214,6 +290,7 @@ pub async fn upload_bounce(
     if size == 0 {
         return Err("Tom fil".into());
     }
+    let audio_metadata = wav_metadata(&bytes);
 
     emit_activity(
         app,
@@ -235,6 +312,9 @@ pub async fn upload_bounce(
             "clientEventId": format!("bounce:{}", fingerprint),
             "contentFingerprint": fingerprint,
             "sizeBytes": size,
+            "durationSeconds": audio_metadata.map(|metadata| metadata.duration_seconds),
+            "sampleRate": audio_metadata.map(|metadata| metadata.sample_rate),
+            "bitDepth": audio_metadata.map(|metadata| metadata.bit_depth),
         }),
     )
     .await?;
@@ -294,5 +374,37 @@ mod tests {
         assert!(!first.contains(dir.to_string_lossy().as_ref()));
         let _ = fs::remove_file(path);
         let _ = fs::remove_dir(dir);
+    }
+
+    #[test]
+    fn reads_24_bit_wav_metadata_instead_of_session_bit_depth() {
+        let sample_rate = 48_000u32;
+        let channels = 2u16;
+        let bit_depth = 24u16;
+        let block_align = channels * (bit_depth / 8);
+        let data_size = sample_rate * block_align as u32;
+        let mut wav = Vec::new();
+        wav.extend_from_slice(b"RIFF");
+        wav.extend_from_slice(&(36 + data_size).to_le_bytes());
+        wav.extend_from_slice(b"WAVEfmt ");
+        wav.extend_from_slice(&16u32.to_le_bytes());
+        wav.extend_from_slice(&1u16.to_le_bytes());
+        wav.extend_from_slice(&channels.to_le_bytes());
+        wav.extend_from_slice(&sample_rate.to_le_bytes());
+        wav.extend_from_slice(&(sample_rate * block_align as u32).to_le_bytes());
+        wav.extend_from_slice(&block_align.to_le_bytes());
+        wav.extend_from_slice(&bit_depth.to_le_bytes());
+        wav.extend_from_slice(b"data");
+        wav.extend_from_slice(&data_size.to_le_bytes());
+        wav.resize(wav.len() + data_size as usize, 0);
+
+        assert_eq!(
+            wav_metadata(&wav),
+            Some(WavMetadata {
+                sample_rate,
+                bit_depth,
+                duration_seconds: 1.0,
+            })
+        );
     }
 }

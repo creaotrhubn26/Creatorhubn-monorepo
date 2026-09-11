@@ -82,11 +82,14 @@ Følgende GitHub-konfigurasjon må finnes før en release-tag opprettes:
 
 - Secrets: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`
 - Variables: `AZURE_ARTIFACT_SIGNING_ENDPOINT`,
-  `AZURE_ARTIFACT_SIGNING_ACCOUNT`, `AZURE_ARTIFACT_SIGNING_PROFILE`
+  `AZURE_ARTIFACT_SIGNING_RESOURCE_GROUP`, `AZURE_ARTIFACT_SIGNING_ACCOUNT`,
+  `AZURE_ARTIFACT_SIGNING_PROFILE`
 
 Appregistreringen må ha en federert credential med subject
 `repo:creaotrhubn26/Creatorhubn-monorepo:environment:protools-companion-release`
 og rollen **Artifact Signing Certificate Profile Signer** på Public Trust-profilen.
+Workflowen verifiserer at profilen finnes og er aktiv før det kostbare native
+Windows-bygget starter.
 GitHub-environmentet tillater bare tags som matcher `protools-companion-v*`, samt
 `main` for kontrollerte manuelle reruns som fortsatt bygger en immutable tag.
 

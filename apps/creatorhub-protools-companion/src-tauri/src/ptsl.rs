@@ -574,6 +574,10 @@ mod tests {
             .unwrap();
             let path = exported.get("outputPath").and_then(Value::as_str).unwrap();
             assert!(Path::new(path).is_file(), "expected exported mix at {path}");
+            let bytes = std::fs::read(path).unwrap();
+            let metadata = crate::processing::wav_metadata(&bytes)
+                .expect("expected ExportMix to create a readable WAV");
+            assert_eq!(metadata.bit_depth, 24);
         }
     }
 }
