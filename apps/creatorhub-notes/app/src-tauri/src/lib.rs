@@ -9,7 +9,7 @@ mod minne;
 mod rettelser;
 mod understand;
 
-use creatorhub_notes_indexer::{db, index, search};
+use creatorhub_notes_indexer::{db, index, search, sti};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -62,16 +62,10 @@ fn home() -> Result<PathBuf, String> {
         .map_err(|_| "HOME er ikke satt".to_string())
 }
 
-/// Samme fil som `notat` bruker, slik at skallverktøyet og appen deler indeks.
-fn db_path() -> Result<PathBuf, String> {
-    if let Ok(p) = std::env::var("CREATORHUB_NOTAT_DB") {
-        if !p.is_empty() {
-            return Ok(PathBuf::from(p));
-        }
-    }
-    Ok(home()?
-        .join("Library/Application Support/creatorhub-notes")
-        .join("notater.db"))
+/// Samme fil som `notat` bruker, slik at skallverktøyet og appen deler lager.
+/// Stien utledes ett sted, i indekserens `sti`-modul.
+fn db_path() -> PathBuf {
+    sti::standard_db(sti::Lager::Notater)
 }
 
 fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
@@ -305,7 +299,7 @@ fn create_note(title: String) -> Result<String, String> {
 #[tauri::command]
 fn search_notes(query: String) -> Result<Vec<SearchHit>, String> {
     let dir = notes_dir()?;
-    let conn = db::open(&db_path()?).map_err(|e| format!("klarte ikke å søke: {e}"))?;
+    let conn = db::open(&db_path()).map_err(|e| format!("klarte ikke å søke: {e}"))?;
     let hits = search::text(&conn, &query, 80).map_err(|e| format!("klarte ikke å søke: {e}"))?;
 
     let mut seen = std::collections::HashSet::new();
@@ -439,9 +433,9 @@ fn finn_avsnitt(path: String, hash: String) -> Result<Option<[usize; 2]>, String
 /// stå foran `sørg_for_*`, som bare lager tabeller som mangler og derfor ville
 /// latt et gammelt skjema stå urørt.
 fn base() -> Result<rusqlite::Connection, String> {
-    let sti = db_path()?;
-    let mut conn = db::open(&sti).map_err(|e| format!("fikk ikke åpnet notatbasen: {e}"))?;
-    migrering::kjør(&mut conn, Some(&sti))
+    let fil = db_path();
+    let mut conn = db::open(&fil).map_err(|e| format!("fikk ikke åpnet notatbasen: {e}"))?;
+    migrering::kjør(&mut conn, Some(&fil))
         .map_err(|e| format!("fikk ikke migrert notatbasen: {e}"))?;
     rettelser::sørg_for_tabell(&conn).map_err(|e| format!("fikk ikke åpnet notatbasen: {e}"))?;
     minne::sørg_for_tabeller(&conn).map_err(|e| format!("fikk ikke åpnet notatbasen: {e}"))?;
@@ -464,7 +458,7 @@ fn rett_avsnitt(retting: rettelser::Retting) -> Result<(), String> {
 #[tauri::command]
 fn reindex() -> Result<String, String> {
     let dir = notes_dir()?;
-    reindex_in(&dir, &db_path()?)
+    reindex_in(&dir, &db_path())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

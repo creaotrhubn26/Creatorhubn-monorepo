@@ -14,7 +14,6 @@ pub fn register_vec_extension() {
 }
 
 pub mod chunk;
-pub mod cli;
 pub mod db;
 pub mod embed;
 pub mod eval;
@@ -23,3 +22,4 @@ pub mod identitet;
 pub mod index;
 pub mod ordbank;
 pub mod search;
+pub mod sti;

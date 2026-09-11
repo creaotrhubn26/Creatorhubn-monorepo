@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use creatorhub_notes_indexer::{cli, db, embed::VoyageEmbedder, index, search};
+use creatorhub_notes_indexer::{db, embed::VoyageEmbedder, index, search, sti};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -58,7 +58,9 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let db_path = args.db.unwrap_or_else(cli::default_db_path);
+    let db_path = args
+        .db
+        .unwrap_or_else(|| sti::standard_db(sti::Lager::Kodeindeks));
 
     // --no-embed og --text er de andre nøkkelfrie stiene: begge åpner
     // databasen, men ingen av dem må komme i nærheten av
