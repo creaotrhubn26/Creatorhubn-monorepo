@@ -3,11 +3,11 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const anbud = fs.readFileSync(
-  path.resolve(process.cwd(), "migrations/0576_leadgrid_anbud_project_scope.sql"),
+  path.resolve(process.cwd(), "migrations/0580_leadgrid_anbud_project_scope.sql"),
   "utf8",
 );
 const canvas = fs.readFileSync(
-  path.resolve(process.cwd(), "migrations/0577_leadgrid_canvas_project_scope.sql"),
+  path.resolve(process.cwd(), "migrations/0581_leadgrid_canvas_project_scope.sql"),
   "utf8",
 );
 

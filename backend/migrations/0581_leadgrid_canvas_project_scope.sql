@@ -1,4 +1,4 @@
--- 0577_leadgrid_canvas_project_scope.sql
+-- 0581_leadgrid_canvas_project_scope.sql
 --
 -- Canvas notes used to be organization/user scoped. Customer projects in the
 -- same organization must never share notes or PDF originals. Recover linked

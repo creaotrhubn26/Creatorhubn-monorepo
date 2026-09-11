@@ -1,8 +1,13 @@
+-- 0582_leadgrid_email_outreach_compliance.sql
 -- Leadgrid e-postmarkedsføring: organisasjonsomfattende dokumentasjon og sperrer.
 --
 -- Offentlig tilgjengelig e-post er ikke i seg selv et utsendelsesgrunnlag.
 -- Adressetype, samtykke/kundeunntak og reservasjon lagres derfor separat og
 -- avgjøres på organisasjonsnivå, på tvers av alle kundeprosjekter.
+
+BEGIN;
+SET LOCAL lock_timeout = '10s';
+SET LOCAL statement_timeout = '120s';
 
 CREATE TABLE IF NOT EXISTS leadgrid_email_compliance_profiles (
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -157,3 +162,5 @@ COMMENT ON TABLE leadgrid_email_suppressions IS
   'Absolutt organisasjonsomfattende sperreliste på tvers av Leadgrid-prosjekter.';
 COMMENT ON TABLE leadgrid_email_gdpr_processing_records IS
   'Separat GDPR-grunnlag for personopplysninger. Berettiget interesse krever mål, nødvendighet, interesseavveining og tiltak; det gir aldri i seg selv tillatelse til e-postmarkedsføring.';
+
+COMMIT;

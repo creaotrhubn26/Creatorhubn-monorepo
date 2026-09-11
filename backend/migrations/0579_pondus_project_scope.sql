@@ -1,4 +1,4 @@
--- 0575_pondus_project_scope.sql
+-- 0579_pondus_project_scope.sql
 --
 -- Pondus used to stop at organization scope. One organization may own
 -- several customer projects (Dentum, CreatorHub, The Role Room), so both

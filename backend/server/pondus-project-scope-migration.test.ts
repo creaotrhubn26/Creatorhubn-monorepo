@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const migration = fs.readFileSync(
-  path.resolve(process.cwd(), "migrations/0575_pondus_project_scope.sql"),
+  path.resolve(process.cwd(), "migrations/0579_pondus_project_scope.sql"),
   "utf8",
 );
 

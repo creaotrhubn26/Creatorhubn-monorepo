@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const sql = fs.readFileSync(
-  path.resolve(process.cwd(), "migrations/0578_leadgrid_email_outreach_compliance.sql"),
+  path.resolve(process.cwd(), "migrations/0582_leadgrid_email_outreach_compliance.sql"),
   "utf8",
 );
 
