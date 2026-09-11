@@ -37,6 +37,13 @@ import WarmupDialog from '@/components/universal/showcase/WarmupDialog';
 import SessionsDialog from '@/components/universal/showcase/SessionsDialog';
 import { audioShowcaseEvents } from '@/utils/creatorhub-events';
 import { useUserEventStream } from '@/hooks/useUserEventStream';
+import {
+  analyzeAudioUrl,
+  dbToLinearGain,
+  levelMatchPlan,
+  type AudioLoudnessMetrics,
+} from '@/lib/audioLoudness';
+import { nextRecallStatus, recallPayloadFromComment } from '@/lib/soundRoomRecall';
 
 /* ── Tema ──────────────────────────────────────────────────────────────── */
 const BG = '#0A0A0B', PANEL = '#131316', PANEL2 = '#0F0F11', BORDER = 'rgba(255,255,255,0.08)';
@@ -67,6 +74,8 @@ export const companionAudioFetchParams = (url: string): RequestInit => {
     ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
   };
 };
+
+const loudnessCache = new Map<string, AudioLoudnessMetrics>();
 
 type CommentFilter = 'all' | 'unresolved' | 'resolved' | 'decision';
 
@@ -101,6 +110,7 @@ export default function AudioShowcasePage() {
   const [versions, setVersions] = React.useState<any[]>([]);
   const [members, setMembers] = React.useState<any[]>([]);
   const [tasks, setTasks] = React.useState<any[]>([]);
+  const [canEdit, setCanEdit] = React.useState(true);
   const [currentVid, setCurrentVid] = React.useState('');
   const [detail, setDetail] = React.useState<{ comments: any[]; sections: any[]; approvals: any[] }>({ comments: [], sections: [], approvals: [] });
   const [loading, setLoading] = React.useState(true);
@@ -126,6 +136,8 @@ export default function AudioShowcasePage() {
   const [syncingCollab, setSyncingCollab] = React.useState(false);
   const [splitToast, setSplitToast] = React.useState<string | null>(null);
   const [proTools, setProTools] = React.useState<any>(null);
+  const [recallBusyId, setRecallBusyId] = React.useState<string | null>(null);
+  const [showAllVersions, setShowAllVersions] = React.useState(false);
 
   const saveCover = async (dataUrl: string) => {
     try { const p = await apiRequest(`/api/audio-showcases/${projectId}`, { method: 'PATCH', body: { coverUrl: dataUrl } }); setProject(p); } catch { /* */ }
@@ -173,7 +185,7 @@ export default function AudioShowcasePage() {
     if (!projectId) { setLoading(false); return; }
     try {
       const d = await apiRequest(`/api/audio-showcases/${projectId}`);
-      setProject(d.project); setVersions(d.versions || []); setMembers(d.members || []); setTasks(d.tasks || []); setEaseverseTrack(d.easeverseTrack || null);
+      setProject(d.project); setVersions(d.versions || []); setMembers(d.members || []); setTasks(d.tasks || []); setEaseverseTrack(d.easeverseTrack || null); setCanEdit(d.access?.canEdit !== false);
       const cur = (d.versions || []).find((v: any) => v.status !== 'superseded') || (d.versions || [])[(d.versions || []).length - 1];
       setCurrentVid((prev) => prev || cur?.id || '');
     } catch { /* not found */ } finally { setLoading(false); }
@@ -253,9 +265,64 @@ export default function AudioShowcasePage() {
   const [vol, setVol] = React.useState(0.8);
   const [loopOn, setLoopOn] = React.useState(false);
   const [abActive, setAbActive] = React.useState(false);
+  const [comparisonMode, setComparisonMode] = React.useState(false);
+  const [levelMatchEnabled, setLevelMatchEnabled] = React.useState(true);
+  const [loudnessStatus, setLoudnessStatus] = React.useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [currentLoudness, setCurrentLoudness] = React.useState<AudioLoudnessMetrics | null>(null);
+  const [previousLoudness, setPreviousLoudness] = React.useState<AudioLoudnessMetrics | null>(null);
   const loopRef = React.useRef(loopOn); loopRef.current = loopOn;
   const effectiveSrc = (abActive && prevVersion ? prevVersion.file_url : currentVersion?.file_url) || '';
   const fracRef = React.useRef(0);
+  const matchPlan = React.useMemo(
+    () => levelMatchPlan(currentLoudness, previousLoudness),
+    [currentLoudness, previousLoudness],
+  );
+  const activeMatchGainDb = comparisonMode && levelMatchEnabled && matchPlan.available
+    ? (abActive ? matchPlan.previousGainDb : matchPlan.currentGainDb)
+    : 0;
+  const playbackVolume = Math.min(1, Math.max(0, vol * dbToLinearGain(activeMatchGainDb)));
+
+  React.useEffect(() => {
+    setComparisonMode(false);
+    setAbActive(false);
+  }, [currentVersion?.id, prevVersion?.id]);
+
+  React.useEffect(() => {
+    const currentUrl = String(currentVersion?.file_url || '');
+    const previousUrl = String(prevVersion?.file_url || '');
+    if (!comparisonMode || !currentUrl || !previousUrl) {
+      setLoudnessStatus('idle');
+      setCurrentLoudness(null);
+      setPreviousLoudness(null);
+      return;
+    }
+    const abortController = new AbortController();
+    const measure = async (url: string): Promise<AudioLoudnessMetrics> => {
+      const cached = loudnessCache.get(url);
+      if (cached) return cached;
+      const measured = await analyzeAudioUrl(url, {
+        ...companionAudioFetchParams(url),
+        signal: abortController.signal,
+      });
+      if (!abortController.signal.aborted) loudnessCache.set(url, measured);
+      return measured;
+    };
+    setLoudnessStatus('loading');
+    void Promise.all([measure(currentUrl), measure(previousUrl)])
+      .then(([current, previous]) => {
+        if (abortController.signal.aborted) return;
+        setCurrentLoudness(current);
+        setPreviousLoudness(previous);
+        setLoudnessStatus(levelMatchPlan(current, previous).available ? 'ready' : 'error');
+      })
+      .catch((error) => {
+        if (abortController.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) return;
+        setCurrentLoudness(null);
+        setPreviousLoudness(null);
+        setLoudnessStatus('error');
+      });
+    return () => abortController.abort();
+  }, [comparisonMode, currentVersion?.file_url, prevVersion?.file_url]);
 
   React.useEffect(() => {
     const container = waveRef.current;
@@ -276,7 +343,7 @@ export default function AudioShowcasePage() {
       wsRef.current = instance;
       instance.on('ready', () => {
         if (cancelled || ws !== instance || deferReady) return;
-        setReady(true); setDur(instance.getDuration()); instance.setVolume(vol);
+        setReady(true); setDur(instance.getDuration()); instance.setVolume(playbackVolume);
         if (fracRef.current > 0) instance.setTime(fracRef.current * instance.getDuration());
       });
       instance.on('error', () => { if (!cancelled && ws === instance) { setReady(false); setMediaError(true); } });
@@ -312,7 +379,7 @@ export default function AudioShowcasePage() {
         media.buffer = decoded;
         media.duration = decoded.duration;
         if (cancelled || wsRef.current !== instance) return;
-        setReady(true); setDur(decoded.duration); instance.setVolume(vol);
+        setReady(true); setDur(decoded.duration); instance.setVolume(playbackVolume);
         if (fracRef.current > 0) instance.setTime(fracRef.current * decoded.duration);
         return;
       }
@@ -341,6 +408,9 @@ export default function AudioShowcasePage() {
       wsRef.current = null;
     };
   }, [effectiveSrc, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => {
+    wsRef.current?.setVolume(playbackVolume);
+  }, [playbackVolume]);
   const seekFrac = (f: number) => { const ws = wsRef.current; if (ws && dur) ws.setTime(Math.max(0, Math.min(1, f)) * dur); };
   const togglePlayback = async () => {
     const ws = wsRef.current;
@@ -362,6 +432,32 @@ export default function AudioShowcasePage() {
     const c = await apiRequest('/api/audio-comments', { method: 'POST', body: { versionId: currentVid, timecodeSeconds: Math.floor(cur), body, author: me?.name, authorRole: me?.role, parentCommentId: opts.parentId, sectionRef: opts.sectionRef ?? composerSection } });
     setDetail((p) => ({ ...p, comments: [...p.comments, c] }));
     setComposerSection(null);
+  };
+  const commentDraftKey = currentVid ? `creatorhub:sound-room:comment-draft:v1:${projectId}:${currentVid}` : '';
+  React.useEffect(() => {
+    if (!commentDraftKey) { setDraft(''); return; }
+    try { setDraft(window.localStorage.getItem(commentDraftKey) || ''); }
+    catch { setDraft(''); }
+  }, [commentDraftKey]);
+  const updateCommentDraft = (value: string) => {
+    setDraft(value);
+    if (!commentDraftKey) return;
+    try {
+      if (value) window.localStorage.setItem(commentDraftKey, value);
+      else window.localStorage.removeItem(commentDraftKey);
+    } catch { /* local recovery is best-effort */ }
+  };
+  const submitCommentDraft = async () => {
+    const body = draft.trim();
+    if (!body) return;
+    try {
+      await addComment(body, { parentId: replyTo?.id });
+      updateCommentDraft('');
+      setReplyTo(null);
+    } catch (error: any) {
+      setSplitToast(error?.message || 'Kommentaren ble ikke sendt. Kladden er lagret lokalt.');
+      window.setTimeout(() => setSplitToast(null), 3500);
+    }
   };
   // Tekst-seksjoner fra koblet track → kan refereres i kommentarer.
   const lyricSectionLabels = React.useMemo(() => {
@@ -393,6 +489,32 @@ export default function AudioShowcasePage() {
     const c = await apiRequest(`/api/audio-comments/${id}/like`, { method: 'POST', body: {} });
     setDetail((p) => ({ ...p, comments: p.comments.map((x) => (x.id === id ? c : x)) }));
   };
+  const createRecallFromComment = async (comment: any) => {
+    if (!canEdit) return;
+    const existing = tasks.find((task) => task.comment_id === comment.id);
+    if (existing) {
+      setSplitToast(existing.status === 'done' ? 'Denne kommentaren har en ferdig recall' : 'Denne kommentaren ligger allerede i Recall Mode');
+      window.setTimeout(() => setSplitToast(null), 3000);
+      return;
+    }
+    setRecallBusyId(comment.id);
+    try {
+      const task = await apiRequest('/api/audio-tasks', {
+        method: 'POST',
+        body: recallPayloadFromComment(projectId, currentVid, comment),
+      });
+      setTasks((previous) => previous.some((item) => item.id === task.id) ? previous : [...previous, task]);
+      if (comment.status === 'unresolved') {
+        setDetail((previous) => ({ ...previous, comments: previous.comments.map((item) => item.id === comment.id ? { ...item, status: 'in_progress' } : item) }));
+      }
+      setSplitToast('Lagt til i Recall Mode');
+    } catch (error: any) {
+      setSplitToast(error?.message || 'Kunne ikke opprette recall');
+    } finally {
+      setRecallBusyId(null);
+      window.setTimeout(() => setSplitToast(null), 3000);
+    }
+  };
   const approve = async (approvalType: string) => {
     if (!currentVid) return; setBusy(true);
     try { await apiRequest(`/api/audio-versions/${currentVid}/approve`, { method: 'POST', body: { approvalType } }); await loadProject(); await loadVersion(currentVid); }
@@ -423,9 +545,13 @@ export default function AudioShowcasePage() {
     } catch { /* ignore */ } finally { setBusy(false); setUploadPct(null); }
   };
   const toggleTask = async (t: any) => {
-    const next = t.status === 'done' ? 'todo' : 'done';
+    const next = nextRecallStatus(t.status);
     const updated = await apiRequest(`/api/audio-tasks/${t.id}`, { method: 'PATCH', body: { status: next } });
     setTasks((p) => p.map((x) => (x.id === t.id ? updated : x)));
+    if (updated.comment_id) {
+      const commentStatus = next === 'done' ? 'resolved' : next === 'in_progress' ? 'in_progress' : 'unresolved';
+      setDetail((previous) => ({ ...previous, comments: previous.comments.map((item) => item.id === updated.comment_id ? { ...item, status: commentStatus } : item) }));
+    }
   };
   const syncCollaborators = async () => {
     setSyncingCollab(true);
@@ -464,13 +590,24 @@ export default function AudioShowcasePage() {
   const metaLine = [project.band_name && `Band: ${project.band_name}`, owner && `Produsent: ${owner.name}`, project.deadline && `Frist: ${new Date(project.deadline).toLocaleDateString('no-NO', { weekday: 'long' })}`].filter(Boolean);
   const counts = {
     all: detail.comments.length,
-    unresolved: detail.comments.filter((c) => c.status === 'unresolved').length,
+    unresolved: detail.comments.filter((c) => c.status === 'unresolved' || c.status === 'in_progress').length,
     resolved: detail.comments.filter((c) => c.status === 'resolved').length,
     decision: detail.comments.filter((c) => c.is_decision).length,
   };
-  const visibleComments = detail.comments.filter((c) => filter === 'all' ? true : filter === 'decision' ? c.is_decision : c.status === filter);
-  // Tasks gruppert etter assignee/kategori (slik mockupens panel viser «Vokal 3 tasks»).
-  const taskGroups = Object.entries(tasks.reduce((m: Record<string, any[]>, t) => { const k = t.assignee || 'Generelt'; (m[k] = m[k] || []).push(t); return m; }, {}));
+  const visibleComments = detail.comments.filter((c) => filter === 'all'
+    ? true
+    : filter === 'decision'
+      ? c.is_decision
+      : filter === 'unresolved'
+        ? c.status === 'unresolved' || c.status === 'in_progress'
+        : c.status === filter);
+  const recallTasks = [...tasks].sort((a, b) => {
+    const rank: Record<string, number> = { in_progress: 0, todo: 1, done: 2 };
+    return (rank[a.status] ?? 3) - (rank[b.status] ?? 3)
+      || String(b.created_at || '').localeCompare(String(a.created_at || ''));
+  });
+  const orderedVersions = [...versions].sort((a, b) => Number(b.version_number || 0) - Number(a.version_number || 0));
+  const displayedVersions = showAllVersions ? orderedVersions : orderedVersions.slice(0, 4);
   const specsLine = currentVersion ? [currentVersion.sample_rate && `${(currentVersion.sample_rate / 1000).toFixed(0)} kHz`, currentVersion.bit_depth && `${currentVersion.bit_depth} bit`, currentVersion.channels === 2 ? 'Stereo' : currentVersion.channels === 1 ? 'Mono' : null].filter(Boolean).join('  ·  ') : '';
 
   return (
@@ -645,7 +782,19 @@ export default function AudioShowcasePage() {
               <Box sx={{ width: 40, height: 40, borderRadius: '10px', bgcolor: 'rgba(255,107,53,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', mr: 1.5 }}><MusicNote sx={{ color: ACCENT }} /></Box>
               <Box sx={{ flex: 1 }}>
                 <Stack direction="row" alignItems="center" spacing={0.5}><Typography sx={{ fontWeight: 700 }}>{currentVersion ? `${project.title} – ${currentVersion.version_label}` : project.title}{currentVersion?.file_name ? '' : '.wav'}</Typography><KeyboardArrowDown sx={{ fontSize: 18, color: MUTED }} /></Stack>
-                <Typography sx={{ color: MUTED, fontSize: '0.76rem' }}>{specsLine || '—'}{abActive && prevVersion ? `   ·   A/B: ${prevVersion.version_label}` : ''}</Typography>
+                <Typography sx={{ color: MUTED, fontSize: '0.76rem' }}>
+                  {specsLine || '—'}
+                  {comparisonMode && prevVersion ? `   ·   ${abActive ? 'B' : 'A'}: ${abActive ? prevVersion.version_label : currentVersion.version_label}` : ''}
+                </Typography>
+                {comparisonMode && (
+                  <Typography sx={{ color: loudnessStatus === 'error' ? '#e0a955' : '#5fb88a', fontSize: '0.69rem', mt: 0.35 }}>
+                    {loudnessStatus === 'loading' && 'Analyserer nivåer for rettferdig A/B…'}
+                    {loudnessStatus === 'error' && 'Nivåmatching utilgjengelig — spiller originalnivå'}
+                    {loudnessStatus === 'ready' && matchPlan.available && levelMatchEnabled
+                      && `Nivåmatchet til ${matchPlan.targetLufs?.toFixed(1)} LUFS · aktiv justering ${activeMatchGainDb.toFixed(1)} dB`}
+                    {loudnessStatus === 'ready' && !levelMatchEnabled && 'Originalnivå · nivåmatching er slått av'}
+                  </Typography>
+                )}
               </Box>
               {easeverseTrack && <Button startIcon={<CloudUpload />} size="small" onClick={pullTakes} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '8px', mr: 1 }}>Hent takes</Button>}
               {easeverseTrack && <Button startIcon={<GraphicEq />} size="small" onClick={pullSections} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '8px', mr: 1 }}>Hent seksjoner</Button>}
@@ -691,13 +840,37 @@ export default function AudioShowcasePage() {
                 <IconButton onClick={() => seekFrac(Math.min(1, (cur + 10) / (dur || 1)))} sx={{ color: TEXT }}><SkipNext /></IconButton>
                 <Stack direction="row" alignItems="center" spacing={1} sx={{ width: 110 }}>
                   <VolumeUp sx={{ fontSize: 18, color: MUTED }} />
-                  <Slider size="small" value={vol} min={0} max={1} step={0.01} onChange={(_, v) => { setVol(v as number); wsRef.current?.setVolume(v as number); }} sx={{ color: ACCENT, '& .MuiSlider-thumb': { width: 11, height: 11 } }} />
+                  <Slider size="small" value={vol} min={0} max={1} step={0.01} aria-label="Avspillingsvolum" onChange={(_, v) => setVol(v as number)} sx={{ color: ACCENT, '& .MuiSlider-thumb': { width: 11, height: 11 } }} />
                 </Stack>
               </Box>
               <Button onClick={() => setLoopOn((v) => !v)} startIcon={<LoopIcon sx={{ fontSize: '18px !important' }} />} variant="outlined" size="small" sx={{ color: loopOn ? ACCENT : TEXT, borderColor: loopOn ? ACCENT : BORDER, textTransform: 'none', borderRadius: '8px' }}>Loop</Button>
               <Tooltip title={prevVersion ? `Sammenlign med ${prevVersion.version_label}` : 'Ingen tidligere versjon'}>
-                <span><Button onClick={() => setAbActive((v) => !v)} disabled={!prevVersion} startIcon={<CompareArrows sx={{ fontSize: '18px !important' }} />} variant="outlined" size="small" sx={{ color: abActive ? ACCENT : TEXT, borderColor: abActive ? ACCENT : BORDER, textTransform: 'none', borderRadius: '8px', lineHeight: 1.1 }}>A / B<br />Compare</Button></span>
+                <span><Button
+                  onClick={() => {
+                    if (!comparisonMode) { setComparisonMode(true); setAbActive(false); return; }
+                    setAbActive((value) => !value);
+                  }}
+                  disabled={!prevVersion || (comparisonMode && loudnessStatus === 'loading')}
+                  aria-pressed={comparisonMode}
+                  startIcon={<CompareArrows sx={{ fontSize: '18px !important' }} />}
+                  variant="outlined"
+                  size="small"
+                  sx={{ color: comparisonMode ? ACCENT : TEXT, borderColor: comparisonMode ? ACCENT : BORDER, textTransform: 'none', borderRadius: '8px', lineHeight: 1.1 }}
+                >{comparisonMode ? (loudnessStatus === 'loading' ? 'Analyserer A/B…' : abActive ? 'B · Forrige' : 'A · Gjeldende') : 'Start A/B'}</Button></span>
               </Tooltip>
+              {comparisonMode && (
+                <Tooltip title="Begge versjoner dempes til nivået på den roligste versjonen. Ingen ekstra gain legges til.">
+                  <Button
+                    onClick={() => setLevelMatchEnabled((value) => !value)}
+                    disabled={loudnessStatus !== 'ready'}
+                    aria-pressed={levelMatchEnabled}
+                    startIcon={loudnessStatus === 'loading' ? <CircularProgress size={14} /> : <Speed sx={{ fontSize: '18px !important' }} />}
+                    variant="outlined"
+                    size="small"
+                    sx={{ color: levelMatchEnabled ? '#5fb88a' : MUTED, borderColor: levelMatchEnabled ? 'rgba(95,184,138,0.45)' : BORDER, textTransform: 'none', borderRadius: '8px', whiteSpace: 'nowrap' }}
+                  >{levelMatchEnabled ? 'Nivåmatchet' : 'Originalnivå'}</Button>
+                </Tooltip>
+              )}
             </Stack>
           </Box>
 
@@ -705,39 +878,64 @@ export default function AudioShowcasePage() {
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.7fr 1fr' }, gap: 2.5 }}>
             {/* Versjoner */}
             <Box sx={{ bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: '16px', p: 2.5 }}>
-              <Stack direction="row" alignItems="center" sx={{ mb: 1.5 }}><Typography sx={{ fontWeight: 700, flex: 1 }}>Versjoner</Typography><Typography sx={{ color: ACCENT, fontSize: '0.78rem', cursor: 'pointer' }}>Se alle</Typography></Stack>
-              <Stack direction="row" spacing={1.5} sx={{ overflowX: 'auto', pb: 1, '&::-webkit-scrollbar': { height: 6 }, '&::-webkit-scrollbar-thumb': { bgcolor: BORDER, borderRadius: 3 } }}>
-                {versions.map((v) => {
+              <Stack direction="row" alignItems="center" sx={{ mb: 1.5 }}>
+                <Typography sx={{ fontWeight: 700, flex: 1 }}>Versjoner</Typography>
+                <Button
+                  size="small"
+                  onClick={() => setShowAllVersions((value) => !value)}
+                  disabled={versions.length <= 4}
+                  aria-expanded={showAllVersions}
+                  sx={{ color: versions.length > 4 ? ACCENT : MUTED, fontSize: '0.75rem', textTransform: 'none', minWidth: 0 }}
+                >{showAllVersions ? 'Vis de nyeste' : versions.length > 4 ? `Se alle (${versions.length})` : `${versions.length} versjoner`}</Button>
+              </Stack>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 1.25, maxHeight: showAllVersions ? 340 : 'none', overflowY: showAllVersions ? 'auto' : 'visible', pr: showAllVersions ? 0.75 : 0, '&::-webkit-scrollbar': { width: 6 }, '&::-webkit-scrollbar-thumb': { bgcolor: BORDER, borderRadius: 3 } }}>
+                {displayedVersions.map((v) => {
                   const active = v.id === currentVid;
                   const statusLabel = v.status === 'approved' ? 'Godkjent' : v.status === 'superseded' ? 'Erstattet' : 'Til vurdering';
                   const statusColor = v.status === 'approved' ? '#5fb88a' : v.status === 'superseded' ? FAINT : '#e0a955';
                   const cCount = detail.comments.length && active ? detail.comments.length : (v.comment_count ?? null);
                   return (
-                    <Box key={v.id} onClick={() => { setAbActive(false); setCurrentVid(v.id); }} sx={{ flexShrink: 0, width: 180, p: 1.5, borderRadius: '12px', cursor: 'pointer', border: `1.5px solid ${active ? ACCENT : BORDER}`, bgcolor: active ? 'rgba(255,107,53,0.06)' : 'transparent' }}>
-                      <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.75 }}><Typography sx={{ fontWeight: 700, fontSize: '0.88rem' }}>{v.version_label}</Typography>{active && <Chip label="Aktiv" size="small" sx={{ height: 17, fontSize: '0.62rem', bgcolor: ACCENT, color: '#150d05', fontWeight: 700 }} />}{v.status === 'approved' && <CheckCircle sx={{ fontSize: 15, color: '#5fb88a' }} />}</Stack>
+                    <Box key={v.id} role="button" tabIndex={0} aria-current={active ? 'true' : undefined} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setComparisonMode(false); setAbActive(false); setCurrentVid(v.id); } }} onClick={() => { setComparisonMode(false); setAbActive(false); setCurrentVid(v.id); }} sx={{ minWidth: 0, p: 1.5, borderRadius: '12px', cursor: 'pointer', border: `1.5px solid ${active ? ACCENT : BORDER}`, bgcolor: active ? 'rgba(255,107,53,0.06)' : 'transparent', '&:focus-visible': { outline: `2px solid ${ACCENT}`, outlineOffset: 2 } }}>
+                      <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.75, minWidth: 0 }}><Typography noWrap title={v.version_label} sx={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: '0.88rem' }}>{v.version_label}</Typography>{active && <Chip label="Aktiv" size="small" sx={{ height: 17, fontSize: '0.62rem', bgcolor: ACCENT, color: '#150d05', fontWeight: 700 }} />}{v.status === 'approved' && <CheckCircle sx={{ fontSize: 15, color: '#5fb88a' }} />}</Stack>
                       <Typography sx={{ fontSize: '0.68rem', color: MUTED, mb: 1 }}>{v.created_at ? new Date(v.created_at).toLocaleDateString('no-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</Typography>
                       <Box sx={{ height: 30, borderRadius: '6px', mb: 1, background: active ? 'repeating-linear-gradient(90deg,#FF6B35 0 2px,transparent 2px 4px)' : 'repeating-linear-gradient(90deg,rgba(245,242,234,0.25) 0 2px,transparent 2px 4px)', opacity: 0.8 }} />
                       <Stack direction="row" alignItems="center" justifyContent="space-between"><Stack direction="row" alignItems="center" spacing={0.5}><ChatBubbleOutline sx={{ fontSize: 13, color: MUTED }} /><Typography sx={{ fontSize: '0.7rem', color: MUTED }}>{cCount ?? 0}</Typography></Stack><Typography sx={{ fontSize: '0.68rem', fontWeight: 700, color: statusColor }}>{statusLabel}</Typography></Stack>
                     </Box>
                   );
                 })}
-              </Stack>
+              </Box>
             </Box>
 
-            {/* Tasks (erstatter AI-panel — spec: oppgaver, ikke AI) */}
+            {/* Recall Mode: feedback som kan gjennomføres og spores. */}
             <Box sx={{ bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: '16px', p: 2.5, display: 'flex', flexDirection: 'column' }}>
-              <Stack direction="row" alignItems="center" sx={{ mb: 1.5 }}><Typography sx={{ fontWeight: 700, flex: 1 }}>Oppgaver</Typography><Typography sx={{ fontSize: '0.66rem', color: MUTED }}>{tasks.filter((t) => t.status !== 'done').length} åpne</Typography></Stack>
-              <Stack spacing={1} sx={{ flex: 1 }}>
-                {taskGroups.map(([group, list]) => { const open = list.filter((t: any) => t.status !== 'done').length; const allDone = open === 0; return (
-                  <Stack key={group} direction="row" alignItems="center" spacing={1.25} sx={{ py: 0.5 }}>
-                    <Box sx={{ width: 26, height: 26, borderRadius: '7px', bgcolor: 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><GraphicEq sx={{ fontSize: 15, color: ACCENT }} /></Box>
-                    <Box sx={{ flex: 1, minWidth: 0 }}><Typography sx={{ fontSize: '0.84rem', fontWeight: 600 }}>{group}</Typography><Typography sx={{ fontSize: '0.7rem', color: MUTED }}>{list.length} oppgaver</Typography></Box>
-                    {allDone ? <CheckCircle sx={{ fontSize: 18, color: '#5fb88a' }} /> : <Box sx={{ minWidth: 20, height: 20, px: 0.6, borderRadius: '999px', bgcolor: 'rgba(255,107,53,0.18)', color: ACCENT, fontSize: '0.7rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{open}</Box>}
+              <Stack direction="row" alignItems="center" sx={{ mb: 1.5 }}><Typography sx={{ fontWeight: 700, flex: 1 }}>Recall Mode</Typography><Typography sx={{ fontSize: '0.66rem', color: MUTED }}>{tasks.filter((t) => t.status !== 'done').length} åpne</Typography></Stack>
+              <Stack spacing={0.75} sx={{ flex: 1, maxHeight: 244, overflowY: 'auto', pr: 0.5, '&::-webkit-scrollbar': { width: 5 }, '&::-webkit-scrollbar-thumb': { bgcolor: BORDER, borderRadius: 3 } }}>
+                {recallTasks.map((task) => {
+                  const sourceComment = detail.comments.find((comment) => comment.id === task.comment_id);
+                  const statusLabel = task.status === 'done' ? 'Ferdig' : task.status === 'in_progress' ? 'Pågår' : 'Åpen';
+                  const statusColor = task.status === 'done' ? '#5fb88a' : task.status === 'in_progress' ? ACCENT : '#e0a955';
+                  return (
+                  <Stack key={task.id} direction="row" alignItems="center" spacing={1} sx={{ p: 0.8, borderRadius: '9px', bgcolor: task.status === 'in_progress' ? 'rgba(255,107,53,0.07)' : 'rgba(255,255,255,0.025)' }}>
+                    <Tooltip title={`Status: ${statusLabel}. Klikk for neste status.`}>
+                      <IconButton size="small" aria-label={`Endre status for ${task.title}`} disabled={!canEdit} onClick={() => void toggleTask(task)} sx={{ width: 28, height: 28, color: statusColor, border: `1px solid ${statusColor}55` }}>
+                        {task.status === 'done' ? <CheckCircle sx={{ fontSize: 17 }} /> : task.status === 'in_progress' ? <GraphicEq sx={{ fontSize: 16 }} /> : <FiberManualRecord sx={{ fontSize: 12 }} />}
+                      </IconButton>
+                    </Tooltip>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography noWrap title={task.title} sx={{ fontSize: '0.79rem', fontWeight: 650, textDecoration: task.status === 'done' ? 'line-through' : 'none', color: task.status === 'done' ? MUTED : TEXT }}>{task.title}</Typography>
+                      <Stack direction="row" alignItems="center" spacing={0.75}>
+                        <Typography noWrap sx={{ fontSize: '0.65rem', color: statusColor }}>{statusLabel}</Typography>
+                        {task.assignee && <Typography noWrap sx={{ fontSize: '0.65rem', color: FAINT }}>· {task.assignee}</Typography>}
+                        {sourceComment && <Typography sx={{ fontSize: '0.65rem', color: FAINT }}>· {fmt(Number(sourceComment.timecode_seconds))}</Typography>}
+                      </Stack>
+                    </Box>
+                    {sourceComment && proTools?.session?.id && <Tooltip title="Finn kilden i Pro Tools"><IconButton size="small" aria-label="Finn recall i Pro Tools" onClick={() => void sendCommentToProTools(sourceComment, 'locate')} sx={{ color: ACCENT }}><TimelineOutlined sx={{ fontSize: 16 }} /></IconButton></Tooltip>}
                   </Stack>
-                ); })}
-                {taskGroups.length === 0 && <Typography sx={{ fontSize: '0.78rem', color: FAINT, py: 1 }}>Ingen oppgaver ennå. Gjør feedback om til konkrete oppgaver.</Typography>}
+                  );
+                })}
+                {recallTasks.length === 0 && <Typography sx={{ fontSize: '0.78rem', color: FAINT, py: 1 }}>Ingen recalls ennå. Gjør en kommentar om til en konkret handling.</Typography>}
               </Stack>
-              <Button onClick={() => setTaskOpen(true)} startIcon={<Add />} fullWidth sx={{ mt: 1.5, color: ACCENT, bgcolor: 'rgba(255,107,53,0.1)', textTransform: 'none', borderRadius: '10px', fontWeight: 700, '&:hover': { bgcolor: 'rgba(255,107,53,0.18)' } }}>Ny oppgave</Button>
+              <Button onClick={() => setTaskOpen(true)} disabled={!canEdit} startIcon={<Add />} fullWidth sx={{ mt: 1.5, color: ACCENT, bgcolor: 'rgba(255,107,53,0.1)', textTransform: 'none', borderRadius: '10px', fontWeight: 700, '&:hover': { bgcolor: 'rgba(255,107,53,0.18)' } }}>{canEdit ? 'Ny recall' : 'Kun produsenten kan endre'}</Button>
             </Box>
           </Box>
         </Box>
@@ -758,6 +956,8 @@ export default function AudioShowcasePage() {
               const mem = members.find((m) => m.name === c.author);
               const color = mem?.avatar_color || ACCENT;
               const resolved = c.status === 'resolved';
+              const inProgress = c.status === 'in_progress';
+              const recallTask = tasks.find((task) => task.comment_id === c.id);
               return (
                 <Box key={c.id} sx={{ px: 2.5, py: 2, borderBottom: `1px solid ${BORDER}` }}>
                   <Stack direction="row" spacing={1.5}>
@@ -773,16 +973,17 @@ export default function AudioShowcasePage() {
                       <Typography sx={{ fontSize: '0.86rem', color: 'rgba(245,242,234,0.9)', mt: 0.4 }}>{c.body}</Typography>
                       <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mt: 0.75 }}>
                         <Typography onClick={() => { setReplyTo(c); }} sx={{ fontSize: '0.74rem', color: MUTED, cursor: 'pointer', '&:hover': { color: TEXT } }}>Svar</Typography>
+                        {canEdit && <Typography onClick={() => void createRecallFromComment(c)} sx={{ fontSize: '0.74rem', color: recallTask ? (recallTask.status === 'done' ? '#5fb88a' : ACCENT) : MUTED, cursor: recallBusyId === c.id ? 'wait' : 'pointer', '&:hover': { color: TEXT } }}>{recallBusyId === c.id ? 'Legger til…' : recallTask ? (recallTask.status === 'done' ? 'Recall ferdig ✓' : 'I Recall Mode') : 'Lag recall'}</Typography>}
                         {proTools?.session?.id && <Typography onClick={() => void sendCommentToProTools(c, 'locate')} sx={{ fontSize: '0.74rem', color: ACCENT, cursor: 'pointer', '&:hover': { color: TEXT } }}>Finn i Pro Tools</Typography>}
                         {proTools?.session?.id && <Typography onClick={() => void sendCommentToProTools(c, 'create_marker')} sx={{ fontSize: '0.74rem', color: c.protools_sync_status === 'synced' ? '#5fb88a' : MUTED, cursor: 'pointer', '&:hover': { color: TEXT } }}>{c.protools_sync_status === 'synced' ? 'PT-markør ✓' : 'Lag PT-markør'}</Typography>}
-                        <Stack direction="row" alignItems="center" spacing={0.4} onClick={() => void likeComment(c.id)} sx={{ cursor: 'pointer', color: c.like_count > 0 ? ACCENT : FAINT, '&:hover': { color: ACCENT } }}>
+                        {canEdit && <Stack direction="row" alignItems="center" spacing={0.4} onClick={() => void likeComment(c.id)} sx={{ cursor: 'pointer', color: c.like_count > 0 ? ACCENT : FAINT, '&:hover': { color: ACCENT } }}>
                           {c.like_count > 0 ? <ThumbUpAlt sx={{ fontSize: 14 }} /> : <ThumbUpAltOutlined sx={{ fontSize: 14 }} />}{c.like_count > 0 && <Typography sx={{ fontSize: '0.72rem', fontWeight: 700 }}>{c.like_count}</Typography>}
-                        </Stack>
+                        </Stack>}
                         <Box sx={{ flex: 1 }} />
-                        <Chip onClick={() => void setCommentStatus(c.id, resolved ? 'unresolved' : 'resolved')} size="small"
-                          icon={resolved ? <CheckCircle sx={{ fontSize: '13px !important' }} /> : <KeyboardArrowDown sx={{ fontSize: '13px !important' }} />}
-                          label={resolved ? 'Løst' : 'Uløst'}
-                          sx={{ height: 22, fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer', color: resolved ? '#5fb88a' : '#e0a955', bgcolor: resolved ? 'rgba(95,184,138,0.14)' : 'rgba(224,169,85,0.14)', border: `1px solid ${resolved ? 'rgba(95,184,138,0.4)' : 'rgba(224,169,85,0.4)'}`, '& .MuiChip-icon': { color: resolved ? '#5fb88a' : '#e0a955' } }} />
+                        <Chip onClick={canEdit ? () => void setCommentStatus(c.id, resolved ? 'unresolved' : 'resolved') : undefined} size="small"
+                          icon={resolved ? <CheckCircle sx={{ fontSize: '13px !important' }} /> : inProgress ? <GraphicEq sx={{ fontSize: '13px !important' }} /> : <KeyboardArrowDown sx={{ fontSize: '13px !important' }} />}
+                          label={resolved ? 'Løst' : inProgress ? 'Pågår' : 'Uløst'}
+                          sx={{ height: 22, fontSize: '0.68rem', fontWeight: 700, cursor: canEdit ? 'pointer' : 'default', color: resolved ? '#5fb88a' : inProgress ? ACCENT : '#e0a955', bgcolor: resolved ? 'rgba(95,184,138,0.14)' : inProgress ? 'rgba(255,107,53,0.14)' : 'rgba(224,169,85,0.14)', border: `1px solid ${resolved ? 'rgba(95,184,138,0.4)' : inProgress ? 'rgba(255,107,53,0.4)' : 'rgba(224,169,85,0.4)'}`, '& .MuiChip-icon': { color: resolved ? '#5fb88a' : inProgress ? ACCENT : '#e0a955' } }} />
                       </Stack>
                     </Box>
                   </Stack>
@@ -807,13 +1008,14 @@ export default function AudioShowcasePage() {
             <Stack direction="row" alignItems="center" spacing={1}>
               <Avatar sx={{ width: 30, height: 30, fontSize: '0.76rem', bgcolor: ACCENT, color: '#150d05', fontWeight: 700 }}>{initial(owner?.name)}</Avatar>
               <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: '999px', px: 1.5 }}>
-                <InputBase fullWidth placeholder="Legg til en tidskodet kommentar…" value={draft} onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && draft.trim()) { void addComment(draft.trim(), { parentId: replyTo?.id }); setDraft(''); setReplyTo(null); } }}
+                <InputBase fullWidth disabled={!canEdit} placeholder={canEdit ? 'Legg til en tidskodet kommentar…' : 'Kun produsenten kan kommentere her'} value={draft} onChange={(e) => updateCommentDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && draft.trim()) { e.preventDefault(); void submitCommentDraft(); } }}
                   sx={{ color: TEXT, fontSize: '0.82rem', py: 0.75 }} />
                 <Tooltip title={`Tidsstemple ved ${fmt(cur)}`}><AccessTime sx={{ fontSize: 17, color: FAINT }} /></Tooltip>
               </Box>
-              <IconButton onClick={() => { if (draft.trim()) { void addComment(draft.trim(), { parentId: replyTo?.id }); setDraft(''); setReplyTo(null); } }} sx={{ bgcolor: ACCENT, color: '#150d05', '&:hover': { bgcolor: '#ff855a' } }}><Send sx={{ fontSize: 18 }} /></IconButton>
+              <IconButton aria-label="Send kommentar" onClick={() => void submitCommentDraft()} disabled={!canEdit || !draft.trim()} sx={{ bgcolor: ACCENT, color: '#150d05', '&:hover': { bgcolor: '#ff855a' }, '&.Mui-disabled': { bgcolor: 'rgba(255,107,53,0.18)', color: FAINT } }}><Send sx={{ fontSize: 18 }} /></IconButton>
             </Stack>
+            <Typography sx={{ mt: 0.65, ml: 5, fontSize: '0.63rem', color: FAINT }}>{canEdit ? 'Kladden lagres lokalt og gjenopprettes etter omstart.' : 'Lesetilgang via workspace.'}</Typography>
           </Box>
         </Box>
       </Box>
@@ -822,10 +1024,10 @@ export default function AudioShowcasePage() {
       <Stack direction="row" alignItems="center" spacing={2} sx={{ px: 3, py: 1.5, borderTop: `1px solid ${BORDER}`, bgcolor: PANEL2, flexShrink: 0 }}>
         <Box sx={{ width: 38, height: 38, borderRadius: '10px', bgcolor: 'rgba(255,107,53,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Box sx={{ width: 14, height: 14, bgcolor: ACCENT, transform: 'rotate(45deg)', borderRadius: '3px' }} /></Box>
         <Box sx={{ flex: 1 }}><Typography sx={{ fontWeight: 700 }}>Samarbeid. Forfin. Lever.</Typography><Typography sx={{ fontSize: '0.78rem', color: MUTED }}>All feedback, versjoner og beslutninger på ett sted.</Typography></Box>
-        <Button onClick={() => approve('changes_requested')} disabled={busy || !currentVid} startIcon={<ChatBubbleOutline />} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '10px', px: 2.5, py: 1 }}>Be om endringer</Button>
-        <Button onClick={() => approve('mix_approved')} disabled={busy || !currentVid} startIcon={<CheckCircleOutline />} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '10px', px: 3, py: 1, '&:hover': { bgcolor: '#ff855a' } }}>Godkjenn mix</Button>
+        <Button onClick={() => approve('changes_requested')} disabled={!canEdit || busy || !currentVid} startIcon={<ChatBubbleOutline />} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '10px', px: 2.5, py: 1 }}>Be om endringer</Button>
+        <Button onClick={() => approve('mix_approved')} disabled={!canEdit || busy || !currentVid} startIcon={<CheckCircleOutline />} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '10px', px: 3, py: 1, '&:hover': { bgcolor: '#ff855a' } }}>Godkjenn mix</Button>
         <input ref={versionFileRef} type="file" accept="audio/*,.wav,.mp3,.aif,.aiff,.m4a,.flac" hidden onChange={(e) => { void uploadVersionFile(e.target.files?.[0]); e.target.value = ''; }} />
-        <Button onClick={uploadVersion} disabled={busy} startIcon={uploadPct !== null ? <CircularProgress size={16} sx={{ color: ACCENT }} /> : <CloudUpload />} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '10px', px: 2.5, py: 1 }}>{uploadPct !== null ? `Laster opp… ${uploadPct}%` : 'Last opp ny versjon'}</Button>
+        <Button onClick={uploadVersion} disabled={!canEdit || busy} startIcon={uploadPct !== null ? <CircularProgress size={16} sx={{ color: ACCENT }} /> : <CloudUpload />} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '10px', px: 2.5, py: 1 }}>{uploadPct !== null ? `Laster opp… ${uploadPct}%` : 'Last opp ny versjon'}</Button>
       </Stack>
 
       {/* Dialoger */}
