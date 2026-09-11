@@ -4589,6 +4589,38 @@ type RoleRoomProjectWorkspaceState = {
     return () => { cancelled = true; };
   }, [currentProject?.id, deriveEffectiveAccess]);
 
+  // The canonical project response is intentionally compact and may omit
+  // production days and screenplay scenes. Hydrate those shared resources once
+  // per project so Director, 1st AD and 2nd AD all plan from the same day →
+  // scene → character graph (instead of each workspace seeing a partial shell).
+  useEffect(() => {
+    const projectId = currentProject?.id;
+    if (!projectId) return;
+    let cancelled = false;
+
+    void Promise.allSettled([
+      castingService.getProductionDays(projectId),
+      castingService.getSceneBreakdowns(projectId),
+    ]).then(([daysResult, scenesResult]) => {
+      if (cancelled) return;
+      const productionDays = daysResult.status === 'fulfilled' ? daysResult.value : null;
+      const sceneBreakdowns = scenesResult.status === 'fulfilled' ? scenesResult.value : null;
+      if (!productionDays && !sceneBreakdowns) return;
+
+      const hydrate = (project: CastingProject): CastingProject => project.id !== projectId
+        ? project
+        : {
+          ...project,
+          ...(productionDays ? { productionDays } : {}),
+          ...(sceneBreakdowns ? { sceneBreakdowns } : {}),
+        };
+      setCurrentProject((project) => project ? hydrate(project) : project);
+      setProjects((items) => items.map(hydrate));
+    });
+
+    return () => { cancelled = true; };
+  }, [currentProject?.id]);
+
   const rbacManageableTabKeys = useMemo(
     () => accessManageableTabKeys(effectiveTabAccess),
     [effectiveTabAccess],

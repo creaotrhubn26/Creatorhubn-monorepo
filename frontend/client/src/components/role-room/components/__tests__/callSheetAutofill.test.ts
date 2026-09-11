@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildDayCallSheetFields } from '../CallSheetGenerator';
-import type { ProductionDay, SceneBreakdown, CrewMember, Location } from '../../models/casting';
+import { buildCallSheetRecipientPreview, buildDayCallSheetFields } from '../CallSheetGenerator';
+import type { ProductionDay, SceneBreakdown, CrewMember, Location, Role, Candidate } from '../../models/casting';
 
 const day: ProductionDay = {
   id: 'd1',
@@ -67,5 +67,65 @@ describe('buildDayCallSheetFields (auto-fyll call-sheet fra produksjonsdag)', ()
     expect(f.callTime).toBe('07:00');
     expect(f.estimatedWrap).toBe('18:00');
     expect(f.weatherForecast).toMatchObject({ temperature: 19, conditions: 'Lettskyet' });
+  });
+
+  it('resolves canonical role IDs to role, actor, email and all individual times', () => {
+    const roles: Role[] = [{ id: 'role-nora', name: 'NORA', assignedCandidateId: 'candidate-nora' }];
+    const candidates: Candidate[] = [{
+      id: 'candidate-nora', name: 'Ada Skuespiller', contactInfo: { email: 'ada@example.test' },
+    }];
+    const roleIdDay: ProductionDay = {
+      ...day,
+      scenes: ['s1'],
+      secondAd: {
+        entries: [{
+          id: 'cast:candidate-nora', personType: 'cast', personId: 'candidate-nora', name: 'Ada Skuespiller',
+          roleName: 'NORA', pickupTime: '05:45', callTime: '06:15', makeupTime: '06:30',
+          wardrobeTime: '06:45', onSetTime: '07:30', transport: 'Bil 2 · Ola', status: 'ready',
+        }],
+      },
+    };
+    const fields = buildDayCallSheetFields(
+      roleIdDay,
+      [{ ...scenes[0], characters: ['role-nora'] }],
+      crew,
+      locations,
+      roles,
+      candidates,
+    );
+
+    expect(fields.scenes?.[0].cast).toEqual(['NORA']);
+    expect(fields.cast).toEqual([expect.objectContaining({
+      id: 'candidate-nora', name: 'Ada Skuespiller', role: 'NORA', email: 'ada@example.test',
+      pickupTime: '05:45', callTime: '06:15', makeupTime: '06:30', wardrobeTime: '06:45',
+      onSetTime: '07:30', transport: 'Bil 2 · Ola', movementStatus: 'ready',
+    })]);
+  });
+
+  it('previews valid recipients, omits invalid addresses and merges duplicates', () => {
+    const preview = buildCallSheetRecipientPreview(
+      [
+        { id: 'crew-1', name: 'Kari', department: 'Foto', position: 'DOP', callTime: '07:00', email: 'KARI@FILM.NO' },
+        { id: 'crew-2', name: 'Uten e-post', department: 'Lyd', position: 'Boom', callTime: '07:00' },
+      ],
+      [
+        { id: 'cast-1', name: 'Ada', role: 'NORA', callTime: '07:00', onSetTime: '08:00', scenes: ['1'], email: 'ada@film.no' },
+        { id: 'cast-2', name: 'Kari dublett', role: 'TOBIAS', callTime: '07:00', onSetTime: '08:00', scenes: ['1'], email: 'kari@film.no' },
+      ],
+    );
+
+    expect(preview.valid.map((recipient) => recipient.email)).toEqual(['kari@film.no', 'ada@film.no']);
+    expect(preview.invalid).toEqual([expect.objectContaining({ name: 'Uten e-post', reason: 'Mangler e-postadresse' })]);
+    expect(preview.duplicateCount).toBe(1);
+  });
+
+  it('normalizes legacy crew contact fields into call-sheet recipients', () => {
+    const legacyCrew = [{
+      id: 'legacy-crew', name: 'Legacy Lyd', role: 'Sound', department: 'Lyd',
+      contact_info: { email: 'lyd@example.test', phone: '+47 999' },
+    }] as CrewMember[];
+    const fields = buildDayCallSheetFields({ ...day, crew: [] }, scenes, legacyCrew, locations);
+
+    expect(fields.crew?.[0]).toMatchObject({ email: 'lyd@example.test', phone: '+47 999' });
   });
 });

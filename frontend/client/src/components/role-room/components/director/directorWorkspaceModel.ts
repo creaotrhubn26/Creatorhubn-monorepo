@@ -111,6 +111,16 @@ function sceneHasVisualPlan(scene: SceneBreakdown, shotLists: ShotList[]): boole
   return storyboardCount > 0 || shotCount > 0;
 }
 
+function roleHasAssignedCandidate(role: Role, candidates: Candidate[]): boolean {
+  if (typeof role.assignedCandidateId === 'string' || typeof role.assigned_candidate_id === 'string') return true;
+  return candidates.some((candidate) => {
+    const assigned = candidate.assignedRoles ?? candidate.assigned_roles ?? [];
+    return candidate.roleId === role.id
+      || candidate.role_id === role.id
+      || (Array.isArray(assigned) && assigned.includes(role.id));
+  });
+}
+
 export function buildDirectorBrief({
   project,
   roles = project.roles ?? [],
@@ -126,8 +136,14 @@ export function buildDirectorBrief({
 
   const visuallyPlannedSceneCount = scenes.filter((scene) => sceneHasVisualPlan(scene, shotLists)).length;
   const scenesWithoutVisualPlan = Math.max(0, scenes.length - visuallyPlannedSceneCount);
-  const rolesAwaitingCasting = roles.filter((role) => role.status === 'open' || role.status === 'casting');
-  const filledRoleCount = roles.filter((role) => role.status === 'filled').length;
+  const rolesAwaitingCasting = roles.filter((role) => (
+    (role.status === 'open' || role.status === 'casting')
+    && !roleHasAssignedCandidate(role, candidates)
+  ));
+  const filledRoleCount = roles.filter((role) => (
+    ['filled', 'cast', 'confirmed'].includes(role.status || '')
+    || roleHasAssignedCandidate(role, candidates)
+  )).length;
   const candidatesForReview = candidates.filter((candidate) => (
     candidate.status === 'shortlist' || candidate.status === 'selected'
   ));

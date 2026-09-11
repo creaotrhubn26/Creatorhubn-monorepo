@@ -20,4 +20,48 @@ describe('secondAssistantDirectorWorkspaceModel', () => {
     expect(entries).toEqual([expect.objectContaining({ name: 'Ada', roleName: 'NORA', callTime: '06:30', status: 'acknowledged' })]);
     expect(secondAdReadiness(entries).acknowledged).toBe(1);
   });
+
+  it('resolves manuscript role IDs and does not duplicate mixed ID/name references', () => {
+    const projectWithCanonicalReferences = {
+      ...project,
+      sceneBreakdowns: [
+        { id: 'scene-1', characters: ['role-1'] },
+        { id: 'scene-2', characters: ['NORA'] },
+      ],
+    } as CastingProject;
+    const entries = buildSecondAdMovementEntries(projectWithCanonicalReferences, {
+      ...day,
+      scenes: ['scene-1', 'scene-2'],
+    });
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      id: 'cast:candidate-1',
+      personId: 'candidate-1',
+      name: 'Ada',
+      roleName: 'NORA',
+    });
+  });
+
+  it('migrates a persisted legacy entry onto the canonical cast ID without duplicating it', () => {
+    const entries = buildSecondAdMovementEntries({
+      ...project,
+      sceneBreakdowns: [{ id: 'scene-1', characters: ['role-1'] }],
+    } as CastingProject, {
+      ...day,
+      secondAd: {
+        entries: [{
+          id: 'legacy-nora',
+          personType: 'cast',
+          name: 'Ada',
+          roleName: 'NORA',
+          wardrobeTime: '06:45',
+          status: 'wardrobe',
+        }],
+      },
+    });
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ id: 'cast:candidate-1', wardrobeTime: '06:45', status: 'wardrobe' });
+  });
 });
