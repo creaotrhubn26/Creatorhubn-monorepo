@@ -131,6 +131,7 @@ interface CallSheetCastMember {
   onSetTime: string;
   scenes: string[];
   notes?: string;
+  email?: string;
 }
 
 interface CallSheetCrewMember {
@@ -366,12 +367,15 @@ export function buildDayCallSheetFields(
     const chars = Array.from(new Set(dayScenes.flatMap((s) => (Array.isArray(s.characters) ? s.characters : []))));
     if (chars.length > 0) {
       fields.cast = chars.map((ch, i) => ({
-        id: `cast-${i}`,
-        name: ch,
+        id: productionDay.secondAd?.entries.find((entry) => entry.roleName?.trim().toLocaleUpperCase('nb-NO') === ch.trim().toLocaleUpperCase('nb-NO'))?.personId || `cast-${i}`,
+        name: productionDay.secondAd?.entries.find((entry) => entry.roleName?.trim().toLocaleUpperCase('nb-NO') === ch.trim().toLocaleUpperCase('nb-NO'))?.name || ch,
         role: ch,
-        callTime: productionDay.callTime || '',
-        onSetTime: productionDay.callTime || '',
+        pickupTime: productionDay.secondAd?.entries.find((entry) => entry.roleName?.trim().toLocaleUpperCase('nb-NO') === ch.trim().toLocaleUpperCase('nb-NO'))?.pickupTime,
+        callTime: productionDay.secondAd?.entries.find((entry) => entry.roleName?.trim().toLocaleUpperCase('nb-NO') === ch.trim().toLocaleUpperCase('nb-NO'))?.callTime || productionDay.callTime || '',
+        makeupTime: productionDay.secondAd?.entries.find((entry) => entry.roleName?.trim().toLocaleUpperCase('nb-NO') === ch.trim().toLocaleUpperCase('nb-NO'))?.makeupTime,
+        onSetTime: productionDay.secondAd?.entries.find((entry) => entry.roleName?.trim().toLocaleUpperCase('nb-NO') === ch.trim().toLocaleUpperCase('nb-NO'))?.onSetTime || productionDay.callTime || '',
         scenes: dayScenes.filter((s) => (Array.isArray(s.characters) ? s.characters : []).includes(ch)).map((s) => String(s.sceneNumber ?? '')),
+        notes: productionDay.secondAd?.entries.find((entry) => entry.roleName?.trim().toLocaleUpperCase('nb-NO') === ch.trim().toLocaleUpperCase('nb-NO'))?.notes,
       }));
     }
   }
@@ -423,6 +427,17 @@ function buildCallSheetEmailHtml(cs: CallSheetData): string {
   ].join('');
 }
 
+function createEmptyCallSheet(productionDay?: ProductionDay): CallSheetData {
+  return {
+    id: `cs-${Date.now()}`,
+    projectName: '', productionCompany: '', date: productionDay?.date || '',
+    dayNumber: 1, totalDays: 0, director: '', producer: '',
+    callTime: productionDay?.callTime || '', shootingCallTime: '', lunchTime: '',
+    estimatedWrap: productionDay?.wrapTime || '', locations: [], scenes: [], cast: [], crew: [],
+    specialInstructions: '', emergencyContacts: [], notes: '',
+  };
+}
+
 export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
   projectId,
   productionDay,
@@ -453,117 +468,9 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
   // opptatt akkurat denne innspillingsdagen.
   const { availabilityByUser, emailToUser } = useProjectMemberAvailability(projectId);
 
-  // Demo data for TROLL production
-  const [callSheet, setCallSheet] = useState<CallSheetData>({
-    id: `cs-${Date.now()}`,
-    projectName: 'TROLL',
-    productionCompany: 'Motion Blur Films',
-    date: productionDay?.date || '2026-02-15',
-    dayNumber: 1,
-    totalDays: 42,
-    director: 'Roar Uthaug',
-    producer: 'Espen Horn',
-    callTime: productionDay?.callTime || '06:00',
-    shootingCallTime: '08:00',
-    lunchTime: '12:30',
-    estimatedWrap: productionDay?.wrapTime || '19:00',
-    locations: [
-      {
-        id: '1',
-        name: 'Trollstigen',
-        address: 'Trollstigen, 6300 Åndalsnes, Møre og Romsdal',
-        parkingInfo: 'P-plass ved besøkssenter. Shuttle til set kl 05:30.',
-        contactPerson: 'Lars Filming',
-        contactPhone: '+47 900 12 345',
-      },
-    ],
-    scenes: [
-      {
-        sceneNumber: '1',
-        description: 'TROLLET våkner under fjellet - jordskjelv',
-        intExt: 'EXT',
-        dayNight: 'DAY',
-        pages: '2 3/8',
-        cast: ['NORA', 'TOBIAS', 'ARBEIDER 1'],
-        location: 'Trollstigen',
-        estimatedTime: '3t',
-      },
-      {
-        sceneNumber: '5',
-        description: 'Helikopter spotter trollet i fjellsiden',
-        intExt: 'EXT',
-        dayNight: 'DAY',
-        pages: '1 5/8',
-        cast: ['PILOT', 'GENERAL LUND'],
-        location: 'Trollstigen',
-        estimatedTime: '2t',
-      },
-      {
-        sceneNumber: '12',
-        description: 'Nora konfronterer trollet',
-        intExt: 'EXT',
-        dayNight: 'DUSK',
-        pages: '4 1/8',
-        cast: ['NORA', 'TOBIAS'],
-        location: 'Trollstigen',
-        estimatedTime: '4t',
-      },
-    ],
-    cast: [
-      {
-        id: '1',
-        name: 'Ine Marie Wilmann',
-        role: 'NORA',
-        pickupTime: '05:00',
-        callTime: '05:30',
-        makeupTime: '06:00',
-        onSetTime: '08:00',
-        scenes: ['1', '12'],
-        notes: 'Kontaktlinser (spesialeffekt)',
-      },
-      {
-        id: '2',
-        name: 'Kim Falck',
-        role: 'TOBIAS',
-        pickupTime: '05:30',
-        callTime: '06:00',
-        onSetTime: '08:00',
-        scenes: ['1', '12'],
-      },
-      {
-        id: '3',
-        name: 'Mads Ousdal',
-        role: 'GENERAL LUND',
-        callTime: '09:00',
-        onSetTime: '10:30',
-        scenes: ['5'],
-        notes: 'Militæruniform',
-      },
-    ],
-    crew: [
-      { id: '1', name: 'Roar Uthaug', department: 'Regi', position: 'Regissør', callTime: '06:00', phone: '+47 900 00 001' },
-      { id: '2', name: 'Jallo Faber', department: 'Foto', position: 'DOP', callTime: '05:30', phone: '+47 900 00 002' },
-      { id: '3', name: 'Erik Poppe', department: 'Produksjon', position: '1st AD', callTime: '05:00', phone: '+47 900 00 003' },
-      { id: '4', name: 'Anna Hansen', department: 'Lyd', position: 'Sound Mixer', callTime: '06:00', phone: '+47 900 00 004' },
-      { id: '5', name: 'Lars Berg', department: 'Grip', position: 'Key Grip', callTime: '05:30', phone: '+47 900 00 005' },
-      { id: '6', name: 'Maria Olsen', department: 'Lys', position: 'Gaffer', callTime: '05:30', phone: '+47 900 00 006' },
-      { id: '7', name: 'Kari Sminke', department: 'Sminke', position: 'HMU Chief', callTime: '05:00', phone: '+47 900 00 007' },
-      { id: '8', name: 'Jon VFX', department: 'VFX', position: 'VFX Supervisor', callTime: '07:00', phone: '+47 900 00 008' },
-    ],
-    specialInstructions: '• Alle må ha gyldig ID for adgang til sperret fjellområde\n• VÆRFORBEHOLD: Ved vindstyrke over 15 m/s flyttes til backup i studio\n• Droner i bruk - respekter sikkerhetssoner (rød markering)\n• Pyroteknikk scene 1 - evakueringsplan ved basecamp\n• Helikopter landing kun på markert helipad',
-    weatherForecast: {
-      temperature: 8,
-      conditions: 'Delvis skyet, lett bris',
-      sunrise: '06:42',
-      sunset: '18:58',
-    },
-    emergencyContacts: [
-      { name: 'Produksjonsleder', role: 'Set Contact', phone: '+47 900 00 100' },
-      { name: 'Legevakt Åndalsnes', role: 'Medisinsk', phone: '116 117' },
-      { name: 'Nødnummer', role: 'Nødsituasjon', phone: '113' },
-    ],
-    notes: '',
-  });
+  // Start tomt. Ekte prosjekt- og produksjonsdagsdata fylles inn under; en
+  // call sheet må aldri arve navn, steder eller tider fra et annet prosjekt.
+  const [callSheet, setCallSheet] = useState<CallSheetData>(() => createEmptyCallSheet(productionDay));
 
   // Kalender-konflikt pr. crew-e-post for innspillingsdagen: slår crew-raden
   // (via e-post) opp mot medlemmets egen tilgjengelighet, og flagger dager der
@@ -607,8 +514,9 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
   // Load data from casting service (background, non-blocking)
   useEffect(() => {
     const loadCastingData = async () => {
-      // Don't block UI - demo data is already shown
+      // Ikke blokker UI mens registrerte prosjektdata lastes.
       try {
+        setCallSheet(createEmptyCallSheet(productionDay));
         const [project, candidates, roles, crewMembers, locs] = await Promise.all([
           castingService.getProject(projectId).catch(() => null),
           castingService.getCandidates(projectId).catch(() => []),
@@ -630,19 +538,29 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
         const dayFields = productionDay
           ? buildDayCallSheetFields(productionDay, resolvedScenes, resolvedCrew, resolvedLocs)
           : {};
+        if (dayFields.cast) {
+          dayFields.cast = dayFields.cast.map((castMember) => {
+            const role = (roles || []).find((item) => item.name.trim().toLocaleUpperCase('nb-NO') === castMember.role.trim().toLocaleUpperCase('nb-NO'));
+            const assignedId = typeof role?.assignedCandidateId === 'string' ? role.assignedCandidateId : undefined;
+            const candidate = (candidates || []).find((item) => item.id === castMember.id)
+              ?? (candidates || []).find((item) => assignedId && item.id === assignedId)
+              ?? (candidates || []).find((item) => item.name.trim().toLocaleUpperCase('nb-NO') === castMember.name.trim().toLocaleUpperCase('nb-NO'));
+            return { ...castMember, email: candidate?.contactInfo?.email || candidate?.contact_info?.email || candidate?.email };
+          });
+        }
         const director = resolvedCrew.find(c =>
           c.role?.toLowerCase().includes('regissør') || c.role?.toLowerCase().includes('director'));
         const producer = resolvedCrew.find(c =>
           c.role?.toLowerCase().includes('produsent') || c.role?.toLowerCase().includes('producer'));
 
         if (project || productionDay) {
-          setCallSheet(prev => ({
-            ...prev,
+          setCallSheet({
+            ...createEmptyCallSheet(productionDay),
             ...dayFields,
-            projectName: project?.name || prev.projectName,
-            director: director?.name || prev.director,
-            producer: producer?.name || prev.producer,
-          }));
+            projectName: project?.name || '',
+            director: director?.name || '',
+            producer: producer?.name || '',
+          });
           setIsSynced(true);
         }
       } catch (error) {
@@ -652,7 +570,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
       }
     };
 
-    // Show content immediately, load in background
+    // Vis tom struktur umiddelbart og last prosjektdata i bakgrunnen.
     setIsLoading(false);
     
     if (projectId) {
@@ -663,11 +581,11 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
 
   const handleSendToCrew = async () => {
     const emailRe = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-    const recipients = (callSheet.crew || [])
+    const recipients = [...(callSheet.crew || []), ...(callSheet.cast || [])]
       .filter((c) => c.email && emailRe.test(c.email))
       .map((c) => ({ name: c.name, email: c.email as string }));
     if (recipients.length === 0) {
-      setSendFeedback({ severity: 'warning', text: 'Ingen crew med e-postadresse. Legg til e-post på crew-medlemmene først.' });
+      setSendFeedback({ severity: 'warning', text: 'Ingen cast eller crew har gyldig e-postadresse.' });
       return;
     }
     setSendingCallSheet(true);
@@ -680,6 +598,8 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
         headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders() },
         body: JSON.stringify({
           projectId,
+          productionDayId: productionDay?.id,
+          revision: 1,
           subject: `Call Sheet · ${callSheet.projectName} · ${callSheet.date}`,
           html: buildCallSheetEmailHtml(callSheet),
           recipients,
@@ -692,7 +612,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
       setSendFeedback({
         severity: sent === total ? 'success' : 'warning',
         text: sent === total
-          ? `Call sheet sendt til alle ${total} crew-medlemmer.`
+          ? `Call sheet sendt til alle ${total} mottakere.`
           : `Sendt til ${sent} av ${total}. Sjekk e-postadressene til resten.`,
       });
     } catch (error) {
@@ -1023,7 +943,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
               disabled={sendingCallSheet}
               sx={{ fontSize: responsive.fontSize.caption }}
             >
-              {responsive.showFullLabels ? (sendingCallSheet ? 'Sender…' : 'Send til crew') : ''}
+              {responsive.showFullLabels ? (sendingCallSheet ? 'Sender…' : 'Send til cast og crew') : ''}
             </Button>
           </Stack>
           {sendFeedback && (

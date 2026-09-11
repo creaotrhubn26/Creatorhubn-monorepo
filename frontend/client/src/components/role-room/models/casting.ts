@@ -11,6 +11,7 @@ export type UserRoleType =
   | 'casting_director'
   | 'production_manager'
   | 'first_ad'
+  | 'second_ad'
   | 'camera_team'
   | 'content_producer'
   | 'client_reviewer'
@@ -1070,6 +1071,7 @@ export interface ProductionDay {
     days: number;
     source: 'fallback' | 'yr_api';
   };
+  secondAd?: SecondAssistantDirectorOperations;
   lastModifiedBy?: string;
   createdBy?: string;
   changeLog?: Array<{
@@ -1081,6 +1083,40 @@ export interface ProductionDay {
   createdAt?: string;
   updatedAt?: string;
   [key: string]: unknown;
+}
+
+export type SecondAdMovementStatus =
+  | 'not_called'
+  | 'call_sent'
+  | 'acknowledged'
+  | 'arrived'
+  | 'makeup'
+  | 'wardrobe'
+  | 'ready'
+  | 'on_set'
+  | 'wrapped';
+
+export interface SecondAdMovementEntry {
+  id: string;
+  personType: 'cast' | 'stand_in' | 'background';
+  personId?: string;
+  name: string;
+  roleName?: string;
+  pickupTime?: string;
+  callTime?: string;
+  makeupTime?: string;
+  wardrobeTime?: string;
+  onSetTime?: string;
+  transport?: string;
+  status: SecondAdMovementStatus;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface SecondAssistantDirectorOperations {
+  entries: SecondAdMovementEntry[];
+  notes?: string;
+  updatedAt?: string;
 }
 
 export type ProducerPlanningPhase = 'preproduction' | 'production' | 'postproduction';

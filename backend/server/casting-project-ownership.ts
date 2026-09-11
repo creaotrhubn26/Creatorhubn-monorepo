@@ -119,7 +119,10 @@ export async function userCanEditCastingProduction(
                       'content_producer',
                       'first_ad',
                       'first_assistant_director',
-                      '1st_ad'
+                      '1st_ad',
+                      'second_ad',
+                      'second_assistant_director',
+                      '2nd_ad'
                     )
                     OR cur.permissions -> 'canEditProduction' = 'true'::jsonb
                   )

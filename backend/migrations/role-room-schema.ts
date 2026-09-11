@@ -782,3 +782,23 @@ export const roleRoomIntegrationIdempotencyKeys = pgTable('role_room_integration
   uniqueIndex('idx_rr_integration_idempotency_unique').using('btree', table.scopeKey, table.requestMethod, table.requestPath, table.idempotencyKey),
   index('idx_rr_integration_idempotency_account').using('btree', table.integrationAccountId),
 ]);
+
+export const roleRoomCallSheetDeliveries = pgTable('role_room_call_sheet_deliveries', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  projectId: varchar('project_id', { length: 255 }).notNull().references(() => castingProjects.id, { onDelete: 'cascade' }),
+  productionDayId: varchar('production_day_id', { length: 255 }), revision: integer('revision').default(1).notNull(),
+  subject: varchar('subject', { length: 200 }).notNull(), sentByUserId: varchar('sent_by_user_id', { length: 255 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [index('idx_rr_call_sheet_deliveries_project_day').using('btree', table.projectId, table.productionDayId, table.createdAt)]);
+
+export const roleRoomCallSheetRecipients = pgTable('role_room_call_sheet_recipients', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  deliveryId: uuid('delivery_id').notNull().references(() => roleRoomCallSheetDeliveries.id, { onDelete: 'cascade' }),
+  recipientName: varchar('recipient_name', { length: 255 }), recipientEmail: varchar('recipient_email', { length: 320 }).notNull(),
+  tokenHash: varchar('token_hash', { length: 64 }).notNull(), deliveryStatus: varchar('delivery_status', { length: 24 }).default('pending').notNull(),
+  failureReason: varchar('failure_reason', { length: 80 }), providerMessageId: varchar('provider_message_id', { length: 255 }),
+  sentAt: timestamp('sent_at', { withTimezone: true, mode: 'string' }), acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true, mode: 'string' }),
+  expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }).default(sql`now() + interval '14 days'`).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [uniqueIndex('idx_rr_call_sheet_recipients_token').using('btree', table.tokenHash), index('idx_rr_call_sheet_recipients_delivery').using('btree', table.deliveryId)]);
