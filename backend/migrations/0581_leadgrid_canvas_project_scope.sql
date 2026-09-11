@@ -16,7 +16,9 @@ UPDATE leadgrid_canvas_notater note
    SET project_id = customer.project_id
   FROM crm_customers customer
  WHERE note.project_id IS NULL
-   AND note.lead_id = customer.id
+   -- Canvas kept this legacy reference as TEXT while crm_customers.id is UUID.
+   -- Cast the UUID side so malformed historical text values stay harmless.
+   AND note.lead_id = customer.id::text
    AND LOWER(note.organization_id) = LOWER(customer.organization_id::text)
    AND customer.project_id IS NOT NULL;
 
