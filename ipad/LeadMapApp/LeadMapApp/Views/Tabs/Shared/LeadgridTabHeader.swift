@@ -147,6 +147,7 @@ struct LeadgridTabHeader<Extra: View>: View {
                 if DeviceIdiom.isPhone {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
+                            ProjectContextPill()
                             dateButton(isNarrow: true)
                             extraControls()
                         }
@@ -162,6 +163,10 @@ struct LeadgridTabHeader<Extra: View>: View {
                 HStack(spacing: 8) {
                     if !DeviceIdiom.isPhone {
                         dateButton(isNarrow: isNarrow)
+                        // Prosjektet er en del av arbeidskonteksten på alle
+                        // Leadgrid-flater, også Pondus. Det skal aldri måtte
+                        // gjettes fra innholdet hvilket kundeprosjekt som er aktivt.
+                        ProjectContextPill()
                     }
                     if !isNarrow {
                         areaMenu

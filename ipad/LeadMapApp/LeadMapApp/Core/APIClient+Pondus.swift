@@ -13,11 +13,22 @@ import Foundation
 
 extension APIClient {
 
-    private func pondusPath(_ path: String, organizationId: String?) -> String {
-        guard let organizationId, !organizationId.isEmpty,
-              let encoded = organizationId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
-        else { return path }
-        return path + (path.contains("?") ? "&" : "?") + "organization_id=\(encoded)"
+    private func pondusPath(
+        _ path: String,
+        organizationId: String?,
+        projectId: String? = nil
+    ) -> String {
+        var items: [String] = []
+        if let organizationId, !organizationId.isEmpty,
+           let encoded = organizationId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            items.append("organization_id=\(encoded)")
+        }
+        if let projectId, !projectId.isEmpty,
+           let encoded = projectId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            items.append("project_id=\(encoded)")
+        }
+        guard !items.isEmpty else { return path }
+        return path + (path.contains("?") ? "&" : "?") + items.joined(separator: "&")
     }
 
     // -- List / get -------------------------------------------------
@@ -29,7 +40,8 @@ extension APIClient {
         category: String?,
         kind: String?,
         publishedOnly: Bool,
-        organizationId: String? = nil
+        organizationId: String? = nil,
+        projectId: String? = nil
     ) async throws -> [PondusTemplateDTO] {
         var qs: [String] = []
         if let c = category, !c.isEmpty,
@@ -47,14 +59,18 @@ extension APIClient {
         }
         let path = pondusPath("/api/leadgrid/pondus/templates"
             + (qs.isEmpty ? "" : "?\(qs.joined(separator: "&"))")
-            , organizationId: organizationId)
+            , organizationId: organizationId, projectId: projectId)
         let resp: PondusTemplatesResponse = try await _get(path)
         return resp.templates
     }
 
-    func pondusGetTemplate(id: String, organizationId: String? = nil) async throws -> PondusTemplateDTO {
+    func pondusGetTemplate(
+        id: String,
+        organizationId: String? = nil,
+        projectId: String? = nil
+    ) async throws -> PondusTemplateDTO {
         let resp: PondusTemplateResponse = try await _get(
-            pondusPath("/api/leadgrid/pondus/templates/\(id)", organizationId: organizationId)
+            pondusPath("/api/leadgrid/pondus/templates/\(id)", organizationId: organizationId, projectId: projectId)
         )
         return resp.template
     }
@@ -63,10 +79,11 @@ extension APIClient {
 
     func pondusCreateTemplate(
         _ payload: CreatePondusTemplatePayload,
-        organizationId: String? = nil
+        organizationId: String? = nil,
+        projectId: String? = nil
     ) async throws -> PondusTemplateDTO {
         let resp: PondusTemplateResponse = try await _post(
-            pondusPath("/api/leadgrid/pondus/templates", organizationId: organizationId),
+            pondusPath("/api/leadgrid/pondus/templates", organizationId: organizationId, projectId: projectId),
             body: payload
         )
         return resp.template
@@ -75,10 +92,11 @@ extension APIClient {
     func pondusUpdateTemplate(
         id: String,
         _ payload: UpdatePondusTemplatePayload,
-        organizationId: String? = nil
+        organizationId: String? = nil,
+        projectId: String? = nil
     ) async throws -> PondusTemplateDTO {
         let resp: PondusTemplateResponse = try await _patch(
-            pondusPath("/api/leadgrid/pondus/templates/\(id)", organizationId: organizationId),
+            pondusPath("/api/leadgrid/pondus/templates/\(id)", organizationId: organizationId, projectId: projectId),
             body: payload
         )
         return resp.template
@@ -88,26 +106,36 @@ extension APIClient {
         id: String,
         published: Bool,
         expectedVersion: Int,
-        organizationId: String? = nil
+        organizationId: String? = nil,
+        projectId: String? = nil
     ) async throws -> PondusTemplateDTO {
         struct PublishPayload: Encodable { let published: Bool; let expectedVersion: Int }
         let resp: PondusTemplateResponse = try await _post(
-            pondusPath("/api/leadgrid/pondus/templates/\(id)/publish", organizationId: organizationId),
+            pondusPath("/api/leadgrid/pondus/templates/\(id)/publish", organizationId: organizationId, projectId: projectId),
             body: PublishPayload(published: published, expectedVersion: expectedVersion)
         )
         return resp.template
     }
 
-    func pondusDeleteTemplate(id: String, organizationId: String? = nil) async throws {
-        try await _delete(pondusPath("/api/leadgrid/pondus/templates/\(id)", organizationId: organizationId))
+    func pondusDeleteTemplate(
+        id: String,
+        organizationId: String? = nil,
+        projectId: String? = nil
+    ) async throws {
+        try await _delete(pondusPath(
+            "/api/leadgrid/pondus/templates/\(id)",
+            organizationId: organizationId,
+            projectId: projectId
+        ))
     }
 
     func pondusAnalyzeTemplate(
         _ payload: CreatePondusTemplatePayload,
-        organizationId: String? = nil
+        organizationId: String? = nil,
+        projectId: String? = nil
     ) async throws -> PondusAnalysisResponse {
         try await _post(
-            pondusPath("/api/leadgrid/pondus/analyze", organizationId: organizationId),
+            pondusPath("/api/leadgrid/pondus/analyze", organizationId: organizationId, projectId: projectId),
             body: payload
         )
     }
@@ -119,12 +147,13 @@ extension APIClient {
         category: String,
         prompt: String,
         response: String,
-        organizationId: String? = nil
+        organizationId: String? = nil,
+        projectId: String? = nil
     ) async throws -> [PondusTemplateDTO] {
         struct Payload: Encodable { let category: String; let prompt: String; let response: String }
         struct BulkAttachResponse: Decodable { let updated: Int; let templates: [PondusTemplateDTO] }
         let resp: BulkAttachResponse = try await _post(
-            pondusPath("/api/leadgrid/pondus/objections/bulk-attach", organizationId: organizationId),
+            pondusPath("/api/leadgrid/pondus/objections/bulk-attach", organizationId: organizationId, projectId: projectId),
             body: Payload(category: category, prompt: prompt, response: response)
         )
         return resp.templates
@@ -132,9 +161,13 @@ extension APIClient {
 
     // -- Versions --------------------------------------------------
 
-    func pondusTemplateVersions(id: String, organizationId: String? = nil) async throws -> [PondusTemplateVersionDTO] {
+    func pondusTemplateVersions(
+        id: String,
+        organizationId: String? = nil,
+        projectId: String? = nil
+    ) async throws -> [PondusTemplateVersionDTO] {
         let resp: PondusVersionsResponse = try await _get(
-            pondusPath("/api/leadgrid/pondus/templates/\(id)/versions", organizationId: organizationId)
+            pondusPath("/api/leadgrid/pondus/templates/\(id)/versions", organizationId: organizationId, projectId: projectId)
         )
         return resp.versions
     }
@@ -143,11 +176,12 @@ extension APIClient {
         id: String,
         version: Int,
         expectedVersion: Int,
-        organizationId: String? = nil
+        organizationId: String? = nil,
+        projectId: String? = nil
     ) async throws -> PondusTemplateDTO {
         struct RollbackPayload: Encodable { let expectedVersion: Int }
         let resp: PondusTemplateResponse = try await _post(
-            pondusPath("/api/leadgrid/pondus/templates/\(id)/rollback/\(version)", organizationId: organizationId),
+            pondusPath("/api/leadgrid/pondus/templates/\(id)/rollback/\(version)", organizationId: organizationId, projectId: projectId),
             body: RollbackPayload(expectedVersion: expectedVersion)
         )
         return resp.template
@@ -158,7 +192,8 @@ extension APIClient {
     func pondusContentByStep(
         templateId: String,
         stepKey: String?,
-        organizationId: String? = nil
+        organizationId: String? = nil,
+        projectId: String? = nil
     ) async throws -> [PondusContentVariantDTO] {
         var qs: [String] = ["template_id=\(templateId)"]
         if let s = stepKey, !s.isEmpty,
@@ -168,7 +203,8 @@ extension APIClient {
         }
         let path = pondusPath(
             "/api/leadgrid/pondus/content-by-step?\(qs.joined(separator: "&"))",
-            organizationId: organizationId
+            organizationId: organizationId,
+            projectId: projectId
         )
         let resp: PondusVariantsResponse = try await _get(path)
         return resp.variants
@@ -176,10 +212,11 @@ extension APIClient {
 
     func pondusCreateVariant(
         _ payload: CreatePondusVariantPayload,
-        organizationId: String? = nil
+        organizationId: String? = nil,
+        projectId: String? = nil
     ) async throws -> PondusContentVariantDTO {
         let resp: PondusVariantResponse = try await _post(
-            pondusPath("/api/leadgrid/pondus/content-by-step", organizationId: organizationId),
+            pondusPath("/api/leadgrid/pondus/content-by-step", organizationId: organizationId, projectId: projectId),
             body: payload
         )
         return resp.variant
@@ -250,7 +287,8 @@ extension APIClient {
         leadId: String? = nil,
         outcome: String = "used",
         source: String = "ipad",
-        organizationId: String? = nil
+        organizationId: String? = nil,
+        projectId: String? = nil
     ) async throws -> PondusUsageResponse {
         struct Payload: Encodable {
             let usageSessionId: UUID
@@ -259,7 +297,7 @@ extension APIClient {
             let source: String
         }
         return try await _post(
-            pondusPath("/api/leadgrid/pondus/templates/\(templateId)/usage", organizationId: organizationId),
+            pondusPath("/api/leadgrid/pondus/templates/\(templateId)/usage", organizationId: organizationId, projectId: projectId),
             body: Payload(
                 usageSessionId: usageSessionId,
                 leadId: leadId,
@@ -274,23 +312,26 @@ extension APIClient {
     /// "7d"/"30d"/"90d"/"ytd" — filtrerer per-mal-radene til vinduet.
     func pondusUsageStats(
         period: String? = nil,
-        organizationId: String? = nil
+        organizationId: String? = nil,
+        projectId: String? = nil
     ) async throws -> PondusUsageStatsDTO {
         var path = "/api/leadgrid/pondus/usage/stats"
         if let period, !period.isEmpty {
             path += "?period=\(period)"
         }
-        return try await _get(pondusPath(path, organizationId: organizationId))
+        return try await _get(pondusPath(path, organizationId: organizationId, projectId: projectId))
     }
 
     /// Per-mal drill-down: utfalls-fordeling + per-selger + siste 20 logger.
     func pondusTemplateUsageDetail(
         templateId: String,
-        organizationId: String? = nil
+        organizationId: String? = nil,
+        projectId: String? = nil
     ) async throws -> PondusTemplateUsageDetailDTO {
         try await _get(pondusPath(
             "/api/leadgrid/pondus/templates/\(templateId)/usage-detail",
-            organizationId: organizationId
+            organizationId: organizationId,
+            projectId: projectId
         ))
     }
 }

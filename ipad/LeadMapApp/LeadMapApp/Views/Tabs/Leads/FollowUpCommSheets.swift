@@ -906,6 +906,10 @@ struct EmailTemplatePicker: View {
     @State private var completionAlertTitle = "Kunne ikke loggføre"
     @State private var isRecordingCompletion = false
     @State private var isOpeningExternalApp = false
+    @State private var compliance: LeadgridEmailCompliance?
+    @State private var isLoadingCompliance = false
+    @State private var complianceError: String?
+    @State private var complianceEditorPresented = false
 
     /// Bruk bare aktivt prosjekts malpakke når leadet faktisk tilhører
     /// prosjektet. Dette hindrer at en stale/mis-skopet rad får Dentum-copy.
@@ -956,6 +960,7 @@ struct EmailTemplatePicker: View {
             ScrollView {
                 VStack(spacing: 14) {
                     leadHeader
+                    complianceCard
                     templatesGrid
                     previewCard
                     appPicker
@@ -988,6 +993,15 @@ struct EmailTemplatePicker: View {
                 if !customized, let new = selectedTemplate {
                     applyTemplate(new)
                 }
+            }
+            .task(id: complianceTaskID) {
+                await loadCompliance()
+            }
+            .sheet(isPresented: $complianceEditorPresented) {
+                LeadgridEmailComplianceEditor(
+                    lead: lead,
+                    email: toEmail,
+                    compliance: $compliance)
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -1037,29 +1051,134 @@ struct EmailTemplatePicker: View {
         customized = false
     }
 
-    private var leadHeader: some View {
-        HStack(spacing: 11) {
-            ZStack {
-                Circle().fill(FcBrand.purple.opacity(0.25))
-                Text(initials(lead.contactName))
-                    .font(.appScaled(size: 13, weight: .bold))
-                    .foregroundStyle(FcBrand.purpleLight)
-            }
-            .frame(width: 42, height: 42)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Til: \(lead.contactName.isEmpty ? lead.company : lead.contactName)")
-                    .font(.appScaled(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-                Text(toEmail)
-                    .font(.appScaled(size: 11))
-                    .foregroundStyle(FcBrand.textSecondary)
-            }
-            Spacer()
+    private var complianceTaskID: String {
+        "\(lead.backendId ?? "missing")|\(lead.projectId ?? "missing")|\(appState.activeOrganizationId ?? "missing")|\(toEmail.lowercased())"
+    }
+
+    @MainActor
+    private func loadCompliance() async {
+        if ProcessInfo.processInfo.environment["QA_TOUR"] == "dentum-outreach" {
+            compliance = ProcessInfo.processInfo.environment["QA_OUTREACH_COMPLIANCE"] == "named-person"
+                ? .qaNamedPersonBlocked(email: toEmail)
+                : .dentumQAVerifiedShared(email: toEmail)
+            complianceError = nil
+            return
         }
-        .padding(12)
-        .background(FcBrand.card, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(FcBrand.stroke, lineWidth: 1))
-        .overlay(alignment: .bottomLeading) {
+        guard let api = appState.api,
+              let leadID = lead.backendId,
+              let projectID = lead.projectId,
+              let organizationID = appState.activeOrganizationId
+        else {
+            compliance = nil
+            complianceError = "Leadgrid må være innlogget i riktig kundeprosjekt for å kontrollere adressen."
+            return
+        }
+        isLoadingCompliance = true
+        defer { isLoadingCompliance = false }
+        do {
+            let result = try await api.fetchOutreachCompliance(
+                leadId: leadID,
+                projectId: projectID,
+                organizationId: organizationID)
+            let returnedEmail = (result.normalizedEmail ?? result.email)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            guard returnedEmail == toEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() else {
+                compliance = nil
+                complianceError = "E-postadressen er endret. Lukk arket og åpne leaden på nytt."
+                return
+            }
+            compliance = result
+            complianceError = nil
+        } catch {
+            compliance = nil
+            complianceError = "Kontrollen kunne ikke hentes. Markedsførings-e-post er blokkert til Leadgrid har kontakt med serveren."
+        }
+    }
+
+    private var complianceCard: some View {
+        let allowed = compliance?.permitsMarketing(to: toEmail) == true
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: allowed ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+                    .font(.appScaled(size: 18, weight: .semibold))
+                    .foregroundStyle(allowed ? FcBrand.green : FcBrand.orange)
+                VStack(alignment: .leading, spacing: 4) {
+                    if isLoadingCompliance {
+                        Text("Kontrollerer utsendelsesgrunnlag …")
+                            .accessibilityIdentifier("outreach.compliance.loading")
+                    } else if let compliance {
+                        Text(compliance.statusTitle)
+                            .accessibilityIdentifier("outreach.compliance.status")
+                        Text(compliance.guidance)
+                            .font(.appScaled(size: 10))
+                            .foregroundStyle(FcBrand.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text("E-post er blokkert")
+                            .accessibilityIdentifier("outreach.compliance.status")
+                        Text(complianceError ?? "Utsendelsesgrunnlaget er ikke kontrollert.")
+                            .font(.appScaled(size: 10))
+                            .foregroundStyle(FcBrand.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .font(.appScaled(size: 12, weight: .bold))
+                .foregroundStyle(.white)
+                Spacer(minLength: 0)
+            }
+            Button {
+                complianceEditorPresented = true
+            } label: {
+                Text(allowed ? "Se dokumentasjon og reservasjon" : "Kontroller og dokumenter")
+                    .font(.appScaled(size: 11, weight: .bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+            }
+            .buttonStyle(.bordered)
+            .tint(allowed ? FcBrand.green : FcBrand.orange)
+            .accessibilityIdentifier("outreach.compliance.edit")
+            Text("Personlige adresser og uavklarte adresser kan fortsatt lagres og kvalifiseres som leads, men de kan ikke brukes til markedsføring.")
+                .font(.appScaled(size: 9))
+                .foregroundStyle(FcBrand.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .background((allowed ? FcBrand.green : FcBrand.orange).opacity(0.09), in: RoundedRectangle(cornerRadius: 13))
+        .overlay(
+            RoundedRectangle(cornerRadius: 13)
+                .stroke((allowed ? FcBrand.green : FcBrand.orange).opacity(0.35), lineWidth: 1)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("outreach.compliance.card")
+    }
+
+    private var leadHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 11) {
+                ZStack {
+                    Circle().fill(FcBrand.purple.opacity(0.25))
+                    Text(initials(lead.contactName))
+                        .font(.appScaled(size: 13, weight: .bold))
+                        .foregroundStyle(FcBrand.purpleLight)
+                }
+                .frame(width: 42, height: 42)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Til: \(lead.contactName.isEmpty ? lead.company : lead.contactName)")
+                        .font(.appScaled(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text(toEmail)
+                        .font(.appScaled(size: 11))
+                        .foregroundStyle(FcBrand.textSecondary)
+                }
+                Spacer()
+            }
+            .padding(12)
+            .background(FcBrand.card, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(FcBrand.stroke, lineWidth: 1))
+
+            // Prosjekt-/bransjemerket er eget innhold, ikke et overlay.
+            // Overlayet traff mottakerkortets kant på iPad mini.
             HStack(spacing: 5) {
                 Image(systemName: outreachKit.isDentum ? "cross.case.fill" : "wand.and.stars")
                 Text(outreachKit.title)
@@ -1070,12 +1189,11 @@ struct EmailTemplatePicker: View {
             .foregroundStyle(FcBrand.purpleLight)
             .padding(.horizontal, 9).padding(.vertical, 5)
             .background(FcBrand.purple.opacity(0.18), in: Capsule())
-            .offset(x: 10, y: 12)
+            .padding(.leading, 10)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(outreachKit.title) · \(outreachContext.category)")
             .accessibilityIdentifier("outreach.kit")
         }
-        .padding(.bottom, 8)
     }
 
     private var templatesGrid: some View {
@@ -1268,7 +1386,7 @@ struct EmailTemplatePicker: View {
 
     private var startBar: some View {
         Button {
-            sendEmail()
+            Task { await sendEmail() }
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: emailApp.icon)
@@ -1286,12 +1404,15 @@ struct EmailTemplatePicker: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("outreach.open-mail")
         .disabled(
             isRecordingCompletion
                 || isOpeningExternalApp
                 || completionPresentation.hasPendingConfirmation
                 || completionConfirmationPresented
-                || contactAttempt.isFinalized)
+                || contactAttempt.isFinalized
+                || isLoadingCompliance
+                || compliance?.permitsMarketing(to: toEmail) != true)
         .padding(.horizontal, 20).padding(.vertical, 12)
         .background(
             FcBrand.bg.opacity(0.95)
@@ -1299,10 +1420,20 @@ struct EmailTemplatePicker: View {
         )
     }
 
-    private func sendEmail() {
+    @MainActor
+    private func sendEmail() async {
         guard !isOpeningExternalApp,
               !completionPresentation.hasPendingConfirmation,
               !completionConfirmationPresented else { return }
+        await loadCompliance()
+        guard let compliance,
+              compliance.permitsMarketing(to: toEmail) else {
+            completionAlertTitle = "E-post er blokkert"
+            completionError = compliance?.guidance
+                ?? complianceError
+                ?? "Dokumenter lovlig utsendelsesgrunnlag før e-postappen åpnes."
+            return
+        }
         let actionId = UUID()
         let scope = LeadgridExternalContactScope.resolve(
             activeOrganizationId: appState.activeOrganizationId,
@@ -1310,7 +1441,16 @@ struct EmailTemplatePicker: View {
             leadId: lead.backendId,
             leadProjectId: lead.projectId)
         let encSubj = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let encBody = messageBody.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let organizationName = appState.activeOrganization?.name ?? "organisasjonen"
+        let source = lead.leadSource?.trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty ?? "Leadgrids CRM-register"
+        let processing = compliance.gdprProcessing
+        let processingDetails = processing.documented
+            ? " Formål: \(processing.purpose ?? "direkte markedsføring"). Opplysningen slettes eller vurderes på nytt senest \(processing.retentionUntil.map { String($0.prefix(10)) } ?? "etter organisasjonens lagringsrutine")."
+            : ""
+        let footer = "Dette er en markedsføringshenvendelse fra \(organizationName). Kontaktopplysningen er registrert med kilde: \(processing.source ?? source).\(processingDetails) Svar «nei takk» for å reservere deg mot flere markedsføringshenvendelser fra organisasjonen, eller for å be om innsyn eller sletting."
+        let completeBody = "\(messageBody)\n\n—\n\(footer)"
+        let encBody = completeBody.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let urlString: String
         switch emailApp {
         case .appleMail:
@@ -1465,5 +1605,500 @@ struct EmailTemplatePicker: View {
 
     private func initials(_ name: String) -> String {
         name.split(separator: " ").prefix(2).map { String($0.prefix(1)) }.joined().uppercased()
+    }
+}
+
+// MARK: - Enkel dokumentasjon av utsendelsesgrunnlag
+
+private struct LeadgridEmailComplianceEditor: View {
+    let lead: LeadRow
+    let email: String
+    @Binding var compliance: LeadgridEmailCompliance?
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
+    @State private var classificationEvidence = ""
+    @State private var consentSource = "Skjema eller skriftlig bekreftelse"
+    @State private var consentEvidence = ""
+    @State private var consentOccurredAt = Date()
+    @State private var relationship = ""
+    @State private var similarServices = ""
+    @State private var customerEvidence = ""
+    @State private var electronicAddressProvidedAt = Date()
+    @State private var collectionOptOutOfferedAt = Date()
+    @State private var customerAttestationConfirmed = false
+    @State private var gdprLegalBasis = "legitimate_interests"
+    @State private var gdprPurpose = "Kvalifisere en relevant bedriftskontakt"
+    @State private var gdprSource = ""
+    @State private var gdprCollectedAt = Date()
+    @State private var gdprRetentionUntil = Calendar.current.date(
+        byAdding: .day, value: 90, to: Date()) ?? Date()
+    @State private var interestGoal = ""
+    @State private var necessityAssessment = ""
+    @State private var balancingAssessment = ""
+    @State private var safeguards = ""
+    @State private var privacyNoticeSent = false
+    @State private var privacyNoticeReference = ""
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+    @State private var suppressionConfirmation = false
+
+    private let consentWording =
+        "Jeg samtykker til at virksomheten kan sende meg markedsføring på denne e-postadressen. Samtykket kan trekkes tilbake når som helst."
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    statusCard
+                    addressTypeCard
+                    consentCard
+                    gdprCard
+                    existingCustomerCard
+                    suppressionCard
+                }
+                .padding(20)
+            }
+            .background(FcBrand.bg.ignoresSafeArea())
+            .navigationTitle("Kan vi sende e-post?")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Ferdig") { dismiss() }
+                }
+            }
+            .disabled(isSaving)
+            .alert("Kunne ikke lagre", isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(errorMessage ?? "Ukjent feil")
+            }
+            .confirmationDialog(
+                "Sperr adressen i hele organisasjonen?",
+                isPresented: $suppressionConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Ja, registrer «nei takk»", role: .destructive) {
+                    Task { await suppress() }
+                }
+                Button("Avbryt", role: .cancel) {}
+            } message: {
+                Text("Adressen kan fortsatt ligge på leaden, men kan ikke kontaktes fra dette eller andre prosjekter.")
+            }
+            .onAppear {
+                if gdprSource.isEmpty {
+                    gdprSource = lead.leadSource ?? ""
+                }
+            }
+        }
+    }
+
+    private var statusCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(email)
+                .font(.appScaled(size: 13, weight: .bold))
+                .foregroundStyle(.white)
+            Text(compliance?.statusTitle ?? "Ikke kontrollert")
+                .font(.appScaled(size: 15, weight: .bold))
+                .foregroundStyle(compliance?.allowed == true ? FcBrand.green : FcBrand.orange)
+                .accessibilityIdentifier("outreach.compliance.editor.status")
+            Text(compliance?.guidance ?? "Velg riktig dokumentasjon under. Leadgrid tillater ikke markedsføring før kontrollen er fullført.")
+                .font(.appScaled(size: 11))
+                .foregroundStyle(FcBrand.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if compliance?.addressClassification == .namedPerson {
+                Label(
+                    compliance?.gdprProcessing.documented == true
+                        ? "GDPR-grunnlag er dokumentert"
+                        : "GDPR-grunnlag mangler",
+                    systemImage: compliance?.gdprProcessing.documented == true
+                        ? "checkmark.circle.fill"
+                        : "circle.dashed")
+                    .font(.appScaled(size: 10, weight: .semibold))
+                    .foregroundStyle(compliance?.gdprProcessing.documented == true
+                        ? FcBrand.green : FcBrand.orange)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(FcBrand.card, in: RoundedRectangle(cornerRadius: 13))
+    }
+
+    private var addressTypeCard: some View {
+        complianceSection(
+            number: "1",
+            title: "Hvem tilhører adressen?",
+            explanation: "At en adresse står på nettet er ikke nok. Kontroller om den faktisk er en felles inngang til virksomheten."
+        ) {
+            field("Hvor kontrollerte du dette?", text: $classificationEvidence)
+            HStack(spacing: 10) {
+                actionButton("Fellesadresse", color: FcBrand.green) {
+                    await setClassification(.verifiedShared)
+                }
+                actionButton("Personadresse", color: FcBrand.orange) {
+                    await setClassification(.namedPerson)
+                }
+            }
+        }
+    }
+
+    private var consentCard: some View {
+        complianceSection(
+            number: "2",
+            title: "Har personen sagt ja?",
+            explanation: "Ikke send en salgs-e-post for å spørre om samtykke. Registrer bare et samtykke du allerede kan dokumentere."
+        ) {
+            Text(consentWording)
+                .font(.appScaled(size: 10))
+                .foregroundStyle(FcBrand.textSecondary)
+                .padding(10)
+                .background(FcBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
+            field("Kilde, for eksempel signert skjema", text: $consentSource)
+            field("Bevis eller referanse", text: $consentEvidence)
+            DatePicker(
+                "Når ble samtykket gitt?",
+                selection: $consentOccurredAt,
+                in: ...Date(),
+                displayedComponents: [.date, .hourAndMinute])
+                .font(.appScaled(size: 11))
+                .foregroundStyle(.white)
+            actionButton("Lagre dokumentert samtykke", color: FcBrand.blue) {
+                await recordConsent()
+            }
+        }
+    }
+
+    private var existingCustomerCard: some View {
+        complianceSection(
+            number: "4",
+            title: "Eksisterende kunde?",
+            explanation: "Bruk bare dette snevre unntaket når adressen ble gitt ved et salg, reservasjonsmulighet ble tilbudt, og innholdet gjelder egne tilsvarende tjenester."
+        ) {
+            field("Beskriv kundeforholdet", text: $relationship)
+            field("Hvilke tilsvarende tjenester gjelder det?", text: $similarServices)
+            field("Dokumentkilde", text: $customerEvidence)
+            DatePicker(
+                "Når ble adressen gitt?",
+                selection: $electronicAddressProvidedAt,
+                in: ...Date(),
+                displayedComponents: .date)
+                .font(.appScaled(size: 11))
+                .foregroundStyle(.white)
+            DatePicker(
+                "Når ble «nei takk» tilbudt?",
+                selection: $collectionOptOutOfferedAt,
+                in: ...Date(),
+                displayedComponents: .date)
+                .font(.appScaled(size: 11))
+                .foregroundStyle(.white)
+            Toggle(
+                "Jeg bekrefter at alle vilkårene over er oppfylt",
+                isOn: $customerAttestationConfirmed)
+                .font(.appScaled(size: 10, weight: .semibold))
+                .tint(FcBrand.purpleLight)
+            actionButton("Dokumenter kundeunntaket", color: FcBrand.purpleLight) {
+                await recordExistingCustomer()
+            }
+        }
+    }
+
+    private var gdprCard: some View {
+        complianceSection(
+            number: "3",
+            title: "Dokumenter GDPR-grunnlaget",
+            explanation: "Dette er separat fra retten til å sende markedsføring. Berettiget interesse gir ikke i seg selv lov til å sende e-post."
+        ) {
+            Picker("Behandlingsgrunnlag", selection: $gdprLegalBasis) {
+                Text("Berettiget interesse").tag("legitimate_interests")
+                Text("Samtykke").tag("consent")
+                Text("Avtale").tag("contract")
+            }
+            .pickerStyle(.segmented)
+            field("Formålet med behandlingen", text: $gdprPurpose)
+            field("Hvor kom opplysningen fra?", text: $gdprSource)
+            DatePicker(
+                "Innsamlet",
+                selection: $gdprCollectedAt,
+                in: ...Date(),
+                displayedComponents: .date)
+                .font(.appScaled(size: 11))
+                .foregroundStyle(.white)
+            DatePicker(
+                "Slett eller vurder på nytt",
+                selection: $gdprRetentionUntil,
+                in: gdprCollectedAt...,
+                displayedComponents: .date)
+                .font(.appScaled(size: 11))
+                .foregroundStyle(.white)
+            if gdprLegalBasis == "legitimate_interests" {
+                Text("Treleddet interesseavveining")
+                    .font(.appScaled(size: 11, weight: .bold))
+                    .foregroundStyle(FcBrand.purpleLight)
+                field("1. Hvilken legitim interesse?", text: $interestGoal)
+                field("2. Hvorfor er behandlingen nødvendig?", text: $necessityAssessment)
+                field("3. Hvorfor veier interessen tyngre?", text: $balancingAssessment)
+                field("Tiltak som beskytter personen", text: $safeguards)
+            }
+            Toggle("Personverninformasjon er gitt", isOn: $privacyNoticeSent)
+                .font(.appScaled(size: 10, weight: .semibold))
+                .tint(FcBrand.green)
+            if privacyNoticeSent {
+                field("Lenke eller annen dokumentasjon", text: $privacyNoticeReference)
+            } else {
+                Text("Ved indirekte innsamling må personen få informasjon om formål, kilde, lagringstid og rettigheter senest når opplysningen brukes til kontakt.")
+                    .font(.appScaled(size: 9))
+                    .foregroundStyle(FcBrand.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            actionButton("Lagre behandlingsgrunnlag", color: FcBrand.green) {
+                await recordGdprProcessing()
+            }
+        }
+    }
+
+    private var suppressionCard: some View {
+        complianceSection(
+            number: "5",
+            title: "Har mottakeren sagt nei?",
+            explanation: "En protest mot direkte markedsføring skal respekteres i hele organisasjonen, på tvers av alle prosjekter."
+        ) {
+            Button(role: .destructive) {
+                suppressionConfirmation = true
+            } label: {
+                Label("Registrer «nei takk»", systemImage: "hand.raised.fill")
+                    .font(.appScaled(size: 12, weight: .bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+            }
+            .buttonStyle(.bordered)
+            .tint(FcBrand.red)
+            .accessibilityIdentifier("outreach.compliance.suppress")
+        }
+    }
+
+    private func complianceSection<Content: View>(
+        number: String,
+        title: String,
+        explanation: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(spacing: 9) {
+                Text(number)
+                    .font(.appScaled(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 25, height: 25)
+                    .background(FcBrand.purple, in: Circle())
+                Text(title)
+                    .font(.appScaled(size: 14, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            Text(explanation)
+                .font(.appScaled(size: 10))
+                .foregroundStyle(FcBrand.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            content()
+        }
+        .padding(14)
+        .background(FcBrand.card, in: RoundedRectangle(cornerRadius: 13))
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(FcBrand.stroke, lineWidth: 1))
+    }
+
+    private func field(_ placeholder: String, text: Binding<String>) -> some View {
+        TextField(placeholder, text: text)
+            .textFieldStyle(.plain)
+            .font(.appScaled(size: 11))
+            .foregroundStyle(.white)
+            .padding(11)
+            .background(FcBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(FcBrand.stroke, lineWidth: 1))
+    }
+
+    private func actionButton(
+        _ title: String,
+        color: Color,
+        action: @escaping @MainActor () async -> Void
+    ) -> some View {
+        Button {
+            Task { await action() }
+        } label: {
+            Text(title)
+                .font(.appScaled(size: 11, weight: .bold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+        }
+        .buttonStyle(.bordered)
+        .tint(color)
+    }
+
+    @MainActor
+    private func scope() throws -> (APIClient, String, String, String) {
+        guard let api = appState.api,
+              let leadID = lead.backendId,
+              let projectID = lead.projectId,
+              let organizationID = appState.activeOrganizationId
+        else { throw LeadgridOutreachComplianceScopeError.missingProject }
+        return (api, leadID, projectID, organizationID)
+    }
+
+    @MainActor
+    private func setClassification(_ classification: LeadgridEmailAddressClassification) async {
+        guard !classificationEvidence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "Skriv hvor du kontrollerte hvem adressen tilhører."
+            return
+        }
+        await save {
+            let (api, leadID, projectID, organizationID) = try scope()
+            return try await api.setOutreachAddressClassification(
+                leadId: leadID,
+                projectId: projectID,
+                organizationId: organizationID,
+                classification: classification,
+                source: "manual_verification",
+                evidence: classificationEvidence)
+        }
+    }
+
+    @MainActor
+    private func recordConsent() async {
+        guard !consentEvidence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !consentSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            errorMessage = "Oppgi både kilde og bevis for samtykket."
+            return
+        }
+        await save {
+            let (api, leadID, projectID, organizationID) = try scope()
+            return try await api.recordOutreachConsent(
+                leadId: leadID,
+                projectId: projectID,
+                organizationId: organizationID,
+                request: .init(
+                    action: "grant",
+                    contactName: lead.contactName.isEmpty ? lead.company : lead.contactName,
+                    purpose: "direct_marketing_email",
+                    consentText: consentWording,
+                    consentVersion: "leadgrid-2.2-2026-09-10",
+                    source: consentSource,
+                    evidence: consentEvidence,
+                    occurredAt: ISO8601DateFormatter().string(from: consentOccurredAt),
+                    expiresAt: nil))
+        }
+    }
+
+    @MainActor
+    private func recordExistingCustomer() async {
+        guard !customerEvidence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !relationship.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !similarServices.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              customerAttestationConfirmed
+        else {
+            errorMessage = "Beskriv kundeforholdet, tilsvarende tjenester og dokumentkilden."
+            return
+        }
+        await save {
+            let (api, leadID, projectID, organizationID) = try scope()
+            return try await api.recordOutreachExistingCustomer(
+                leadId: leadID,
+                projectId: projectID,
+                organizationId: organizationID,
+                request: .init(
+                    source: customerEvidence,
+                    relationship: relationship,
+                    similarServices: similarServices,
+                    electronicAddressProvidedAt: ISO8601DateFormatter().string(
+                        from: electronicAddressProvidedAt),
+                    collectionOptOutOfferedAt: ISO8601DateFormatter().string(
+                        from: collectionOptOutOfferedAt)))
+        }
+    }
+
+    @MainActor
+    private func recordGdprProcessing() async {
+        let required = [gdprPurpose, gdprSource]
+        guard required.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
+              gdprRetentionUntil > gdprCollectedAt
+        else {
+            errorMessage = "Oppgi formål, kilde og en fremtidig dato for sletting eller ny vurdering."
+            return
+        }
+        if gdprLegalBasis == "legitimate_interests" {
+            let assessment = [
+                interestGoal, necessityAssessment, balancingAssessment, safeguards,
+            ]
+            guard assessment.allSatisfy({
+                !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }) else {
+                errorMessage = "Fyll ut alle tre delene av interesseavveiningen og beskyttelsestiltakene."
+                return
+            }
+        }
+        if privacyNoticeSent,
+           privacyNoticeReference.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            errorMessage = "Legg inn en lenke eller annen dokumentasjon på personverninformasjonen."
+            return
+        }
+        await save {
+            let (api, leadID, projectID, organizationID) = try scope()
+            let noticeTime = privacyNoticeSent
+                ? ISO8601DateFormatter().string(from: Date())
+                : nil
+            return try await api.recordOutreachGdprProcessing(
+                leadId: leadID,
+                projectId: projectID,
+                organizationId: organizationID,
+                request: .init(
+                    dataSubjectName: lead.contactName.isEmpty ? lead.company : lead.contactName,
+                    legalBasis: gdprLegalBasis,
+                    purpose: gdprPurpose,
+                    source: gdprSource,
+                    collectedAt: ISO8601DateFormatter().string(from: gdprCollectedAt),
+                    retentionUntil: ISO8601DateFormatter().string(from: gdprRetentionUntil),
+                    legitimateInterestGoal: gdprLegalBasis == "legitimate_interests" ? interestGoal : nil,
+                    necessityAssessment: gdprLegalBasis == "legitimate_interests" ? necessityAssessment : nil,
+                    balancingAssessment: gdprLegalBasis == "legitimate_interests" ? balancingAssessment : nil,
+                    safeguards: gdprLegalBasis == "legitimate_interests" ? safeguards : nil,
+                    indirectCollection: true,
+                    privacyNoticeStatus: privacyNoticeSent ? "sent" : "pending",
+                    privacyNoticeSentAt: noticeTime,
+                    privacyNoticeMethod: privacyNoticeSent ? "documented_notice" : nil,
+                    privacyNoticeReference: privacyNoticeSent ? privacyNoticeReference : nil))
+        }
+    }
+
+    @MainActor
+    private func suppress() async {
+        await save {
+            let (api, leadID, projectID, organizationID) = try scope()
+            return try await api.suppressOutreachEmail(
+                leadId: leadID,
+                projectId: projectID,
+                organizationId: organizationID,
+                reason: "recipient_objection",
+                source: "manual_recipient_request",
+                notes: "Mottakeren ba om å ikke motta direkte markedsføring.")
+        }
+    }
+
+    @MainActor
+    private func save(
+        _ operation: @escaping @MainActor () async throws -> LeadgridEmailCompliance
+    ) async {
+        guard !isSaving else { return }
+        if ProcessInfo.processInfo.environment["QA_TOUR"] == "dentum-outreach" {
+            compliance = .dentumQAVerifiedShared(email: email)
+            return
+        }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            compliance = try await operation()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }

@@ -34,10 +34,26 @@ struct LeadDetailFullSheet: View {
     // Demo-fallback brukes bare når demo eksplisitt er aktiv. Live skjuler
     // kontaktkanalen hvis LeadModel ikke leverer verdien.
     private var leadPhone: String? {
-        DemoModeManager.isActiveNonisolated ? lead.phoneOrDemo : lead.phone
+        DemoModeManager.usesGenericFixtures ? lead.phoneOrDemo : lead.phone
     }
     private var leadEmail: String? {
-        DemoModeManager.isActiveNonisolated ? lead.emailOrDemo : lead.email
+        DemoModeManager.usesGenericFixtures ? lead.emailOrDemo : lead.email
+    }
+
+    private func nonEmpty(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else { return nil }
+        return trimmed
+    }
+
+    private var contactDisplayName: String {
+        nonEmpty(lead.contactName) ?? lead.name
+    }
+
+    private var contactInitials: String {
+        let value = contactDisplayName.split(separator: " ")
+            .prefix(2).compactMap(\.first).map(String.init).joined()
+        return value.isEmpty ? "?" : value.uppercased()
     }
 
     private func call(_ phone: String) {
@@ -223,12 +239,7 @@ struct LeadDetailFullSheet: View {
                 Text(lead.address)
                     .font(.appScaled(size: 13))
                     .foregroundStyle(LdBrand.textSecondary)
-                HStack(spacing: 12) {
-                    metaPill(icon: "building.columns", label: "Elektro")
-                    metaPill(icon: "person.2", label: "25-50 ansatte")
-                    metaPill(icon: "norwegiankronesign.circle", label: "10-20 mill.")
-                    metaPill(icon: "globe", label: "nordicelektro.no")
-                }
+                leadMetadata
                 // CPV-organisering: bedriftens auto-satte anbudskoder.
                 if let koder = lead.cpvKoder, !koder.isEmpty {
                     HStack(spacing: 6) {
@@ -275,6 +286,45 @@ struct LeadDetailFullSheet: View {
         .foregroundStyle(LdBrand.textSecondary)
         .padding(.horizontal, 8).padding(.vertical, 4)
         .background(LdBrand.cardHi, in: Capsule())
+    }
+
+    @ViewBuilder
+    private var leadMetadata: some View {
+        if DemoModeManager.usesGenericFixtures {
+            HStack(spacing: 12) {
+                metaPill(icon: "building.columns", label: "Elektro")
+                metaPill(icon: "person.2", label: "25-50 ansatte")
+                metaPill(icon: "norwegiankronesign.circle", label: "10-20 mill.")
+                metaPill(icon: "globe", label: "nordicelektro.no")
+            }
+        } else {
+            HStack(spacing: 8) {
+                if let category = nonEmpty(lead.category) {
+                    metaPill(icon: "building.columns", label: category)
+                }
+                if let count = lead.employeeCountEstimate {
+                    metaPill(icon: "person.2", label: "\(count) ansatte")
+                }
+                if let revenue = lead.annualRevenueNokEstimate, revenue > 0 {
+                    metaPill(
+                        icon: "norwegiankronesign.circle",
+                        label: revenue.formatted(
+                            .number.notation(.compactName).precision(.fractionLength(0...1))
+                        )
+                    )
+                }
+                if let website = nonEmpty(lead.websiteURL) {
+                    metaPill(icon: "globe", label: website)
+                }
+                if nonEmpty(lead.category) == nil,
+                   lead.employeeCountEstimate == nil,
+                   lead.annualRevenueNokEstimate == nil,
+                   nonEmpty(lead.websiteURL) == nil,
+                   let score = lead.aiScore {
+                    metaPill(icon: "sparkles", label: "Fit-score \(score)")
+                }
+            }
+        }
     }
 
     /// Medlemmer for tildeling — ekte fra TeamLiveStore (samme mapping som
@@ -334,7 +384,7 @@ struct LeadDetailFullSheet: View {
 
     @ViewBuilder
     private var kpiRow: some View {
-        if DemoModeManager.isActiveNonisolated {
+        if DemoModeManager.usesGenericFixtures {
             HStack(spacing: 10) {
                 kpiCard(title: "Estimert verdi", value: "420K", subtitle: "NOK",
                         icon: "chart.line.uptrend.xyaxis", color: LdBrand.green)
@@ -444,7 +494,7 @@ struct LeadDetailFullSheet: View {
 
             sectionCard(title: "Kontakter", icon: "person.2.fill") {
                 VStack(spacing: 8) {
-                    if DemoModeManager.isActiveNonisolated {
+                    if DemoModeManager.usesGenericFixtures {
                         contactRow(name: "Anders Johansen", role: "Daglig leder",
                                    phone: "+47 911 22 333", email: "anders@nordicelektro.no",
                                    primary: true, initials: "AJ", color: LdBrand.purpleLight)
@@ -452,10 +502,11 @@ struct LeadDetailFullSheet: View {
                                    phone: "+47 922 33 444", email: "kari@nordicelektro.no",
                                    primary: false, initials: "KO", color: LdBrand.green)
                     } else if lead.phone != nil || lead.email != nil {
-                        contactRow(name: lead.name, role: "Registrert kontakt",
+                        contactRow(name: contactDisplayName,
+                                   role: nonEmpty(lead.contactRole) ?? "Registrert kontakt",
                                    phone: lead.phone ?? "", email: lead.email ?? "",
                                    primary: true,
-                                   initials: String(lead.name.prefix(2)).uppercased(),
+                                   initials: contactInitials,
                                    color: LdBrand.purpleLight)
                     } else {
                         Text("Ingen kontaktinfo registrert på leaden.")
@@ -495,7 +546,7 @@ struct LeadDetailFullSheet: View {
             }
 
             sectionCard(title: "Beskrivelse + notat", icon: "doc.text") {
-                if DemoModeManager.isActiveNonisolated {
+                if DemoModeManager.usesGenericFixtures {
                     Text("Demo: Interessert i nytt el-anlegg til kontorbygg på Storgata. Følge opp prisforslag og referanseprosjekter fra finansbygg.")
                         .font(.appScaled(size: 12))
                         .foregroundStyle(.white.opacity(0.85))
@@ -572,7 +623,7 @@ struct LeadDetailFullSheet: View {
                 pipelineBar
             }
             sectionCard(title: "Deal-historikk", icon: "clock.arrow.circlepath") {
-                if DemoModeManager.isActiveNonisolated {
+                if DemoModeManager.usesGenericFixtures {
                     VStack(alignment: .leading, spacing: 8) {
                         pipelineEvent(stage: "Tilbud sendt (demo)", date: "20. mai 09:15", value: "420 000 kr", current: true)
                         pipelineEvent(stage: "Møte gjennomført",    date: "15. mai 14:00", value: nil)
@@ -698,7 +749,7 @@ struct LeadDetailFullSheet: View {
                             Text(a.label)
                                 .font(.appScaled(size: 13, weight: .semibold))
                                 .foregroundStyle(.white)
-                            Text(DemoModeManager.isActiveNonisolated
+                            Text(DemoModeManager.usesGenericFixtures
                                  ? "Anders Johansen · Nordic Elektro (demo)"
                                  : lead.name)
                                 .font(.appScaled(size: 10))
@@ -816,10 +867,12 @@ struct LeadDetailFullSheet: View {
                 // Mock-team KUN i demo-modus — ellers ærlig tom-tilstand.
                 if !DemoModeManager.isActiveNonisolated {
                     sectionEmptyState("Ingen teammedlemmer tildelt enda")
+                } else if DemoModeManager.isDentumTour {
+                    teamRow(name: "Daniel Qazi", role: "Prosjektadmin", initials: "DQ", color: LdBrand.purpleLight, primary: true)
                 } else {
-                teamRow(name: "Lars Kristensen",  role: "Account Owner",   initials: "LK", color: LdBrand.purpleLight, primary: true)
-                teamRow(name: "Mikkel Berg",       role: "Senior selger",   initials: "MB", color: LdBrand.green, primary: false)
-                teamRow(name: "Anniken Sørli",     role: "Salgsdirektør",   initials: "AS", color: LdBrand.purple, primary: false)
+                    teamRow(name: "Lars Kristensen", role: "Account Owner", initials: "LK", color: LdBrand.purpleLight, primary: true)
+                    teamRow(name: "Mikkel Berg", role: "Senior selger", initials: "MB", color: LdBrand.green, primary: false)
+                    teamRow(name: "Anniken Sørli", role: "Salgsdirektør", initials: "AS", color: LdBrand.purple, primary: false)
                 }
             }
         }

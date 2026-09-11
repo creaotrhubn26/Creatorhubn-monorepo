@@ -189,18 +189,34 @@ struct PrepItem: Identifiable, Hashable {
 enum MeetingsData {
     /// Demo-mode-gated agenda. Ved demo AV → tom → tomme-tilstander i UI.
     static var agenda: [Meeting] {
-        DemoModeManager.isActiveNonisolated ? _agenda : []
+        guard DemoModeManager.isActiveNonisolated else { return [] }
+        return DemoModeManager.isDentumTour ? _dentumAgenda : _agenda
     }
 
     /// Demo-mode-gated upcoming meetings.
     static var upcoming: [UpcomingMeetingMini] {
-        DemoModeManager.isActiveNonisolated ? _upcoming : []
+        guard DemoModeManager.isActiveNonisolated else { return [] }
+        return DemoModeManager.isDentumTour ? [] : _upcoming
     }
 
     /// Krasj-safe fallback for `@State`-init.
     static var firstOrPlaceholder: Meeting {
-        _agenda[0]
+        (DemoModeManager.isDentumTour ? _dentumAgenda : _agenda)[0]
     }
+
+    private static let _dentumAgenda: [Meeting] = [
+        Meeting(
+            startTime: "10:00", endTime: "10:30",
+            company: "Majorstuen Tannlegesenter AS", location: "Oslo, Norge",
+            contactName: "Anne Lunde", contactRole: "Daglig leder",
+            status: .confirmed,
+            icon: "cross.case.fill", iconColor: MtBrand.purpleLight,
+            address: "Kirkeveien 64 A, 0364 Oslo", meetingRoom: nil,
+            leadScore: 86, leadType: "Varmt lead", valueNok: 0,
+            lat: 59.9298, lon: 10.7147,
+            driveTimeMin: 14, driveDistanceKm: 5, trafficStatus: "Lett trafikk"
+        ),
+    ]
 
     private static let _agenda: [Meeting] = [
         Meeting(
@@ -325,8 +341,15 @@ enum MeetingsData {
 
     /// Mock-forberedelser — KUN i demo-modus (ingen prep-backend enda).
     static var prep: [PrepItem] {
-        DemoModeManager.isActiveNonisolated ? _prep : []
+        guard DemoModeManager.isActiveNonisolated else { return [] }
+        return DemoModeManager.isDentumTour ? _dentumPrep : _prep
     }
+    private static let _dentumPrep: [PrepItem] = [
+        PrepItem(category: "Mål", icon: "target", color: MtBrand.green,
+                 bullets: ["Invitere klinikken til Dentum-piloten", "Avklare hvem som godkjenner klinikkprofilen"]),
+        PrepItem(category: "Forbered", icon: "cross.case.fill", color: MtBrand.purpleLight,
+                 bullets: ["Vis klinikkprofil, priser og ledige timer", "Avtal neste steg med Anne Lunde"]),
+    ]
     private static let _prep: [PrepItem] = [
         PrepItem(category: "Mål",        icon: "target",                  color: MtBrand.green,        bullets: ["Presentere løsningen og skape interesse", "Avklare behov og neste steg"]),
         PrepItem(category: "Behov",      icon: "magnifyingglass.circle.fill", color: MtBrand.blue,     bullets: ["Effektivisere energistyring i bygg", "Redusere driftskostnader"]),
@@ -1352,11 +1375,12 @@ struct MeetingsView: View {
         }
         let remaining = sourceAgenda.filter { $0.startTime > MeetingMapping.timeString(now) }.count
 
+        let dentum = DemoModeManager.isDentumTour
         return Group {
-            kpiCard(title: "Møter i dag",  value: isDemo ? "5"       : (todayCount > 0 ? "\(todayCount)" : "—"), subtitle: isDemo ? "2 igjen" : (todayCount > 0 ? "\(remaining) igjen" : "Ingen møter i dag"), icon: "calendar", color: MtBrand.purpleLight)
-            kpiCard(title: "Denne uken",   value: isDemo ? "12"      : (weekCount > 0 ? "\(weekCount)" : "—"), subtitle: isDemo ? "3 bekreftet" : (weekCount > 0 ? "booket" : "Ingen data"), icon: "chart.line.uptrend.xyaxis", color: MtBrand.purpleLight)
-            kpiCard(title: "Kommende",     value: isDemo ? "18"      : (next7 > 0 ? "\(next7)" : "—"), subtitle: "neste 7 dager", icon: "clock.fill", color: MtBrand.purpleLight)
-            kpiCard(title: "Booket verdi", value: isDemo ? "2,4M kr" : (bookedValue > 0 ? fmtValue(bookedValue) : "—"), subtitle: isDemo ? "↑ 18% fra forrige uke" : "agenda + kommende", icon: "externaldrive.fill", color: MtBrand.purpleLight, trendPositive: isDemo)
+            kpiCard(title: "Møter i dag",  value: isDemo && !dentum ? "5" : (todayCount > 0 ? "\(todayCount)" : "—"), subtitle: isDemo && !dentum ? "2 igjen" : (todayCount > 0 ? "\(remaining) igjen" : "Ingen møter i dag"), icon: "calendar", color: MtBrand.purpleLight)
+            kpiCard(title: "Denne uken",   value: isDemo && !dentum ? "12" : (dentum ? "\(todayCount)" : (weekCount > 0 ? "\(weekCount)" : "—")), subtitle: isDemo && !dentum ? "3 bekreftet" : ((dentum ? todayCount : weekCount) > 0 ? "booket" : "Ingen data"), icon: "chart.line.uptrend.xyaxis", color: MtBrand.purpleLight)
+            kpiCard(title: "Kommende",     value: isDemo && !dentum ? "18" : (dentum ? "0" : (next7 > 0 ? "\(next7)" : "—")), subtitle: "neste 7 dager", icon: "clock.fill", color: MtBrand.purpleLight)
+            kpiCard(title: "Booket verdi", value: isDemo && !dentum ? "2,4M kr" : (bookedValue > 0 ? fmtValue(bookedValue) : "—"), subtitle: isDemo && !dentum ? "↑ 18% fra forrige uke" : "agenda + kommende", icon: "externaldrive.fill", color: MtBrand.purpleLight, trendPositive: isDemo && !dentum)
         }
     }
 
@@ -1364,7 +1388,8 @@ struct MeetingsView: View {
 
     private var statsButton: some View {
         let todayCount = sourceAgenda.count
-        let subtitle = isDemo ? "5 møter i dag" : "\(todayCount) møter i dag"
+        let count = isDemo && !DemoModeManager.isDentumTour ? 5 : todayCount
+        let subtitle = "\(count) \(count == 1 ? "møte" : "møter") i dag"
         return Button {
             showStatsModal = true
         } label: {
@@ -1634,7 +1659,7 @@ struct MeetingsView: View {
 
     private var calendarCardSubtitle: String {
         // Demo viser mockup-datoene; ellers ekte dato/uke/måned.
-        if isDemo {
+        if isDemo && !DemoModeManager.isDentumTour {
             switch calMode {
             case .agenda: return "Tirsdag 20. mai · \(sourceAgenda.count) møter"
             case .day:    return "Tirsdag 20. mai · 07–19"
@@ -1648,7 +1673,8 @@ struct MeetingsView: View {
         switch calMode {
         case .agenda:
             df.dateFormat = "EEEE d. MMMM"
-            return "\(df.string(from: now).capitalized) · \(sourceAgenda.count) møter"
+            let count = sourceAgenda.count
+            return "\(df.string(from: now).capitalized) · \(count) \(count == 1 ? "møte" : "møter")"
         case .day:
             df.dateFormat = "EEEE d. MMMM"
             return "\(df.string(from: now).capitalized) · 07–19"
@@ -1906,7 +1932,9 @@ struct MeetingsView: View {
             Text("Ingen møter i dag")
                 .font(.appScaled(size: 14, weight: .semibold))
                 .foregroundStyle(.white)
-            Text("Bok et møte fra en lead, eller skru på demo-modus for eksempler.")
+            Text(DemoModeManager.isDentumTour
+                 ? "Book neste møte fra en godkjent Dentum-lead."
+                 : "Bok et møte fra en lead, eller skru på demo-modus for eksempler.")
                 .font(.appScaled(size: 12))
                 .foregroundStyle(MtBrand.textSecondary)
                 .multilineTextAlignment(.center)
@@ -1979,7 +2007,9 @@ struct MeetingsView: View {
                     Text("Ingen kommende møter")
                         .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(MtBrand.textSecondary)
-                    Text("Bok et møte fra en lead, eller skru på demo-modus for eksempler.")
+                    Text(DemoModeManager.isDentumTour
+                         ? "Det finnes ingen flere møter i Dentum-prosjektet ennå."
+                         : "Bok et møte fra en lead, eller skru på demo-modus for eksempler.")
                         .font(.appScaled(size: 10))
                         .foregroundStyle(MtBrand.textTertiary)
                         .multilineTextAlignment(.center)
@@ -2469,6 +2499,8 @@ struct MeetingDetailSidebar: View {
                 .padding(8)
                 .contentShape(Rectangle())
         }
+        .accessibilityIdentifier("meeting-detail-more")
+        .accessibilityLabel("Flere møtehandlinger")
     }
 
     private func badge(_ label: String, color: Color) -> some View {
@@ -2481,7 +2513,12 @@ struct MeetingDetailSidebar: View {
     }
 
     private var meetingDateLabel: String {
-        if DemoModeManager.isActiveNonisolated { return "Tirsdag 20. mai 2026" }
+        if DemoModeManager.isActiveNonisolated && !DemoModeManager.isDentumTour {
+            return "Tirsdag 20. mai 2026"
+        }
+        if DemoModeManager.isDentumTour {
+            return Date().formatted(.dateTime.weekday(.wide).day().month(.wide).year())
+        }
         guard let scheduledAt = meeting.scheduledAt else { return "Tidspunkt ikke satt" }
         return scheduledAt.formatted(.dateTime.weekday(.wide).day().month(.wide).year())
     }
@@ -2860,6 +2897,9 @@ private struct NewBriefSheet: View {
 
     /// Demo: samme selger-navn som resten av demo-universet.
     private var medlemmer: [(id: String, navn: String)] {
+        if DemoModeManager.isDentumTour {
+            return [("qa-tour-user", "Daniel Qazi")]
+        }
         if DemoModeManager.isActiveNonisolated {
             return [("demo-espen", "Espen Berg"), ("demo-marit", "Marit Johansen"),
                     ("demo-lars", "Lars Erik Moen"), ("demo-helena", "Helena Dahl")]

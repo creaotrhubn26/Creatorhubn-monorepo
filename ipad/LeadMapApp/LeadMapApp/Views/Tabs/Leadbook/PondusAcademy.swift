@@ -56,7 +56,7 @@ enum PondusAcademyData {
     /// den eneste inngangen til den innebygde katalogen.
     @MainActor
     static var chapters: [PondusChapter] {
-        DemoModeManager.isActiveNonisolated
+        DemoModeManager.usesGenericFixtures
             ? mockChapters
             : (AcademyLiveStore.shared.chapters ?? [])
     }

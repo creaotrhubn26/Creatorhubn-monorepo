@@ -330,14 +330,22 @@ struct CanvasAnalyseSheet: View {
             analyserer = false
         }
         if DemoModeManager.isActiveNonisolated {
-            resultat = CanvasAnalyseDTO(
-                oppsummering: "Godt møte hos \(selskap): interesse for løsning og bedre oversikt over ruter. Neste steg er å sende forslag til opplegg og avtale demo.",
-                oppgaver: [
-                    CanvasAnalyseOppgaveDTO(tittel: "Send tilbud", frist: "torsdag"),
-                    CanvasAnalyseOppgaveDTO(tittel: "Avtal demo", frist: "neste uke"),
-                    CanvasAnalyseOppgaveDTO(tittel: "Oppfølging", frist: "om 1 uke"),
-                ],
-                lofter: ["Sende forslag til opplegg"])
+            resultat = DemoModeManager.isDentumTour
+                ? CanvasAnalyseDTO(
+                    oppsummering: "Notatet gjelder Dentum-piloten for \(selskap). Klinikkprofil, behandlinger og kontaktgrunnlag må kvalitetssikres før publisering.",
+                    oppgaver: [
+                        CanvasAnalyseOppgaveDTO(tittel: "Oppdater klinikkprofil", frist: "torsdag"),
+                        CanvasAnalyseOppgaveDTO(tittel: "Bekreft behandlinger med klinikken", frist: "neste uke"),
+                    ],
+                    lofter: ["Sende oppdatert profilutkast"])
+                : CanvasAnalyseDTO(
+                    oppsummering: "Godt møte hos \(selskap): interesse for løsning og bedre oversikt over ruter. Neste steg er å sende forslag til opplegg og avtale demo.",
+                    oppgaver: [
+                        CanvasAnalyseOppgaveDTO(tittel: "Send tilbud", frist: "torsdag"),
+                        CanvasAnalyseOppgaveDTO(tittel: "Avtal demo", frist: "neste uke"),
+                        CanvasAnalyseOppgaveDTO(tittel: "Oppfølging", frist: "om 1 uke"),
+                    ],
+                    lofter: ["Sende forslag til opplegg"])
             return
         }
         guard let api = appState.api else {
@@ -543,14 +551,22 @@ struct PdfAnalyseSheet: View {
     private func analyser() async {
         defer { analyserer = false }
         if DemoModeManager.isActiveNonisolated {
-            resultat = CanvasAnalyseDTO(
-                oppsummering: "Tilbudet dekker 42 punkter til kr 480 000 eks. mva. Leveranse 6 uker fra signering; 10 % forskudd. Forbehold om befaring før endelig pris på føringsveier.",
-                oppgaver: [
-                    CanvasAnalyseOppgaveDTO(tittel: "Avklar forbeholdet om befaring", frist: "før signering"),
-                    CanvasAnalyseOppgaveDTO(tittel: "Forhandle forskuddet ned fra 10 %", frist: nil),
-                    CanvasAnalyseOppgaveDTO(tittel: "Bekreft leveransetid 6 uker", frist: "på møtet"),
-                ],
-                lofter: ["Sende revidert fremdriftsplan"])
+            resultat = DemoModeManager.isDentumTour
+                ? CanvasAnalyseDTO(
+                    oppsummering: "Dokumentet beskriver klinikkprofilen for Dentum-piloten. Behandlinger, geografi og felles kontaktadresse må bekreftes av klinikken.",
+                    oppgaver: [
+                        CanvasAnalyseOppgaveDTO(tittel: "Kontroller behandlingslisten", frist: "før publisering"),
+                        CanvasAnalyseOppgaveDTO(tittel: "Verifiser klinikkens fellesadresse", frist: "før utsendelse"),
+                    ],
+                    lofter: ["Sende korrigert profil til godkjenning"])
+                : CanvasAnalyseDTO(
+                    oppsummering: "Tilbudet dekker 42 punkter til kr 480 000 eks. mva. Leveranse 6 uker fra signering; 10 % forskudd. Forbehold om befaring før endelig pris på føringsveier.",
+                    oppgaver: [
+                        CanvasAnalyseOppgaveDTO(tittel: "Avklar forbeholdet om befaring", frist: "før signering"),
+                        CanvasAnalyseOppgaveDTO(tittel: "Forhandle forskuddet ned fra 10 %", frist: nil),
+                        CanvasAnalyseOppgaveDTO(tittel: "Bekreft leveransetid 6 uker", frist: "på møtet"),
+                    ],
+                    lofter: ["Sende revidert fremdriftsplan"])
             valgte = Set(0..<((resultat?.oppgaver?.count ?? 0) + (resultat?.lofter?.count ?? 0)))
             return
         }
@@ -970,8 +986,11 @@ struct TidsreiseSheet: View {
         .preferredColorScheme(.dark)
         .task {
             defer { lastet = true }
-            guard let api = appState.api else { return }
-            versjoner = (try? await api.hentCanvasVersjoner(notatId: notatId)) ?? []
+            guard let api = appState.api,
+                  let projectId = appState.activeLeadgridProjectId else { return }
+            versjoner = (try? await api.hentCanvasVersjoner(
+                notatId: notatId, projectId: projectId)) ?? []
+            guard appState.activeLeadgridProjectId == projectId else { return }
             posisjon = Double(versjoner.count)   // start på «Nå»
         }
     }
@@ -991,7 +1010,8 @@ struct TidsreiseSheet: View {
     private func gjenopprettValgt() {
         guard valgtIndeks < versjoner.count,
               valgtErFullSnapshot,
-              let api = appState.api else { return }
+              let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId else { return }
         let versionId = versjoner[valgtIndeks].id
         gjenoppretter = true
         gjenopprettFeil = nil
@@ -1001,7 +1021,9 @@ struct TidsreiseSheet: View {
                 let dto = try await api.gjenopprettCanvasVersjon(
                     notatId: notatId,
                     versionId: versionId,
-                    revision: revision)
+                    revision: revision,
+                    projectId: projectId)
+                guard appState.activeLeadgridProjectId == projectId else { return }
                 onGjenopprett(dto)
                 dismiss()
             } catch {

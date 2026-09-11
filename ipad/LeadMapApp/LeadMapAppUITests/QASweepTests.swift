@@ -111,6 +111,14 @@ final class QASweepTests: XCTestCase {
         element.tap()
     }
 
+    private func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval = 5) -> Bool {
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND hittable == true"),
+            object: element
+        )
+        return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+    }
+
     private func dismissKeyboard(in app: XCUIApplication) {
         guard app.keyboards.count > 0 else { return }
         let returnKey = app.keyboards.buttons["Return"].firstMatch
@@ -145,10 +153,14 @@ final class QASweepTests: XCTestCase {
         baseURL: URL,
         token: String,
         organizationID: String,
+        projectID: String,
         templateID: String
     ) async throws -> Int {
         var statsURL = baseURL.appendingPathComponent("api/leadgrid/pondus/usage/stats")
-        statsURL.append(queryItems: [URLQueryItem(name: "organization_id", value: organizationID)])
+        statsURL.append(queryItems: [
+            URLQueryItem(name: "organization_id", value: organizationID),
+            URLQueryItem(name: "project_id", value: projectID),
+        ])
         var request = URLRequest(url: statsURL)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue(organizationID, forHTTPHeaderField: "X-Organization-Id")
@@ -187,6 +199,19 @@ final class QASweepTests: XCTestCase {
                 environment: ["QA_TOUR": "profile", "QA_DEMO": "1"]
             )
             snap(app, "fane-\(idx)-\(navn)")
+
+            if navn == "anbud" {
+                let title = app.staticTexts["Anbud"].firstMatch
+                XCTAssertTrue(title.waitForExistence(timeout: 3))
+                XCTAssertGreaterThan(
+                    title.frame.width, 70,
+                    "Anbud-tittelen skal ikke klemmes til én bokstav per linje på iPad mini"
+                )
+                XCTAssertLessThan(
+                    title.frame.height, 80,
+                    "Anbud-tittelen skal beholde normal linjehøyde på iPad mini"
+                )
+            }
 
             // Statistikk-modal der fanen har den (Oversikt/Leads/Møter/
             // Team/Leadbook).
@@ -308,9 +333,12 @@ final class QASweepTests: XCTestCase {
             app.launch()
 
             if tab == 1 {
-                let newMapLead = app.buttons["kart.drop-pin"]
-                XCTAssertTrue(newMapLead.waitForExistence(timeout: 10))
-                newMapLead.tap()
+                let addMenu = app.buttons["kart.add-menu"]
+                XCTAssertTrue(addMenu.waitForExistence(timeout: 10))
+                addMenu.tap()
+                let knownLead = app.buttons["kart.add.known"]
+                XCTAssertTrue(knownLead.waitForExistence(timeout: 3))
+                knownLead.tap()
             } else {
                 let newLead = app.buttons["lead-new"]
                 XCTAssertTrue(newLead.waitForExistence(timeout: 10))
@@ -319,6 +347,50 @@ final class QASweepTests: XCTestCase {
             XCTAssertTrue(app.scrollViews["add-lead.form"].waitForExistence(timeout: 5))
             app.terminate()
         }
+    }
+
+    func testMapAddMenuSeparatesKnownLeadMapPointAndBusinessCard() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["QA_TOUR"] = "shared-lead-form"
+        app.launchEnvironment["QA_DEMO"] = "1"
+        app.launchEnvironment["QA_TAB"] = "1"
+        app.launch()
+
+        let addMenu = app.buttons["kart.add-menu"]
+        XCTAssertTrue(addMenu.waitForExistence(timeout: 10))
+        XCTAssertEqual(addMenu.label, "Legg til")
+        // CoreGraphics kan rapportere 44 pt som 43.999999 på simulator.
+        XCTAssertGreaterThanOrEqual(addMenu.frame.height, 43.5)
+
+        addMenu.tap()
+        let knownLead = app.buttons["kart.add.known"]
+        let mapPoint = app.buttons["kart.add.map-point"]
+        let businessCard = app.buttons["kart.add.business-card"]
+        XCTAssertTrue(knownLead.waitForExistence(timeout: 3))
+        XCTAssertTrue(mapPoint.exists)
+        XCTAssertTrue(businessCard.exists)
+        XCTAssertFalse(app.buttons["Ruteplanlegger"].exists)
+        snap(app, "kart-add-menu")
+
+        mapPoint.tap()
+        let addLeadForm = app.scrollViews["add-lead.form"]
+        XCTAssertTrue(addLeadForm.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Legg til lead"].exists)
+        app.buttons["Avbryt"].tap()
+
+        XCTAssertTrue(addLeadForm.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(waitUntilHittable(addMenu))
+        addMenu.tap()
+        XCTAssertTrue(app.buttons["kart.add.business-card"].waitForExistence(timeout: 3))
+        app.buttons["kart.add.business-card"].tap()
+        XCTAssertTrue(app.navigationBars["Skann visittkort"].waitForExistence(timeout: 5))
+        snap(app, "kart-business-card-scanner")
+        app.buttons["Avbryt"].tap()
+
+        XCTAssertTrue(app.navigationBars["Skann visittkort"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(waitUntilHittable(addMenu))
+        XCTAssertFalse(app.buttons["kart.drop-pin"].exists)
+        app.terminate()
     }
 
     func testSuperAdminDomainOnboardingOpensDiscovery() throws {
@@ -365,6 +437,75 @@ final class QASweepTests: XCTestCase {
             "Et bekreftet domeneprosjekt skal åpnes direkte i Discovery"
         )
         XCTAssertFalse(app.navigationBars["Nytt kundeprosjekt"].exists)
+        app.terminate()
+    }
+
+    /// Bekrefter hele den synlige Dentum-kjeden frem til kartets primære
+    /// Discovery-handling: prosjekt opprettes, Discovery åpnes, og kan
+    /// deretter åpnes igjen fra en tekstmerket FAB uten ikon-gjetting.
+    func testDentumMapShowsVisibleDiscoveryFABAndReopensDiscovery() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["QA_TOUR"] = "domain-onboarding"
+        app.launchEnvironment["QA_TAB"] = "0"
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["Nytt kundeprosjekt"].waitForExistence(timeout: 12))
+        let domain = app.textFields["project-onboarding.domain"]
+        XCTAssertTrue(domain.waitForExistence(timeout: 3))
+        domain.tap()
+        domain.typeText("dentum.no")
+        dismissKeyboard(in: app)
+        app.buttons["project-onboarding.analyze"].tap()
+
+        let addProfile = app.buttons["project-onboarding.profile.add"]
+        for _ in 0..<12 where !addProfile.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(addProfile.exists)
+        addProfile.tap()
+
+        let commit = app.buttons["project-onboarding.commit"]
+        for _ in 0..<12 where !commit.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(commit.isHittable)
+        commit.tap()
+
+        let closeDiscovery = app.buttons["discovery.close"]
+        XCTAssertTrue(closeDiscovery.waitForExistence(timeout: 8))
+        closeDiscovery.tap()
+
+        let mapTab = app.buttons["Kart"].firstMatch
+        XCTAssertTrue(mapTab.waitForExistence(timeout: 5))
+        mapTab.tap()
+
+        // QA_TOUR åpner onboarding automatisk én gang per ny faneinstans.
+        // Lukk den ekstra QA-presentasjonen slik at vi tester den virkelige
+        // kartflaten etter at Dentum allerede er opprettet og aktivert.
+        if app.navigationBars["Nytt kundeprosjekt"].waitForExistence(timeout: 2) {
+            app.buttons["Avbryt"].tap()
+        }
+
+        let discoveryFAB = app.buttons["kart.discovery.open"]
+        XCTAssertTrue(discoveryFAB.waitForExistence(timeout: 8))
+        XCTAssertTrue(discoveryFAB.isHittable)
+        XCTAssertEqual(discoveryFAB.label, "Hva vil du finne?")
+        XCTAssertGreaterThanOrEqual(discoveryFAB.frame.height, 44)
+        XCTAssertGreaterThan(discoveryFAB.frame.width, discoveryFAB.frame.height)
+
+        let zoomIn = app.buttons["kart.zoom-in"]
+        let zoomOut = app.buttons["kart.zoom-out"]
+        XCTAssertTrue(zoomIn.exists)
+        XCTAssertTrue(zoomOut.exists)
+        XCTAssertLessThanOrEqual(zoomIn.frame.width, 48)
+        XCTAssertLessThanOrEqual(zoomOut.frame.width, 48)
+        XCTAssertGreaterThanOrEqual(zoomIn.frame.height, 44)
+        XCTAssertGreaterThanOrEqual(zoomOut.frame.height, 44)
+        snap(app, "dentum-kart-synlig-discovery-fab")
+
+        discoveryFAB.tap()
+        XCTAssertTrue(app.navigationBars["Hvem vil du finne?"].waitForExistence(timeout: 5))
+        snap(app, "dentum-kart-fab-aapner-discovery")
         app.terminate()
     }
 
@@ -418,6 +559,32 @@ final class QASweepTests: XCTestCase {
         XCTAssertEqual(app.staticTexts["outreach.audience"].label, "7 maler for tannklinikker")
         XCTAssertTrue(app.staticTexts["Dentum-oppsett"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["Tannhelse"].firstMatch.exists)
+        XCTAssertTrue(
+            app.staticTexts["outreach.compliance.status"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertEqual(
+            app.staticTexts["outreach.compliance.status"].label,
+            "Verifisert fellesadresse"
+        )
+        XCTAssertTrue(app.otherElements["outreach.compliance.card"].exists)
+        XCTAssertFalse(app.staticTexts["Offentlig e-post"].exists)
+        let complianceEditor = app.buttons["outreach.compliance.edit"]
+        XCTAssertTrue(complianceEditor.isHittable)
+        complianceEditor.tap()
+        XCTAssertTrue(
+            app.navigationBars["Kan vi sende e-post?"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertEqual(
+            app.staticTexts["outreach.compliance.editor.status"].label,
+            "Verifisert fellesadresse"
+        )
+        XCTAssertTrue(app.staticTexts["Dokumenter GDPR-grunnlaget"].exists)
+        XCTAssertTrue(app.staticTexts["Har mottakeren sagt nei?"].exists)
+        snap(app, "dentum-epost-personvernkontroll")
+        app.buttons["Ferdig"].tap()
+        XCTAssertTrue(app.navigationBars["Klar e-post"].waitForExistence(timeout: 3))
 
         let subject = app.textFields["outreach.subject"]
         XCTAssertTrue(subject.waitForExistence(timeout: 5))
@@ -446,6 +613,546 @@ final class QASweepTests: XCTestCase {
 
         snap(app, "dentum-lead-personalisert-epost")
         app.terminate()
+    }
+
+    func testDentumNamedPersonEmailIsBlockedBeforeMailOpens() throws {
+        let app = launchApp(
+            tab: 0,
+            environment: [
+                "QA_TOUR": "dentum-outreach",
+                "QA_DEMO": "1",
+                "QA_OUTREACH_COMPLIANCE": "named-person",
+            ]
+        )
+        let showSidebar = app.buttons["Show Sidebar"].firstMatch
+        if showSidebar.exists && showSidebar.isHittable { showSidebar.tap() }
+        let leadsTab = app.buttons["Leads"].firstMatch
+        XCTAssertTrue(leadsTab.waitForExistence(timeout: 5))
+        leadsTab.tap()
+        let clinicRow = app.buttons[
+            "lead.row.aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        ]
+        XCTAssertTrue(clinicRow.waitForExistence(timeout: 8))
+        clinicRow.tap()
+        let openOutreach = app.buttons["lead.outreach.open"].firstMatch
+        XCTAssertTrue(openOutreach.waitForExistence(timeout: 5))
+        openOutreach.tap()
+
+        XCTAssertTrue(app.navigationBars["Klar e-post"].waitForExistence(timeout: 5))
+        XCTAssertEqual(
+            app.staticTexts["outreach.compliance.status"].label,
+            "Personadresse – samtykke mangler"
+        )
+        let openMail = app.buttons["outreach.open-mail"]
+        XCTAssertTrue(openMail.exists)
+        XCTAssertFalse(openMail.isEnabled)
+        snap(app, "dentum-personadresse-blokkert")
+        app.terminate()
+    }
+
+    /// The selected Dentum lead must keep its own activity, notes and files.
+    /// These detail tabs previously reused the generic Nordic Elektro/Lars
+    /// showcase even though the project pill correctly said Dentum.
+    func testDentumLeadDetailTabsDoNotLeakGenericDemoData() throws {
+        guard UIDevice.current.userInterfaceIdiom != .phone else {
+            throw XCTSkip("The persistent detail sidebar is an iPad workflow.")
+        }
+
+        let app = launchApp(
+            tab: 2,
+            environment: ["QA_TOUR": "dentum-outreach", "QA_DEMO": "1"]
+        )
+        let clinicRow = app.buttons[
+            "lead.row.aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        ]
+        XCTAssertTrue(clinicRow.waitForExistence(timeout: 10))
+        clinicRow.tap()
+
+        let forbidden = [
+            "Lars Kristiansen", "Lars Kristensen", "Lars K.",
+            "Nordic Elektro", "Anders Johansen", "Jonas Eide",
+            "Telefonmøte med Jonas Eide", "420 000 kr",
+        ]
+        func assertClean(_ context: String) {
+            for value in forbidden {
+                let leaked = app.descendants(matching: .any).matching(
+                    NSPredicate(format: "label CONTAINS[c] %@", value)
+                ).firstMatch
+                XCTAssertFalse(leaked.exists, "\(context) lekket \(value)")
+            }
+        }
+
+        assertClean("Dentum-detaljer")
+
+        let activity = app.buttons["Aktivitet"].firstMatch
+        XCTAssertTrue(activity.waitForExistence(timeout: 4))
+        activity.tap()
+        XCTAssertTrue(app.staticTexts["Lead godkjent i Discovery"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Daniel Qazi · Dentum-prosjektet"].exists)
+        assertClean("Dentum-aktivitet")
+
+        let notes = app.buttons["Notater"].firstMatch
+        XCTAssertTrue(notes.isHittable)
+        notes.tap()
+        XCTAssertTrue(app.staticTexts["Daniel Qazi"].firstMatch.waitForExistence(timeout: 3))
+        assertClean("Dentum-notater")
+
+        let files = app.buttons["Filer"].firstMatch
+        XCTAssertTrue(files.isHittable)
+        files.tap()
+        XCTAssertTrue(app.staticTexts["0 filer"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Ingen filer lastet opp enda"].exists)
+        assertClean("Dentum-filer")
+        snap(app, "dentum-leaddetalj-uten-demo-lekkasje")
+        app.terminate()
+    }
+
+    func testDentumMeetingBriefUsesDentalContextOnly() throws {
+        let app = launchApp(
+            tab: 3,
+            environment: ["QA_TOUR": "dentum-outreach", "QA_DEMO": "1"]
+        )
+        let meeting = app.buttons.matching(
+            NSPredicate(
+                format: "label CONTAINS[c] %@",
+                "Majorstuen Tannlegesenter AS"
+            )
+        ).firstMatch
+        XCTAssertTrue(meeting.waitForExistence(timeout: 10))
+        meeting.tap()
+
+        let brief = app.buttons["Møtebrief"].firstMatch
+        XCTAssertTrue(brief.waitForExistence(timeout: 5))
+        brief.tap()
+        XCTAssertTrue(app.navigationBars["Møtebrief"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS[c] %@", "tannklinikk i Oslo")
+            ).firstMatch.exists
+        )
+
+        for forbidden in [
+            "elektro-entreprenør", "elektrisk installasjonsarbeid",
+            "Byggmester Hansen", "Nordic Elektro", "Lars Kristensen",
+        ] {
+            let leaked = app.descendants(matching: .any).matching(
+                NSPredicate(format: "label CONTAINS[c] %@", forbidden)
+            ).firstMatch
+            XCTAssertFalse(leaked.exists, "Dentum-møtebrief lekket \(forbidden)")
+        }
+        snap(app, "dentum-motebrief-uten-elektro-demo")
+        app.terminate()
+    }
+
+    /// Drilldowns used to ignore the active project and reintroduce the
+    /// generic 1,248-lead sales showcase behind otherwise clean KPI cards.
+    func testDentumDeepKPIDrilldownsUseOnlyProjectData() throws {
+        let forbidden = [
+            "1 248", "350 000", "Nordic Elektro", "Byggmester Hansen",
+            "Lars Kristensen", "Kari Nordmann", "Maria Lindholm", "Espen Bråten",
+        ]
+
+        func assertClean(_ app: XCUIApplication, _ context: String) {
+            for value in forbidden {
+                let leaked = app.descendants(matching: .any).matching(
+                    NSPredicate(format: "label CONTAINS[c] %@", value)
+                ).firstMatch
+                XCTAssertFalse(leaked.exists, "\(context) lekket \(value)")
+            }
+        }
+
+        let leads = launchApp(
+            tab: 2,
+            environment: ["QA_TOUR": "dentum-outreach", "QA_DEMO": "1"]
+        )
+        let leadStats = button(in: leads, containing: "Statistikk")
+        XCTAssertTrue(leadStats.waitForExistence(timeout: 5))
+        leadStats.tap()
+        let totalLeadKPI = button(in: leads, containing: "Totalt leads")
+        XCTAssertTrue(totalLeadKPI.waitForExistence(timeout: 5))
+        totalLeadKPI.tap()
+        XCTAssertTrue(leads.navigationBars["Totalt leads"].waitForExistence(timeout: 5))
+        XCTAssertTrue(leads.staticTexts["Ingen leadhistorikk ennå"].exists)
+        XCTAssertTrue(leads.staticTexts["Majorstuen Tannlegesenter AS"].firstMatch.exists)
+        assertClean(leads, "Leads-KPI")
+        snap(leads, "dentum-leads-kpi-prosjektisolert")
+        leads.terminate()
+
+        let team = launchApp(
+            tab: 4,
+            environment: ["QA_TOUR": "dentum-outreach", "QA_DEMO": "1"]
+        )
+        let teamStats = button(in: team, containing: "Statistikk")
+        XCTAssertTrue(teamStats.waitForExistence(timeout: 5))
+        teamStats.tap()
+        let teamLeadKPI = button(in: team, containing: "Totalt leads")
+        XCTAssertTrue(teamLeadKPI.waitForExistence(timeout: 5))
+        teamLeadKPI.tap()
+        XCTAssertTrue(team.navigationBars["Totalt leads"].waitForExistence(timeout: 5))
+        XCTAssertTrue(team.staticTexts["Ingen aktivitetshistorikk ennå"].exists)
+        XCTAssertTrue(team.staticTexts["Daniel Qazi"].firstMatch.exists)
+        assertClean(team, "Team-KPI")
+        snap(team, "dentum-team-kpi-prosjektisolert")
+        team.terminate()
+
+        let leadbook = launchApp(
+            tab: 5,
+            environment: ["QA_TOUR": "dentum-outreach", "QA_DEMO": "1"]
+        )
+        let leadbookStats = button(in: leadbook, containing: "Statistikk")
+        XCTAssertTrue(leadbookStats.waitForExistence(timeout: 5))
+        leadbookStats.tap()
+        let templatesKPI = button(in: leadbook, containing: "Aktive maler")
+        XCTAssertTrue(templatesKPI.waitForExistence(timeout: 5))
+        templatesKPI.tap()
+        XCTAssertTrue(leadbook.navigationBars["Aktive maler"].waitForExistence(timeout: 5))
+        XCTAssertTrue(leadbook.staticTexts["Ingen brukshistorikk ennå"].exists)
+        assertClean(leadbook, "Leadbook-KPI")
+        snap(leadbook, "dentum-leadbook-kpi-prosjektisolert")
+        leadbook.terminate()
+    }
+
+    func testDentumMeetingPlannerAndAftercareStayDental() throws {
+        let planner = launchApp(
+            tab: 1,
+            environment: ["QA_TOUR": "dentum-outreach", "QA_DEMO": "1"]
+        )
+        let plannerPin = planner.buttons[
+            "kart.lead.aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        ]
+        XCTAssertTrue(plannerPin.waitForExistence(timeout: 8))
+        plannerPin.tap()
+        let planMeeting = button(in: planner, containing: "Planlegg møte")
+        XCTAssertTrue(planMeeting.waitForExistence(timeout: 8))
+        planMeeting.tap()
+        XCTAssertTrue(planner.navigationBars["Planlegg møte"].waitForExistence(timeout: 5))
+        XCTAssertTrue(planner.staticTexts["Anne Lunde"].waitForExistence(timeout: 3))
+        XCTAssertFalse(planner.staticTexts["Anders Johansen"].exists)
+        snap(planner, "dentum-moteplanlegger-riktig-kontakt")
+        planner.terminate()
+
+        let aftercare = launchApp(
+            tab: 3,
+            environment: ["QA_TOUR": "dentum-outreach", "QA_DEMO": "1"]
+        )
+        let meeting = aftercare.buttons.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", "Majorstuen Tannlegesenter AS")
+        ).firstMatch
+        XCTAssertTrue(meeting.waitForExistence(timeout: 8))
+        meeting.tap()
+        let more = aftercare.buttons["meeting-detail-more"].firstMatch
+        XCTAssertTrue(more.waitForExistence(timeout: 5))
+        more.tap()
+
+        let addToCampaign = aftercare.buttons["Legg til i kampanje (demo)"].firstMatch
+        XCTAssertTrue(addToCampaign.waitForExistence(timeout: 4))
+        addToCampaign.tap()
+        XCTAssertTrue(aftercare.navigationBars["Legg til i kampanje"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            aftercare.staticTexts["Dentum-pilot · Tannklinikker i Oslo"]
+                .waitForExistence(timeout: 4)
+        )
+        for value in ["elektroentreprenører", "ERP-migrering", "AI-modulen", "Bygg-bransjen"] {
+            XCTAssertFalse(aftercare.descendants(matching: .any).matching(
+                NSPredicate(format: "label CONTAINS[c] %@", value)
+            ).firstMatch.exists, "Dentum-kampanjer lekket \(value)")
+        }
+        snap(aftercare, "dentum-kampanjevelger-prosjektisolert")
+
+        let createCampaign = aftercare.buttons["Opprett ny kampanje"].firstMatch
+        XCTAssertTrue(createCampaign.isHittable)
+        createCampaign.tap()
+        XCTAssertTrue(aftercare.navigationBars["Ny kampanje"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            aftercare.staticTexts["Dentum-pilot · klinikkprofil"]
+                .waitForExistence(timeout: 4)
+        )
+        XCTAssertTrue(aftercare.staticTexts["Klinikkoppfølging · 30 dager"].exists)
+        XCTAssertFalse(aftercare.staticTexts["Produkt-lansering (90 dgr)"].exists)
+        XCTAssertFalse(aftercare.staticTexts["F.eks. Q3 ERP-løft"].exists)
+        snap(aftercare, "dentum-ny-kampanje-riktig-maler")
+        aftercare.buttons["Avbryt"].firstMatch.tap()
+        XCTAssertTrue(aftercare.navigationBars["Legg til i kampanje"].waitForExistence(timeout: 4))
+        aftercare.buttons["Avbryt"].firstMatch.tap()
+
+        XCTAssertTrue(more.waitForExistence(timeout: 4))
+        more.tap()
+        let afterMeeting = aftercare.buttons["Etter møtet — logg & oppfølging"].firstMatch
+        XCTAssertTrue(afterMeeting.waitForExistence(timeout: 4))
+        afterMeeting.tap()
+        let analyze = aftercare.buttons["Analyser møtet"].firstMatch
+        XCTAssertTrue(analyze.waitForExistence(timeout: 5))
+        analyze.tap()
+        XCTAssertTrue(aftercare.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", "klinikkprofilen")
+        ).firstMatch.waitForExistence(timeout: 5))
+        for value in ["el-leveransene", "rammeavtale", "Byggmester Hansen", "teknisk sjef"] {
+            XCTAssertFalse(aftercare.descendants(matching: .any).matching(
+                NSPredicate(format: "label CONTAINS[c] %@", value)
+            ).firstMatch.exists, "Møteetterarbeidet lekket \(value)")
+        }
+        snap(aftercare, "dentum-moteetterarbeid-riktig-kontekst")
+        aftercare.terminate()
+    }
+
+    /// The expanded map card used to reintroduce an electrician profile even
+    /// when its selected lead and surrounding map correctly belonged to Dentum.
+    func testDentumExpandedMapLeadUsesDentalMetadata() throws {
+        let app = launchApp(
+            tab: 1,
+            environment: ["QA_TOUR": "dentum-outreach", "QA_DEMO": "1"]
+        )
+        let clinicPin = app.buttons[
+            "kart.lead.aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        ]
+        XCTAssertTrue(clinicPin.waitForExistence(timeout: 8))
+        clinicPin.tap()
+        let openLead = button(in: app, containing: "Åpne lead")
+        XCTAssertTrue(openLead.waitForExistence(timeout: 8))
+        openLead.tap()
+
+        XCTAssertTrue(
+            app.staticTexts["Majorstuen Tannlegesenter AS"]
+                .firstMatch.waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(app.staticTexts["Tannhelse"].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["Anne Lunde"].firstMatch.exists)
+        for value in [
+            "Elektro", "nordicelektro.no", "Anders Johansen",
+            "Kari Olsen", "Lars Kristensen", "25-50 ansatte", "10-20 mill.",
+        ] {
+            let leaked = app.descendants(matching: .any).matching(
+                NSPredicate(format: "label CONTAINS[c] %@", value)
+            ).firstMatch
+            XCTAssertFalse(leaked.exists, "Utvidet Dentum-lead lekket \(value)")
+        }
+        snap(app, "dentum-kart-leaddetalj-riktig-metadata")
+        app.terminate()
+    }
+
+    func testDentumDeepLeadbookInsightsAndEquipmentAreEmpty() throws {
+        let leadbook = launchApp(
+            tab: 5,
+            environment: ["QA_TOUR": "dentum-outreach", "QA_DEMO": "1"]
+        )
+        let insights = leadbook.buttons["leadbook-subtab-Innsikt"].firstMatch
+        XCTAssertTrue(insights.waitForExistence(timeout: 5))
+        insights.tap()
+        XCTAssertTrue(leadbook.staticTexts["Ingen innsikt enda"].waitForExistence(timeout: 5))
+        XCTAssertFalse(leadbook.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", "Maria")
+        ).firstMatch.exists)
+        snap(leadbook, "dentum-innsikt-aerlig-tomtilstand")
+        leadbook.terminate()
+
+        let team = launchApp(
+            tab: 4,
+            environment: ["QA_TOUR": "dentum-outreach", "QA_DEMO": "1"]
+        )
+        let newMenu = team.buttons["Ny"].firstMatch
+        XCTAssertTrue(newMenu.waitForExistence(timeout: 5))
+        newMenu.tap()
+        let equipment = team.buttons["Utstyr"].firstMatch
+        XCTAssertTrue(equipment.waitForExistence(timeout: 4))
+        equipment.tap()
+        XCTAssertTrue(team.navigationBars["Utstyrsregister"].waitForExistence(timeout: 5))
+        XCTAssertTrue(team.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", "Ingen utstyr registrert")
+        ).firstMatch.exists)
+        for value in ["Kari Nordmann", "Ola Magnussen", "Henrik"] {
+            XCTAssertFalse(team.descendants(matching: .any).matching(
+                NSPredicate(format: "label CONTAINS[c] %@", value)
+            ).firstMatch.exists, "Utstyrsregisteret lekket \(value)")
+        }
+        snap(team, "dentum-utstyr-aerlig-tomtilstand")
+        team.terminate()
+    }
+
+    /// Offline QA and showcase fixtures used to share one broad `isDemo`
+    /// switch. This verifies that the deeper Academy and Examples sections do
+    /// not revive the fictional Leadgrid cast in the Dentum project.
+    func testDentumLeadbookDeepSectionsDoNotLeakGenericPeople() throws {
+        let app = launchApp(
+            tab: 5,
+            environment: ["QA_TOUR": "dentum-outreach", "QA_DEMO": "1"]
+        )
+        let forbiddenPattern =
+            ".*(Lars Kristiansen|Lars Kristensen|Marit Hansen|" +
+            "Maria Lindholm|Espen Bråten|Kari Nordmann).*"
+
+        func assertNoGenericPeople(_ section: String) {
+            let leaked = app.descendants(matching: .any).matching(
+                NSPredicate(format: "label MATCHES[c] %@", forbiddenPattern)
+            ).firstMatch
+            XCTAssertFalse(leaked.exists, "Dentum \(section) lekket \(leaked.label)")
+        }
+
+        let academy = app.buttons["leadbook-subtab-Akademi"].firstMatch
+        XCTAssertTrue(academy.waitForExistence(timeout: 8))
+        academy.tap()
+        XCTAssertTrue(
+            app.staticTexts["Ingen publiserte Leadgrid-kurs er tilgjengelige."]
+                .waitForExistence(timeout: 5)
+        )
+        assertNoGenericPeople("Akademi")
+
+        let examples = app.buttons["leadbook-subtab-Eksempler"].firstMatch
+        XCTAssertTrue(examples.waitForExistence(timeout: 5))
+        examples.tap()
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS[c] %@", "0 eksempler")
+            ).firstMatch.waitForExistence(timeout: 5)
+        )
+        assertNoGenericPeople("Eksempler")
+        snap(app, "dentum-leadbook-dyp-uten-demo-personer")
+        app.terminate()
+    }
+
+    /// Dentum must remain the visible and authoritative customer project on
+    /// every iPad surface. Besides the project switcher, this catches stale
+    /// global demo fixtures that previously made hotels, restaurants and
+    /// electrician companies appear while Dentum was selected.
+    func testDentumProjectCoversEveryIPadSurface() throws {
+        guard UIDevice.current.userInterfaceIdiom != .phone else {
+            throw XCTSkip("The complete 13-surface sweep belongs to the iPad sidebar.")
+        }
+
+        let surfaces: [(index: Int, name: String)] = [
+            (0, "oversikt"), (1, "kart"), (2, "leads"), (3, "moter"),
+            (4, "team"), (5, "leadbook"), (6, "salgsledelse"),
+            (7, "leadgrid-go"), (8, "kvalitet"), (9, "anbud"),
+            (10, "canvas"), (11, "verktoy"), (12, "agent"),
+        ]
+        let unrelatedCustomerFixtures = [
+            "Holy Crust", "Holmenkollen Hotell", "Nordic Elektro",
+            "Byggmester Hansen", "Frogner Utvikling", "TechSolutions",
+            "Lørenskog kommune", "Lars Kristiansen", "Lars Kristensen",
+            "Lars Erik Moen", "Lars K.", "lars@leadgrid.no",
+        ]
+        let unrelatedPeoplePattern =
+            ".*(Lars Kristiansen|Lars Kristensen|Lars Erik Moen|Lars K\\.|" +
+            "Mikkel Berg|Anniken Sørli|Marit Hansen|Maria Lindholm|" +
+            "Espen Bråten|Kari Nilsen|Sofie Vik|Anne Berg|Marit Olsen|" +
+            "Espen Haug|Kari Nordmann).*"
+
+        func assertNoUnrelatedPeople(in app: XCUIApplication, surface: String) {
+            let leaked = app.descendants(matching: .any).matching(
+                NSPredicate(format: "label MATCHES[c] %@", unrelatedPeoplePattern)
+            ).firstMatch
+            XCTAssertFalse(
+                leaked.exists,
+                "\(surface) lekket persondata fra generisk demo: \(leaked.label)"
+            )
+        }
+
+        for surface in surfaces {
+            let app = launchApp(
+                tab: surface.index,
+                environment: ["QA_TOUR": "dentum-outreach", "QA_DEMO": "1"]
+            )
+
+            let projectPill = app.buttons["header-project-pill"].firstMatch
+            XCTAssertTrue(
+                projectPill.waitForExistence(timeout: 8),
+                "\(surface.name) skal alltid vise aktiv prosjektkontekst"
+            )
+            XCTAssertTrue(
+                projectPill.label.localizedCaseInsensitiveContains("Dentum"),
+                "\(surface.name) skal vise Dentum som aktivt prosjekt, fikk: \(projectPill.label)"
+            )
+
+            for name in unrelatedCustomerFixtures {
+                let leaked = app.descendants(matching: .any).matching(
+                    NSPredicate(format: "label CONTAINS[c] %@", name)
+                ).firstMatch
+                XCTAssertFalse(
+                    leaked.exists,
+                    "\(surface.name) lekket generisk kundedata: \(name)"
+                )
+            }
+            assertNoUnrelatedPeople(in: app, surface: surface.name)
+
+            switch surface.name {
+            case "oversikt", "leads", "moter":
+                XCTAssertTrue(
+                    app.descendants(matching: .any).matching(
+                        NSPredicate(
+                            format: "label CONTAINS[c] %@",
+                            "Majorstuen Tannlegesenter AS"
+                        )
+                    ).firstMatch.waitForExistence(timeout: 4),
+                    "\(surface.name) skal bruke den godkjente Dentum-klinikken"
+                )
+            case "team", "salgsledelse":
+                XCTAssertTrue(
+                    app.staticTexts["Daniel Qazi"].firstMatch.waitForExistence(timeout: 4),
+                    "\(surface.name) skal bruke Dentum-teamet"
+                )
+            case "anbud":
+                XCTAssertTrue(
+                    app.descendants(matching: .any)["anbud-project-empty"]
+                        .waitForExistence(timeout: 4),
+                    "Anbud skal ikke hente brede, irrelevante treff for Dentum"
+                )
+            case "canvas":
+                XCTAssertTrue(
+                    app.staticTexts["Majorstuen Tannlegesenter AS"]
+                        .firstMatch.waitForExistence(timeout: 4),
+                    "Canvas skal gruppere Dentum-notatet under riktig klinikk"
+                )
+            case "leadgrid-go":
+                XCTAssertTrue(
+                    app.staticTexts["Ingen kjøring registrert for Dentum"]
+                        .firstMatch.waitForExistence(timeout: 4),
+                    "Leadgrid Go skal vise en sann Dentum-tomtilstand"
+                )
+            case "kvalitet":
+                XCTAssertTrue(
+                    app.staticTexts["Ingen salg i køen. Vunnede salg dukker opp her automatisk."]
+                        .firstMatch.waitForExistence(timeout: 4),
+                    "Kvalitet skal ikke dikte opp vunnet-salg for Dentum"
+                )
+            case "verktoy":
+                XCTAssertTrue(
+                    app.staticTexts["Vunnet / Tapt – ingen resultater ennå"]
+                        .firstMatch.waitForExistence(timeout: 4),
+                    "Verktøy skal beholde Dentum-kontekst også uten API i QA"
+                )
+            case "agent":
+                XCTAssertTrue(
+                    app.staticTexts["Samtykke før Agenten brukes"]
+                        .firstMatch.waitForExistence(timeout: 4),
+                    "Agenten skal vise samtykkeporten i Dentum-prosjektet"
+                )
+            case "leadbook":
+                XCTAssertTrue(
+                    app.descendants(matching: .any).matching(
+                        NSPredicate(
+                            format: "label CONTAINS[c] %@",
+                            "Dentum – første kontakt med tannklinikk"
+                        )
+                    ).firstMatch.waitForExistence(timeout: 4),
+                    "Leadbook/Pondus skal åpne med Dentum-spesifikk kontaktmal"
+                )
+            default:
+                break
+            }
+
+            if ["oversikt", "leads", "moter", "team", "leadbook", "salgsledelse"]
+                .contains(surface.name) {
+                for depth in 1...4 {
+                    app.swipeUp()
+                    assertNoUnrelatedPeople(
+                        in: app,
+                        surface: "\(surface.name), scroll \(depth)"
+                    )
+                }
+            }
+
+            snap(app, "dentum-fane-\(surface.index)-\(surface.name)")
+            app.terminate()
+        }
     }
 
     func testSuperAdminRoleRoomOnboardingCoversAllCustomerTypes() throws {
@@ -561,8 +1268,6 @@ final class QASweepTests: XCTestCase {
         let nationwide = app.buttons["discovery.simple.area.nationwide"]
         XCTAssertTrue(nationwide.waitForExistence(timeout: 3))
         snap(app, "discovery-enkel-steg-2")
-        for _ in 0..<4 where !nationwide.isHittable { app.swipeUp() }
-        nationwide.tap()
         let areaNext = app.buttons.containing(
             NSPredicate(format: "label CONTAINS[c] %@", "velg antall")
         ).firstMatch
@@ -576,8 +1281,23 @@ final class QASweepTests: XCTestCase {
         thirty.tap()
         let summary = app.descendants(matching: .any)["discovery.simple.summary"]
         XCTAssertTrue(summary.waitForExistence(timeout: 3))
+        XCTAssertTrue(summary.label.contains("Oslo"), "Byvalget fra Dentum-profilen skal beholdes i oppsummeringen")
+        XCTAssertFalse(summary.label.localizedCaseInsensitiveContains("hele Norge"))
+
+        let backToArea = app.buttons["discovery.simple.back"]
+        XCTAssertTrue(backToArea.exists)
+        backToArea.tap()
+        XCTAssertTrue(nationwide.waitForExistence(timeout: 3))
+        for _ in 0..<4 where !nationwide.isHittable { app.swipeUp() }
+        nationwide.tap()
+        for _ in 0..<4 where !areaNext.isHittable { app.swipeUp() }
+        areaNext.tap()
+        XCTAssertTrue(thirty.waitForExistence(timeout: 3))
+        thirty.tap()
+        XCTAssertTrue(summary.waitForExistence(timeout: 3))
         XCTAssertTrue(summary.label.contains("30"))
         XCTAssertTrue(summary.label.contains("Leadbook"))
+        XCTAssertTrue(summary.label.localizedCaseInsensitiveContains("hele Norge"))
         XCTAssertTrue(app.buttons["discovery.simple.preview"].isEnabled)
         snap(app, "discovery-enkel-klar")
         app.terminate()
@@ -758,9 +1478,11 @@ final class QASweepTests: XCTestCase {
         guard let stagingURL = environment["LEADGRID_STAGING_BASE_URL"],
               let token = environment["LEADGRID_STAGING_BEARER_TOKEN"],
               let organizationID = environment["LEADGRID_STAGING_ORG_ID"],
-              !stagingURL.isEmpty, !token.isEmpty, !organizationID.isEmpty
+              let projectID = environment["LEADGRID_STAGING_PROJECT_ID"],
+              !stagingURL.isEmpty, !token.isEmpty,
+              !organizationID.isEmpty, !projectID.isEmpty
         else {
-            throw XCTSkip("Krever staging-URL, bearer-token og org-ID")
+            throw XCTSkip("Krever staging-URL, bearer-token, org-ID og prosjekt-ID")
         }
         guard let baseURL = URL(string: stagingURL),
               baseURL.scheme == "https",
@@ -775,6 +1497,7 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["LEADGRID_API_BASE_URL"] = stagingURL
         app.launchEnvironment["QA_NETWORK_CONTROLS"] = "1"
         app.launchEnvironment["QA_ORGANIZATION_ID"] = organizationID
+        app.launchEnvironment["QA_PROJECT_ID"] = projectID
         app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "6" : "5"
         app.launch()
 
@@ -789,6 +1512,7 @@ final class QASweepTests: XCTestCase {
             baseURL: baseURL,
             token: token,
             organizationID: organizationID,
+            projectID: projectID,
             templateID: templateID
         )
         app.buttons["qa-network-offline"].tap()
@@ -816,6 +1540,7 @@ final class QASweepTests: XCTestCase {
             baseURL: baseURL,
             token: token,
             organizationID: organizationID,
+            projectID: projectID,
             templateID: templateID
         )
         XCTAssertEqual(usageAfter, usageBefore + 1, "Reconnect skal persistere nøyaktig én Pondus-økt")
@@ -900,6 +1625,10 @@ final class QASweepTests: XCTestCase {
         )
         let compactPondus = leadbook.descendants(matching: .any)["pondus-layout-compact"]
         XCTAssertTrue(compactPondus.waitForExistence(timeout: 8))
+        XCTAssertTrue(
+            leadbook.buttons["header-project-pill"].exists,
+            "Pondus/Leadbook skal alltid vise hvilken prosjektkontekst som er aktiv"
+        )
         let redigerMode = leadbook.buttons["Rediger"].firstMatch
         XCTAssertTrue(redigerMode.waitForExistence(timeout: 3))
         XCTAssertGreaterThanOrEqual(redigerMode.frame.height, 44)

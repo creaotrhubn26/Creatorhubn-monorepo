@@ -627,7 +627,10 @@ struct MonthCalendarView: View {
     }
 
     private func eventCount(_ day: Int) -> Int {
-        if DemoModeManager.isActiveNonisolated {
+        if DemoModeManager.isDentumTour {
+            return day == today ? meetings.count : 0
+        }
+        if DemoModeManager.usesGenericFixtures {
             // Demo-seed: dagens dato får agenda-listen, faste dager får dots.
             if day == today { return meetings.count }
             if [21, 22, 16].contains(day) { return 2 }
@@ -639,7 +642,8 @@ struct MonthCalendarView: View {
     }
 
     private func eventValue(_ day: Int) -> Int {
-        if DemoModeManager.isActiveNonisolated {
+        if DemoModeManager.isDentumTour { return 0 }
+        if DemoModeManager.usesGenericFixtures {
             return eventCount(day) * 250_000  // demo-seed kr/møte
         }
         return realMeetingsByDay[day]?.reduce(0) { $0 + $1.valueNok } ?? 0

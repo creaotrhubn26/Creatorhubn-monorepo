@@ -615,7 +615,9 @@ struct LeadbookExamplesView: View {
     @State private var unreadFeedback = 0
     @State private var showInbox = false
 
-    private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
+    /// Customer-specific QA projects use the offline demo transport, but must
+    /// never inherit the generic Leadgrid case library or its fictional people.
+    private var isDemo: Bool { DemoModeManager.usesGenericFixtures }
     private var sourceExamples: [LeadbookExample] {
         isDemo ? LeadbookExampleData.examples : backendExamples
     }

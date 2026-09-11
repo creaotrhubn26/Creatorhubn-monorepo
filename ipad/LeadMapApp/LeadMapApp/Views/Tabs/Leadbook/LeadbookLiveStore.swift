@@ -35,6 +35,7 @@ final class LeadbookLiveStore {
 
     private weak var api: APIClient?
     private var organizationId: String?
+    private var projectId: String?
     private var activeUsageSessions: [UUID: UUID] = [:]
 
     private init() {}
@@ -53,15 +54,21 @@ final class LeadbookLiveStore {
     }
 
     /// Kalles fra LeadbookView når APIClient er klar (idempotent).
-    func attach(api: APIClient, organizationId: String?) {
-        resetForOrganization(organizationId)
+    func attach(api: APIClient, organizationId: String?, projectId: String?) {
+        resetForContext(organizationId: organizationId, projectId: projectId)
         self.api = api
         self.organizationId = organizationId
+        self.projectId = projectId
     }
 
     func resetForOrganization(_ newOrganizationId: String?) {
-        guard organizationId != newOrganizationId else { return }
-        organizationId = newOrganizationId
+        resetForContext(organizationId: newOrganizationId, projectId: nil)
+    }
+
+    func resetForContext(organizationId: String?, projectId: String?) {
+        guard self.organizationId != organizationId || self.projectId != projectId else { return }
+        self.organizationId = organizationId
+        self.projectId = projectId
         templates = []
         objections = []
         stats = nil
@@ -72,6 +79,7 @@ final class LeadbookLiveStore {
 
     func resetForSignOut() {
         organizationId = nil
+        projectId = nil
         templates = []
         objections = []
         stats = nil
@@ -84,17 +92,21 @@ final class LeadbookLiveStore {
     func refresh() async {
         guard let api else { return }
         let requestedOrganizationId = organizationId
+        let requestedProjectId = projectId
         if case .loaded = loadState {} else { loadState = .loading }
         do {
             async let templatesTask = api.pondusListTemplates(
                 category: nil, kind: nil, publishedOnly: true,
-                organizationId: organizationId
+                organizationId: organizationId,
+                projectId: projectId
             )
             let usage: PondusUsageStatsDTO? = try? await api.pondusUsageStats(
-                organizationId: organizationId
+                organizationId: organizationId,
+                projectId: projectId
             )
             let dtos = try await templatesTask
-            guard requestedOrganizationId == organizationId else { return }
+            guard requestedOrganizationId == organizationId,
+                  requestedProjectId == projectId else { return }
             self.stats = usage
             let usageByTemplate = Dictionary(
                 uniqueKeysWithValues: (usage?.templates ?? []).map { ($0.templateId, $0) }
@@ -119,7 +131,8 @@ final class LeadbookLiveStore {
             }
             loadState = .loaded
         } catch {
-            guard requestedOrganizationId == organizationId else { return }
+            guard requestedOrganizationId == organizationId,
+                  requestedProjectId == projectId else { return }
             print("[LeadbookLiveStore] refresh feilet: \(error)")
             if case .loaded = loadState {} else {
                 loadState = .failed(error.localizedDescription)
@@ -137,7 +150,8 @@ final class LeadbookLiveStore {
                 templateId: backendId,
                 usageSessionId: usageSessionId,
                 leadId: leadId,
-                organizationId: organizationId
+                organizationId: organizationId,
+                projectId: projectId
             )
             await refresh()
         }
@@ -156,7 +170,8 @@ final class LeadbookLiveStore {
                 templateId: backendId,
                 usageSessionId: usageSessionId,
                 outcome: outcome,
-                organizationId: organizationId
+                organizationId: organizationId,
+                projectId: projectId
             )
             await refresh()
         }

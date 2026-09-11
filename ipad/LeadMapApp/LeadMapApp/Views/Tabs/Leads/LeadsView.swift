@@ -67,6 +67,7 @@ struct LeadRow: Identifiable, Hashable {
     var lastVisitAt: Date? = nil
     var nextFollowUpAt: Date? = nil
     var isFavorite: Bool = false
+    var leadSource: String? = nil
 
     /// Telefon/e-post m/ demo-fallback: mock-rader (backendId == nil) viser
     /// demo-kontakten; ekte leads uten data gir nil → knappen skjules i
@@ -189,7 +190,8 @@ extension LeadRow {
             nextAction: lead.nextAction,
             lastVisitAt: lead.lastVisitAt,
             nextFollowUpAt: lead.nextFollowUpAt,
-            isFavorite: lead.isFavorite ?? false
+            isFavorite: lead.isFavorite ?? false,
+            leadSource: lead.leadSource
         )
     }
 }
@@ -246,8 +248,18 @@ struct LeadFileItem: Identifiable, Hashable {
 enum LeadsData {
     /// Mock-aktiviteter — KUN i demo-modus. Ellers tom liste + ærlig tom-tilstand i viewet.
     static var activities: [LeadActivityItem] {
-        DemoModeManager.isActiveNonisolated ? _activities : []
+        guard DemoModeManager.isActiveNonisolated else { return [] }
+        return DemoModeManager.isDentumTour ? _dentumActivities : _activities
     }
+    private static let _dentumActivities: [LeadActivityItem] = [
+        LeadActivityItem(
+            icon: "person.badge.plus",
+            title: "Lead godkjent i Discovery",
+            subtitle: "Daniel Qazi · Dentum-prosjektet",
+            timestamp: "i dag",
+            color: Color(red: 0.66, green: 0.32, blue: 0.99)
+        ),
+    ]
     private static let _activities: [LeadActivityItem] = [
         LeadActivityItem(icon: "phone.fill",        title: "Telefonsamtale m/ Jonas",   subtitle: "Lars K. · 15 min · Snakket om tilbudet", timestamp: "i dag 10:14",  color: Color(red: 0.20, green: 0.85, blue: 0.60)),
         LeadActivityItem(icon: "envelope.open.fill", title: "E-post åpnet",              subtitle: "Tilbud — del 2 sett 3 ganger",            timestamp: "i går 14:22",  color: Color(red: 0.34, green: 0.60, blue: 0.98)),
@@ -258,8 +270,17 @@ enum LeadsData {
 
     /// Mock-notater — KUN i demo-modus.
     static var notes: [LeadNoteItem] {
-        DemoModeManager.isActiveNonisolated ? _notes : []
+        guard DemoModeManager.isActiveNonisolated else { return [] }
+        return DemoModeManager.isDentumTour ? _dentumNotes : _notes
     }
+    private static let _dentumNotes: [LeadNoteItem] = [
+        LeadNoteItem(
+            author: "Daniel Qazi", initials: "DQ",
+            authorColor: Color(red: 0.75, green: 0.45, blue: 1.0),
+            body: "Godkjent kandidat for Dentum-piloten. Tilpass første kontakt til klinikkens pasienttilbud før utsending.",
+            timestamp: "i dag", pinned: true
+        ),
+    ]
     private static let _notes: [LeadNoteItem] = [
         LeadNoteItem(
             author: "Lars Kristensen", initials: "LK",
@@ -283,7 +304,8 @@ enum LeadsData {
 
     /// Mock-filer — KUN i demo-modus.
     static var files: [LeadFileItem] {
-        DemoModeManager.isActiveNonisolated ? _files : []
+        guard DemoModeManager.usesGenericFixtures else { return [] }
+        return _files
     }
     private static let _files: [LeadFileItem] = [
         LeadFileItem(name: "Tilbud_NordicElektro_v3.pdf",     kind: .pdf,         size: "1.2 MB", uploadedAt: "i går 14:18"),
@@ -327,11 +349,12 @@ enum LeadsData {
         companyColor: LdBrand.blue,
         backendId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         projectId: "dentum-oslo",
-        email: "hei@majorstuentannlegesenter.example",
+        email: "post@majorstuentannlegesenter.example",
         phone: "+47 22 00 00 00",
         city: "Oslo",
         websiteURL: "https://majorstuentannlegesenter.example",
-        organizationNumber: "999888777"
+        organizationNumber: "999888777",
+        leadSource: "Discovery v2 · klinikkens nettside"
     )
 
     /// Demo-mode-gated computed getter
@@ -345,7 +368,7 @@ enum LeadsData {
 
     /// Krasj-safe fallback for `@State`-init + selectedLead-getter.
     static var firstOrPlaceholder: LeadRow {
-        _leads[0]
+        DemoModeManager.isDentumTour ? dentumOutreachLead : _leads[0]
     }
 }
 
@@ -741,7 +764,7 @@ struct LeadsView: View {
         let real = appState.leads
         let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
         let leadsText = isDentumQA
-            ? "\(sourceLeads.count) leads"
+            ? "\(sourceLeads.count) \(sourceLeads.count == 1 ? "lead" : "leads")"
             : (isDemo ? "1 248 leads" : "\(real.count) leads")
         let newCount = isDentumQA
             ? sourceLeads.filter { [.newLead, .notContacted].contains($0.status) }.count
@@ -859,24 +882,13 @@ struct LeadsView: View {
     // MARK: Søk + filtre
 
     private var searchAndFilters: some View {
-        // iPhone: søkefelt + 5 chips + 4 knapper får ikke plass i én rad
-        // på compact width — søkefeltet får egen linje og resten legges
-        // i en horisontal scroller. iPad/Mac beholder én rad som før.
-        Group {
-            if DeviceIdiom.isPhone {
-                VStack(spacing: 8) {
-                    searchField
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            filterChipsRow
-                            actionButtonsRow
-                        }
-                    }
-                }
-            } else {
+        // Søk + ni kontroller kan ikke komprimeres lesbart i detaljkolonnen
+        // på iPad mini eller Split View. Søk får alltid en egen rad; filtre
+        // beholder naturlig størrelse i en horisontal scroller på alle idiomer.
+        VStack(spacing: 8) {
+            searchField
+            ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    searchField
-                        .frame(maxWidth: .infinity)
                     filterChipsRow
                     actionButtonsRow
                 }
@@ -1581,7 +1593,12 @@ struct LeadTableRow: View {
                         if DemoModeManager.isActiveNonisolated {
                             // Demo-gated mock — navn uten backend-effekt.
                             Menu {
-                                ForEach(["Kari Nordmann", "Mikkel Berg", "Anniken Sørli"], id: \.self) { n in
+                                ForEach(
+                                    DemoModeManager.isDentumTour
+                                        ? ["Daniel Qazi"]
+                                        : ["Kari Nordmann", "Mikkel Berg", "Anniken Sørli"],
+                                    id: \.self
+                                ) { n in
                                     Button {} label: { Label(n, systemImage: "person.crop.circle") }
                                 }
                             } label: {
@@ -2105,7 +2122,7 @@ struct LeadDetailSidebar: View {
                         .foregroundStyle(.white)
                     // 2026-07-17: «↑12»-trenden var mock også i ekte modus —
                     // score-historikk finnes ikke, så den vises kun i demo.
-                    if lead.leadScore > 0 && DemoModeManager.isActiveNonisolated {
+                    if lead.leadScore > 0 && DemoModeManager.usesGenericFixtures {
                         HStack(spacing: 3) {
                             Image(systemName: "arrow.up")
                                 .font(.appScaled(size: 10, weight: .bold))
@@ -2503,7 +2520,7 @@ struct LeadDetailSidebar: View {
             }
             // Mock-beskrivelsen vises kun i demo-modus — ekte leads har
             // ingen oppfølgings-beskrivelse i dette feltet.
-            if DemoModeManager.isActiveNonisolated {
+            if DemoModeManager.usesGenericFixtures {
                 Text("Telefonmøte med Jonas Eide")
                     .font(.appScaled(size: 11))
                     .foregroundStyle(LdBrand.textSecondary)
@@ -2533,7 +2550,7 @@ struct LeadDetailSidebar: View {
                     .monospacedDigit()
                 // 2026-07-17: «Høy» sannsynlighet var mock også i ekte modus —
                 // ingen sannsynlighets-modell bak; vises kun i demo.
-                if lead.valueNok > 0 && DemoModeManager.isActiveNonisolated {
+                if lead.valueNok > 0 && DemoModeManager.usesGenericFixtures {
                     Text("Høy")
                         .font(.appScaled(size: 9, weight: .bold))
                         .foregroundStyle(LdBrand.green)

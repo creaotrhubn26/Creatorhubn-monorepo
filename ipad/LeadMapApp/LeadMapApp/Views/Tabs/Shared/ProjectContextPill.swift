@@ -117,18 +117,6 @@ struct ProjectContextPill: View {
                 }
                 #endif
             }
-            .fullScreenCover(isPresented: Binding(
-                get: { appState.discoveryCoordinator.isPresented },
-                set: { presented in
-                    if presented {
-                        appState.discoveryCoordinator.showWorkspace()
-                    } else {
-                        appState.discoveryCoordinator.dismissWorkspace()
-                    }
-                }
-            )) {
-                DiscoveryWorkspaceView(coordinator: appState.discoveryCoordinator)
-            }
             .macCatalystHover()
         }
     }

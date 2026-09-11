@@ -625,10 +625,12 @@ final class AppState {
                     projectsLoadState = .loading
                 }
                 #if DEBUG
-                // Domene-onboardingens UI-test bruker en prosesslokal fixture.
-                // Et org-bytte skal derfor ikke validere den syntetiske tokenen
-                // mot produksjons-API-et og åpne SessionExpiredSheet over Discovery.
-                if ProcessInfo.processInfo.environment["QA_TOUR"] == "domain-onboarding" {
+                // UI-testturene bruker prosesslokale fixtures. Et org-bytte
+                // skal derfor verken nullstille rolle/permissions via
+                // loadOrgContext() eller validere den syntetiske tokenen mot
+                // produksjons-API-et. Det gjorde blant annet en eksplisitt
+                // Dentum-admin til «ingen rolle» før Salgsledelse åpnet.
+                if ProcessInfo.processInfo.environment["QA_TOUR"] != nil {
                     return
                 }
                 #endif
@@ -1078,6 +1080,18 @@ func configureDiscovery() async {
             if qaTour == "pondus-coach" {
                 let orgId = UUID(uuidString: "11111111-1111-4111-8111-111111111111")!
                 self.activeOrganizationId = orgId.uuidString.lowercased()
+                self.projects = [ProjectListItem(
+                    id: "pondus-qa-project",
+                    organizationId: orgId.uuidString.lowercased(),
+                    name: "Pondus QA",
+                    description: "Prosjektavgrenset QA",
+                    status: "active",
+                    hasBrandKit: true,
+                    leadCount: 0,
+                    competitorCount: 0
+                )]
+                self.projectsLoadState = .loaded
+                self.activeProjectId = "pondus-qa-project"
                 self.permissions = ["pondus.manage", "analytics.view_overview"]
                 self.roleInOrg = "salgssjef"
                 self.api = APIClient(
@@ -1085,7 +1099,10 @@ func configureDiscovery() async {
                     baseURL: URL(string: "http://127.0.0.1:9")!,
                     actorUserId: "qa-tour-user"
                 )
-                self.pondusStore.seedForQACoach(organizationId: orgId)
+                self.pondusStore.seedForQACoach(
+                    organizationId: orgId,
+                    projectId: "pondus-qa-project"
+                )
                 self.setPondusDeepLink(
                     templateId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
                     stepIndex: 0

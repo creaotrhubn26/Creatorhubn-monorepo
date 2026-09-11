@@ -42,6 +42,25 @@ final class DemoModeManager {
         #endif
     }
 
+    /// A single, authoritative switch for the Dentum simulator slice. Demo
+    /// surfaces use it to avoid falling back to the generic electrician,
+    /// hotel and restaurant fixtures while the Dentum project is active.
+    nonisolated static var isDentumTour: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.environment["QA_TOUR"] == "dentum-outreach"
+        #else
+        return false
+        #endif
+    }
+
+    /// Generic showcase fixtures must never be mixed into a customer-specific
+    /// QA project. `isActiveNonisolated` still controls the offline QA backend,
+    /// while this narrower flag controls whether the old Leadgrid showcase
+    /// people, companies and analytics are allowed to be rendered.
+    nonisolated static var usesGenericFixtures: Bool {
+        isActiveNonisolated && !isDentumTour
+    }
+
     nonisolated static var hideBadgeForCapture: Bool {
         #if DEBUG
         return ProcessInfo.processInfo.environment["QA_CAPTURE"] == "1"
@@ -54,7 +73,7 @@ final class DemoModeManager {
         #if DEBUG
         let envDemo = ProcessInfo.processInfo.environment["QA_DEMO"] == "1"
         self.isActive = envDemo || UserDefaults.standard.bool(forKey: Self.key)
-        if ProcessInfo.processInfo.environment["QA_TOUR"] == "dentum-outreach" {
+        if Self.isDentumTour {
             self.mockLeads = Self.generateDentumMockLeads()
         } else {
             self.mockLeads = Self.generateMockLeads()
@@ -90,7 +109,7 @@ final class DemoModeManager {
             latitude: 59.9298,
             longitude: 10.7147,
             phone: "+47 22 00 00 00",
-            email: "hei@majorstuentannlegesenter.example",
+            email: "post@majorstuentannlegesenter.example",
             websiteUrl: "https://majorstuentannlegesenter.example",
             instagramUrl: nil,
             linkedinUrl: nil,

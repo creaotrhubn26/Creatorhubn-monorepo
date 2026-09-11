@@ -383,7 +383,7 @@ final class DentumLeadOutreachTests: XCTestCase {
             valueNok: 0,
             companyColor: .blue,
             projectId: "dentum-oslo",
-            email: "hei@klinikk.example",
+            email: "post@klinikk.example",
             city: city,
             websiteURL: "https://klinikk.example",
             organizationNumber: "999888777"

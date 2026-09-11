@@ -826,11 +826,11 @@ struct PondusTabView: View {
         var s = raw
         let stub: [(String, String)] = [
             ("{navn}", "Marit"),
-            ("{ditt navn}", "Lars Kristensen"),
-            ("{din bedrift}", "Leadgrid"),
-            ("{selskap}", "Acme AS"),
-            ("{målgruppe}", "B2B-salgsteam"),
-            ("{kjerneverdi}", "kortere salgssykluser"),
+            ("{ditt navn}", DemoModeManager.isDentumTour ? "Daniel Qazi" : "Lars Kristensen"),
+            ("{din bedrift}", DemoModeManager.isDentumTour ? "Dentum" : "Leadgrid"),
+            ("{selskap}", DemoModeManager.isDentumTour ? "Majorstuen Tannlegesenter AS" : "Acme AS"),
+            ("{målgruppe}", DemoModeManager.isDentumTour ? "tannklinikker i Oslo" : "B2B-salgsteam"),
+            ("{kjerneverdi}", DemoModeManager.isDentumTour ? "gjøre klinikken enklere å finne og velge" : "kortere salgssykluser"),
             ("{kunde}", "Skanska"),
             ("{kundetyper}", "ledende norske entreprenører"),
             ("{konkret resultat}", "økt møterate med 28 %"),
@@ -2041,7 +2041,8 @@ struct PondusTeamUsageModal: View {
             .task {
                 await appState.pondusStore.load(
                     api: appState.api,
-                    organizationId: appState.activeOrganizationId
+                    organizationId: appState.activeOrganizationId,
+                    projectId: appState.activeProjectId
                 )
             }
             .task(id: period) { await loadStats() }
@@ -2054,7 +2055,11 @@ struct PondusTeamUsageModal: View {
     private func loadStats() async {
         isLoadingStats = true
         defer { isLoadingStats = false }
-        usageStats = try? await appState.api?.pondusUsageStats(period: period.apiValue)
+        usageStats = try? await appState.api?.pondusUsageStats(
+            period: period.apiValue,
+            organizationId: appState.activeOrganizationId,
+            projectId: appState.activeProjectId
+        )
     }
 
     private var kpiRow: some View {

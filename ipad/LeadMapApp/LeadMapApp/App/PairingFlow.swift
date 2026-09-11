@@ -108,7 +108,10 @@ struct PairingView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
-                    .background(.black.opacity(0.82), in: Capsule())
+                    // Ugjennomsiktig bakgrunn er nødvendig fordi kartbildet
+                    // varierer bak separatoren. 82 % sort ga målt
+                    // kontrastfeil på iPad mini selv med hvit tekst.
+                    .background(.black, in: Capsule())
                 Rectangle().fill(.white.opacity(0.2)).frame(height: 1)
             }
             .padding(.horizontal, 48)

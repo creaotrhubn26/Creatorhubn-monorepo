@@ -347,6 +347,25 @@ struct RootView: View {
                 PairingView()
             }
         }
+        // Discovery er app-global og skal ha nøyaktig én presentasjonseier.
+        // Flere fullScreenCover-modifikatorer i fanene konkurrerte på iPhone,
+        // slik at kart-FAB-en kunne oppdatere coordinator uten å vise skjermen.
+        .fullScreenCover(isPresented: Binding(
+            get: {
+                appState.isAuthenticated
+                    && appState.leadgridDiscoveryEnabled
+                    && appState.discoveryCoordinator.isPresented
+            },
+            set: { presented in
+                if presented && appState.leadgridDiscoveryEnabled {
+                    appState.discoveryCoordinator.showWorkspace()
+                } else {
+                    appState.discoveryCoordinator.dismissWorkspace()
+                }
+            }
+        )) {
+            DiscoveryWorkspaceView(coordinator: appState.discoveryCoordinator)
+        }
         .overlay(alignment: .top) {
             if APIClient.isNonProduction {
                 Text("STAGING")

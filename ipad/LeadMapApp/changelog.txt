@@ -1,14 +1,12 @@
-Leadgrid 2.1 gjør veien fra domene til kvalifiserte leads enklere:
+Leadgrid 2.2 gjør Discovery og oppfølging enklere på iPhone og iPad:
 
-• «Hvem vil du finne?» har fått en enkel standardmodus med tre tydelige steg, mens alle profesjonelle filtre er bevart i avansertmodus.
-• Mobilvisningene har fått tydelig tilbakeknapp, bedre plass over fanemenyen og ryddigere layout i Leadbook, Møter, Kvalitet og Anbud.
-• Store tekststørrelser fungerer bedre i appens toppfelt, prosjektvelger og sentrale arbeidslister.
-• Opprett eller gjenbruk et kundeprosjekt ved å skrive inn domenet.
-• Discovery foreslår bransje, kundetyper, geografi og eksklusjoner, med profiler som Super Admin kan finjustere.
-• The Role Room får egne nasjonale profiler for produksjon, byråer, casting, utdanning, dans og skuespillere/talenter.
-• Tannklinikker behandles som salgskontoer, mens trygt identifiserte tannlegeforetak på samme adresse legges til som kontakter.
-• Kandidater må fortsatt godkjennes før de blir leads, og alle funn holdes adskilt per organisasjon og prosjekt.
-• Lead-detaljen viser Discovery-kontakter, og duplikat- og BRREG-flyten fortsetter sømløst etter godkjenning.
-• Super Admin kan merke prosjektinvitasjoner som prototype-testere og velge om de får bruke organisasjonens delte lagring.
-• Abonnement, lagringskvote og betalingsstatus tilhører nå organisasjonen; kun organisasjonsadmin kan administrere betaling.
-• Ved betalingsproblemer går prosjektet trygt over til lesemodus uten at filer slettes, og full tilgang gjenopprettes automatisk etter betaling.
+• «Hvem vil du finne?» har en enkel standardmodus med tre tydelige steg, mens alle profesjonelle filtre fortsatt finnes i avansertmodus.
+• Skriv inn et domene for å opprette eller gjenbruke kundeprosjektet og få forslag til bransje, kundetyper, geografi og eksklusjoner.
+• Dentum har fått et komplett oppfølgingsoppsett med sju e-postmaler laget for tannklinikker.
+• Malene tilpasses automatisk valgt klinikk, kontaktperson, område og leadstatus, og kan redigeres før de åpnes i e-postappen.
+• Ny personvernkontroll blokkerer markedsføring til personadresser og uavklarte adresser uten dokumentert grunnlag. «Nei takk» gjelder i hele organisasjonen.
+• Dentum-data holdes strengt adskilt fra andre prosjekter. Også Pondus-maler, økter og resultatstatistikk følger nå det valgte kundeprosjektet.
+• Leadbook, Møter, Pondus, Kvalitet og Anbud er forbedret for iPad mini og kompakte visninger.
+• Aktivt prosjekt vises nå i alle hovedfaner, og Anbud-headeren er rettet på iPad mini.
+• Navigasjon, toppfelt og prosjektvelger fungerer bedre med store tekststørrelser.
+• Discovery-kandidater må fortsatt godkjennes før de opprettes som leads.
