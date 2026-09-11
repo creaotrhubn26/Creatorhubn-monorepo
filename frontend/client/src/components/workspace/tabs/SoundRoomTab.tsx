@@ -30,6 +30,7 @@ import { useWorkspaceUpdate } from '../WorkspaceContext';
 const fmtTime = (s: number) => { const n = Math.max(0, Math.floor(Number(s) || 0)); const m = Math.floor(n / 60); const sec = n % 60; return `${m}:${String(sec).padStart(2, '0')}`; };
 const detectOS = (): 'Windows' | 'macOS' => { const p = ((navigator as any).userAgent + ' ' + (navigator as any).platform).toLowerCase(); if (p.includes('win')) return 'Windows'; return 'macOS'; };
 const fmtMB = (b: number) => b ? `${(b / 1048576).toFixed(1)} MB` : '';
+const VERSION_PREVIEW_LIMIT = 4;
 
 const ti = { '& .MuiOutlinedInput-root': { fontSize: 13, color: ws.text, bgcolor: ws.panel, '& fieldset': { borderColor: ws.borderSoft }, '&:hover fieldset': { borderColor: ws.accentBorder }, '&.Mui-focused fieldset': { borderColor: ws.accent } }, '& input::placeholder': { color: ws.textFaint, opacity: 1 } } as const;
 
@@ -256,6 +257,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const versions = summary?.versions || [];
   const members = summary?.members || [];
   const current = versions.find((v: any) => v.status === 'under_review') || versions[versions.length - 1] || null;
+  const previewVersions = versions.slice(-VERSION_PREVIEW_LIMIT);
   const openComments = current?.comment_count ?? null;
   const easeVerseHref = easeVerseWorkspaceUrl({
     creatorhubProjectId: projectId,
@@ -329,22 +331,70 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         </Stack>
       </WsCard>
 
-      {/* Versjons-strip (preview, full visning inne i rommet) */}
+      {/* Kompakt versjons-preview; full historikk og A/B-visning ligger i lydrommet. */}
       {versions.length > 0 && (
         <WsCard sx={{ mb: 2 }}>
-          <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1.25 }}>Versjoner</Typography>
-          <Stack direction="row" spacing={1.5} sx={{ overflowX: 'auto', pb: 0.5 }}>
-            {versions.map((v: any) => (
-              <Box key={v.id} onClick={openRoom} sx={{ minWidth: 150, p: 1.25, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${v.status === 'under_review' ? ws.accentBorder : ws.borderSoft}`, cursor: 'pointer', flexShrink: 0 }}>
-                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                  <Typography sx={{ fontSize: 12.5, fontWeight: 700 }}>{v.version_label || `Mix V${v.version_number}`}</Typography>
-                  {v.status === 'under_review' && <WsTag label="Nå" tone="amber" />}
-                  {v.status === 'approved' && <WsTag label="✓" tone="green" />}
-                </Stack>
-                <Typography sx={{ fontSize: 10.5, color: ws.textFaint, mt: 0.5 }} noWrap>{v.file_name || ''}</Typography>
-              </Box>
-            ))}
+          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 1.25 }}>
+            <Stack direction="row" alignItems="baseline" spacing={0.75}>
+              <Typography sx={{ fontSize: 13, fontWeight: 700 }}>Versjoner</Typography>
+              <Typography sx={{ fontSize: 11.5, color: ws.textFaint }}>{versions.length} totalt</Typography>
+            </Stack>
+            {versions.length > VERSION_PREVIEW_LIMIT && (
+              <Button size="small" onClick={openRoom} endIcon={<OpenInFull sx={{ fontSize: 14 }} />}
+                sx={{ minWidth: 0, p: 0, color: ws.accent, textTransform: 'none', fontSize: 11.5, fontWeight: 700 }}>
+                Se alle i lydrommet
+              </Button>
+            )}
           </Stack>
+          <Box
+            data-testid="sound-room-version-preview"
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: {
+                xs: 'minmax(0, 1fr)',
+                sm: 'repeat(2, minmax(0, 1fr))',
+                md: `repeat(${Math.min(previewVersions.length, VERSION_PREVIEW_LIMIT)}, minmax(0, 1fr))`,
+              },
+              gap: 1.5,
+              minWidth: 0,
+            }}
+          >
+            {previewVersions.map((v: any) => {
+              const versionLabel = v.version_label || `Mix V${v.version_number}`;
+              const fileName = v.file_name || '';
+              return (
+                <Box
+                  component="button"
+                  type="button"
+                  key={v.id}
+                  onClick={openRoom}
+                  aria-label={`Åpne ${versionLabel} i lydrommet`}
+                  aria-current={v.status === 'under_review' ? 'true' : undefined}
+                  sx={{
+                    width: '100%', minWidth: 0, overflow: 'hidden', p: 1.25,
+                    appearance: 'none', font: 'inherit', color: ws.text, textAlign: 'left',
+                    borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt,
+                    border: `1px solid ${v.status === 'under_review' ? ws.accentBorder : ws.borderSoft}`,
+                    cursor: 'pointer',
+                    '&:hover': { borderColor: ws.accentBorder, bgcolor: ws.accentSoft },
+                    '&:focus-visible': { outline: `2px solid ${ws.accent}`, outlineOffset: 2 },
+                  }}
+                >
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={0.75} sx={{ minWidth: 0 }}>
+                    <Typography noWrap sx={{ minWidth: 0, flex: 1, fontSize: 12.5, fontWeight: 700 }} title={versionLabel}>{versionLabel}</Typography>
+                    {v.status === 'under_review' && <WsTag label="Nå" tone="amber" />}
+                    {v.status === 'approved' && <WsTag label="✓" tone="green" />}
+                  </Stack>
+                  <Typography sx={{ minWidth: 0, fontSize: 10.5, color: ws.textFaint, mt: 0.5 }} noWrap title={fileName}>{fileName}</Typography>
+                </Box>
+              );
+            })}
+          </Box>
+          {versions.length > VERSION_PREVIEW_LIMIT && (
+            <Typography sx={{ mt: 1, fontSize: 10.5, color: ws.textFaint }}>
+              Viser de {VERSION_PREVIEW_LIMIT} nyeste versjonene
+            </Typography>
+          )}
         </WsCard>
       )}
 
