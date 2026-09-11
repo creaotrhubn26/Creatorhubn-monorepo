@@ -1,0 +1,113 @@
+Du får par av avsnitt fra notatene til én person: ett hun skriver nå, og ett hun skrev tidligere. For hvert par sier du hva forholdet mellom dem er.
+
+motsier    Hun sier nå noe som strider mot det hun bestemte eller forkastet før.
+bekrefter  Samme beslutning igjen, eller en utdyping av den.
+besvarer   Det nye avgjør et spørsmål hun tidligere lot stå åpent.
+urelatert  Ordene overlapper, men det handler ikke om det samme.
+
+`urelatert` er det vanligste svaret, og skal være det. Parene er funnet ved at de deler ord, ikke ved at noen har forstått dem. «Kartverket» i et notat om eiendomsdata og «kart» i en app for å låne verktøy er urelatert. Samme fagfelt er heller ikke nok: forholdet må gjelde nøyaktig den samme saken.
+
+En falsk kobling er den dyre feilen. Den forteller brukeren at hun har tenkt noe hun ikke har tenkt, og en liste med falske koblinger lærer hun seg å overse. Å overse en ekte kobling koster ingenting til sammenligning.
+
+Er du i tvil, svar `urelatert`.
+
+Svar med nøyaktig én linje per par, og ingenting annet:
+<nummer>|<forhold>
+
+Parene:
+
+1.
+Nå: Kartet skal ikke være startsiden likevel. Vis en enkel liste først.
+Tidligere: Jeg ser for meg at man først ser et kart med det som er tilgjengelig i nærheten.
+
+2.
+Nå: la oss starte uten voyage for nå, jeg vil skrive notater
+Tidligere: hvorfor bruker vi voyage?
+
+3.
+Nå: admin skal ALLTID få beskjed
+Tidligere: får fotografen beskjed når de har lastet ned bildene fra showcase?
+
+4.
+Nå: Vi søker via forhandleren likevel, de tar hele garantiprosessen for oss.
+Tidligere: Forkastet å søke via forhandler. Går direkte til produsent fordi forhandleren tar 12 % på garantioppgjør, og vi trenger firmware-støtte raskere enn de leverer.
+
+5.
+Nå: Vi går direkte til produsenten. Forhandleren er ute av bildet.
+Tidligere: Forkastet å søke via forhandler. Går direkte til produsent fordi forhandleren tar 12 % på garantioppgjør, og vi trenger firmware-støtte raskere enn de leverer.
+
+6.
+Nå: Firmwaren på kameraet må oppdateres før helgen, ellers stopper opptaket.
+Tidligere: Forkastet å søke via forhandler. Går direkte til produsent fordi forhandleren tar 12 % på garantioppgjør, og vi trenger firmware-støtte raskere enn de leverer.
+
+7.
+Nå: Vi køer thumbnail-genereringen async likevel, rekkefølgen spiller ingen rolle for kunden.
+Tidligere: Vurderte å køe async, droppet det fordi rekkefølgen betyr noe for brukeren.
+
+8.
+Nå: Render-noden hos Marius står og koker. Viften er full av støv.
+Tidligere: Henger et sted mellom render og lagring, ser ut til å være verst når det er mange bilder.
+
+9.
+Nå: Vi tar depositum likevel. Terskelen blir ikke høyere av det, folk er vant til det fra bilutleie.
+Tidligere: Kanskje vi burde ha depositum, men jeg er usikker på om det gjør terskelen for høy.
+
+10.
+Nå: Depositumet på leiebilen ble trukket to ganger. Må ringe utleieren i morgen.
+Tidligere: Kanskje vi burde ha depositum, men jeg er usikker på om det gjør terskelen for høy.
+
+11.
+Nå: Kartverket leverer eiendomsdata vi kan slå opp gårds- og bruksnummer i.
+Tidligere: Jeg ser for meg at man først ser et kart med det som er tilgjengelig i nærheten.
+
+12.
+Nå: Startsiden blir en enkel liste. Det står fast.
+Tidligere: Kartet skal ikke være startsiden likevel. Vis en enkel liste først.
+
+13.
+Nå: Man skal måtte lage konto før man i det hele tatt får se lista.
+Tidligere: Dette skal fungere uten konto frem til man faktisk sender en forespørsel.
+
+14.
+Nå: RAW-filene skal lagres slik de er. Ingen konvertering ved opplasting.
+Tidligere: ikke konverter, den skal støtte RAW-filer
+
+15.
+Nå: Ja, fotografen får e-post så snart bildene er lastet ned fra showcase.
+Tidligere: får fotografen beskjed når de har lastet ned bildene fra showcase?
+
+16.
+Nå: Fotografen kommer klokka ni på lørdag. Avtalt i dag.
+Tidligere: Jeg må sende råfilene til fotografen i morgen.
+
+17.
+Nå: Innstillingene skal være bestemorvennlige de også, ikke bare hovedflyten.
+Tidligere: ux og ui må være gjennom tenkt profesjonell men bestemorvennlig
+
+18.
+Nå: Bestemor skal ha hjelp med nettbanken på søndag.
+Tidligere: ux og ui må være gjennom tenkt profesjonell men bestemorvennlig
+
+19.
+Nå: Timelinen er tilbake. Den lå skjult bak et layoutvalg.
+Tidligere: jeg ser ikke timelinen/filmstrip
+
+20.
+Nå: Vi trenger ikke innlogging. Man skal kunne bla i alt uten konto.
+Tidligere: Trenger vi egentlig innlogging?
+
+21.
+Nå: Innloggingen på ruteren er byttet. Passordet ligger i 1Password.
+Tidligere: Trenger vi egentlig innlogging?
+
+22.
+Nå: Stripe har sendt faktura for forrige måned. Den må bokføres.
+Tidligere: Marius mener vi bør bruke Stripe. Han har brukt det før.
+
+23.
+Nå: Notion-eksporten til kunden må være PDF, ikke en lenke.
+Tidligere: som jeg har nevnt vil jeg at den skal være bedre en word, notion og forsåvidt milanote
+
+24.
+Nå: Vi dropper Stripe. Vipps dekker det vi trenger, og gebyret er lavere.
+Tidligere: Marius mener vi bør bruke Stripe. Han har brukt det før.

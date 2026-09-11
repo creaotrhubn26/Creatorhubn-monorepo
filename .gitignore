@@ -243,3 +243,7 @@ ipad/LeadMapApp/qa-galleri/
 !.claude/skills/
 !.claude/skills/**
 ipad/StoryboardStudio/StoryboardStudio.xcodeproj
+# Notatappens måleresultater. De er grunnlaget for modellvalgene i koden, og
+# et tall som bare finnes på én maskin er ikke etterprøvbart.
+!apps/creatorhub-notes/klassifiseringstest/RESULTAT.md
+!apps/creatorhub-notes/klassifiseringstest/RELASJONER.md

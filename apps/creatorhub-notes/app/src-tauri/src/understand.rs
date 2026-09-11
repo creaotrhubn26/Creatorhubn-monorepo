@@ -27,6 +27,12 @@ use std::time::Duration;
 /// måtte peke på om et halvt år.
 pub const MODEL: &str = "claude-haiku-4-5-20251001";
 
+/// Den dyre modellen, brukt på den ene avgjørelsen det koster noe å ta feil
+/// av. Målt i `klassifiseringstest/RELASJONER.md` 12. september 2026: Haiku
+/// alene kobler 0, 30 og 40 % av de urelaterte parene over tre kjøringer;
+/// med denne som annenlesning faller det til 0, 0 og 10 %.
+pub const STOR_MODEL: &str = "claude-sonnet-5";
+
 /// Romslig: tretten sekunder er normalen for en håndfull avsnitt, og et helt
 /// notat på én gang er tregere. Overskrides den, er panelet av — ingen får se
 /// en feilmelding for det.
@@ -430,9 +436,9 @@ pub fn prompt(texts: &[String], eksempler: &[crate::minne::Eksempel]) -> String 
 /// Ett kall til kommandolinja. Ingen verktøy, ingen arbeidskatalog med et
 /// git-repo i: kommandoen skal lese en prompt og skrive tekst, ingenting
 /// annet.
-pub fn kjør(prompt: &str) -> Result<String, String> {
+pub fn kjør(model: &str, prompt: &str) -> Result<String, String> {
     let mut barn = std::process::Command::new(binary())
-        .args(["-p", "--model", MODEL, "--output-format", "text"])
+        .args(["-p", "--model", model, "--output-format", "text"])
         .arg(prompt)
         .current_dir(std::env::temp_dir())
         .stdin(std::process::Stdio::null())
@@ -464,15 +470,39 @@ pub fn kjør(prompt: &str) -> Result<String, String> {
 
 impl Classifier for Cli {
     fn ask(&self, texts: &[String]) -> Result<String, String> {
-        kjør(&prompt(texts, &self.eksempler))
+        kjør(MODEL, &prompt(texts, &self.eksempler))
     }
 }
 
 /// Samme kommandolinje, annen prompt: hva forholdet er mellom et avsnitt hun
 /// skriver nå og ett hun skrev før.
+///
+/// To lesninger, og grunnen er målt. Haiku mister nesten aldri et ekte
+/// forhold, men den kobler for mye — og en falsk kobling er den ene feilen som
+/// ødelegger funksjonen. Derfor dømmer Haiku alt, og bare parene den faktisk
+/// koblet leses en gang til av den dyre modellen. Et par Haiku kalte urelatert
+/// er ferdig der, og koster ingenting mer.
 impl crate::minne::Dommer for Cli {
     fn døm(&self, par: &[(String, String)]) -> Result<String, String> {
-        kjør(&crate::minne::relasjonsprompt(par))
+        let svar = kjør(MODEL, &crate::minne::relasjonsprompt(par))?;
+        let koblet: Vec<usize> = crate::minne::parse_forhold(&svar, par.len())
+            .into_iter()
+            .enumerate()
+            .filter(|(_, f)| f.as_deref().is_some_and(|f| f != crate::minne::URELATERT))
+            .map(|(i, _)| i)
+            .collect();
+        if koblet.is_empty() {
+            return Ok(svar);
+        }
+
+        let delmengde: Vec<(String, String)> = koblet.iter().map(|i| par[*i].clone()).collect();
+        // Feiler annenlesningen, feiler hele dømmingen. Det er med vilje:
+        // ingenting lagres, og parene prøves igjen senere. Å slippe gjennom
+        // Haikus egne koblinger ville vært å vise brukeren nøyaktig den støyen
+        // annenlesningen finnes for.
+        let stor = kjør(STOR_MODEL, &crate::minne::relasjonsprompt(&delmengde))?;
+        let dom = crate::minne::parse_forhold(&stor, delmengde.len());
+        Ok(crate::minne::slå_sammen(par.len(), &koblet, &dom))
     }
 }
 

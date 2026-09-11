@@ -350,6 +350,25 @@ pub fn parse_forhold(svar: &str, antall: usize) -> Vec<Option<String>> {
     ut
 }
 
+/// Setter sammen svaret fra to lesninger: alt er urelatert, unntatt parene den
+/// andre lesningen sto ved. `koblet` er plassene den første lesningen koblet,
+/// i samme rekkefølge som `dom`.
+///
+/// At det blir en svarstreng og ikke en ferdig liste er med vilje: da er
+/// tolkningen fortsatt ett sted, og `parse_forhold` er det eneste som vet
+/// hvordan et svar ser ut.
+pub fn slå_sammen(antall: usize, koblet: &[usize], dom: &[Option<String>]) -> String {
+    let mut linjer: Vec<String> =
+        (1..=antall).map(|n| format!("{n}|{URELATERT}")).collect();
+    for (plass, i) in koblet.iter().enumerate() {
+        if let (Some(forhold), Some(linje)) = (dom.get(plass).and_then(|f| f.as_ref()), linjer.get_mut(*i))
+        {
+            *linje = format!("{}|{forhold}", i + 1);
+        }
+    }
+    linjer.join("\n")
+}
+
 /// Alt som kan avgjøre forholdet mellom avsnitt. Ett kall for hele bunken.
 pub trait Dommer {
     fn døm(&self, par: &[(String, String)]) -> std::result::Result<String, String>;
@@ -901,6 +920,20 @@ mod tests {
         assert_eq!(ut[1].as_deref(), Some("urelatert"));
         assert_eq!(ut[2].as_deref(), Some("besvarer"));
         assert_eq!(ut[3], None, "et ukjent forhold er ikke et forhold");
+    }
+
+    /// Annenlesningen: bare det den dyre modellen sto ved blir stående som en
+    /// kobling. Alt annet — også det den første lesningen koblet — er
+    /// urelatert, og det er den trygge retningen.
+    #[test]
+    fn andre_lesning_avgjør_hva_som_blir_en_kobling() {
+        let dom = vec![Some("motsier".to_string()), Some(URELATERT.to_string()), None];
+        let svar = slå_sammen(5, &[0, 2, 4], &dom);
+        let ut = parse_forhold(&svar, 5);
+        assert_eq!(ut[0].as_deref(), Some("motsier"), "sto ved koblingen");
+        assert_eq!(ut[1].as_deref(), Some(URELATERT), "aldri koblet");
+        assert_eq!(ut[2].as_deref(), Some(URELATERT), "trukket tilbake");
+        assert_eq!(ut[4].as_deref(), Some(URELATERT), "uten svar er uten kobling");
     }
 
     #[test]

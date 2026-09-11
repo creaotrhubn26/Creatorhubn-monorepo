@@ -95,6 +95,13 @@ faktisk vil møte. Det gjør testen strengere på beslutninger og svakere på
 løsprat. Klarer modellen seg her, er det et nødvendig, ikke tilstrekkelig,
 tegn. Neste runde bør bruke notater han har skrevet til seg selv.
 
+## Relasjonstesten ved siden av
+
+`relasjoner.jsonl` og `RELASJONER.md` måler en annen oppgave i det samme
+produktet: forholdet mellom to avsnitt, ikke hva ett avsnitt er. Den har sitt
+eget måltall — falsk koblingsrate — og sin egen konklusjon, som ikke er den
+samme som her: Haiku alene holder ikke der.
+
 ## Kjøring
 
 `items.jsonl` holder fasiten. Klassifikatoren får aldri se den — den får kun
