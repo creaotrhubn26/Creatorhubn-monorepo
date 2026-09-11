@@ -343,6 +343,15 @@ fn understand_note(content: String, path: String) -> Result<understand::Understa
     let mut base = base().ok();
     let biter = understand::split(&content);
 
+    // Låsen tas før noe skrives. To lagringer som kommer tett skal ikke skrive
+    // avsnittsradene for den samme kilden samtidig.
+    let mut memo = understand::memo().lock().unwrap_or_else(|e| e.into_inner());
+
+    let eksempler = base
+        .as_ref()
+        .and_then(|c| minne::eksempler(c, minne::ANTALL_EKSEMPLER).ok())
+        .unwrap_or_default();
+
     // Identiteten først: hvert avsnitt får id-en sin, og et avsnitt som bare
     // har fått rettet en skrivefeil beholder den id-en det hadde. Det er dette
     // rettelser og relasjoner henger på, og det skjer uavhengig av om
@@ -354,11 +363,6 @@ fn understand_note(content: String, path: String) -> Result<understand::Understa
 
     // Alt som er forstått før hentes inn før klassifiseringen. Det er dette
     // som gjør at et notat fra i går ikke koster et eneste kall i dag.
-    let mut memo = understand::memo().lock().unwrap_or_else(|e| e.into_inner());
-    let eksempler = base
-        .as_ref()
-        .and_then(|c| minne::eksempler(c, minne::ANTALL_EKSEMPLER).ok())
-        .unwrap_or_default();
     if let Some(conn) = &base {
         let hasher: Vec<String> = biter.iter().map(|c| understand::nøkkel(&c.text)).collect();
         if let Ok(kjente) = minne::kjente(conn, &hasher) {
