@@ -79,6 +79,17 @@ import { registerInfographicRenderRoutes } from "./infographic-render-routes.js"
 import { registerInfographicLeadgridRoutes } from "./infographic-leadgrid-connector.js";
 import { registerRoleRoomBrandAssetsRoutes } from "./role-room-brand-assets-routes.js";
 import { registerRoleRoomUserStorageRoutes } from "./role-room-user-storage-routes.js";
+import {
+  accrueRoleRoomCommercialAffiliateCommission,
+  handleRoleRoomStorageStripeEvent,
+  registerRoleRoomStorageBillingRoutes,
+  syncRoleRoomCommercialStorageEntitlement,
+} from "./role-room-storage-billing.js";
+import {
+  handleRoleRoomAffiliateStripeEvent,
+  readStripeInvoicePaymentReferences,
+  registerRoleRoomAffiliatePayoutRoutes,
+} from "./role-room-affiliate-payouts.js";
 import { registerRoleRoomByoStorageRoutes } from "./role-room-byo-storage-routes.js";
 import { startInProcessCleanupLoop as startRoleRoomStorageCleanupLoop } from "./role-room-storage-cleanup-worker.js";
 import { registerRoleRoomPublishedGuidesRoutes } from "./role-room-published-guides-routes.js";
@@ -1549,6 +1560,29 @@ app.post(
         ? new Date(event.created * 1000).toISOString()
         : new Date().toISOString();
 
+      const storageBillingResult = await handleRoleRoomStorageStripeEvent(
+        pool,
+        stripe,
+        event,
+      );
+      if (storageBillingResult.matched) {
+        return res.json({
+          received: true,
+          duplicate: storageBillingResult.duplicate === true,
+        });
+      }
+
+      const affiliatePayoutResult = await handleRoleRoomAffiliateStripeEvent(
+        pool,
+        event,
+      );
+      if (affiliatePayoutResult.matched) {
+        return res.json({
+          received: true,
+          duplicate: affiliatePayoutResult.duplicate === true,
+        });
+      }
+
       switch (event.type) {
         case "checkout.session.completed":
         case "checkout.session.async_payment_succeeded": {
@@ -1587,12 +1621,16 @@ app.post(
           }
           break;
         }
-        case "invoice.paid":
-          await syncRoleRoomCommercialStripeInvoice(
-            event.data.object as Stripe.Invoice,
-            eventTimestamp,
-          );
+        case "invoice.paid": {
+          const eventInvoice = event.data.object as Stripe.Invoice;
+          const invoice = eventInvoice.payments?.data.length
+            ? eventInvoice
+            : await stripe.invoices.retrieve(eventInvoice.id, {
+                expand: ["payments.data.payment.payment_intent"],
+              });
+          await syncRoleRoomCommercialStripeInvoice(invoice, eventTimestamp);
           break;
+        }
         case "invoice.payment_failed": {
           const invoice = event.data.object as Stripe.Invoice;
           const agentResult = await handleAgentPaymentFailed(pool, invoice);
@@ -1642,6 +1680,49 @@ app.post(
       return res.status(500).json({
         error: "Kunne ikke behandle Stripe-webhooken.",
       });
+    }
+  },
+);
+
+// Stripe Connect webhook — separate signing secret from the platform webhook.
+// Must be mounted before express.json() so Stripe receives the exact raw body.
+app.post(
+  "/api/role-room/billing/connect-webhook",
+  express.raw({ type: "application/json", limit: "1mb" }),
+  async (req, res) => {
+    const stripe = getRoleRoomStripeClient();
+    if (!stripe) return res.status(503).json({ error: "stripe_ikke_konfigurert" });
+    const webhookSecret = process.env.ROLE_ROOM_STRIPE_CONNECT_WEBHOOK_SECRET?.trim();
+    const signatureHeader = req.headers["stripe-signature"];
+    const rawBody = Buffer.isBuffer(req.body)
+      ? req.body
+      : Buffer.from(String(req.body ?? ""), "utf8");
+    let event: Stripe.Event;
+    try {
+      if (webhookSecret) {
+        if (typeof signatureHeader !== "string" || !signatureHeader.trim()) {
+          return res.status(400).json({ error: "mangler_stripe_signature" });
+        }
+        event = stripe.webhooks.constructEvent(rawBody, signatureHeader, webhookSecret);
+      } else if (process.env.NODE_ENV === "production") {
+        return res.status(503).json({ error: "stripe_connect_webhook_secret_mangler" });
+      } else {
+        event = JSON.parse(rawBody.toString("utf8")) as Stripe.Event;
+      }
+    } catch (error) {
+      console.error("Role Room Stripe Connect webhook signature error:", error);
+      return res.status(400).json({ error: "ugyldig_stripe_connect_signatur" });
+    }
+    try {
+      const result = await handleRoleRoomAffiliateStripeEvent(pool, event);
+      return res.json({
+        received: true,
+        matched: result.matched,
+        duplicate: result.duplicate === true,
+      });
+    } catch (error) {
+      console.error("Role Room Stripe Connect webhook handling error:", error);
+      return res.status(500).json({ error: "stripe_connect_webhook_feilet" });
     }
   },
 );
@@ -2638,6 +2719,19 @@ registerInfographicRenderRoutes(app, { activeSessions, pool, requireAdminSession
 registerInfographicLeadgridRoutes({ app, activeSessions, pool });
 registerRoleRoomBrandAssetsRoutes(app, { pool, activeSessions });
 registerRoleRoomUserStorageRoutes(app, { pool, activeSessions });
+registerRoleRoomStorageBillingRoutes({
+  app,
+  pool,
+  activeSessions,
+  stripe: getRoleRoomStripeClient(),
+});
+registerRoleRoomAffiliatePayoutRoutes({
+  app,
+  pool,
+  activeSessions,
+  stripe: getRoleRoomStripeClient(),
+  requireAdminSession,
+});
 registerRoleRoomByoStorageRoutes(app, { pool, activeSessions });
 // Start in-process cleanup-loop hvis ROLE_ROOM_STORAGE_CLEANUP_INTERVAL_MS er satt
 startRoleRoomStorageCleanupLoop(pool);
@@ -28711,6 +28805,19 @@ async function markRoleRoomCommercialCheckoutRecordPaid(
   };
   await writeRoleRoomCommercialCheckoutSessionRecord(nextRecord);
 
+  await syncRoleRoomCommercialStorageEntitlement(pool, {
+    organizationNumber: nextRecord.organizationNumber,
+    persona: nextRecord.persona,
+    active: true,
+    stripeSubscriptionId: nextRecord.stripeSubscriptionId,
+    stripeCustomerId: nextRecord.stripeCustomerId,
+  }).catch((error) => {
+    console.warn(
+      "[role-room-storage] commercial entitlement sync failed:",
+      error instanceof Error ? error.message : error,
+    );
+  });
+
   // Best-effort: hvis en booket demo i agency_leads-CRM-en konverterte til et
   // betalt commercial-abonnement, flipp leaden til 'customer'. Matcher på e-post
   // (team-lead eller medlem) — den selvbetjente konverterings-lenken sender
@@ -28868,9 +28975,10 @@ async function syncRoleRoomCommercialStripeInvoice(
     return null;
   }
 
-  return markRoleRoomCommercialCheckoutRecordPaid(storedRecord, {
+  const completedAt = completedAtOverride || new Date().toISOString();
+  const syncedRecord = await markRoleRoomCommercialCheckoutRecordPaid(storedRecord, {
     transactionId: subscriptionId,
-    completedAt: completedAtOverride || new Date().toISOString(),
+    completedAt,
     amountMajor:
       typeof invoice.amount_paid === "number" && Number.isFinite(invoice.amount_paid)
         ? invoice.amount_paid / 100
@@ -28885,6 +28993,18 @@ async function syncRoleRoomCommercialStripeInvoice(
     latestInvoiceId: invoice.id,
     latestInvoiceStatus: invoice.status || "paid",
   });
+
+  await accrueRoleRoomCommercialAffiliateCommission(pool, {
+    organizationNumber: storedRecord.organizationNumber,
+    stripeInvoiceId: invoice.id,
+    currency: invoice.currency,
+    amountPaidMinor: invoice.amount_paid,
+    subtotalExcludingTaxMinor: invoice.subtotal_excluding_tax,
+    paidAt: new Date(completedAt),
+    ...readStripeInvoicePaymentReferences(invoice),
+  });
+
+  return syncedRecord;
 }
 
 async function clearRoleRoomCommercialStripeSubscription(
@@ -28922,6 +29042,19 @@ async function clearRoleRoomCommercialStripeSubscription(
       paymentFailedAt: new Date().toISOString(),
     },
   );
+
+  await syncRoleRoomCommercialStorageEntitlement(pool, {
+    organizationNumber: storedRecord.organizationNumber,
+    persona: storedRecord.persona,
+    active: false,
+    stripeSubscriptionId: storedRecord.stripeSubscriptionId,
+    stripeCustomerId: storedRecord.stripeCustomerId,
+  }).catch((error) => {
+    console.warn(
+      "[role-room-storage] commercial entitlement revocation failed:",
+      error instanceof Error ? error.message : error,
+    );
+  });
 
   await sendRoleRoomCommercialPaymentFailedEmail({
     companyName: storedRecord.companyName,

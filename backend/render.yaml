@@ -62,6 +62,22 @@ services:
         sync: false
       - key: ROLE_ROOM_AGENT_MODEL
         value: gpt-5.4-mini
+      - key: ROLE_ROOM_STORAGE_PRICE_EXTRA_100_GIB_MONTHLY
+        value: "price_1UE6FRApjenweKvPVb4iriwW"
+      - key: ROLE_ROOM_STORAGE_PRICE_EXTRA_1_TIB_MONTHLY
+        value: "price_1UE6FSApjenweKvPtozJY97b"
+      - key: ROLE_ROOM_STORAGE_1_TIB_CHECKOUT_ENABLED
+        value: "false"
+      - key: ROLE_ROOM_STORAGE_BILLING_PORTAL_CONFIGURATION_ID
+        value: "bpc_1UE6FSApjenweKvPbpPJLsLl"
+      - key: ROLE_ROOM_STORAGE_PAYMENT_GRACE_DAYS
+        value: "7"
+      - key: ROLE_ROOM_AFFILIATE_PAYOUTS_ENABLED
+        value: "false"
+      - key: ROLE_ROOM_AFFILIATE_PAYOUT_CRON_SECRET
+        generateValue: true
+      - key: ROLE_ROOM_STRIPE_CONNECT_WEBHOOK_SECRET
+        sync: false
       - key: GOOGLE_PLACES_API_KEY
         sync: false
       - key: CLOUDFLARE_R2_ACCOUNT_ID

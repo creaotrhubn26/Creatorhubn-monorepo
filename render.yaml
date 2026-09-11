@@ -157,6 +157,26 @@ services:
         sync: false
       - key: ROLE_ROOM_AGENT_CHECKOUT_CANCEL_URL
         sync: false
+      # Organization-owned storage add-ons. The 1 TiB offer stays hidden
+      # until high-download limits are enforced end-to-end.
+      - key: ROLE_ROOM_STORAGE_PRICE_EXTRA_100_GIB_MONTHLY
+        value: "price_1UE6FRApjenweKvPVb4iriwW"
+      - key: ROLE_ROOM_STORAGE_PRICE_EXTRA_1_TIB_MONTHLY
+        value: "price_1UE6FSApjenweKvPtozJY97b"
+      - key: ROLE_ROOM_STORAGE_1_TIB_CHECKOUT_ENABLED
+        value: "false"
+      - key: ROLE_ROOM_STORAGE_BILLING_PORTAL_CONFIGURATION_ID
+        value: "bpc_1UE6FSApjenweKvPbpPJLsLl"
+      - key: ROLE_ROOM_STORAGE_PAYMENT_GRACE_DAYS
+        value: "7"
+      # Affiliate transfers are explicitly gated until one real organization
+      # has completed Connect KYC and the first production batch is reconciled.
+      - key: ROLE_ROOM_AFFILIATE_PAYOUTS_ENABLED
+        value: "false"
+      - key: ROLE_ROOM_AFFILIATE_PAYOUT_CRON_SECRET
+        generateValue: true
+      - key: ROLE_ROOM_STRIPE_CONNECT_WEBHOOK_SECRET
+        sync: false
       - key: CLOUDFLARE_R2_ACCOUNT_ID
         sync: false
       - key: CLOUDFLARE_R2_ACCESS_KEY_ID
@@ -409,7 +429,7 @@ services:
     branch: main
     envVars:
       - key: BACKEND_URL
-        value: "https://creatorhub-backend.onrender.com"
+        value: "https://creatorhub-backend-rtbl.onrender.com"
       - key: NEXTROLE_CRON_SECRET
         fromService:
           name: creatorhub-backend
@@ -422,6 +442,16 @@ services:
           name: creatorhub-backend
           type: web
           envVarKey: ROLE_ROOM_RECONCILE_CRON_TOKEN
+      - key: ROLE_ROOM_AFFILIATE_PAYOUT_CRON_SECRET
+        fromService:
+          name: creatorhub-backend
+          type: web
+          envVarKey: ROLE_ROOM_AFFILIATE_PAYOUT_CRON_SECRET
+      - key: ROLE_ROOM_AFFILIATE_PAYOUTS_ENABLED
+        fromService:
+          name: creatorhub-backend
+          type: web
+          envVarKey: ROLE_ROOM_AFFILIATE_PAYOUTS_ENABLED
 
   - type: web
     name: creatorhub-gfpgan-runner

@@ -820,6 +820,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
           workspaceSummary={workspaceSummary ?? null}
           onLogout={auth.logout ? () => { void auth.logout(); } : undefined}
           isAdmin={isAdminUser}
+          organizationId={(auth.user as any)?.activeOrgId ?? null}
         />
       </Box>
     );
@@ -1478,6 +1479,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
         workspaceSummary={workspaceSummary ?? null}
         onLogout={auth.logout ? () => { void auth.logout(); } : undefined}
         isAdmin={isAdminUser}
+        organizationId={(auth.user as any)?.activeOrgId ?? null}
       />
 
       {/* Telefon-bunn-nav: server-konfig + filter på sikre gates (publishing/admin) */}
