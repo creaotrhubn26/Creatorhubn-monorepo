@@ -388,14 +388,20 @@ test('music producer sees EaseVerse marketing and can start the Pro Tools Compan
   await page.route('**/api/audio-showcases/room-1', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
       project: { id: 'room-1', title: 'Smoke Project p1', status: 'under_review' },
-      versions: [{
-        id: 'version-1', project_id: 'room-1', version_label: 'Mix V1', version_number: 1,
-        file_name: 'workspace-smoke.wav', file_url: '/api/protools/bounces/bounce-1/file', status: 'under_review',
-      }],
+      versions: Array.from({ length: 8 }, (_, index) => {
+        const versionNumber = index + 1;
+        return {
+          id: `version-${versionNumber}`, project_id: 'room-1', version_label: `Mix V${versionNumber}`,
+          version_number: versionNumber,
+          file_name: `CreatorHub-adapter-e2e-${versionNumber}-med-et-svært-langt-filnavn.wav`,
+          file_url: '/api/protools/bounces/bounce-1/file',
+          status: versionNumber === 8 ? 'under_review' : 'superseded',
+        };
+      }),
       members: [], tasks: [],
     }) }),
   );
-  await page.route('**/api/audio-versions/version-1', (route) =>
+  await page.route('**/api/audio-versions/version-8', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: {}, comments: [], sections: [], approvals: [] }) }),
   );
   await page.route('**/api/protools/bounces/bounce-1/file', (route) => {
@@ -451,6 +457,30 @@ test('music producer sees EaseVerse marketing and can start the Pro Tools Compan
 
   await page.keyboard.press('Escape');
   await expect(dialog).not.toBeVisible();
+
+  const versionPreview = page.getByTestId('sound-room-version-preview');
+  await expect(versionPreview.getByRole('button', { name: /Åpne Mix V\d+ i lydrommet/ })).toHaveCount(4);
+  await expect(versionPreview.getByText('Mix V4', { exact: true })).toHaveCount(0);
+  await expect(versionPreview.getByText('Mix V5', { exact: true })).toBeVisible();
+  await expect(versionPreview.getByText('Mix V8', { exact: true })).toBeVisible();
+  await expect(page.getByText('8 totalt', { exact: true })).toBeVisible();
+  await expect(page.getByText('Viser de 4 nyeste versjonene', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Se alle i lydrommet' })).toBeVisible();
+  expect(await versionPreview.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  const filenameMetrics = await versionPreview.locator('button').last().locator('p').last().evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+    textOverflow: getComputedStyle(element).textOverflow,
+  }));
+  expect(filenameMetrics.textOverflow).toBe('ellipsis');
+  expect(filenameMetrics.scrollWidth).toBeGreaterThan(filenameMetrics.clientWidth);
+
+  const desktopViewport = page.viewportSize();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(versionPreview).toBeVisible();
+  expect(await versionPreview.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  if (desktopViewport) await page.setViewportSize(desktopViewport);
+
   await page.getByRole('button', { name: 'Åpne lydrommet' }).first().click();
   await page.waitForURL('**/audio-review/room-1?ws=p1', { timeout: 60_000 });
   await expect(page.getByText('Universal Showcase', { exact: true })).toBeVisible({ timeout: 120_000 });
