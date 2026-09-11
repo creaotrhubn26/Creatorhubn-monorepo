@@ -220,9 +220,9 @@ struct OversiktView: View {
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "slider.horizontal.3")
-                    .font(.appScaled(size: 11, weight: .bold))
+                    .font(.system(size: 11, weight: .bold))
                 Text("Tilpass")
-                    .font(.appScaled(size: 12, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
             }
             .foregroundStyle(Brand.textSecondary)
             .padding(.horizontal, 11).padding(.vertical, 7)
@@ -241,12 +241,7 @@ struct OversiktView: View {
                         subtitle: headerSubtitle,
                         leads: effectiveLeads,
                         momentum: momentum,
-                        lastUpdated: lastUpdated) {
-                            // Tydelig prosjekt-kontekst (2026-08-02): pill
-                            // viser + bytter hvilket prosjekt tallene på
-                            // fanen gjelder.
-                            ProjectContextPill()
-                        }
+                        lastUpdated: lastUpdated)
                     HStack { Spacer(); tilpassMeny }
                     if erRenDorsalgOrg {
                         // Ren dørsalg-org: HELE oversikten er dørsalg-tall.
@@ -280,7 +275,7 @@ struct OversiktView: View {
                 }
                 .padding(.horizontal, isCompact ? 16 : 28)
                 .padding(.top, 18)
-                .padding(.bottom, 24)
+                .padding(.bottom, DeviceIdiom.isPhone ? 110 : 24)
             }
             .background(Brand.bg.ignoresSafeArea())
         }
@@ -349,8 +344,13 @@ struct OversiktView: View {
         // Dørsalg-stats (kun når org-en har modusen): demo = statiske tall,
         // ekte = aggregat fra backend (mig 0397).
         if dorsalgAktivert || DemoModeManager.isActiveNonisolated {
-            if DemoModeManager.isActiveNonisolated {
+            if DemoModeManager.usesGenericFixtures {
                 if dorsalgAktivert { dorsalgStats = Self.demoDorsalgStats }
+            } else if DemoModeManager.isDentumTour {
+                // Dentum er et B2B-prosjekt. Selv om samme organisasjon har
+                // dørsalgstilgang, skal QA-touren aldri arve demoresultater
+                // eller selgernavn fra den generiske dørsalgsprofilen.
+                dorsalgStats = nil
             } else if let api = appState.api,
                       let projectId = appState.activeLeadgridProjectId {
                 let loaded = await KartverketService.shared.fetchDorsalgStats(
@@ -604,10 +604,10 @@ private struct KPICardRow: View {
                     // Én sammensatt Text (ikke HStack) så underteksten
                     // wrapper som tekst på AX-størrelser. Trenden er
                     // hardkodet mockup — vises KUN i demo-modus.
-                    (Text("\(formatNumber(totalLeads)) leads")
+                    (Text("\(formatNumber(totalLeads)) \(totalLeads == 1 ? "lead" : "leads")")
                         .font(.appScaled(size: 12))
                         .foregroundColor(Brand.textSecondary)
-                     + Text(DemoModeManager.isActiveNonisolated && totalLeads > 0 ? "  ↑ +18%" : "")
+                     + Text(DemoModeManager.usesGenericFixtures && totalLeads > 0 ? "  ↑ +18%" : "")
                         .font(.appScaled(size: 11, weight: .bold))
                         .foregroundColor(Brand.green))
                 }
@@ -657,16 +657,16 @@ private struct KPICardRow: View {
             icon: "person.2.fill", iconBg: Brand.blue.opacity(0.25), iconColor: Brand.blue,
             label: "Total leads",
             value: formatNumber(totalLeads),
-            trend: DemoModeManager.isActiveNonisolated && totalLeads > 0 ? "+18%" : nil,
-            trendUp: DemoModeManager.isActiveNonisolated && totalLeads > 0 ? true : nil)
+            trend: DemoModeManager.usesGenericFixtures && totalLeads > 0 ? "+18%" : nil,
+            trendUp: DemoModeManager.usesGenericFixtures && totalLeads > 0 ? true : nil)
     }
     private var hotLeadsCard: some View {
         KPICard(
             icon: "flame.fill", iconBg: Brand.red.opacity(0.25), iconColor: Brand.red,
             label: "Hot leads",
             value: "\(hotLeads)",
-            trend: DemoModeManager.isActiveNonisolated && hotLeads > 0 ? "+24%" : nil,
-            trendUp: DemoModeManager.isActiveNonisolated && hotLeads > 0 ? true : nil)
+            trend: DemoModeManager.usesGenericFixtures && hotLeads > 0 ? "+24%" : nil,
+            trendUp: DemoModeManager.usesGenericFixtures && hotLeads > 0 ? true : nil)
     }
     private var followupsCard: some View {
         KPICard(
@@ -683,8 +683,8 @@ private struct KPICardRow: View {
             iconColor: Brand.purple,
             label: "Forventet verdi",
             value: forecastValue,
-            trend: DemoModeManager.isActiveNonisolated && hasValue ? "+15%" : nil,
-            trendUp: DemoModeManager.isActiveNonisolated && hasValue ? true : nil)
+            trend: DemoModeManager.usesGenericFixtures && hasValue ? "+15%" : nil,
+            trendUp: DemoModeManager.usesGenericFixtures && hasValue ? true : nil)
     }
     private var wonCard: some View {
         let wonCount = leads.filter { $0.status == .won }.count
@@ -692,8 +692,8 @@ private struct KPICardRow: View {
             icon: "trophy.fill", iconBg: Brand.green.opacity(0.25), iconColor: Brand.green,
             label: "Vunnet i år",
             value: wonValue,
-            trend: DemoModeManager.isActiveNonisolated && wonCount > 0 ? "+32%" : nil,
-            trendUp: DemoModeManager.isActiveNonisolated && wonCount > 0 ? true : nil)
+            trend: DemoModeManager.usesGenericFixtures && wonCount > 0 ? "+32%" : nil,
+            trendUp: DemoModeManager.usesGenericFixtures && wonCount > 0 ? true : nil)
     }
 
     private var totalLeads: Int { leads.count }
@@ -1122,7 +1122,7 @@ private struct LeadsInAreaCard: View {
                 // iPhone: tallet står allerede i statistikk-knappen og
                 // temperatur-chipsene — tre steder er to for mange.
                 if !DeviceIdiom.isPhone {
-                    Text("\(pinnedLeads.count) leads")
+                    Text("\(pinnedLeads.count) \(pinnedLeads.count == 1 ? "lead" : "leads")")
                         .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(Brand.purpleLight)
                 }
@@ -2466,6 +2466,21 @@ private struct LeadsInAreaCard: View {
         let leadLoc = CLLocation(latitude: lead.latitude, longitude: lead.longitude)
         func dist(_ lat: Double, _ lon: Double) -> Double {
             leadLoc.distance(from: CLLocation(latitude: lat, longitude: lon)) / 1000.0
+        }
+        if DemoModeManager.isDentumTour {
+            return [
+                AssignableTeamMember(
+                    userId: "qa-tour-user",
+                    name: "Daniel Qazi",
+                    email: "daniel@creatorhubn.com",
+                    title: "Prosjektadmin",
+                    role: .seller,
+                    distanceKm: nil,
+                    weeklyWon: 0,
+                    isAvailable: true,
+                    avatarInitials: "DQ"
+                )
+            ]
         }
         return [
             AssignableTeamMember(
@@ -3818,7 +3833,11 @@ private struct MoteOppgaverCard: View {
 
     private func lastOppgaver() async {
         if DemoModeManager.isActiveNonisolated {
-            if oppgaver.isEmpty { oppgaver = Self.demoOppgaver }
+            if oppgaver.isEmpty {
+                oppgaver = ProcessInfo.processInfo.environment["QA_TOUR"] == "dentum-outreach"
+                    ? Self.dentumDemoOppgaver
+                    : Self.demoOppgaver
+            }
             return
         }
         guard let api = appState.api,
@@ -3854,6 +3873,23 @@ private struct MoteOppgaverCard: View {
         MoteOppgaveDTO(id: "demo-o3", selskap: "BoligPartner AS",
                        tittel: "Send referanse fra Byggmester Hansen",
                        frist: "i morgen", status: "open"),
+    ]
+
+    private static let dentumDemoOppgaver: [MoteOppgaveDTO] = [
+        MoteOppgaveDTO(
+            id: "dentum-o1",
+            selskap: "Majorstuen Tannlegesenter AS",
+            tittel: "Kvalitetssikre klinikkprofilen med Anne",
+            frist: "før publisering",
+            status: "open"
+        ),
+        MoteOppgaveDTO(
+            id: "dentum-o2",
+            selskap: "Majorstuen Tannlegesenter AS",
+            tittel: "Avtal oppstart av Dentum-piloten",
+            frist: "neste steg",
+            status: "open"
+        ),
     ]
 }
 
@@ -4559,7 +4595,7 @@ struct TopSellersSheet: View {
     /// Sann hvis innlogget bruker har «salgssjef»-rolle og dermed kan sette
     /// provisjons-satser, opprette konkurranser, etc. I prod kobles dette
     /// til `AppState.userRole`; her hardkodet for mockup.
-    private var isSalgssjef: Bool { true }
+    private var isSalgssjef: Bool { !DemoModeManager.isDentumTour }
 
     enum Period: String, CaseIterable {
         case month = "Denne mnd"
@@ -4612,8 +4648,16 @@ struct TopSellersSheet: View {
     /// Demo → mock-leaderboard; ellers ekte selgere fra TeamLiveStore
     /// (`/sales-leadership/team-members`), rangert etter total verdi.
     /// topDeals/regions/industries har ingen backend-kilde enda → tomme.
-    private var sellers: [Seller] {
-        if DemoModeManager.isActiveNonisolated { return mockSellers }
+    @MainActor private var sellers: [Seller] {
+        if DemoModeManager.isDentumTour {
+            return TeamData.members.enumerated().map { index, member in
+                Seller(rank: index + 1, name: member.name, title: "Super Admin",
+                       avatarColor: member.color, won: 0, leads: member.leads,
+                       trend: 0, totalValue: Double(member.valueNok),
+                       topDeals: [], regions: [], industries: [])
+            }
+        }
+        if DemoModeManager.usesGenericFixtures { return mockSellers }
         return TeamLiveStore.shared.memberDTOs
             .sorted { $0.totalValueNok > $1.totalValueNok }
             .enumerated()
@@ -5689,7 +5733,7 @@ struct PopoverSectionHeader: View {
 /// /api/leadgrid/momentum/today (todayActivity.calls/emails/visits).
 private struct ActivityTodayCompact: View {
     let momentum: LeadgridMomentum?
-    private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
+    private var isDemo: Bool { DemoModeManager.usesGenericFixtures }
     private var calls: Int    { isDemo ? 14 : (momentum?.todayActivity.calls ?? 0) }
     private var emails: Int   { isDemo ? 22 : (momentum?.todayActivity.emails ?? 0) }
     private var meetings: Int { isDemo ? 3  : (momentum?.todayActivity.meetings ?? 0) }
@@ -5782,7 +5826,7 @@ private struct RecentActivitiesCard: View {
         // ingen aktivitets-feed fra backend enda → ærlig tom-tilstand i
         // stedet for fabrikkerte «Lead åpnet tilbudet»-rader bygget av
         // ekte lead-navn (Daniel 2026-07-04: hele headeren = ekte data).
-        guard DemoModeManager.isActiveNonisolated else {
+        guard DemoModeManager.usesGenericFixtures else {
             return []
         }
         let f = DateFormatter()
@@ -6301,7 +6345,7 @@ struct SalesLeadershipSheet: View {
     // produktbilder. Når salgssjefen laster opp via PhotosPicker eller
     // setter URL → vises det ekte bildet. Demo AV → tom (ærlig) liste;
     // salgssjefen kan fortsatt legge til egne via «+».
-    @State private var orgCatalog: [PrizeProduct] = DemoModeManager.isActiveNonisolated ? [
+    @State private var orgCatalog: [PrizeProduct] = DemoModeManager.usesGenericFixtures ? [
         PrizeProduct(name: "Drone DJI Mavic 3",           icon: "airplane",                              priceNok: 18_500, category: .tech,       vendor: "Komplett (org)"),
         PrizeProduct(name: "Org-helgetur til Lofoten",    icon: "mountain.2.fill",                       priceNok: 14_000, category: .travel,     vendor: "Egen avtale"),
         PrizeProduct(name: "Personlig PT-pakke 10 timer", icon: "figure.strengthtraining.traditional",   priceNok: 6_500,  category: .experience, vendor: "Sats (avtale)"),

@@ -605,7 +605,7 @@ struct SelectedLeadbookCard: View {
     }
 
     private var contentForCurrentStep: [LeadbookContent] {
-        guard let dto else { return LeadbookData.contentByStep[currentStep] ?? [] }
+        guard let dto else { return LeadbookData.content(for: currentStep) }
         guard let step = dto.orderedSteps.first(where: { $0.order == currentStep }) else { return [] }
         var rows: [LeadbookContent] = []
         if let subtitle = step.subtitle, !subtitle.isEmpty {
@@ -1738,7 +1738,11 @@ struct UseLeadbookSheet: View {
                     .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
                 if leadName.isEmpty {
-                    Text("F.eks. Nordic Elektro AS").font(.appScaled(size: 13)).foregroundStyle(LBrand.textTertiary)
+                    Text(DemoModeManager.isDentumTour
+                         ? "F.eks. Majorstuen Tannlegesenter AS"
+                         : "F.eks. Nordic Elektro AS")
+                        .font(.appScaled(size: 13))
+                        .foregroundStyle(LBrand.textTertiary)
                         .padding(.horizontal, 15).allowsHitTesting(false)
                 }
             }
@@ -3077,7 +3081,7 @@ struct VersionDetailSheet: View {
                                 .font(.appScaled(size: 14)).foregroundStyle(LBrand.textSecondary)
                             HStack(spacing: 12) {
                                 Label(version.date, systemImage: "calendar")
-                                Label("Endret av Lars K.", systemImage: "person.fill")
+                                Label("Endret av \(version.author)", systemImage: "person.fill")
                                 Label("v\(version.version)", systemImage: "doc.fill")
                             }
                             .font(.appScaled(size: 11))
@@ -3383,6 +3387,7 @@ struct LeadbookKPIDetailSheet: View {
     }
 
     private var trimmedSeries: [(Int, Double)] {
+        guard DemoModeManager.usesGenericFixtures else { return [] }
         let n: Int = {
             switch range {
             case .d7: return 7
@@ -3414,10 +3419,14 @@ struct LeadbookKPIDetailSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         hero
-                        rangePicker
-                        chartCard
-                        breakdownCard
-                        aiInsight
+                        if DemoModeManager.usesGenericFixtures {
+                            rangePicker
+                            chartCard
+                            breakdownCard
+                            aiInsight
+                        } else {
+                            historyEmptyCard
+                        }
                         actionsGrid
                         Color.clear.frame(height: 12)
                     }
@@ -3486,20 +3495,25 @@ struct LeadbookKPIDetailSheet: View {
             }
             .frame(width: 64, height: 64)
             VStack(alignment: .leading, spacing: 6) {
-                Text(kpi.value)
+                Text(kpi.scopedValue)
                     .font(.appScaled(size: 38, weight: .heavy, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
-                HStack(spacing: 10) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.up.right").font(.appScaled(size: 10, weight: .bold))
-                        Text(kpi.trend.replacingOccurrences(of: "↑ ", with: ""))
-                            .font(.appScaled(size: 12, weight: .bold))
+                if let trend = kpi.scopedTrend {
+                    HStack(spacing: 10) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.up.right").font(.appScaled(size: 10, weight: .bold))
+                            Text(trend.replacingOccurrences(of: "↑ ", with: ""))
+                                .font(.appScaled(size: 12, weight: .bold))
+                        }
+                        .foregroundStyle(LBrand.green)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(LBrand.green.opacity(0.16), in: Capsule())
+                        Text("vs. forrige periode")
+                            .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                     }
-                    .foregroundStyle(LBrand.green)
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(LBrand.green.opacity(0.16), in: Capsule())
-                    Text("vs. forrige periode")
+                } else {
+                    Text("Ingen historikk ennå")
                         .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                 }
                 Text(kpi.subtitle)
@@ -3563,6 +3577,26 @@ struct LeadbookKPIDetailSheet: View {
                 AxisValueLabel().foregroundStyle(LBrand.textTertiary)
             } }
             .frame(height: 200)
+        }
+        .padding(16)
+        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(LBrand.stroke, lineWidth: 1))
+    }
+
+    private var historyEmptyCard: some View {
+        HStack(spacing: 11) {
+            Image(systemName: "chart.line.uptrend.xyaxis")
+                .font(.appScaled(size: 17, weight: .semibold))
+                .foregroundStyle(LBrand.textTertiary)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Ingen brukshistorikk ennå")
+                    .font(.appScaled(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                Text("Utvikling og AI-innsikt vises når prosjektet har aktivitet over flere perioder.")
+                    .font(.appScaled(size: 11))
+                    .foregroundStyle(LBrand.textSecondary)
+            }
+            Spacer(minLength: 0)
         }
         .padding(16)
         .background(LBrand.card, in: RoundedRectangle(cornerRadius: 14))
@@ -3635,6 +3669,7 @@ struct LeadbookKPIDetailSheet: View {
     }
 
     private var breakdownRows: [BreakdownRow] {
+        guard DemoModeManager.usesGenericFixtures else { return [] }
         switch kpi {
         case .activeTemplates:
             return [
@@ -3763,7 +3798,7 @@ struct LeadbookGoalSheet: View {
                             Text("MÅL FOR").font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                             Text(kpi.title).font(.appScaled(size: 20, weight: .heavy)).foregroundStyle(.white)
-                            Text("Nåværende verdi: \(kpi.value)").font(.appScaled(size: 12))
+                            Text("Nåværende verdi: \(kpi.scopedValue)").font(.appScaled(size: 12))
                                 .foregroundStyle(LBrand.textSecondary)
                         }
                         VStack(alignment: .leading, spacing: 8) {
@@ -3940,7 +3975,7 @@ struct LeadbookShareSheet: View {
                             Text("DEL RAPPORT FOR").font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                             Text(kpi.title).font(.appScaled(size: 22, weight: .heavy)).foregroundStyle(.white)
-                            Text("\(kpi.value) — \(kpi.trend)").font(.appScaled(size: 13))
+                            Text("\(kpi.scopedValue)\(kpi.scopedTrend.map { " — \($0)" } ?? "")").font(.appScaled(size: 13))
                                 .foregroundStyle(LBrand.textSecondary)
                         }
                         VStack(alignment: .leading, spacing: 6) {

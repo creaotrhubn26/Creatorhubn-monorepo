@@ -166,6 +166,7 @@ interface CallSheetGeneratorProps {
   crew?: CrewMember[];
   locations?: Location[];
   onGenerate?: (callSheet: CallSheetData) => void;
+  onDeliverySent?: () => void;
 }
 
 const EMPTY_SCENES: SceneBreakdown[] = [];
@@ -183,6 +184,125 @@ export interface CallSheetRecipientPreview {
   valid: CallSheetRecipientPreviewItem[];
   invalid: Array<{ id: string; name: string; email: string; source: 'cast' | 'crew'; reason: string }>;
   duplicateCount: number;
+}
+
+export interface CallSheetRevisionSnapshot {
+  schemaVersion: 1;
+  general: Record<string, unknown>;
+  locations: CallSheetLocation[];
+  scenes: CallSheetScene[];
+  cast: CallSheetCastMember[];
+  crew: CallSheetCrewMember[];
+  instructions: { specialInstructions: string; notes: string; emergencyContacts: EmergencyContact[]; weatherForecast: CallSheetData['weatherForecast'] | null };
+  recipientEmails: string[];
+}
+
+interface CallSheetDeliveryEvent {
+  id: string;
+  type: 'published' | 'delivery_completed' | 'reminded' | 'acknowledged' | 'retracted' | string;
+  actorUserId?: string | null;
+  recipientId?: string | null;
+  details?: Record<string, unknown>;
+  createdAt: string;
+}
+
+interface CallSheetDelivery {
+  id: string;
+  revision: number;
+  subject: string;
+  status: 'published' | 'superseded' | 'retracted';
+  supersedesDeliveryId?: string | null;
+  snapshot?: CallSheetRevisionSnapshot | null;
+  retractedAt?: string | null;
+  createdAt: string;
+  total: number;
+  sent: number;
+  failed: number;
+  acknowledged: number;
+  recipients: Array<{ id: string; email: string; deliveryStatus: string; acknowledgedAt?: string | null }>;
+  events: CallSheetDeliveryEvent[];
+}
+
+const cleanRevisionValue = <T,>(value: T): T => JSON.parse(JSON.stringify(value ?? null)) as T;
+
+export function buildCallSheetRevisionSnapshot(
+  callSheet: CallSheetData,
+  recipientEmails: string[],
+): CallSheetRevisionSnapshot {
+  return cleanRevisionValue({
+    schemaVersion: 1,
+    general: {
+      projectName: callSheet.projectName,
+      productionCompany: callSheet.productionCompany,
+      date: callSheet.date,
+      dayNumber: callSheet.dayNumber,
+      totalDays: callSheet.totalDays,
+      director: callSheet.director,
+      producer: callSheet.producer,
+      callTime: callSheet.callTime,
+      shootingCallTime: callSheet.shootingCallTime,
+      lunchTime: callSheet.lunchTime,
+      estimatedWrap: callSheet.estimatedWrap,
+    },
+    locations: callSheet.locations || [],
+    scenes: callSheet.scenes || [],
+    cast: callSheet.cast || [],
+    crew: callSheet.crew || [],
+    instructions: {
+      specialInstructions: callSheet.specialInstructions || '',
+      notes: callSheet.notes || '',
+      emergencyContacts: callSheet.emergencyContacts || [],
+      weatherForecast: callSheet.weatherForecast || null,
+    },
+    recipientEmails: [...new Set(recipientEmails.map((email) => email.trim().toLowerCase()).filter(Boolean))].sort(),
+  });
+}
+
+export function describeCallSheetRevisionChanges(
+  previous: CallSheetRevisionSnapshot | null | undefined,
+  current: CallSheetRevisionSnapshot,
+): { labels: string[]; contentChanged: boolean; recipientsChanged: boolean } {
+  if (!previous || previous.schemaVersion !== 1) {
+    return { labels: ['Første publisering'], contentChanged: true, recipientsChanged: true };
+  }
+  const labels: string[] = [];
+  const changed = (key: keyof CallSheetRevisionSnapshot) => JSON.stringify(previous[key]) !== JSON.stringify(current[key]);
+  if (changed('general')) labels.push('Dato og tider');
+  if (changed('locations')) labels.push('Lokasjoner');
+  if (changed('scenes')) labels.push('Scener');
+  if (changed('cast')) labels.push('Cast og individuelle tider');
+  if (changed('crew')) labels.push('Crew');
+  if (changed('instructions')) labels.push('Instruksjoner og nødinformasjon');
+  const recipientsChanged = changed('recipientEmails');
+  if (recipientsChanged) labels.push('Mottakerliste');
+  return { labels, contentChanged: labels.some((label) => label !== 'Mottakerliste'), recipientsChanged };
+}
+
+export function selectAffectedCallSheetRecipients(
+  currentEmails: string[],
+  previousDelivery: Pick<CallSheetDelivery, 'recipients'> | null | undefined,
+  changes: { contentChanged: boolean },
+): string[] {
+  const current = [...new Set(currentEmails.map((email) => email.trim().toLowerCase()).filter(Boolean))];
+  if (!previousDelivery || changes.contentChanged) return current;
+  const previousEmails = new Set(previousDelivery.recipients.map((recipient) => recipient.email.trim().toLowerCase()));
+  const failedEmails = new Set(previousDelivery.recipients
+    .filter((recipient) => recipient.deliveryStatus === 'failed')
+    .map((recipient) => recipient.email.trim().toLowerCase()));
+  return current.filter((email) => !previousEmails.has(email) || failedEmails.has(email));
+}
+
+function callSheetActivityLabel(delivery: CallSheetDelivery, event: CallSheetDeliveryEvent): string {
+  const details = event.details || {};
+  if (event.type === 'published') return `Revisjon ${delivery.revision} publisert`;
+  if (event.type === 'delivery_completed') return `Utsending fullført: ${Number(details.sent || 0)}/${Number(details.total || 0)} sendt`;
+  if (event.type === 'reminded') return `${Number(details.reminded || 0)} påminnelse${Number(details.reminded || 0) === 1 ? '' : 'r'} sendt`;
+  if (event.type === 'acknowledged') {
+    const recipient = delivery.recipients.find((item) => item.id === event.recipientId);
+    return recipient ? `${recipient.email} bekreftet mottak` : 'Mottak bekreftet';
+  }
+  if (event.type === 'retracted') return `Revisjon ${delivery.revision} trukket tilbake`;
+  return event.type;
 }
 
 export function buildCallSheetRecipientPreview(
@@ -565,6 +685,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
   crew = EMPTY_CREW,
   locations = EMPTY_LOCATIONS,
   onGenerate,
+  onDeliverySent,
 }) => {
   const theme = useTheme();
   const responsive = useResponsiveConfig();
@@ -580,6 +701,11 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
   const [sendPermission, setSendPermission] = useState<'loading' | 'manage' | 'view'>('loading');
   const [recipientPreviewOpen, setRecipientPreviewOpen] = useState(false);
   const [selectedRecipientEmails, setSelectedRecipientEmails] = useState<Set<string>>(new Set());
+  const [deliveryHistory, setDeliveryHistory] = useState<CallSheetDelivery[]>([]);
+  const [deliveryHistoryLoading, setDeliveryHistoryLoading] = useState(false);
+  const [deliveryHistoryRefresh, setDeliveryHistoryRefresh] = useState(0);
+  const [retractTarget, setRetractTarget] = useState<CallSheetDelivery | null>(null);
+  const [retracting, setRetracting] = useState(false);
   
   // Data from casting service
   const [castingCandidates, setCastingCandidates] = useState<Candidate[]>([]);
@@ -599,6 +725,62 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
     () => buildCallSheetRecipientPreview(callSheet.crew || [], callSheet.cast || []),
     [callSheet.crew, callSheet.cast],
   );
+  const deliveryDayId = activeProductionDay?.id || productionDayId || '';
+  const latestPublishedDelivery = useMemo(
+    () => deliveryHistory.find((delivery) => delivery.status === 'published') || null,
+    [deliveryHistory],
+  );
+  const currentRevisionSnapshot = useMemo(
+    () => buildCallSheetRevisionSnapshot(callSheet, recipientPreview.valid.map((recipient) => recipient.email)),
+    [callSheet, recipientPreview.valid],
+  );
+  const revisionChanges = useMemo(
+    () => describeCallSheetRevisionChanges(latestPublishedDelivery?.snapshot, currentRevisionSnapshot),
+    [latestPublishedDelivery?.snapshot, currentRevisionSnapshot],
+  );
+  const nextRevision = Math.max(0, ...deliveryHistory.map((delivery) => delivery.revision || 0)) + 1;
+  const affectedRecipientEmails = useMemo(
+    () => selectAffectedCallSheetRecipients(
+      recipientPreview.valid.map((recipient) => recipient.email),
+      latestPublishedDelivery,
+      revisionChanges,
+    ),
+    [recipientPreview.valid, latestPublishedDelivery, revisionChanges],
+  );
+  const deliveryActivity = useMemo(
+    () => deliveryHistory
+      .flatMap((delivery) => (delivery.events || []).map((event) => ({ delivery, event })))
+      .sort((a, b) => new Date(b.event.createdAt).getTime() - new Date(a.event.createdAt).getTime())
+      .slice(0, 8),
+    [deliveryHistory],
+  );
+
+  useEffect(() => {
+    if (!projectId || !deliveryDayId) {
+      setDeliveryHistory([]);
+      return;
+    }
+    let cancelled = false;
+    setDeliveryHistoryLoading(true);
+    void fetch(`/api/role-room/projects/${encodeURIComponent(projectId)}/call-sheet-deliveries?productionDayId=${encodeURIComponent(deliveryDayId)}`, {
+      headers: roleRoomAgentDefaultHeaders(),
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Kunne ikke laste revisjonshistorikken.');
+        return response.json();
+      })
+      .then((data) => {
+        if (!cancelled) setDeliveryHistory(Array.isArray(data?.deliveries) ? data.deliveries : []);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setDeliveryHistory([]);
+          setSendFeedback({ severity: 'warning', text: error instanceof Error ? error.message : 'Kunne ikke laste revisjonshistorikken.' });
+        }
+      })
+      .finally(() => { if (!cancelled) setDeliveryHistoryLoading(false); });
+    return () => { cancelled = true; };
+  }, [projectId, deliveryDayId, deliveryHistoryRefresh]);
 
   useEffect(() => {
     if (!projectId) {
@@ -666,13 +848,36 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
     return out;
   }, [callSheet.date, castingCandidates]);
 
+  // The selected production day is the live source while the dialog is open.
+  // Apply 2AD edits immediately; background hydration below only enriches the
+  // sheet with project, role and candidate metadata.
+  useEffect(() => {
+    setCallSheet(createEmptyCallSheet(productionDay));
+    setActiveProductionDay(productionDay);
+    setIsSynced(false);
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!productionDay) return;
+    const dayFields = buildDayCallSheetFields(
+      productionDay,
+      scenes,
+      crew.length ? crew : castingCrew,
+      locations.length ? locations : castingLocations,
+      castingRoles,
+      castingCandidates,
+    );
+    setActiveProductionDay(productionDay);
+    setCallSheet((current) => ({ ...current, ...dayFields }));
+    setIsSynced(true);
+  }, [productionDay, scenes, crew, locations, castingCrew, castingLocations, castingRoles, castingCandidates]);
+
   // Load data from casting service (background, non-blocking)
   useEffect(() => {
     const loadCastingData = async () => {
       // Ikke blokker UI mens registrerte prosjektdata lastes.
       try {
         setIsSynced(false);
-        setCallSheet(createEmptyCallSheet(productionDay));
         const [project, candidates, roles, crewMembers, locs, productionDays, loadedScenes] = await Promise.all([
           castingService.getProject(projectId).catch(() => null),
           castingService.getCandidates(projectId).catch(() => []),
@@ -740,7 +945,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
       // Background load - don't await
       loadCastingData();
     }
-  }, [projectId, productionDay, productionDayId, scenes, crew, locations]);
+  }, [projectId, productionDay?.id, productionDayId]);
 
   const openRecipientPreview = () => {
     if (sendPermission !== 'manage') {
@@ -752,7 +957,11 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
       setSendFeedback({ severity: 'warning', text: 'Ingen cast eller crew har gyldig e-postadresse.' });
       return;
     }
-    setSelectedRecipientEmails(new Set(recipients.map((recipient) => recipient.email)));
+    if (latestPublishedDelivery && revisionChanges.labels.length === 0 && affectedRecipientEmails.length === 0) {
+      setSendFeedback({ severity: 'warning', text: `Revisjon ${latestPublishedDelivery.revision} er allerede oppdatert. Det finnes ingen endringer eller mislykkede mottakere å sende på nytt.` });
+      return;
+    }
+    setSelectedRecipientEmails(new Set(affectedRecipientEmails));
     setRecipientPreviewOpen(true);
   };
 
@@ -774,28 +983,55 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
         headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders() },
         body: JSON.stringify({
           projectId,
-          productionDayId: activeProductionDay?.id,
-          revision: 1,
+          productionDayId: deliveryDayId || null,
+          supersedesDeliveryId: latestPublishedDelivery?.id || null,
           subject: `Call Sheet · ${callSheet.projectName} · ${callSheet.date}`,
           html: buildCallSheetEmailHtml(callSheet),
+          snapshot: currentRevisionSnapshot,
           recipients,
         }),
       });
-      const data = (await response.json().catch(() => ({}))) as { sent?: number; total?: number; error?: string };
+      const data = (await response.json().catch(() => ({}))) as { sent?: number; total?: number; revision?: number; error?: string };
       if (!response.ok) throw new Error(data?.error || 'Sending feilet');
       const sent = data.sent ?? 0;
       const total = data.total ?? recipients.length;
+      const publishedRevision = data.revision ?? nextRevision;
       setSendFeedback({
         severity: sent === total ? 'success' : 'warning',
         text: sent === total
-          ? `Call sheet sendt til alle ${total} mottakere.`
-          : `Sendt til ${sent} av ${total}. Sjekk e-postadressene til resten.`,
+          ? `Revisjon ${publishedRevision} er publisert til alle ${total} mottakere.`
+          : `Revisjon ${publishedRevision} er publisert. Sendt til ${sent} av ${total}; sjekk resten i historikken.`,
       });
+      if (sent > 0) onDeliverySent?.();
+      setDeliveryHistoryRefresh((value) => value + 1);
       setRecipientPreviewOpen(false);
     } catch (error) {
       setSendFeedback({ severity: 'error', text: error instanceof Error ? error.message : 'Kunne ikke sende call sheet.' });
     } finally {
       setSendingCallSheet(false);
+    }
+  };
+
+  const handleRetractDelivery = async () => {
+    if (!retractTarget) return;
+    setRetracting(true);
+    setSendFeedback(null);
+    try {
+      const response = await fetch(`/api/role-room/call-sheet-deliveries/${encodeURIComponent(retractTarget.id)}/retract`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders() },
+        body: JSON.stringify({ reason: 'Trukket tilbake fra call-sheet-generatoren' }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || 'Tilbaketrekking feilet');
+      setSendFeedback({ severity: 'success', text: `Revisjon ${retractTarget.revision} er trukket tilbake. Alle ubekreftede kvitteringslenker er ugyldige.` });
+      setRetractTarget(null);
+      setDeliveryHistoryRefresh((value) => value + 1);
+      onDeliverySent?.();
+    } catch (error) {
+      setSendFeedback({ severity: 'error', text: error instanceof Error ? error.message : 'Kunne ikke trekke tilbake call sheeten.' });
+    } finally {
+      setRetracting(false);
     }
   };
 
@@ -1130,7 +1366,9 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                         ? 'Kun lesetilgang'
                         : !isSynced
                           ? 'Laster mottakere…'
-                        : 'Kontroller mottakere'
+                        : latestPublishedDelivery
+                          ? `Kontroller revisjon ${nextRevision}`
+                          : 'Kontroller mottakere'
                     : ''}
                 </Button>
               </span>
@@ -1148,6 +1386,75 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
         </Stack>
       </Paper>
 
+      <Paper
+        variant="outlined"
+        data-testid="call-sheet-revision-status"
+        sx={{ p: 1.5, mb: responsive.spacing, borderRadius: 2 }}
+      >
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }}>
+          <Box>
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+              <Typography sx={{ fontWeight: 800 }}>Revisjoner</Typography>
+              {deliveryHistoryLoading ? (
+                <CircularProgress size={16} />
+              ) : latestPublishedDelivery ? (
+                <Chip size="small" color={revisionChanges.labels.length ? 'warning' : 'success'} label={revisionChanges.labels.length ? 'Upubliserte endringer' : `Publisert revisjon ${latestPublishedDelivery.revision}`} />
+              ) : (
+                <Chip size="small" color="warning" label="Utkast · ikke publisert" />
+              )}
+            </Stack>
+            <Typography variant="caption" color="text.secondary">
+              {revisionChanges.labels.length
+                ? `Neste publisering blir revisjon ${nextRevision}: ${revisionChanges.labels.join(', ')}.`
+                : 'Call sheeten samsvarer med siste publiserte revisjon.'}
+            </Typography>
+          </Box>
+          {latestPublishedDelivery && sendPermission === 'manage' && (
+            <Button
+              size="small"
+              color="error"
+              variant="outlined"
+              startIcon={<DeleteIcon />}
+              onClick={() => setRetractTarget(latestPublishedDelivery)}
+            >
+              Trekk tilbake revisjon {latestPublishedDelivery.revision}
+            </Button>
+          )}
+        </Stack>
+
+        {deliveryHistory.length > 0 && (
+          <Stack spacing={0.75} sx={{ mt: 1.5 }}>
+            {deliveryHistory.slice(0, 5).map((delivery) => (
+              <Box key={delivery.id} sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, py: 0.5, borderTop: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="body2" sx={{ fontWeight: 800 }}>Rev. {delivery.revision}</Typography>
+                <Chip
+                  size="small"
+                  color={delivery.status === 'published' ? 'success' : delivery.status === 'retracted' ? 'error' : 'default'}
+                  label={delivery.status === 'published' ? 'Aktiv' : delivery.status === 'retracted' ? 'Trukket tilbake' : 'Erstattet'}
+                />
+                <Typography variant="caption" color="text.secondary">
+                  {new Date(delivery.createdAt).toLocaleString('nb-NO')} · {delivery.sent}/{delivery.total} sendt · {delivery.acknowledged} bekreftet
+                  {delivery.failed ? ` · ${delivery.failed} feilet` : ''}
+                </Typography>
+              </Box>
+            ))}
+          </Stack>
+        )}
+        {deliveryActivity.length > 0 && (
+          <Box sx={{ mt: 1.5 }}>
+            <Divider sx={{ mb: 1 }} />
+            <Typography variant="caption" sx={{ fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em' }}>Aktivitetslogg</Typography>
+            <Stack spacing={0.5} sx={{ mt: 0.75 }}>
+              {deliveryActivity.map(({ delivery, event }) => (
+                <Typography key={event.id} variant="caption" color="text.secondary">
+                  {new Date(event.createdAt).toLocaleString('nb-NO')} · {callSheetActivityLabel(delivery, event)}
+                </Typography>
+              ))}
+            </Stack>
+          </Box>
+        )}
+      </Paper>
+
       <Dialog
         open={recipientPreviewOpen}
         onClose={() => !sendingCallSheet && setRecipientPreviewOpen(false)}
@@ -1155,11 +1462,24 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
         fullWidth
         PaperProps={{ 'data-testid': 'call-sheet-recipient-preview' }}
       >
-        <DialogTitle>Kontroller mottakere</DialogTitle>
+        <DialogTitle>{latestPublishedDelivery ? `Publiser revisjon ${nextRevision}` : 'Publiser første revisjon'}</DialogTitle>
         <DialogContent dividers>
           <Typography sx={{ mb: 1.5, color: 'text.secondary' }}>
             Ingen e-post sendes før du bekrefter listen. Fjern mottakere som ikke skal ha denne revisjonen.
           </Typography>
+          <Alert severity={revisionChanges.contentChanged ? 'warning' : 'info'} sx={{ mb: 1.5 }}>
+            {revisionChanges.labels.length ? `Endringer: ${revisionChanges.labels.join(', ')}.` : 'Ingen innholdsendringer.'}
+            {latestPublishedDelivery && revisionChanges.contentChanged
+              ? ' Innholdet er endret, derfor er alle nåværende mottakere valgt.'
+              : latestPublishedDelivery
+                ? ' Bare nye mottakere og tidligere mislykkede utsendinger velges automatisk.'
+                : ''}
+          </Alert>
+          {selectedRecipientEmails.size === 0 && (
+            <Alert severity="warning" sx={{ mb: 1.5 }}>
+              Ingen mottakere er automatisk berørt. Velg manuelt hvis revisjonen likevel skal sendes på nytt.
+            </Alert>
+          )}
           <Stack spacing={0.5}>
             {recipientPreview.valid.map((recipient) => (
               <FormControlLabel
@@ -1215,7 +1535,22 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
             disabled={sendingCallSheet || selectedRecipientEmails.size === 0}
             onClick={() => void handleSendToCrew()}
           >
-            {sendingCallSheet ? 'Sender…' : `Send til ${selectedRecipientEmails.size} mottakere`}
+            {sendingCallSheet ? 'Publiserer…' : `Publiser til ${selectedRecipientEmails.size} mottakere`}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(retractTarget)} onClose={() => !retracting && setRetractTarget(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Trekk tilbake revisjon {retractTarget?.revision}</DialogTitle>
+        <DialogContent dividers>
+          <Alert severity="error">
+            Revisjonen markeres som trukket tilbake, og alle ubekreftede mottakslenker blir ugyldige. Historikken beholdes.
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={retracting} onClick={() => setRetractTarget(null)}>Avbryt</Button>
+          <Button disabled={retracting} color="error" variant="contained" onClick={() => void handleRetractDelivery()}>
+            {retracting ? 'Trekker tilbake…' : 'Bekreft tilbaketrekking'}
           </Button>
         </DialogActions>
       </Dialog>

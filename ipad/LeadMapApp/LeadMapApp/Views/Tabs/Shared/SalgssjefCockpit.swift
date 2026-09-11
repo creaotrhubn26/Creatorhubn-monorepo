@@ -506,7 +506,7 @@ struct ApprovalItem: Identifiable {
 enum ApprovalMockData {
     /// Mock — KUN i demo-modus.
     static var items: [ApprovalItem] {
-        DemoModeManager.isActiveNonisolated ? _items : []
+        DemoModeManager.usesGenericFixtures ? _items : []
     }
     private static let _items: [ApprovalItem] = [
         ApprovalItem(id: "a1", kind: .discount, title: "18 % rabatt over grense (12 %)",
@@ -523,7 +523,9 @@ enum ApprovalMockData {
                      rationale: "Enterprise-avtale. Vi tilbyr gratis 4-uker onboarding + kundeansvarlig-tildelt. Vurdert ROI: +18 % expansion.")
     ]
 
-    private static func currentUser() -> String { "Lars Kristensen" }
+    private static func currentUser() -> String {
+        DemoModeManager.isDentumTour ? "Daniel Qazi" : "Lars Kristensen"
+    }
 }
 
 // MARK: - 2. TeamForecastSheet — per-selger + team totalt
@@ -709,7 +711,7 @@ struct ForecastRow: Identifiable {
 enum TeamForecastMockData {
     /// Mock — KUN i demo-modus.
     static var rows: [ForecastRow] {
-        DemoModeManager.isActiveNonisolated ? _rows : []
+        DemoModeManager.usesGenericFixtures ? _rows : []
     }
     private static let _rows: [ForecastRow] = [
         ForecastRow(name: "Anniken Sørli",  initials: "AS", color: SlBrand.purpleLight, predictedText: "3,2 mill.", goalText: "3,0 mill.", trend: 7,   trendText: "+7 %",   attainment: 1.06),
@@ -956,10 +958,10 @@ struct CoachingRow: Identifiable {
 enum CoachingMockData {
     /// Mock — KUN i demo-modus.
     static var upcoming: [CoachingRow] {
-        DemoModeManager.isActiveNonisolated ? _upcoming : []
+        DemoModeManager.usesGenericFixtures ? _upcoming : []
     }
     static var all: [CoachingRow] {
-        DemoModeManager.isActiveNonisolated ? _all : []
+        DemoModeManager.usesGenericFixtures ? _all : []
     }
     private static let _upcoming: [CoachingRow] = [
         CoachingRow(name: "Sara Lindberg", initials: "SL", color: SlBrand.orange,
@@ -1387,10 +1389,10 @@ struct MileageEntry: Identifiable {
 enum MileageMockData {
     /// Mock — KUN i demo-modus.
     static var pending: [MileageEntry] {
-        DemoModeManager.isActiveNonisolated ? _pending : []
+        DemoModeManager.usesGenericFixtures ? _pending : []
     }
     static var recent: [MileageEntry] {
-        DemoModeManager.isActiveNonisolated ? _recent : []
+        DemoModeManager.usesGenericFixtures ? _recent : []
     }
     private static let _pending: [MileageEntry] = [
         MileageEntry(sellerName: "Sara Lindberg",   initials: "SL", color: SlBrand.blue,        dateText: "I dag", routeText: "Oslo → Sandvika → Lysaker", km: 42, amountText: "210 kr", isPaid: false),
@@ -1782,7 +1784,7 @@ struct TeamRouteDestination {
 enum TeamRoutesMockData {
     /// Mock — KUN i demo-modus.
     static var routes: [TeamRoute] {
-        DemoModeManager.isActiveNonisolated ? _routes : []
+        DemoModeManager.usesGenericFixtures ? _routes : []
     }
     private static let _routes: [TeamRoute] = [
         // Aktive nå — hver har en destination så «Naviger dit» virker

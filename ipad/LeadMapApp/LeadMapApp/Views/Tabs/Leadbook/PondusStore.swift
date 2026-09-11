@@ -21,14 +21,16 @@ final class PondusStore {
     private(set) var lastError: String?
     private(set) var lastLoadedAt: Date?
     private var organizationId: String?
+    private var projectId: String?
 
     init() {}
 
     #if DEBUG
     /// Deterministisk live-lik fixture for UI-test. Den bruker samme DTO og
     /// samme coach som produksjon, men opprettes bare ved eksplisitt QA_TOUR.
-    func seedForQACoach(organizationId: UUID) {
+    func seedForQACoach(organizationId: UUID, projectId: String) {
         self.organizationId = organizationId.uuidString.lowercased()
+        self.projectId = projectId
         templates = [PondusTemplateDTO(
             id: UUID(uuidString: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")!,
             name: "QA møteåpning",
@@ -50,6 +52,7 @@ final class PondusStore {
             ),
             createdBy: "qa",
             orgId: organizationId,
+            projectId: projectId,
             isPublished: true,
             publishedAt: "2026-09-03T00:00:00Z",
             publishedBy: "qa",
@@ -81,10 +84,11 @@ final class PondusStore {
     func load(
         api: APIClient?,
         organizationId: String? = nil,
+        projectId: String? = nil,
         includeDrafts: Bool = true
     ) async {
-        if self.organizationId != organizationId {
-            resetForOrganization(organizationId)
+        if self.organizationId != organizationId || self.projectId != projectId {
+            resetForContext(organizationId: organizationId, projectId: projectId)
         }
         guard let api else {
             lastError = "no_api_client"
@@ -92,14 +96,17 @@ final class PondusStore {
         }
         isLoading = true
         let requestedOrganizationId = organizationId
+        let requestedProjectId = projectId
         do {
             let list = try await api.pondusListTemplates(
                 category: nil,
                 kind: nil,
                 publishedOnly: !includeDrafts,
-                organizationId: organizationId
+                organizationId: organizationId,
+                projectId: projectId
             )
-            guard requestedOrganizationId == self.organizationId else { return }
+            guard requestedOrganizationId == self.organizationId,
+                  requestedProjectId == self.projectId else { return }
             self.isLoading = false
             self.templates = list
             self.lastLoadedAt = Date()
@@ -108,14 +115,20 @@ final class PondusStore {
             // Trimmer til topp 8 publiserte maler.
             PondusWatchSync.shared.pushTemplatesToWatch(list.filter { $0.isPublished })
         } catch {
-            guard requestedOrganizationId == self.organizationId else { return }
+            guard requestedOrganizationId == self.organizationId,
+                  requestedProjectId == self.projectId else { return }
             self.isLoading = false
             self.lastError = String(describing: error)
         }
     }
 
     func resetForOrganization(_ newOrganizationId: String?) {
-        organizationId = newOrganizationId
+        resetForContext(organizationId: newOrganizationId, projectId: nil)
+    }
+
+    func resetForContext(organizationId: String?, projectId: String?) {
+        self.organizationId = organizationId
+        self.projectId = projectId
         templates = []
         isLoading = false
         lastError = nil
@@ -124,6 +137,7 @@ final class PondusStore {
 
     func resetForSignOut() {
         organizationId = nil
+        projectId = nil
         templates = []
         isLoading = false
         lastError = nil
@@ -138,7 +152,8 @@ final class PondusStore {
         do {
             let created = try await api.pondusCreateTemplate(
                 payload,
-                organizationId: organizationId
+                organizationId: organizationId,
+                projectId: projectId
             )
             templates.insert(created, at: 0)
             return created
@@ -159,7 +174,8 @@ final class PondusStore {
             let updated = try await api.pondusUpdateTemplate(
                 id: id.uuidString.lowercased(),
                 versionedPayload,
-                organizationId: organizationId
+                organizationId: organizationId,
+                projectId: projectId
             )
             replace(updated)
             return updated
@@ -177,7 +193,8 @@ final class PondusStore {
                 id: id.uuidString.lowercased(),
                 published: published,
                 expectedVersion: templates.first(where: { $0.id == id })?.version ?? 1,
-                organizationId: organizationId
+                organizationId: organizationId,
+                projectId: projectId
             )
             replace(updated)
             return updated
@@ -198,7 +215,8 @@ final class PondusStore {
                 category: category,
                 prompt: prompt,
                 response: response,
-                organizationId: organizationId
+                organizationId: organizationId,
+                projectId: projectId
             )
             for t in updated { replace(t) }
             return updated.count
@@ -213,11 +231,12 @@ final class PondusStore {
         do {
             try await api.pondusDeleteTemplate(
                 id: id.uuidString.lowercased(),
-                organizationId: organizationId
+                organizationId: organizationId,
+                projectId: projectId
             )
             // Soft-delete → backend setter is_published = false, ikke sletter.
             // Hard-delete → rad forsvinner. Reload for korrekt tilstand.
-            await load(api: api, organizationId: organizationId)
+            await load(api: api, organizationId: organizationId, projectId: projectId)
         } catch {
             lastError = String(describing: error)
         }
@@ -229,7 +248,8 @@ final class PondusStore {
         do {
             return try await api.pondusTemplateUsageDetail(
                 templateId: templateId.uuidString.lowercased(),
-                organizationId: organizationId
+                organizationId: organizationId,
+                projectId: projectId
             )
         } catch {
             lastError = String(describing: error)
@@ -680,13 +700,15 @@ struct PondusCoachView: View {
 
     @MainActor
     private func startSession() async {
-        guard let api = appState.api, let orgId = appState.activeOrganizationId else {
-            statusMessage = "Mangler aktiv organisasjon eller innlogging."
+        guard let api = appState.api,
+              let orgId = appState.activeOrganizationId,
+              let projectId = appState.activeProjectId else {
+            statusMessage = "Velg et kundeprosjekt før Pondus startes."
             return
         }
         isSaving = true
         let disposition = await OfflineResilientActions.logPondusUsage(
-            api: api, organizationId: orgId, templateId: template.id,
+            api: api, organizationId: orgId, projectId: projectId, templateId: template.id,
             usageSessionId: usageSessionId, leadId: selectedLeadId, outcome: "used"
         )
         isSaving = false
@@ -697,10 +719,12 @@ struct PondusCoachView: View {
 
     @MainActor
     private func saveOutcome(_ outcome: String) async {
-        guard let api = appState.api, let orgId = appState.activeOrganizationId else { return }
+        guard let api = appState.api,
+              let orgId = appState.activeOrganizationId,
+              let projectId = appState.activeProjectId else { return }
         isSaving = true
         let disposition = await OfflineResilientActions.logPondusUsage(
-            api: api, organizationId: orgId, templateId: template.id,
+            api: api, organizationId: orgId, projectId: projectId, templateId: template.id,
             usageSessionId: usageSessionId, leadId: selectedLeadId, outcome: outcome
         )
         isSaving = false

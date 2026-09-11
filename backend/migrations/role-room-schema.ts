@@ -788,8 +788,20 @@ export const roleRoomCallSheetDeliveries = pgTable('role_room_call_sheet_deliver
   projectId: varchar('project_id', { length: 255 }).notNull().references(() => castingProjects.id, { onDelete: 'cascade' }),
   productionDayId: varchar('production_day_id', { length: 255 }), revision: integer('revision').default(1).notNull(),
   subject: varchar('subject', { length: 200 }).notNull(), sentByUserId: varchar('sent_by_user_id', { length: 255 }).notNull(),
+  status: varchar('status', { length: 24 }).default('published').notNull(),
+  supersedesDeliveryId: uuid('supersedes_delivery_id'),
+  contentHash: varchar('content_hash', { length: 64 }),
+  snapshot: jsonb('snapshot').default({}).notNull(),
+  retractedAt: timestamp('retracted_at', { withTimezone: true, mode: 'string' }),
+  retractedByUserId: varchar('retracted_by_user_id', { length: 255 }),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-}, (table) => [index('idx_rr_call_sheet_deliveries_project_day').using('btree', table.projectId, table.productionDayId, table.createdAt)]);
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_rr_call_sheet_deliveries_project_day').using('btree', table.projectId, table.productionDayId, table.createdAt),
+  uniqueIndex('idx_rr_call_sheet_delivery_revision').using('btree', table.projectId, sql`COALESCE(${table.productionDayId}, '')`, table.revision),
+  uniqueIndex('idx_rr_call_sheet_one_published').using('btree', table.projectId, sql`COALESCE(${table.productionDayId}, '')`).where(sql`${table.status} = 'published'`),
+  index('idx_rr_call_sheet_supersedes').using('btree', table.supersedesDeliveryId),
+]);
 
 export const roleRoomCallSheetRecipients = pgTable('role_room_call_sheet_recipients', {
   id: uuid('id').defaultRandom().primaryKey().notNull(),
@@ -798,7 +810,36 @@ export const roleRoomCallSheetRecipients = pgTable('role_room_call_sheet_recipie
   tokenHash: varchar('token_hash', { length: 64 }).notNull(), deliveryStatus: varchar('delivery_status', { length: 24 }).default('pending').notNull(),
   failureReason: varchar('failure_reason', { length: 80 }), providerMessageId: varchar('provider_message_id', { length: 255 }),
   sentAt: timestamp('sent_at', { withTimezone: true, mode: 'string' }), acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true, mode: 'string' }),
+  reminderCount: integer('reminder_count').default(0).notNull(),
+  lastRemindedAt: timestamp('last_reminded_at', { withTimezone: true, mode: 'string' }),
   expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }).default(sql`now() + interval '14 days'`).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [uniqueIndex('idx_rr_call_sheet_recipients_token').using('btree', table.tokenHash), index('idx_rr_call_sheet_recipients_delivery').using('btree', table.deliveryId)]);
+
+export const roleRoomCallSheetRecipientTokens = pgTable('role_room_call_sheet_recipient_tokens', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  recipientId: uuid('recipient_id').notNull().references(() => roleRoomCallSheetRecipients.id, { onDelete: 'cascade' }),
+  tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }).default(sql`now() + interval '14 days'`).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true, mode: 'string' }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('idx_rr_call_sheet_recipient_tokens_hash').using('btree', table.tokenHash),
+  index('idx_rr_call_sheet_recipient_tokens_recipient').using('btree', table.recipientId, table.createdAt),
+]);
+
+export const roleRoomCallSheetEvents = pgTable('role_room_call_sheet_events', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  deliveryId: uuid('delivery_id').notNull().references(() => roleRoomCallSheetDeliveries.id, { onDelete: 'cascade' }),
+  projectId: varchar('project_id', { length: 255 }).notNull().references(() => castingProjects.id, { onDelete: 'cascade' }),
+  productionDayId: varchar('production_day_id', { length: 255 }),
+  actorUserId: varchar('actor_user_id', { length: 255 }),
+  recipientId: uuid('recipient_id').references(() => roleRoomCallSheetRecipients.id, { onDelete: 'set null' }),
+  eventType: varchar('event_type', { length: 40 }).notNull(),
+  details: jsonb('details').default({}).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_rr_call_sheet_events_delivery').using('btree', table.deliveryId, table.createdAt),
+  index('idx_rr_call_sheet_events_project_day').using('btree', table.projectId, table.productionDayId, table.createdAt),
+]);

@@ -117,18 +117,6 @@ struct ProjectContextPill: View {
                 }
                 #endif
             }
-            .fullScreenCover(isPresented: Binding(
-                get: { appState.discoveryCoordinator.isPresented },
-                set: { presented in
-                    if presented {
-                        appState.discoveryCoordinator.showWorkspace()
-                    } else {
-                        appState.discoveryCoordinator.dismissWorkspace()
-                    }
-                }
-            )) {
-                DiscoveryWorkspaceView(coordinator: appState.discoveryCoordinator)
-            }
             .macCatalystHover()
         }
     }
@@ -172,6 +160,10 @@ struct ProjectContextPill: View {
             // presenteres. Da unngår vi konkurrerende SwiftUI-presentasjoner.
             await Task.yield()
             await appState.configureDiscovery()
+            appState.discoveryCoordinator.applyCommittedProfiles(
+                result.profiles,
+                forProjectId: result.project.id
+            )
             appState.discoveryCoordinator.showWorkspace()
         }
     }
@@ -183,20 +175,25 @@ struct ProjectContextPill: View {
     /// Samme form som headerens pickerButton, men lilla-fylt når et
     /// prosjekt er aktivt — konteksten skal synes, ikke gjettes.
     private var pill: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: DeviceIdiom.isPhone ? 6 : 10) {
             Image(systemName: hasActiveProject ? "folder.fill" : "folder")
-                .font(.appScaled(size: 14, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(hasActiveProject ? .white : Self.purpleLight)
             Text(currentLabel)
-                .font(.appScaled(size: 13, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-            Image(systemName: "chevron.down")
-                .font(.appScaled(size: 10, weight: .semibold))
-                .foregroundStyle(hasActiveProject ? Color.white.opacity(0.75) : Self.textSecondary)
+                .frame(maxWidth: DeviceIdiom.isPhone ? 150 : nil)
+            if !DeviceIdiom.isPhone {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(hasActiveProject ? Color.white.opacity(0.75) : Self.textSecondary)
+            }
         }
-        .padding(.horizontal, 12).padding(.vertical, 10)
+        .padding(.horizontal, DeviceIdiom.isPhone ? 8 : 12)
+        .padding(.vertical, 10)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
         .background(
             hasActiveProject ? Self.purple.opacity(0.85) : Self.card,
             in: RoundedRectangle(cornerRadius: 12)

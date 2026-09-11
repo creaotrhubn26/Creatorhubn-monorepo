@@ -130,6 +130,8 @@ struct LeadgridAgentChatView: View {
 
             Spacer()
 
+            ProjectContextPill()
+
             if let usage = lastAssistantUsage {
                 Text("\(usage.inputTokens + usage.outputTokens) tokens")
                     .font(.caption2.monospacedDigit())

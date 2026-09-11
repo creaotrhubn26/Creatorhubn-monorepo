@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import LeadMapApp
 
 final class ProjectDomainOnboardingTests: XCTestCase {
@@ -357,5 +358,115 @@ final class ProjectDomainOnboardingTests: XCTestCase {
         XCTAssertEqual(result.access?.team?.name, "Dentum salg")
         XCTAssertEqual(result.access?.invitations.first?.emailStatus, "sent")
         XCTAssertEqual(result.access?.discoveryAccessVerified, true)
+    }
+}
+
+final class DentumLeadOutreachTests: XCTestCase {
+    private func lead(
+        company: String = "Majorstuen Tannlegesenter AS",
+        contactName: String = "Anne Lunde",
+        status: LeadRow.LeadStatus = .notContacted,
+        city: String? = "Oslo"
+    ) -> LeadRow {
+        LeadRow(
+            company: company,
+            category: "Tannhelse",
+            contactName: contactName,
+            contactRole: "Daglig leder",
+            leadScore: 86,
+            status: status,
+            ownerName: "Daniel Qazi",
+            ownerInitials: "DQ",
+            ownerColor: .purple,
+            nextFollowUp: nil,
+            nextFollowUpOverdue: false,
+            valueNok: 0,
+            companyColor: .blue,
+            projectId: "dentum-oslo",
+            email: "post@klinikk.example",
+            city: city,
+            websiteURL: "https://klinikk.example",
+            organizationNumber: "999888777"
+        )
+    }
+
+    func testDentumProjectProvidesCompleteDentalClinicKit() throws {
+        let context = LeadOutreachContext(
+            lead: lead(),
+            projectName: "Dentum",
+            senderName: "Daniel Qazi"
+        )
+        let kit = LeadOutreachTemplateEngine.makeKit(context: context)
+
+        XCTAssertTrue(kit.isDentum)
+        XCTAssertEqual(kit.title, "Dentum-oppsett")
+        XCTAssertEqual(kit.templates.count, 7)
+        XCTAssertEqual(kit.recommendedTemplateID, "dentum-pilot")
+        XCTAssertEqual(Set(kit.templates.map(\.id)).count, kit.templates.count)
+
+        let pilot = try XCTUnwrap(kit.templates.first { $0.id == "dentum-pilot" })
+        XCTAssertEqual(
+            pilot.subject,
+            "Kan Majorstuen Tannlegesenter AS bli med i Dentum-piloten?"
+        )
+        XCTAssertTrue(pilot.body.contains("Hei Anne,"))
+        XCTAssertTrue(pilot.body.contains("pasienter i Oslo"))
+        XCTAssertTrue(pilot.body.contains("gratis og uforpliktende"))
+        XCTAssertTrue(pilot.body.contains("Daniel Qazi\nDentum"))
+        XCTAssertFalse(pilot.body.contains("{{"))
+    }
+
+    func testSelectedLeadChangesEveryPersonalizedClinicMessage() {
+        let first = LeadOutreachTemplateEngine.makeKit(context: .init(
+            lead: lead(), projectName: "Dentum", senderName: "Daniel Qazi"
+        ))
+        let second = LeadOutreachTemplateEngine.makeKit(context: .init(
+            lead: lead(company: "Bjørvika Tannklinikk", contactName: "Ola Berg", city: "Bjørvika"),
+            projectName: "Dentum",
+            senderName: "Daniel Qazi"
+        ))
+
+        XCTAssertEqual(first.templates.map(\.id), second.templates.map(\.id))
+        for (firstTemplate, secondTemplate) in zip(first.templates, second.templates) {
+            XCTAssertNotEqual(firstTemplate.subject, secondTemplate.subject)
+            XCTAssertNotEqual(firstTemplate.body, secondTemplate.body)
+            XCTAssertTrue(secondTemplate.body.contains("Ola"))
+            XCTAssertTrue(secondTemplate.body.contains("Bjørvika Tannklinikk"))
+        }
+    }
+
+    func testLeadStatusChoosesSafeRecommendedTemplate() {
+        let contacted = LeadOutreachTemplateEngine.makeKit(context: .init(
+            lead: lead(status: .contacted), projectName: "Dentum", senderName: "Daniel"
+        ))
+        let interested = LeadOutreachTemplateEngine.makeKit(context: .init(
+            lead: lead(status: .interested), projectName: "Dentum", senderName: "Daniel"
+        ))
+        let warm = LeadOutreachTemplateEngine.makeKit(context: .init(
+            lead: lead(status: .warm), projectName: "Dentum", senderName: "Daniel"
+        ))
+
+        XCTAssertEqual(contacted.recommendedTemplateID, "dentum-follow-up")
+        XCTAssertEqual(interested.recommendedTemplateID, "dentum-next-step")
+        XCTAssertEqual(warm.recommendedTemplateID, "dentum-short-call")
+    }
+
+    func testMissingContactAndNonDentumProjectHaveHonestFallbacks() throws {
+        let missingContact = LeadOutreachTemplateEngine.makeKit(context: .init(
+            lead: lead(contactName: "", city: nil),
+            projectName: "Dentum",
+            senderName: "Gjest"
+        ))
+        let pilot = try XCTUnwrap(missingContact.templates.first)
+        XCTAssertTrue(pilot.body.hasPrefix("Hei,\n"))
+        XCTAssertTrue(pilot.body.contains("området deres"))
+        XCTAssertTrue(pilot.body.contains("Salgsteamet\nDentum"))
+
+        let generic = LeadOutreachTemplateEngine.makeKit(context: .init(
+            lead: lead(), projectName: "Et annet kundeprosjekt", senderName: "Daniel"
+        ))
+        XCTAssertFalse(generic.isDentum)
+        XCTAssertEqual(generic.templates.count, 6)
+        XCTAssertFalse(generic.templates.contains { $0.body.contains("Dentum") })
     }
 }

@@ -71,6 +71,24 @@ struct AnbudView: View {
     @State private var lagerUtkast = false
     @State private var utkastFeil: String?
 
+    private var activeProjectName: String? {
+        guard let projectId = appState.activeLeadgridProjectId else { return nil }
+        return appState.projects.first(where: { $0.id == projectId })?.name
+            ?? appState.activeProjectSummary?.project.name
+    }
+
+    private var isDentumProject: Bool {
+        DemoModeManager.isDentumTour
+            || activeProjectName?.localizedCaseInsensitiveContains("dentum") == true
+    }
+
+    private var hasProjectSearchBasis: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || selectedFylke != nil
+            || selectedBransje != nil
+            || effektivCpv != nil
+    }
+
     /// NUTS 2024-koder verifisert empirisk mot Doffin (entydige kommunenavn
     /// per kode, 2026-08-02). NO082/NO091 utelatt — ingen entydige treff.
     enum Fylke: String, CaseIterable, Identifiable {
@@ -184,25 +202,61 @@ struct AnbudView: View {
                         errorBanner(leadErrorText)
                     }
                     resultsList
-                    Color.clear.frame(height: 80)
+                    Color.clear.frame(height: DeviceIdiom.isPhone ? 120 : 80)
                 }
                 .padding(16)
             }
         }
-        .task { await initialLoad() }
+        .task(id: appState.activeLeadgridProjectId) {
+            results = []
+            total = 0
+            watches = []
+            pipelineItems = []
+            pipelineStats = nil
+            iPipelineIds = []
+            scores = [:]
+            await initialLoad()
+        }
     }
 
     // MARK: Header
 
     private var header: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Anbud").font(.appScaled(size: 26, weight: .heavy)).foregroundStyle(.white)
-                Text("Offentlige anskaffelser fra Doffin — finn kontrakter før konkurrentene")
-                    .font(.appScaled(size: 12)).foregroundStyle(LBrand.textSecondary)
+        ViewThatFits(in: .horizontal) {
+            if !DeviceIdiom.isPhone {
+                HStack(alignment: .top, spacing: 16) {
+                    anbudHeaderTitle
+                        .frame(minWidth: 260, alignment: .leading)
+                    Spacer(minLength: 12)
+                    anbudHeaderActions
+                }
+                // Sørger for at iPad mini velger den stablede varianten i
+                // stedet for å klemme tittelen ned til én bokstav per linje.
+                .frame(minWidth: 900)
             }
-            Spacer()
-            // Pipeline (nivå 2): anbudene gjennom salgsprosessen.
+            VStack(alignment: .leading, spacing: 12) {
+                anbudHeaderTitle
+                ScrollView(.horizontal, showsIndicators: false) {
+                    anbudHeaderActions
+                        .padding(.horizontal, 1)
+                }
+            }
+        }
+    }
+
+    private var anbudHeaderTitle: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Anbud").font(.appScaled(size: 26, weight: .heavy)).foregroundStyle(.white)
+            Text("Offentlige anskaffelser fra Doffin — finn kontrakter før konkurrentene")
+                .font(.appScaled(size: 12)).foregroundStyle(LBrand.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            ProjectContextPill()
+                .padding(.top, 5)
+        }
+    }
+
+    private var anbudHeaderActions: some View {
+        HStack(spacing: 8) {
             Button {
                 showPipeline = true
                 Task { await lastPipeline() }
@@ -235,13 +289,15 @@ struct AnbudView: View {
                     .background(Color.indigo.opacity(0.35), in: Capsule())
             }.buttonStyle(.plain)
         }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     // MARK: Søk
 
     private var searchCard: some View {
         VStack(spacing: 10) {
-            HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(LBrand.textTertiary)
                 TextField("Søk (f.eks. elektriker, renhold, rammeavtale …)", text: $searchText)
                     .font(.appScaled(size: 14))
@@ -345,6 +401,8 @@ struct AnbudView: View {
                     in: Capsule()
                 )
                 .disabled(isLoading)
+                }
+                .fixedSize(horizontal: DeviceIdiom.isPhone, vertical: false)
             }
             if total > 0 {
                 HStack {
@@ -403,11 +461,25 @@ struct AnbudView: View {
     @ViewBuilder
     private var resultsList: some View {
         if results.isEmpty && !isLoading && errorText == nil {
-            ContentUnavailableView(
-                "Søk i offentlige anskaffelser",
-                systemImage: "doc.text.magnifyingglass",
-                description: Text("Fritekst + fylke — resultatene kommer rett fra Doffin.")
-            )
+            Group {
+                if isDentumProject && !hasProjectSearchBasis {
+                    ContentUnavailableView(
+                        "Ingen anbudsprofil for Dentum",
+                        systemImage: "checkmark.shield",
+                        description: Text(
+                            "Vi viser ikke brede Doffin-treff i Dentum-prosjektet. "
+                            + "Velg bransje, fylke eller skriv et konkret søk for å lete etter offentlige avtaler."
+                        )
+                    )
+                    .accessibilityIdentifier("anbud-project-empty")
+                } else {
+                    ContentUnavailableView(
+                        "Søk i offentlige anskaffelser",
+                        systemImage: "doc.text.magnifyingglass",
+                        description: Text("Fritekst + fylke — resultatene kommer rett fra Doffin.")
+                    )
+                }
+            }
             .padding(.vertical, 30)
         } else {
             ForEach(results) { k in
@@ -830,15 +902,25 @@ struct AnbudView: View {
     @MainActor
     private func lastPipeline() async {
         if DemoModeManager.isActiveNonisolated {
+            if isDentumProject {
+                pipelineItems = []
+                pipelineStats = AnbudPipelineStatsDTO(
+                    aapne: 0, vant: 0, tapt: 0, vinnrate: nil,
+                    sumAapneVerdi: 0, tapsaarsaker: [])
+                return
+            }
             if pipelineItems.isEmpty { pipelineItems = Self.demoPipeline }
             pipelineStats = AnbudPipelineStatsDTO(
                 aapne: 2, vant: 1, tapt: 1, vinnrate: 0.5, sumAapneVerdi: 20_500_000,
                 tapsaarsaker: [AnbudTapsAarsakDTO(aarsak: "pris", antall: 1)])
             return
         }
-        guard let api = appState.api, !pipelineLaster else { return }
+        guard let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId,
+              !pipelineLaster else { return }
         pipelineLaster = true
-        if let r = try? await api.fetchAnbudPipeline() {
+        if let r = try? await api.fetchAnbudPipeline(projectId: projectId),
+           appState.activeLeadgridProjectId == projectId {
             pipelineItems = r.items
             pipelineStats = r.stats
             iPipelineIds = Set(r.items.map(\.doffinId))
@@ -852,9 +934,11 @@ struct AnbudView: View {
             withAnimation { _ = iPipelineIds.insert(k.id) }
             return
         }
-        guard let api = appState.api else { return }
+        guard let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId else { return }
         do {
-            _ = try await api.addToAnbudPipeline(k)
+            _ = try await api.addToAnbudPipeline(k, projectId: projectId)
+            guard appState.activeLeadgridProjectId == projectId else { return }
             withAnimation { _ = iPipelineIds.insert(k.id) }
             await lastPipeline()
         } catch {
@@ -873,10 +957,15 @@ struct AnbudView: View {
                 verdtAaVite: "Opsjon 1+1 år kan doble kontraktens levetid.")
             return
         }
-        guard let api = appState.api else { return }
+        guard let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId else { return }
         oppsummerer = true
         do {
-            oppsummering = try await api.oppsummerAnbud(tittel: k.tittel, beskrivelse: k.beskrivelse)
+            let loaded = try await api.oppsummerAnbud(
+                tittel: k.tittel, beskrivelse: k.beskrivelse,
+                projectId: projectId)
+            guard appState.activeLeadgridProjectId == projectId else { return }
+            oppsummering = loaded
         } catch {
             let msg = String(describing: error)
             oppsummeringFeil = msg.contains("for_kort_tekst")
@@ -1062,7 +1151,10 @@ struct AnbudView: View {
             return
         }
         guard let api = appState.api else { return }
-        try? await api.updateAnbudPipeline(id: p.id, status: status, taptAarsak: taptAarsak)
+        guard let projectId = appState.activeLeadgridProjectId else { return }
+        try? await api.updateAnbudPipeline(
+            id: p.id, status: status, taptAarsak: taptAarsak,
+            projectId: projectId)
         await lastPipeline()
     }
 
@@ -1085,19 +1177,22 @@ struct AnbudView: View {
                 sjekkliste: ["DSB-registrering vedlagt", "2 referanser fra offentlige bygg", "Responstid-forpliktelse definert", "Signert av daglig leder før frist 25. aug"])
             return
         }
-        guard let api = appState.api else { return }
+        guard let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId else { return }
         lagerUtkast = true
+        defer { lagerUtkast = false }
         do {
-            tilbudsutkast = try await api.lagTilbudsutkast(
+            let loaded = try await api.lagTilbudsutkast(
                 tittel: k.tittel, beskrivelse: k.beskrivelse,
-                krav: oppsummering?.krav ?? [])
+                krav: oppsummering?.krav ?? [], projectId: projectId)
+            guard appState.activeLeadgridProjectId == projectId else { return }
+            tilbudsutkast = loaded
         } catch {
             let msg = String(describing: error)
             utkastFeil = msg.contains("for_kort_tekst")
                 ? "Kunngjøringen har for lite tekst til et utkast — åpne Doffin for dokumentene."
                 : "Utkastet feilet — prøv igjen."
         }
-        lagerUtkast = false
     }
 
     private func tilbudsutkastVisning(_ u: AnbudTilbudsutkastDTO) -> some View {
@@ -1269,7 +1364,9 @@ struct AnbudView: View {
     @MainActor
     private func tildel(_ p: AnbudPipelineItemDTO, til userId: String?) async {
         guard !DemoModeManager.isActiveNonisolated, let api = appState.api else { return }
-        try? await api.updateAnbudPipeline(id: p.id, assignedUserId: .some(userId))
+        guard let projectId = appState.activeLeadgridProjectId else { return }
+        try? await api.updateAnbudPipeline(
+            id: p.id, assignedUserId: .some(userId), projectId: projectId)
         await lastPipeline()
     }
 
@@ -1280,7 +1377,8 @@ struct AnbudView: View {
             return
         }
         guard let api = appState.api else { return }
-        try? await api.deleteAnbudPipeline(id: p.id)
+        guard let projectId = appState.activeLeadgridProjectId else { return }
+        try? await api.deleteAnbudPipeline(id: p.id, projectId: projectId)
         await lastPipeline()
     }
 
@@ -1342,10 +1440,14 @@ struct AnbudView: View {
             sorterEtterScore()
             return
         }
-        guard let api = appState.api else { return }
+        guard let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId else { return }
         isScoring = true
+        defer { isScoring = false }
         do {
-            let result = try await api.scoreDoffin(kunngjoringer: results)
+            let result = try await api.scoreDoffin(
+                kunngjoringer: results, projectId: projectId)
+            guard appState.activeLeadgridProjectId == projectId else { return }
             scores = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0) })
             sorterEtterScore()
         } catch {
@@ -1354,7 +1456,6 @@ struct AnbudView: View {
                 ? "AI-prioritering bruker overvåkningene dine som profil — lagre minst ett søk først."
                 : "AI-prioriteringen feilet — prøv igjen."
         }
-        isScoring = false
     }
 
     private func sorterEtterScore() {
@@ -1368,10 +1469,13 @@ struct AnbudView: View {
             tildelinger = nil   // demo-arket bruker statiske tall under
             return
         }
-        guard let api = appState.api, !tildelingerLaster else { return }
+        guard let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId,
+              !tildelingerLaster else { return }
         tildelingerLaster = true
         tildelinger = try? await api.fetchDoffinTildelinger(
-            cpv: effektivCpv, location: selectedFylke?.rawValue)
+            cpv: effektivCpv, location: selectedFylke?.rawValue,
+            projectId: projectId)
         tildelingerLaster = false
     }
 
@@ -1493,6 +1597,7 @@ struct AnbudView: View {
     @MainActor
     private func createLead(from k: DoffinKunngjoringDTO) async {
         guard let api = appState.api, let og = k.oppdragsgivere.first,
+              let projectId = appState.activeLeadgridProjectId,
               creatingLeadId == nil else { return }
         creatingLeadId = k.id
         leadErrorText = nil
@@ -1503,6 +1608,7 @@ struct AnbudView: View {
                 navn: og.navn, orgnr: og.orgnr,
                 tittel: k.tittel, url: k.url, frist: k.frist,
                 organizationId: appState.activeOrganizationId,
+                projectId: projectId,
                 idempotencyKey: idempotencyKey)
             withAnimation { _ = createdLeadIds.insert(k.id) }
         } catch {
@@ -1549,7 +1655,12 @@ struct AnbudView: View {
                             // Kjøring = sett: nullstill «nye treff»-badgen
                             // (fire-and-forget — søket er hovedhandlingen).
                             if (w.newHitsCount ?? 0) > 0 {
-                                Task { try? await appState.api?.markDoffinWatchSeen(id: w.id) }
+                                if let projectId = appState.activeLeadgridProjectId {
+                                    Task {
+                                        try? await appState.api?.markDoffinWatchSeen(
+                                            id: w.id, projectId: projectId)
+                                    }
+                                }
                             }
                             Task { await search() }
                         } label: {
@@ -1576,7 +1687,9 @@ struct AnbudView: View {
                     .onDelete { idx in
                         Task {
                             for i in idx {
-                                try? await appState.api?.deleteDoffinWatch(id: watches[i].id)
+                                guard let projectId = appState.activeLeadgridProjectId else { return }
+                                try? await appState.api?.deleteDoffinWatch(
+                                    id: watches[i].id, projectId: projectId)
                             }
                             await reloadWatches()
                         }
@@ -1598,6 +1711,11 @@ struct AnbudView: View {
 
     private func initialLoad() async {
         await reloadWatches()
+        guard !(isDentumProject && !hasProjectSearchBasis) else {
+            results = []
+            total = 0
+            return
+        }
         if results.isEmpty { await search() }
     }
 
@@ -1608,7 +1726,7 @@ struct AnbudView: View {
         if DemoModeManager.isActiveNonisolated {
             isLoading = false
             errorText = nil
-            var demo = Self.demoKunngjoringer
+            var demo = isDentumProject ? [] : Self.demoKunngjoringer
             if !searchText.isEmpty {
                 let q = searchText.lowercased()
                 demo = demo.filter {
@@ -1622,19 +1740,23 @@ struct AnbudView: View {
             total = demo.count
             return
         }
-        guard let api = appState.api else {
+        guard let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId else {
             errorText = "Ikke innlogget mot backend."
             return
         }
         isLoading = true
+        defer { isLoading = false }
         errorText = nil
         do {
             let r = try await api.searchDoffin(
+                projectId: projectId,
                 q: searchText.isEmpty ? nil : searchText,
                 location: selectedFylke?.rawValue,
                 cpv: effektivCpv,
                 status: status
             )
+            guard appState.activeLeadgridProjectId == projectId else { return }
             results = r.kunngjoringer
             total = r.total
         } catch {
@@ -1645,20 +1767,23 @@ struct AnbudView: View {
             results = []
             total = 0
         }
-        isLoading = false
     }
 
     private func reloadWatches() async {
         if DemoModeManager.isActiveNonisolated {
-            watches = Self.demoWatches
+            watches = isDentumProject ? [] : Self.demoWatches
             return
         }
-        guard let api = appState.api else { return }
-        watches = (try? await api.fetchDoffinWatches()) ?? []
+        guard let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId else { return }
+        let loaded = (try? await api.fetchDoffinWatches(projectId: projectId)) ?? []
+        guard appState.activeLeadgridProjectId == projectId else { return }
+        watches = loaded
     }
 
     private func saveCurrentAsWatch() async {
-        guard let api = appState.api else { return }
+        guard let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId else { return }
         let name = [searchText.isEmpty ? nil : searchText,
                     selectedBransje?.navn, selectedFylke?.navn]
             .compactMap { $0 }.joined(separator: " · ")
@@ -1668,7 +1793,10 @@ struct AnbudView: View {
             cpv: selectedBransje?.cpv
         )
         do {
-            try await api.createDoffinWatch(name: name.isEmpty ? "Alle anbud" : name, query: query)
+            try await api.createDoffinWatch(
+                name: name.isEmpty ? "Alle anbud" : name,
+                query: query,
+                projectId: projectId)
             await reloadWatches()
         } catch {
             errorText = "Kunne ikke lagre overvåkning. (\(error.localizedDescription))"

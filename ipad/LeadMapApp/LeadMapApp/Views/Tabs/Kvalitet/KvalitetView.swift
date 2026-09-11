@@ -16,6 +16,7 @@ struct KvalitetView: View {
     var embedded = false
 
     @Environment(AppState.self) private var appState
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var items: [SalesVerification] = []
     @State private var counts: [String: Int] = [:]
     @State private var templates: [VerificationTemplate] = []
@@ -96,7 +97,7 @@ struct KvalitetView: View {
                     if !sellerStats.isEmpty {
                         AnyView(QualityStatsCard(sellers: sellerStats, reasons: reasonStats))
                     }
-                    Color.clear.frame(height: 24)
+                    Color.clear.frame(height: DeviceIdiom.isPhone ? 110 : 24)
                 }
                 .padding(16)
             }
@@ -106,12 +107,23 @@ struct KvalitetView: View {
     }
 
     private var kpiRow: some View {
-        HStack(spacing: 10) {
-            kpiTile("\(counts["pending"] ?? 0)", "Til verifisering", NavPOIBrand.purpleLight)
-            kpiTile("\(counts["verified"] ?? 0)", "Verifisert", NavPOIBrand.green)
-            kpiTile("\(counts["needs_followup"] ?? 0)", "Følg opp", NavPOIBrand.orange)
-            kpiTile("\(counts["rejected"] ?? 0)", "Underkjent", NavPOIBrand.red)
+        Group {
+            if DeviceIdiom.isPhone && dynamicTypeSize.isAccessibilitySize {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    qualityKPIs
+                }
+            } else {
+                HStack(spacing: 10) { qualityKPIs }
+            }
         }
+    }
+
+    @ViewBuilder
+    private var qualityKPIs: some View {
+        kpiTile("\(counts["pending"] ?? 0)", "Til verifisering", NavPOIBrand.purpleLight)
+        kpiTile("\(counts["verified"] ?? 0)", "Verifisert", NavPOIBrand.green)
+        kpiTile("\(counts["needs_followup"] ?? 0)", "Følg opp", NavPOIBrand.orange)
+        kpiTile("\(counts["rejected"] ?? 0)", "Underkjent", NavPOIBrand.red)
     }
 
     private func kpiTile(_ value: String, _ label: String, _ tint: Color) -> some View {
@@ -153,40 +165,77 @@ struct KvalitetView: View {
         Button {
             if v.status == "pending" || v.status == "needs_followup" { active = v }
         } label: {
-            HStack(spacing: 11) {
-                statusIcon(v.status)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(v.customerName.isEmpty ? "Ukjent kunde" : v.customerName)
-                        .font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white).lineLimit(1)
-                    HStack(spacing: 6) {
-                        if let seller = v.sellerName {
-                            Text("Selger: \(seller)").font(.appScaled(size: 9))
-                                .foregroundStyle(NavPOIBrand.textSecondary).lineLimit(1)
+            Group {
+                if DeviceIdiom.isPhone || dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 9) {
+                        HStack(spacing: 10) {
+                            statusIcon(v.status)
+                            Text(v.customerName.isEmpty ? "Ukjent kunde" : v.customerName)
+                                .font(.appScaled(size: 13, weight: .bold))
+                                .foregroundStyle(.white)
+                                .axLineLimit(2, ax: 4)
+                            Spacer()
+                            if v.status == "pending" || v.status == "needs_followup" {
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(NavPOIBrand.textSecondary)
+                            }
                         }
-                        if let amount = v.dealAmount {
-                            Text("\(Int(amount)) \(v.dealCurrency ?? "kr")")
-                                .font(.appScaled(size: 9, weight: .bold)).foregroundStyle(NavPOIBrand.green)
+                        verificationDetails(v)
+                        statusBadge(v.status)
+                    }
+                } else {
+                    HStack(spacing: 11) {
+                        statusIcon(v.status)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(v.customerName.isEmpty ? "Ukjent kunde" : v.customerName)
+                                .font(.appScaled(size: 13, weight: .bold))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                            verificationDetails(v)
                         }
-                        if v.status == "rejected", let r = v.reasonCode,
-                           let reason = QualityReason(rawValue: r) {
-                            Text(reason.label).font(.appScaled(size: 8, weight: .bold))
-                                .foregroundStyle(NavPOIBrand.red)
-                                .padding(.horizontal, 5).padding(.vertical, 1)
-                                .background(NavPOIBrand.red.opacity(0.15), in: Capsule())
+                        Spacer()
+                        statusBadge(v.status)
+                        if v.status == "pending" || v.status == "needs_followup" {
+                            Image(systemName: "chevron.right")
+                                .font(.appScaled(size: 11, weight: .bold))
+                                .foregroundStyle(NavPOIBrand.textSecondary)
                         }
                     }
-                }
-                Spacer()
-                statusBadge(v.status)
-                if v.status == "pending" || v.status == "needs_followup" {
-                    Image(systemName: "chevron.right")
-                        .font(.appScaled(size: 11, weight: .bold)).foregroundStyle(NavPOIBrand.textSecondary)
                 }
             }
             .padding(10)
             .background(NavPOIBrand.cardHi, in: RoundedRectangle(cornerRadius: 11))
         }
         .buttonStyle(.plain)
+    }
+
+    private func verificationDetails(_ v: SalesVerification) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) { verificationDetailContent(v) }
+            VStack(alignment: .leading, spacing: 4) { verificationDetailContent(v) }
+        }
+    }
+
+    @ViewBuilder
+    private func verificationDetailContent(_ v: SalesVerification) -> some View {
+        if let seller = v.sellerName {
+            Text("Selger: \(seller)")
+                .font(.appScaled(size: 9))
+                .foregroundStyle(NavPOIBrand.textSecondary)
+        }
+        if let amount = v.dealAmount {
+            Text("\(Int(amount)) \(v.dealCurrency ?? "kr")")
+                .font(.appScaled(size: 9, weight: .bold))
+                .foregroundStyle(NavPOIBrand.green)
+        }
+        if v.status == "rejected", let r = v.reasonCode,
+           let reason = QualityReason(rawValue: r) {
+            Text(reason.label)
+                .font(.appScaled(size: 8, weight: .bold))
+                .foregroundStyle(NavPOIBrand.red)
+                .padding(.horizontal, 5).padding(.vertical, 1)
+                .background(NavPOIBrand.red.opacity(0.15), in: Capsule())
+        }
     }
 
     private func statusIcon(_ status: String) -> some View {

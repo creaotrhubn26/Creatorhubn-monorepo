@@ -3,6 +3,7 @@ import type { Pool } from "pg";
 import { LEADBOOK_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
 import { resolveEffectivePermissions } from "./lead-map-permission-routes.js";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
+import { loadAccessibleLeadgridProject } from "./leadgrid-project-access.js";
 
 export type PondusSession = {
   userId: string;
@@ -13,6 +14,7 @@ export type PondusSession = {
 
 export type PondusAccessContext = {
   organizationId: string | null;
+  projectId: string | null;
   organizationRole: string | null;
   permissions: Set<string>;
   platformAdmin: boolean;
@@ -42,6 +44,20 @@ function explicitOrganizationId(req: Request): string | null {
   return null;
 }
 
+function explicitProjectId(req: Request): string | null {
+  const candidates = [
+    req.get("X-Leadgrid-Project-Id"),
+    req.query.project_id,
+    req.query.projectId,
+    req.body?.project_id,
+    req.body?.projectId,
+  ];
+  for (const value of candidates) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
 export async function resolvePondusAccess(
   pool: Pool,
   req: Request,
@@ -51,10 +67,28 @@ export async function resolvePondusAccess(
   const explicit = explicitOrganizationId(req);
   if (explicit && !UUID.test(explicit)) throw new PondusAccessError(400, "invalid_organization_id");
 
-  const organizationId = explicit
+  const requestedProjectId = explicitProjectId(req);
+  const project = requestedProjectId
+    ? await loadAccessibleLeadgridProject(pool, requestedProjectId, session.userId)
+    : null;
+  if (requestedProjectId && !project) {
+    // Samme 404 for ukjent prosjekt og manglende tilgang: ingen BOLA-orakel.
+    throw new PondusAccessError(404, "project_not_found");
+  }
+  if (project && explicit && project.organizationId !== explicit) {
+    throw new PondusAccessError(404, "project_not_found");
+  }
+
+  const organizationId = project?.organizationId ?? explicit
     ?? await resolveOrgIdForUser(pool, session.userId).catch(() => null);
   if (!organizationId) {
-    return { organizationId: null, organizationRole: null, permissions: new Set(), platformAdmin };
+    return {
+      organizationId: null,
+      projectId: null,
+      organizationRole: null,
+      permissions: new Set(),
+      platformAdmin,
+    };
   }
 
   const effective = await resolveEffectivePermissions(pool, organizationId, session.userId);
@@ -63,6 +97,7 @@ export async function resolvePondusAccess(
   }
   return {
     organizationId,
+    projectId: project?.id ?? null,
     organizationRole: effective.role,
     permissions: effective.permissions,
     platformAdmin,
@@ -116,21 +151,32 @@ export async function isPondusTemplateVisible(
   access: PondusAccessContext,
   options: { includeDraftForManagers?: boolean } = {},
 ): Promise<boolean> {
-  const result = await pool.query<{ org_id: string | null; is_published: boolean; archived_at: unknown }>(
-    `SELECT org_id::text, is_published, archived_at
+  const result = await pool.query<{
+    org_id: string | null;
+    project_id: string | null;
+    is_published: boolean;
+    archived_at: unknown;
+  }>(
+    `SELECT org_id::text, project_id, is_published, archived_at
        FROM pondus_templates WHERE id = $1::uuid LIMIT 1`,
     [templateId],
   );
   const row = result.rows[0];
   if (!row || row.archived_at) return false;
-  if (access.platformAdmin) return true;
-  const inScope = row.org_id === null || row.org_id === access.organizationId;
+  // Plattformadministrator uten valgt kontekst kan administrere katalogen.
+  // Så snart org/prosjekt er sendt, gjelder samme avgrensning som i appen.
+  if (access.platformAdmin && !access.organizationId) return true;
+  const inScope = row.org_id === null
+    ? row.project_id === null
+    : row.org_id === access.organizationId
+      && (row.project_id === null || row.project_id === access.projectId);
   if (!inScope) return false;
-  if (row.is_published) return true;
+  if (row.is_published || access.platformAdmin) return true;
   // Globale utkast eies av plattformen. En organisasjonsleder kan bare
   // forhåndsvise utkast som faktisk tilhører egen tenant.
   return options.includeDraftForManagers === true
     && canManagePondus(access)
     && row.org_id != null
-    && row.org_id === access.organizationId;
+    && row.org_id === access.organizationId
+    && (row.project_id === null || row.project_id === access.projectId);
 }

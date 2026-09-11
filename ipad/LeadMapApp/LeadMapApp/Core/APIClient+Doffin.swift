@@ -5,6 +5,18 @@
 
 import Foundation
 
+private func doffinScopedPath(
+    _ path: String,
+    projectId: String,
+    queryItems: [URLQueryItem] = []
+) -> String {
+    var components = URLComponents()
+    components.path = path
+    components.queryItems = [URLQueryItem(name: "projectId", value: projectId)]
+        + queryItems
+    return components.string ?? path
+}
+
 // MARK: - DTO-er
 
 struct DoffinOppdragsgiverDTO: Decodable, Hashable {
@@ -199,12 +211,14 @@ extension APIClient {
 
     /// Søk i Doffin. `location` = NUTS-koder kommaseparert, `cpv` = CPV-koder.
     func searchDoffin(
+        projectId: String,
         q: String? = nil, location: String? = nil, cpv: String? = nil,
         status: String = "ACTIVE", hits: Int = 25, page: Int = 1
     ) async throws -> DoffinSearchResponseDTO {
         var comps = URLComponents()
         comps.path = "/api/leadgrid/doffin/search"
         var items: [URLQueryItem] = [
+            .init(name: "projectId", value: projectId),
             .init(name: "status", value: status),
             .init(name: "hits", value: String(hits)),
         ]
@@ -216,43 +230,56 @@ extension APIClient {
         return try await _get(comps.string ?? comps.path)
     }
 
-    func fetchDoffinWatches() async throws -> [DoffinWatchDTO] {
+    func fetchDoffinWatches(projectId: String) async throws -> [DoffinWatchDTO] {
         struct Resp: Decodable { let watches: [DoffinWatchDTO] }
-        let r: Resp = try await _get("/api/leadgrid/doffin/watches")
+        let r: Resp = try await _get(doffinScopedPath(
+            "/api/leadgrid/doffin/watches", projectId: projectId))
         return r.watches
     }
 
     @discardableResult
-    func createDoffinWatch(name: String, query: DoffinWatchQueryDTO) async throws -> String {
+    func createDoffinWatch(
+        name: String, query: DoffinWatchQueryDTO, projectId: String
+    ) async throws -> String {
         struct Payload: Encodable { let name: String; let query: DoffinWatchQueryDTO }
         struct Resp: Decodable { let ok: Bool; let id: String }
-        let r: Resp = try await _post("/api/leadgrid/doffin/watches",
+        let r: Resp = try await _post(doffinScopedPath(
+            "/api/leadgrid/doffin/watches", projectId: projectId),
                                       body: Payload(name: name, query: query))
         return r.id
     }
 
-    func deleteDoffinWatch(id: String) async throws {
-        _ = try await _request("/api/leadgrid/doffin/watches/\(id)", method: "DELETE")
+    func deleteDoffinWatch(id: String, projectId: String) async throws {
+        _ = try await _request(doffinScopedPath(
+            "/api/leadgrid/doffin/watches/\(id)", projectId: projectId),
+            method: "DELETE")
     }
 
     /// Nullstill «nye treff»-telleren når brukeren kjører overvåkningen.
-    func markDoffinWatchSeen(id: String) async throws {
-        _ = try await _request("/api/leadgrid/doffin/watches/\(id)/mark-seen", method: "POST")
+    func markDoffinWatchSeen(id: String, projectId: String) async throws {
+        _ = try await _request(doffinScopedPath(
+            "/api/leadgrid/doffin/watches/\(id)/mark-seen", projectId: projectId),
+            method: "POST")
     }
 
     // MARK: Pipeline (nivå 2)
 
-    func fetchAnbudPipeline() async throws -> (items: [AnbudPipelineItemDTO], stats: AnbudPipelineStatsDTO?) {
+    func fetchAnbudPipeline(
+        projectId: String
+    ) async throws -> (items: [AnbudPipelineItemDTO], stats: AnbudPipelineStatsDTO?) {
         struct Resp: Decodable {
             let items: [AnbudPipelineItemDTO]
             let stats: AnbudPipelineStatsDTO?
         }
-        let r: Resp = try await _get("/api/leadgrid/doffin/pipeline")
+        let r: Resp = try await _get(doffinScopedPath(
+            "/api/leadgrid/doffin/pipeline", projectId: projectId))
         return (r.items, r.stats)
     }
 
     @discardableResult
-    func addToAnbudPipeline(_ k: DoffinKunngjoringDTO) async throws -> Bool {
+    func addToAnbudPipeline(
+        _ k: DoffinKunngjoringDTO, projectId: String
+    ) async throws -> Bool {
         struct Payload: Encodable {
             let doffin_id: String
             let tittel: String
@@ -264,7 +291,8 @@ extension APIClient {
         }
         struct Resp: Decodable { let ok: Bool; let allerede: Bool? }
         let og = k.oppdragsgivere.first
-        let r: Resp = try await _post("/api/leadgrid/doffin/pipeline",
+        let r: Resp = try await _post(doffinScopedPath(
+            "/api/leadgrid/doffin/pipeline", projectId: projectId),
             body: Payload(doffin_id: k.id, tittel: k.tittel,
                           oppdragsgiver: og?.navn ?? "", orgnr: og?.orgnr ?? "",
                           url: k.url, frist: k.frist, verdi: k.verdi?.belop))
@@ -273,7 +301,8 @@ extension APIClient {
 
     func updateAnbudPipeline(id: String, status: String? = nil,
                              assignedUserId: String?? = nil, notat: String? = nil,
-                             taptAarsak: String? = nil) async throws {
+                             taptAarsak: String? = nil,
+                             projectId: String) async throws {
         var body: [String: AnyEncodableValue] = [:]
         if let status { body["status"] = .string(status) }
         if let assigned = assignedUserId {
@@ -287,37 +316,46 @@ extension APIClient {
                 try values.encode(to: encoder)
             }
         }
-        _ = try await _request("/api/leadgrid/doffin/pipeline/\(id)", method: "PATCH",
+        _ = try await _request(doffinScopedPath(
+            "/api/leadgrid/doffin/pipeline/\(id)", projectId: projectId), method: "PATCH",
                                body: try JSONEncoder().encode(Wrapper(values: body)))
     }
 
-    func deleteAnbudPipeline(id: String) async throws {
-        _ = try await _request("/api/leadgrid/doffin/pipeline/\(id)", method: "DELETE")
+    func deleteAnbudPipeline(id: String, projectId: String) async throws {
+        _ = try await _request(doffinScopedPath(
+            "/api/leadgrid/doffin/pipeline/\(id)", projectId: projectId),
+            method: "DELETE")
     }
 
     /// AI-lesehjelp (nivå 2): oppsummer kunngjøringen + trekk ut kravene.
-    func oppsummerAnbud(tittel: String, beskrivelse: String) async throws -> AnbudOppsummeringDTO {
+    func oppsummerAnbud(
+        tittel: String, beskrivelse: String, projectId: String
+    ) async throws -> AnbudOppsummeringDTO {
         struct Payload: Encodable { let tittel: String; let beskrivelse: String }
-        return try await _post("/api/leadgrid/doffin/oppsummer",
+        return try await _post(doffinScopedPath(
+            "/api/leadgrid/doffin/oppsummer", projectId: projectId),
                                body: Payload(tittel: tittel, beskrivelse: beskrivelse))
     }
 
     /// Tilbuds-assistent (2026-08-04): AI-utkast til disposisjon/følgebrev/
     /// sjekkliste. `krav` = ekstraherte krav fra oppsummeringen hvis kjørt.
     func lagTilbudsutkast(
-        tittel: String, beskrivelse: String, krav: [String]
+        tittel: String, beskrivelse: String, krav: [String], projectId: String
     ) async throws -> AnbudTilbudsutkastDTO {
         struct Payload: Encodable {
             let tittel: String
             let beskrivelse: String
             let krav: [String]
         }
-        return try await _post("/api/leadgrid/doffin/tilbudsutkast",
+        return try await _post(doffinScopedPath(
+            "/api/leadgrid/doffin/tilbudsutkast", projectId: projectId),
                                body: Payload(tittel: tittel, beskrivelse: beskrivelse, krav: krav))
     }
 
     /// AI-prioritering (nivå 1): scorer treffene mot org-ens overvåkninger.
-    func scoreDoffin(kunngjoringer: [DoffinKunngjoringDTO]) async throws -> [DoffinScoreDTO] {
+    func scoreDoffin(
+        kunngjoringer: [DoffinKunngjoringDTO], projectId: String
+    ) async throws -> [DoffinScoreDTO] {
         struct Payload: Encodable { let kunngjoringer: [[String: AnyEncodableValue]] }
         // Enkel manuell payload (unngår Encodable-kompleksitet for nested DTO).
         let items = kunngjoringer.prefix(20).map { k -> [String: AnyEncodableValue] in
@@ -332,15 +370,18 @@ extension APIClient {
             return d
         }
         struct Resp: Decodable { let scores: [DoffinScoreDTO] }
-        let r: Resp = try await _post("/api/leadgrid/doffin/score",
+        let r: Resp = try await _post(doffinScopedPath(
+            "/api/leadgrid/doffin/score", projectId: projectId),
                                       body: Payload(kunngjoringer: Array(items)))
         return r.scores
     }
 
     /// Tildelings-innsikt (nivå 1) for valgt bransje/fylke.
-    func fetchDoffinTildelinger(cpv: String?, location: String?) async throws -> DoffinTildelingerDTO {
+    func fetchDoffinTildelinger(
+        cpv: String?, location: String?, projectId: String
+    ) async throws -> DoffinTildelingerDTO {
         var comps = URLComponents(string: "/api/leadgrid/doffin/tildelinger")!
-        var items: [URLQueryItem] = []
+        var items: [URLQueryItem] = [.init(name: "projectId", value: projectId)]
         if let cpv, !cpv.isEmpty { items.append(.init(name: "cpv", value: cpv)) }
         if let location, !location.isEmpty { items.append(.init(name: "location", value: location)) }
         comps.queryItems = items.isEmpty ? nil : items
@@ -353,7 +394,7 @@ extension APIClient {
     /// lead_source = doffin_anbud så kilden spores i CRM-et.
     func createLeadFromAnbud(
         navn: String, orgnr: String, tittel: String, url: String, frist: String?,
-        organizationId: String?, idempotencyKey: UUID
+        organizationId: String?, projectId: String, idempotencyKey: UUID
     ) async throws -> String {
         var raw = "Org.nr: \(orgnr)\nAnbud: \(tittel)"
         if let frist, !frist.isEmpty { raw += "\nFrist: \(frist)" }
@@ -364,12 +405,14 @@ extension APIClient {
             let raw_text: String
             let lead_source: String
             let organization_id: String?
+            let project_id: String
         }
         struct Resp: Decodable { let ok: Bool; let id: String }
         let r: Resp = try await _post(
             "/api/admin-room/lead-map/leads/from-card",
             body: Payload(name: navn, company: navn, raw_text: raw,
-                          lead_source: "doffin_anbud", organization_id: organizationId),
+                          lead_source: "doffin_anbud", organization_id: organizationId,
+                          project_id: projectId),
             headers: ["Idempotency-Key": idempotencyKey.uuidString.lowercased()])
         return r.id
     }

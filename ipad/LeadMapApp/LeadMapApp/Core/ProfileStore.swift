@@ -129,12 +129,16 @@ final class ProfileStore {
     }
 
     #if DEBUG
-    func seedForQA(email: String) {
+    func seedForQA(
+        email: String,
+        firstName: String = "Ada",
+        lastName: String = "Nordmann"
+    ) {
         isQAMode = true
         profile = MyProfile(
             userId: "qa-profile-user",
-            firstName: "Ada",
-            lastName: "Nordmann",
+            firstName: firstName,
+            lastName: lastName,
             email: email,
             phone: "+47 900 00 000",
             profession: "Salgskonsulent",

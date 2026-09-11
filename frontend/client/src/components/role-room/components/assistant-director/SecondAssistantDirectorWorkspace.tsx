@@ -38,7 +38,9 @@ import {
 interface Props {
   project: CastingProject;
   readOnly?: boolean;
-  onOpenCallSheet: () => void;
+  dataLoading?: boolean;
+  deliveryRefreshSignal?: number;
+  onOpenCallSheet: (productionDayId?: string) => void;
   onOpenSchedule: () => void;
   onOpenLiveSet: () => void;
   onOpenFullWorkspace: () => void;
@@ -48,10 +50,25 @@ interface Props {
 interface DeliverySummary {
   id: string;
   revision: number;
+  status?: 'published' | 'superseded' | 'retracted';
   createdAt: string;
   total: number;
   sent: number;
+  failed: number;
   acknowledged: number;
+  recipients: DeliveryRecipient[];
+}
+
+interface DeliveryRecipient {
+  id: string;
+  name?: string | null;
+  email: string;
+  deliveryStatus: 'pending' | 'sent' | 'failed';
+  failureReason?: string | null;
+  sentAt?: string | null;
+  acknowledgedAt?: string | null;
+  reminderCount: number;
+  lastRemindedAt?: string | null;
 }
 
 const fieldSx = {
@@ -63,6 +80,8 @@ const fieldSx = {
 export function SecondAssistantDirectorWorkspace({
   project,
   readOnly = false,
+  dataLoading = false,
+  deliveryRefreshSignal = 0,
   onOpenCallSheet,
   onOpenSchedule,
   onOpenLiveSet,
@@ -77,10 +96,8 @@ export function SecondAssistantDirectorWorkspace({
     () => (Array.isArray(project.sceneBreakdowns) ? project.sceneBreakdowns : []),
     [project.sceneBreakdowns],
   );
-  const [productionDays, setProductionDays] = useState<ProductionDay[]>(embeddedProductionDays);
-  const [sceneBreakdowns, setSceneBreakdowns] = useState(embeddedSceneBreakdowns);
-  const [productionDaysLoading, setProductionDaysLoading] = useState(embeddedProductionDays.length === 0);
-  const [productionDaysError, setProductionDaysError] = useState<string | null>(null);
+  const productionDays = embeddedProductionDays;
+  const sceneBreakdowns = embeddedSceneBreakdowns;
   const initialDay = useMemo(() => selectSecondAdProductionDay(productionDays), [productionDays]);
   const [dayId, setDayId] = useState(initialDay?.id ?? '');
   const selectedDay = productionDays.find((day) => day.id === dayId) ?? initialDay;
@@ -98,53 +115,15 @@ export function SecondAssistantDirectorWorkspace({
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [deliveries, setDeliveries] = useState<DeliverySummary[]>([]);
   const [deliveriesLoading, setDeliveriesLoading] = useState(false);
+  const [reminding, setReminding] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    setProductionDays(embeddedProductionDays);
-    setProductionDaysLoading(true);
-    setProductionDaysError(null);
-
-    void castingService.getProductionDays(project.id)
-      .then((days) => {
-        if (cancelled) return;
-        setProductionDays(days);
-        setDayId((current) => (
-          days.some((day) => day.id === current)
-            ? current
-            : selectSecondAdProductionDay(days)?.id ?? ''
-        ));
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        setProductionDaysError(
-          error instanceof Error
-            ? error.message
-            : 'Kunne ikke hente produksjonsdagene.',
-        );
-      })
-      .finally(() => {
-        if (!cancelled) setProductionDaysLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [embeddedProductionDays, project.id]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setSceneBreakdowns(embeddedSceneBreakdowns);
-    void castingService.getSceneBreakdowns(project.id)
-      .then((scenes) => {
-        if (!cancelled) setSceneBreakdowns(scenes.length > 0 ? scenes : embeddedSceneBreakdowns);
-      })
-      .catch(() => {
-        // The production-day controls remain usable if manuscript loading is
-        // temporarily unavailable; embedded scenes are retained as fallback.
-      });
-    return () => { cancelled = true; };
-  }, [embeddedSceneBreakdowns, project.id]);
+    setDayId((current) => (
+      productionDays.some((day) => day.id === current)
+        ? current
+        : selectSecondAdProductionDay(productionDays)?.id ?? ''
+    ));
+  }, [productionDays]);
 
   const selectedDayId = selectedDay?.id;
   const loadDeliveries = useCallback(async () => {
@@ -156,7 +135,11 @@ export function SecondAssistantDirectorWorkspace({
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = await response.json() as { deliveries?: DeliverySummary[] };
-      setDeliveries(Array.isArray(payload.deliveries) ? payload.deliveries : []);
+      setDeliveries(Array.isArray(payload.deliveries) ? payload.deliveries.map((delivery) => ({
+        ...delivery,
+        failed: Number(delivery.failed ?? 0),
+        recipients: Array.isArray(delivery.recipients) ? delivery.recipients : [],
+      })) : []);
     } catch {
       setDeliveries([]);
     } finally {
@@ -173,7 +156,40 @@ export function SecondAssistantDirectorWorkspace({
     setFeedback(null);
   }, [project.id, selectedDay?.id]);
 
-  useEffect(() => { void loadDeliveries(); }, [loadDeliveries]);
+  useEffect(() => { void loadDeliveries(); }, [deliveryRefreshSignal, loadDeliveries]);
+
+  const latestDelivery = deliveries.find((delivery) => delivery.status === 'published')
+    ?? deliveries.find((delivery) => !delivery.status);
+  const missingAcknowledgements = useMemo(
+    () => latestDelivery?.recipients.filter((recipient) => recipient.deliveryStatus === 'sent' && !recipient.acknowledgedAt) ?? [],
+    [latestDelivery],
+  );
+
+  const remindMissing = async () => {
+    if (!latestDelivery || missingAcknowledgements.length === 0 || readOnly) return;
+    setReminding(true);
+    setFeedback(null);
+    try {
+      const response = await fetch(`/api/role-room/call-sheet-deliveries/${encodeURIComponent(latestDelivery.id)}/remind`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders() },
+        body: JSON.stringify({ recipientIds: missingAcknowledgements.map((recipient) => recipient.id) }),
+      });
+      const payload = await response.json().catch(() => ({})) as { reminded?: number; total?: number; error?: string };
+      if (!response.ok) throw new Error(payload.error || 'Kunne ikke sende påminnelsen.');
+      setFeedback({
+        type: payload.reminded === payload.total ? 'success' : 'error',
+        text: payload.reminded === payload.total
+          ? `Påminnelse sendt til ${payload.reminded ?? 0} ${(payload.reminded ?? 0) === 1 ? 'mottaker' : 'mottakere'}.`
+          : `Påminnelse sendt til ${payload.reminded ?? 0} av ${payload.total ?? missingAcknowledgements.length} mottakere.`,
+      });
+      await loadDeliveries();
+    } catch (error) {
+      setFeedback({ type: 'error', text: error instanceof Error ? error.message : 'Kunne ikke sende påminnelsen.' });
+    } finally {
+      setReminding(false);
+    }
+  };
 
   const stats = useMemo(() => secondAdReadiness(entries), [entries]);
   const patchEntry = (id: string, patch: Partial<SecondAdMovementEntry>) => {
@@ -205,7 +221,6 @@ export function SecondAssistantDirectorWorkspace({
     };
     try {
       await castingService.saveProductionDay(project.id, updated);
-      setProductionDays((current) => current.map((day) => day.id === updated.id ? updated : day));
       onSaved?.(updated);
       setFeedback({ type: 'success', text: 'Dagsstatusen er lagret.' });
     } catch (error) {
@@ -229,14 +244,11 @@ export function SecondAssistantDirectorWorkspace({
 
         <Stack direction={{ xs: 'column', sm: 'row' }} gap={1} sx={{ mb: 2 }}>
           <Button variant="outlined" startIcon={<ScheduleIcon />} onClick={onOpenSchedule} sx={{ color: '#ccfbf1', borderColor: 'rgba(45,212,191,.3)' }}>Opptaksplan</Button>
-          <Button variant="outlined" startIcon={<CallSheetIcon />} onClick={onOpenCallSheet} sx={{ color: '#ccfbf1', borderColor: 'rgba(45,212,191,.3)' }}>Callsheet og utsending</Button>
+          <Button variant="outlined" startIcon={<CallSheetIcon />} onClick={() => onOpenCallSheet(selectedDay?.id)} disabled={!selectedDay} sx={{ color: '#ccfbf1', borderColor: 'rgba(45,212,191,.3)' }}>Callsheet og utsending</Button>
           <Button variant="outlined" startIcon={<OnSetIcon />} onClick={onOpenLiveSet} sx={{ color: '#ccfbf1', borderColor: 'rgba(45,212,191,.3)' }}>Live Set</Button>
         </Stack>
 
-        {productionDaysError ? (
-          <Alert severity="error" sx={{ mb: 2 }}>{productionDaysError}</Alert>
-        ) : null}
-        {productionDaysLoading && productionDays.length === 0 ? (
+        {dataLoading && productionDays.length === 0 ? (
           <Alert severity="info">Henter produksjonsdager…</Alert>
         ) : productionDays.length === 0 ? (
           <Alert severity="info">Ingen produksjonsdag er registrert. Opprett en dag i opptaksplanen før cast movement kan føres.</Alert>
@@ -259,15 +271,39 @@ export function SecondAssistantDirectorWorkspace({
 
             <Card variant="outlined" sx={{ p: 1.5, mb: 2, bgcolor: 'rgba(15,23,42,.62)', borderColor: 'rgba(45,212,191,.16)', color: '#fff' }}>
               <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'center' }} gap={1}>
-                <Box sx={{ flex: 1 }}>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Typography sx={{ fontWeight: 750 }}>Siste callsheet-utsending</Typography>
                   <Typography sx={{ color: roleTokens.textMuted, fontSize: '.82rem' }}>
-                    {deliveries[0]
-                      ? `Revisjon ${deliveries[0].revision} · sendt ${deliveries[0].sent}/${deliveries[0].total} · bekreftet ${deliveries[0].acknowledged}/${deliveries[0].total}`
+                    {latestDelivery
+                      ? `Revisjon ${latestDelivery.revision} · ${new Date(latestDelivery.createdAt).toLocaleString('nb-NO')}`
                       : deliveriesLoading ? 'Henter status…' : 'Ingen utsending er registrert for denne dagen.'}
                   </Typography>
+                  {latestDelivery ? (
+                    <>
+                      <Stack direction="row" useFlexGap flexWrap="wrap" gap={0.75} sx={{ mt: 1 }}>
+                        <Chip size="small" label={`Sendt ${latestDelivery.sent}/${latestDelivery.total}`} sx={{ color: '#bae6fd', bgcolor: 'rgba(14,165,233,.14)' }} />
+                        <Chip size="small" label={`Feilet ${latestDelivery.failed}/${latestDelivery.total}`} sx={{ color: '#fecaca', bgcolor: 'rgba(239,68,68,.14)' }} />
+                        <Chip size="small" label={`Bekreftet ${latestDelivery.acknowledged}/${latestDelivery.total}`} sx={{ color: '#bbf7d0', bgcolor: 'rgba(34,197,94,.14)' }} />
+                      </Stack>
+                      <Stack spacing={0.5} sx={{ mt: 1 }} data-testid="call-sheet-recipient-statuses">
+                        {latestDelivery.recipients.map((recipient) => {
+                          const label = recipient.acknowledgedAt ? 'Bekreftet' : recipient.deliveryStatus === 'failed' ? 'Feilet' : recipient.deliveryStatus === 'sent' ? 'Sendt' : 'Venter';
+                          const color = recipient.acknowledgedAt ? '#86efac' : recipient.deliveryStatus === 'failed' ? '#fca5a5' : '#7dd3fc';
+                          return (
+                            <Stack key={recipient.id} direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" gap={0.25}>
+                              <Typography sx={{ fontSize: '.78rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>{recipient.name || recipient.email} · {recipient.email}</Typography>
+                              <Typography sx={{ color, fontSize: '.76rem', fontWeight: 750, flexShrink: 0 }}>{label}{recipient.reminderCount ? ` · purret ${recipient.reminderCount}` : ''}</Typography>
+                            </Stack>
+                          );
+                        })}
+                      </Stack>
+                    </>
+                  ) : null}
                 </Box>
-                <Button size="small" startIcon={<RefreshIcon />} disabled={deliveriesLoading} onClick={() => void loadDeliveries()} sx={{ color: '#99f6e4' }}>Oppdater</Button>
+                <Stack direction={{ xs: 'row', sm: 'column' }} gap={0.5}>
+                  <Button size="small" startIcon={<RefreshIcon />} disabled={deliveriesLoading} onClick={() => void loadDeliveries()} sx={{ color: '#99f6e4' }}>Oppdater</Button>
+                  {missingAcknowledgements.length > 0 ? <Button size="small" variant="outlined" disabled={readOnly || reminding} onClick={() => void remindMissing()} sx={{ color: '#fde68a', borderColor: 'rgba(251,191,36,.4)' }}>{reminding ? 'Sender…' : `Purr manglende (${missingAcknowledgements.length})`}</Button> : null}
+                </Stack>
               </Stack>
             </Card>
 

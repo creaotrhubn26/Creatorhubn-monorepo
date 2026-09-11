@@ -114,24 +114,64 @@ enum TeamData {
     /// Demo PÅ → mock; ellers EKTE medlemmer fra TeamLiveStore (uke 2:
     /// sales-leadership/team-members + kalender-møter + synkede team).
     @MainActor static var members: [TeamMember] {
-        DemoModeManager.isActiveNonisolated ? _members : TeamLiveStore.shared.members
+        guard DemoModeManager.isActiveNonisolated else { return TeamLiveStore.shared.members }
+        return DemoModeManager.isDentumTour ? _dentumMembers : _members
     }
 
     /// Demo PÅ → mock; ellers EKTE feed fra /api/leadgrid/activity-feed
     /// (2026-07-04 — crm_lead_activities fylles nå av tilbud/besøk).
     @MainActor static var activities: [ActivityEvent] {
-        DemoModeManager.isActiveNonisolated ? _activities : TeamLiveStore.shared.activities
+        guard DemoModeManager.isActiveNonisolated else { return TeamLiveStore.shared.activities }
+        return DemoModeManager.isDentumTour ? _dentumActivities : _activities
     }
 
     /// Demo PÅ → mock-trakt; ellers beregnet fra ekte lead-statuser.
     @MainActor static var pipeline: [PipelineStage] {
-        DemoModeManager.isActiveNonisolated ? _pipeline : TeamLiveStore.shared.pipeline
+        guard DemoModeManager.isActiveNonisolated else { return TeamLiveStore.shared.pipeline }
+        return DemoModeManager.isDentumTour ? _dentumPipeline : _pipeline
     }
 
     /// Demo PÅ → mock; ellers konverteringsrater fra ekte tellinger.
     @MainActor static var conversions: [ConversionRow] {
-        DemoModeManager.isActiveNonisolated ? _conversions : TeamLiveStore.shared.conversions
+        guard DemoModeManager.isActiveNonisolated else { return TeamLiveStore.shared.conversions }
+        return DemoModeManager.isDentumTour ? _dentumConversions : _conversions
     }
+
+    private static let _dentumMembers: [TeamMember] = [
+        TeamMember(name: "Daniel Qazi", area: "Oslo", initials: "DQ",
+                   color: TBrand.purple, leads: 1, leadsTrend: 0,
+                   meetings: 1, meetingsTrend: 0, valueNok: 0,
+                   valueTrend: 0, momentum: 72),
+    ]
+
+    private static let _dentumActivities: [ActivityEvent] = [
+        ActivityEvent(memberName: "Daniel Qazi", memberInitials: "DQ",
+                      memberColor: TBrand.purple,
+                      action: "Inviterte Majorstuen Tannlegesenter AS til Dentum-piloten",
+                      highlight: "Oppfølging", highlightColor: TBrand.purpleLight,
+                      timeAgo: "5 min siden"),
+    ]
+
+    private static let _dentumPipeline: [PipelineStage] = [
+        PipelineStage(label: "Nye leads", count: 1, color: TBrand.purple,
+                      topFraction: 1, bottomFraction: 0.86),
+        PipelineStage(label: "Kontaktet", count: 0, color: TBrand.blue,
+                      topFraction: 0.86, bottomFraction: 0.72),
+        PipelineStage(label: "Møter avtalt", count: 0, color: TBrand.green,
+                      topFraction: 0.72, bottomFraction: 0.58),
+        PipelineStage(label: "Tilbud sendt", count: 0, color: TBrand.yellow,
+                      topFraction: 0.58, bottomFraction: 0.44),
+        PipelineStage(label: "Vunnet", count: 0, color: TBrand.red,
+                      topFraction: 0.44, bottomFraction: 0.30),
+    ]
+
+    private static let _dentumConversions: [ConversionRow] = [
+        ConversionRow(label: "Nye leads → Kontaktet", pct: 0, isTotal: false),
+        ConversionRow(label: "Kontaktet → Møter", pct: 0, isTotal: false),
+        ConversionRow(label: "Møter → Tilbud", pct: 0, isTotal: false),
+        ConversionRow(label: "Tilbud → Vunnet", pct: 0, isTotal: false),
+        ConversionRow(label: "Total konvertering", pct: 0, isTotal: true),
+    ]
 
     private static let _activities: [ActivityEvent] = [
         ActivityEvent(memberName: "Kari Nordmann",    memberInitials: "KN", memberColor: TBrand.purple, action: "Registrerte møte med Nordic Elektro AS",         highlight: nil,          highlightColor: .clear,           timeAgo: "5 min siden"),
@@ -167,8 +207,21 @@ enum TeamData {
 
     /// Demo-mode-gated computed getter for kart-områdene. Ved demo AV → tom.
     static var areas: [TeamArea] {
-        DemoModeManager.isActiveNonisolated ? _areas : []
+        guard DemoModeManager.isActiveNonisolated else { return [] }
+        return DemoModeManager.isDentumTour ? _dentumAreas : _areas
     }
+
+    private static let _dentumAreas: [TeamArea] = [
+        TeamArea(memberName: "Daniel", areaName: "Oslo",
+                 color: TBrand.purple,
+                 center: CLLocationCoordinate2D(latitude: 59.9298, longitude: 10.7147),
+                 coords: [
+                    CLLocationCoordinate2D(latitude: 59.99, longitude: 10.60),
+                    CLLocationCoordinate2D(latitude: 59.99, longitude: 10.85),
+                    CLLocationCoordinate2D(latitude: 59.84, longitude: 10.85),
+                    CLLocationCoordinate2D(latitude: 59.84, longitude: 10.60),
+                 ]),
+    ]
 
     // Rene geometriske former matchende mockup (4-5 hjørner, lett rotert)
     private static let _areas: [TeamArea] = [
@@ -248,6 +301,7 @@ struct TeamView: View {
             VStack(spacing: 16) {
                 header
                 kpiRow
+                projectTeamSummary
                 TeamAreasCard()
                     .frame(maxHeight: .infinity)        // ekspander til alt gjenværende rom
             }
@@ -436,14 +490,54 @@ struct TeamView: View {
             .sheet(isPresented: $showStatsModal) { statsModal }
     }
 
+    /// Gjør det tydelig hvem som faktisk arbeider i det valgte kundeprosjektet.
+    /// Dette er spesielt viktig i en organisasjon der samme bruker kan bytte
+    /// mellom eksempelvis Dentum, CreatorHub og The Role Room.
+    @ViewBuilder
+    private var projectTeamSummary: some View {
+        if let member = TeamData.members.first {
+            HStack(spacing: 10) {
+                Text(member.initials)
+                    .font(.appScaled(size: 11, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                    .frame(width: 34, height: 34)
+                    .background(member.color, in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(TeamData.members.count == 1
+                         ? "Ansvarlig i prosjektet"
+                         : "(TeamData.members.count) medlemmer i prosjektet")
+                        .font(.appScaled(size: 10, weight: .semibold))
+                        .foregroundStyle(TBrand.textTertiary)
+                    Text(member.name)
+                        .font(.appScaled(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+                Spacer(minLength: 8)
+                Text(member.area)
+                    .font(.appScaled(size: 10, weight: .bold))
+                    .foregroundStyle(TBrand.purpleLight)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(TBrand.purple.opacity(0.14), in: Capsule())
+            }
+            .padding(.horizontal, 13)
+            .padding(.vertical, 9)
+            .background(TBrand.card, in: RoundedRectangle(cornerRadius: 13))
+            .overlay(RoundedRectangle(cornerRadius: 13).stroke(TBrand.stroke, lineWidth: 1))
+            .accessibilityElement(children: .contain)
+        }
+    }
+
     // ── iPhone: kompakt statistikk-knapp + modal ─────────────────────
 
     private var statsButton: some View {
-        let isDemo = DemoModeManager.isActiveNonisolated
         let hasData = !TeamData.members.isEmpty
-        let leadsValue = isDemo ? TeamKPI.totalLeads.bigValue : TeamKPI.totalLeads.liveValue
-        let meetingsValue = isDemo ? TeamKPI.meetings.bigValue : TeamKPI.meetings.liveValue
-        let subtitle = hasData ? "\(leadsValue) leads · \(meetingsValue) møter" : "Ingen data"
+        let leadsValue = displayedValue(for: .totalLeads)
+        let meetingsValue = displayedValue(for: .meetings)
+        let dentumSingular = DemoModeManager.isDentumTour && leadsValue == "1" && meetingsValue == "1"
+        let subtitle = hasData
+            ? (dentumSingular ? "1 lead · 1 møte" : "\(leadsValue) leads · \(meetingsValue) møter")
+            : "Ingen data"
         return Button {
             showStatsModal = true
         } label: {
@@ -512,7 +606,7 @@ struct TeamView: View {
         // TeamLiveStore (trend skjules — vi har ikke historikk-serie enda).
         let isDemo = DemoModeManager.isActiveNonisolated
         let hasData = !TeamData.members.isEmpty
-        let value = isDemo ? k.bigValue : k.liveValue
+        let value = displayedValue(for: k)
         // «—» fra liveValue = KPI-en kan ikke beregnes ærlig enda
         // (f.eks. momentum m/ 1 medlem, score uten scorede leads).
         let noData = !hasData || value == "—"
@@ -529,7 +623,7 @@ struct TeamView: View {
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
-                    if hasData && isDemo {
+                    if hasData && isDemo && !DemoModeManager.isDentumTour {
                         Text(trend)
                             .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(TBrand.green)
@@ -537,11 +631,13 @@ struct TeamView: View {
                     }
                 }
                 HStack {
-                    Text(noData ? "Ingen data enda" : (isDemo ? "vs. forrige periode" : "live fra teamet"))
+                    Text(noData ? "Ingen data enda"
+                         : (isDemo && !DemoModeManager.isDentumTour
+                            ? "vs. forrige periode" : "live fra prosjektet"))
                         .font(.appScaled(size: 10))
                         .foregroundStyle(TBrand.textTertiary)
                     Spacer()
-                    if hasData && isDemo {
+                    if hasData && isDemo && !DemoModeManager.isDentumTour {
                         Image(systemName: "arrow.up.right")
                             .font(.appScaled(size: 9, weight: .bold))
                             .foregroundStyle(k.tint)
@@ -554,5 +650,35 @@ struct TeamView: View {
             .overlay(RoundedRectangle(cornerRadius: 14).stroke(TBrand.stroke, lineWidth: 1))
         }
         .buttonStyle(.plain)
+    }
+
+    /// Dentum-turen representerer et ferskt pilotprosjekt og skal ikke arve
+    /// den generelle salgsdemoens 1 248 leads eller 350 000 kroner i salg.
+    @MainActor
+    private func displayedValue(for kpi: TeamKPI) -> String {
+        guard DemoModeManager.isDentumTour else {
+            return DemoModeManager.isActiveNonisolated ? kpi.bigValue : kpi.liveValue
+        }
+        let members = TeamData.members
+        let number: (Int) -> String = { value in
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .decimal
+            formatter.groupingSeparator = " "
+            return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
+        }
+        switch kpi {
+        case .totalLeads:
+            return number(members.reduce(0) { $0 + $1.leads })
+        case .meetings:
+            return number(members.reduce(0) { $0 + $1.meetings })
+        case .wonValue:
+            return "NOK \(number(members.reduce(0) { $0 + $1.valueNok }))"
+        case .avgLeadScore:
+            return "86"
+        case .momentum:
+            return members.count < 2 ? "—" : "\(members.reduce(0) { $0 + $1.momentum } / members.count) %"
+        case .sales:
+            return "0"
+        }
     }
 }

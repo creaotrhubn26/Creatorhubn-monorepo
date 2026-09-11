@@ -24,7 +24,7 @@ export interface PondusTemplateRoutesV2Deps {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TEMPLATE_COLUMNS = `id, name, description, category, kind, score, steps, objections,
-  analysis, analysis_meta, created_by, org_id, is_published, published_at,
+  analysis, analysis_meta, created_by, org_id, project_id, is_published, published_at,
   published_by, version, archived_at, created_at, updated_at`;
 
 function text(value: unknown): string {
@@ -45,6 +45,7 @@ function mapTemplate(row: Record<string, unknown>) {
     analysis_meta: row.analysis_meta ?? {},
     created_by: row.created_by,
     org_id: row.org_id,
+    project_id: row.project_id,
     is_published: Boolean(row.is_published),
     published_at: row.published_at,
     published_by: row.published_by,
@@ -67,6 +68,7 @@ function snapshot(row: Record<string, unknown>) {
     analysis: row.analysis,
     analysis_meta: row.analysis_meta,
     org_id: row.org_id,
+    project_id: row.project_id,
     is_published: row.is_published,
     published_at: row.published_at,
     published_by: row.published_by,
@@ -103,10 +105,17 @@ async function saveSnapshot(client: PoolClient, row: Record<string, unknown>, us
 }
 
 function canManageRow(access: PondusAccessContext, row: Record<string, unknown>): boolean {
-  if (access.platformAdmin) return true;
+  if (access.platformAdmin) {
+    if (!access.organizationId) return true;
+    if (row.org_id == null || String(row.org_id) !== access.organizationId) return false;
+    return access.projectId
+      ? String(row.project_id ?? "") === access.projectId
+      : row.project_id == null;
+  }
   return canManagePondus(access)
     && row.org_id != null
-    && String(row.org_id) === access.organizationId;
+    && String(row.org_id) === access.organizationId
+    && (row.project_id == null || String(row.project_id) === access.projectId);
 }
 
 export function registerPondusTemplateRoutesV2(deps: PondusTemplateRoutesV2Deps): void {
@@ -126,13 +135,27 @@ export function registerPondusTemplateRoutesV2(deps: PondusTemplateRoutesV2Deps)
       };
       const showDrafts = text(req.query.published).toLowerCase() === "all" && canManagePondus(access);
       if (!showDrafts) clauses.push("is_published = TRUE");
-      if (!access.platformAdmin) {
-        add(
-          showDrafts
-            ? "((org_id IS NULL AND is_published = TRUE) OR org_id = $?::uuid)"
-            : "(org_id IS NULL OR org_id = $?::uuid)",
-          access.organizationId,
-        );
+      if (access.organizationId) {
+        values.push(access.organizationId);
+        const orgParam = `$${values.length}::uuid`;
+        if (access.projectId) {
+          values.push(access.projectId);
+          const projectParam = `$${values.length}`;
+          clauses.push(showDrafts
+            ? `((org_id IS NULL AND project_id IS NULL AND is_published = TRUE)
+                OR (org_id = ${orgParam} AND (project_id IS NULL OR project_id = ${projectParam})))`
+            : `((org_id IS NULL AND project_id IS NULL)
+                OR (org_id = ${orgParam} AND (project_id IS NULL OR project_id = ${projectParam})))`);
+        } else {
+          // Uten et autoritativt prosjekt returneres aldri prosjektmaler.
+          clauses.push(showDrafts
+            ? `((org_id IS NULL AND project_id IS NULL AND is_published = TRUE)
+                OR (org_id = ${orgParam} AND project_id IS NULL))`
+            : `((org_id IS NULL AND project_id IS NULL)
+                OR (org_id = ${orgParam} AND project_id IS NULL))`);
+        }
+      } else if (!access.platformAdmin) {
+        clauses.push("FALSE");
       }
       const category = text(req.query.category).trim();
       const kind = text(req.query.kind).trim();
@@ -200,7 +223,9 @@ export function registerPondusTemplateRoutesV2(deps: PondusTemplateRoutesV2Deps)
       const input = parsed.value;
       const analysis = analyzePondusTemplate(input);
       const requestedOrg = req.body?.org_id;
-      let orgId: string | null = access.platformAdmin ? null : access.organizationId;
+      let orgId: string | null = access.platformAdmin
+        ? (access.projectId ? access.organizationId : null)
+        : access.organizationId;
       if (access.platformAdmin && requestedOrg != null) {
         if (typeof requestedOrg !== "string" || !UUID.test(requestedOrg)) {
           return res.status(400).json({ error: "invalid_org_id" });
@@ -212,17 +237,17 @@ export function registerPondusTemplateRoutesV2(deps: PondusTemplateRoutesV2Deps)
       const result = await pool.query(
         `INSERT INTO pondus_templates
           (name, description, category, kind, score, steps, objections, analysis,
-           analysis_meta, created_by, org_id, is_published, published_at, published_by, version)
+           analysis_meta, created_by, org_id, project_id, is_published, published_at, published_by, version)
          VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8::jsonb,$9::jsonb,
-                 $10::varchar(255),$11::uuid,$12::boolean,
-                 CASE WHEN $12::boolean THEN NOW() ELSE NULL END,
-                 CASE WHEN $12::boolean THEN $10::varchar(255) ELSE NULL END,1)
+                 $10::varchar(255),$11::uuid,$12,$13::boolean,
+                 CASE WHEN $13::boolean THEN NOW() ELSE NULL END,
+                 CASE WHEN $13::boolean THEN $10::varchar(255) ELSE NULL END,1)
          RETURNING ${TEMPLATE_COLUMNS}`,
         [
           input.name, input.description ?? null, input.category, input.kind, analysis.score,
           JSON.stringify(input.steps ?? []), JSON.stringify(input.objections ?? []),
           JSON.stringify(analysis.analysis), JSON.stringify(analysis.analysis_meta),
-          session.userId, orgId, publishNow,
+          session.userId, orgId, access.projectId, publishNow,
         ],
       );
       return res.status(201).json({ template: mapTemplate(result.rows[0]) });
@@ -411,12 +436,9 @@ export function registerPondusTemplateRoutesV2(deps: PondusTemplateRoutesV2Deps)
       if (!canManagePondus(access)) {
         return res.status(404).json({ error: "not_found" });
       }
-      const templateResult = await pool.query<{ org_id: string | null; archived_at: unknown }>(
-        `SELECT org_id::text, archived_at FROM pondus_templates WHERE id=$1::uuid LIMIT 1`, [id],
-      );
-      const template = templateResult.rows[0];
-      if (!template || template.archived_at
-          || (!access.platformAdmin && template.org_id !== access.organizationId)) {
+      if (!(await isPondusTemplateVisible(
+        pool, id, access, { includeDraftForManagers: true },
+      ))) {
         return res.status(404).json({ error: "not_found" });
       }
       const result = await pool.query(
@@ -571,12 +593,12 @@ export function registerPondusTemplateRoutesV2(deps: PondusTemplateRoutesV2Deps)
       if (!canManagePondus(access)) {
         return res.status(404).json({ error: "not_found" });
       }
-      const templateResult = await pool.query<{ org_id: string | null; archived_at: unknown }>(
-        `SELECT org_id::text, archived_at FROM pondus_templates WHERE id=$1::uuid LIMIT 1`, [templateId],
+      const templateResult = await pool.query(
+        `SELECT ${TEMPLATE_COLUMNS} FROM pondus_templates WHERE id=$1::uuid LIMIT 1`,
+        [templateId],
       );
-      const template = templateResult.rows[0];
-      if (!template || template.archived_at
-          || (!access.platformAdmin && template.org_id !== access.organizationId)) {
+      const template = templateResult.rows[0] as Record<string, unknown> | undefined;
+      if (!template || template.archived_at || !canManageRow(access, template)) {
         return res.status(404).json({ error: "not_found" });
       }
       const result = await pool.query(
@@ -614,14 +636,26 @@ export function registerPondusTemplateRoutesV2(deps: PondusTemplateRoutesV2Deps)
       if (!access) return;
       if (!canManagePondus(access)) return res.status(403).json({ error: "manager_role_required" });
       await client.query("BEGIN");
-      const currentResult = await client.query(
-        access.platformAdmin
-          ? `SELECT ${TEMPLATE_COLUMNS} FROM pondus_templates
-              WHERE category=$1 AND org_id IS NULL AND archived_at IS NULL FOR UPDATE`
-          : `SELECT ${TEMPLATE_COLUMNS} FROM pondus_templates
-              WHERE category=$1 AND org_id=$2::uuid AND archived_at IS NULL FOR UPDATE`,
-        access.platformAdmin ? [category] : [category, access.organizationId],
-      );
+      const currentResult = access.projectId && access.organizationId
+        ? await client.query(
+          `SELECT ${TEMPLATE_COLUMNS} FROM pondus_templates
+            WHERE category=$1 AND org_id=$2::uuid AND project_id=$3
+              AND archived_at IS NULL FOR UPDATE`,
+          [category, access.organizationId, access.projectId],
+        )
+        : access.platformAdmin && !access.organizationId
+          ? await client.query(
+            `SELECT ${TEMPLATE_COLUMNS} FROM pondus_templates
+              WHERE category=$1 AND org_id IS NULL AND project_id IS NULL
+                AND archived_at IS NULL FOR UPDATE`,
+            [category],
+          )
+          : await client.query(
+            `SELECT ${TEMPLATE_COLUMNS} FROM pondus_templates
+              WHERE category=$1 AND org_id=$2::uuid AND project_id IS NULL
+                AND archived_at IS NULL FOR UPDATE`,
+            [category, access.organizationId],
+          );
       const updated = [];
       for (const raw of currentResult.rows) {
         const current = raw as Record<string, unknown>;

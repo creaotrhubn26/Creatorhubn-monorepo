@@ -323,6 +323,18 @@ struct AddLeadSheet: View {
     private var saving: Bool { submissionState.isSaving }
     private var saveError: String? { submissionState.errorMessage }
     private var didSave: Bool { submissionState.didSave }
+    private var companyExample: String {
+        DemoModeManager.isDentumTour ? "F.eks. Frogner Tannklinikk AS" : "F.eks. Nordic Elektro AS"
+    }
+    private var websiteExample: String {
+        DemoModeManager.isDentumTour ? "frogner-tannklinikk.no" : "nordicelektro.no"
+    }
+    private var contactExample: String {
+        DemoModeManager.isDentumTour ? "Anne Lunde" : "Anders Johansen"
+    }
+    private var industryExample: String {
+        DemoModeManager.isDentumTour ? "Tannhelse" : "Elektro"
+    }
 
     init(
         initialCoordinate: CLLocationCoordinate2D? = nil,
@@ -552,7 +564,7 @@ struct AddLeadSheet: View {
                 .font(.appScaled(size: 12))
                 .foregroundStyle(AlBrand.textSecondary)
             TextField("", text: $urlOrSearch,
-                      prompt: Text("nordicelektro.no  •  Nordic Elektro AS  •  912 345 678")
+                      prompt: Text("\(websiteExample)  •  bedriftsnavn  •  org.nr")
                         .foregroundColor(AlBrand.textTertiary))
                 .textFieldStyle(.plain)
                 .foregroundStyle(.white)
@@ -646,16 +658,16 @@ struct AddLeadSheet: View {
     private func companySection(compact: Bool) -> some View {
         sectionCard(title: "Bedrift", icon: "building.2.fill") {
             VStack(spacing: 12) {
-                field(label: "Bedriftsnavn",  placeholder: "F.eks. Nordic Elektro AS", text: $companyName)
+                field(label: "Bedriftsnavn", placeholder: companyExample, text: $companyName)
                 if compact {
                     VStack(spacing: 12) {
                         field(label: "Org.nr", placeholder: "912 345 678", text: $orgNumber)
-                        field(label: "Nettside", placeholder: "nordicelektro.no", text: $website)
+                        field(label: "Nettside", placeholder: websiteExample, text: $website)
                     }
                 } else {
                     HStack(spacing: 10) {
                         field(label: "Org.nr", placeholder: "912 345 678", text: $orgNumber)
-                        field(label: "Nettside", placeholder: "nordicelektro.no", text: $website)
+                        field(label: "Nettside", placeholder: websiteExample, text: $website)
                     }
                 }
                 field(label: "Adresse", placeholder: "Storgata 12", text: $address)
@@ -680,13 +692,13 @@ struct AddLeadSheet: View {
         sectionCard(title: "Primær kontaktperson", icon: "person.crop.circle.fill") {
             VStack(spacing: 12) {
                 if compact {
-                    field(label: "Navn", placeholder: "Anders Johansen", text: $contactName)
+                    field(label: "Navn", placeholder: contactExample, text: $contactName)
                     field(label: "Rolle", placeholder: "Daglig leder", text: $contactRole)
                     field(label: "Telefon", placeholder: "+47 22 33 44 55", text: $phone, keyboard: .phonePad)
                     field(label: "E-post", placeholder: "post@…", text: $email, keyboard: .emailAddress)
                 } else {
                     HStack(spacing: 10) {
-                        field(label: "Navn", placeholder: "Anders Johansen", text: $contactName)
+                        field(label: "Navn", placeholder: contactExample, text: $contactName)
                         field(label: "Rolle", placeholder: "Daglig leder", text: $contactRole)
                     }
                     HStack(spacing: 10) {
@@ -731,13 +743,13 @@ struct AddLeadSheet: View {
 
                 if compact {
                     VStack(spacing: 12) {
-                        field(label: "Bransje", placeholder: "Elektro", text: $industry)
+                        field(label: "Bransje", placeholder: industryExample, text: $industry)
                         field(label: "Ansatte", placeholder: "25", text: $employees, keyboard: .numberPad)
                         field(label: "Omsetning (NOK)", placeholder: "10 000 000", text: $revenue, keyboard: .decimalPad)
                     }
                 } else {
                     HStack(spacing: 10) {
-                        field(label: "Bransje", placeholder: "Elektro", text: $industry)
+                        field(label: "Bransje", placeholder: industryExample, text: $industry)
                         field(label: "Ansatte", placeholder: "25", text: $employees, keyboard: .numberPad)
                         field(label: "Omsetning (NOK)", placeholder: "10 000 000", text: $revenue, keyboard: .decimalPad)
                     }

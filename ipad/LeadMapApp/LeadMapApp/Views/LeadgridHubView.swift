@@ -48,11 +48,24 @@ struct LeadgridHubView: View {
                             Label("Vunnet / Tapt-dashboard",
                                    systemImage: "chart.line.uptrend.xyaxis")
                         }
+                    } else if DemoModeManager.isDentumTour {
+                        Label("Vunnet / Tapt – ingen resultater ennå",
+                              systemImage: "chart.line.uptrend.xyaxis")
+                            .foregroundStyle(.secondary)
                     } else {
                         Label("Velg kundeprosjekt for Vunnet / Tapt",
                               systemImage: "chart.line.uptrend.xyaxis")
                             .foregroundStyle(.secondary)
                     }
+                }
+
+                Section("Assistent") {
+                    NavigationLink {
+                        LeadgridAgentChatView(projectId: appState.activeLeadgridProjectId)
+                    } label: {
+                        Label("Leadgrid-agent", systemImage: "sparkles")
+                    }
+                    .accessibilityIdentifier("leadgrid-agent-open")
                 }
 
                 Section("Research") {
@@ -149,6 +162,9 @@ struct LeadgridHubView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     OrgPickerToolbarMenu()
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    ProjectContextPill()
+                }
             }
             .marketingDirectorBackdrop(.crmHome)
             .sheet(isPresented: Binding(
@@ -158,15 +174,6 @@ struct LeadgridHubView: View {
                 if let api = appState.api {
                     LeadgridExportShareView(api: api)
                 }
-            }
-            .fullScreenCover(isPresented: Binding(
-                get: { appState.discoveryCoordinator.isPresented },
-                set: { presented in
-                    if presented { appState.discoveryCoordinator.showWorkspace() }
-                    else { appState.discoveryCoordinator.dismissWorkspace() }
-                }
-            )) {
-                DiscoveryWorkspaceView(coordinator: appState.discoveryCoordinator)
             }
     }
 }

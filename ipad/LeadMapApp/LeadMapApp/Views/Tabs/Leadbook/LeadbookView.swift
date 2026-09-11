@@ -22,8 +22,10 @@ enum LBrand {
     static let green = Color(red: 0.20, green: 0.85, blue: 0.60)
     static let blue = Color(red: 0.34, green: 0.60, blue: 0.98)
     static let pink = Color(red: 0.98, green: 0.35, blue: 0.65)
-    static let textSecondary = Color.white.opacity(0.62)
-    static let textTertiary = Color.white.opacity(0.45)
+    // iPad legger material/dimming over split-view-detaljen. Høyere
+    // opasitet holder sekundærtekst over WCAG-grensen også på iPad mini.
+    static let textSecondary = Color.white.opacity(0.78)
+    static let textTertiary = Color.white.opacity(0.64)
 }
 
 // MARK: - Models
@@ -147,15 +149,26 @@ enum LeadbookData {
         LeadbookTemplate(name: "Ikke til stede / return",      channel: .field, step: 1, stepTotal: 4, used: 19, conversion: 0.18, status: .underReview),
     ]
 
+    /// Ferskt Dentum-oppsett: malene er klare, men har ingen oppdiktet
+    /// bruk eller konvertering før Daniel faktisk tar dem i bruk.
+    private static let _dentumTemplates: [LeadbookTemplate] = [
+        LeadbookTemplate(name: "Dentum – første e-post til tannklinikk", channel: .email, step: 1, stepTotal: 4, used: 0, conversion: 0, status: .active),
+        LeadbookTemplate(name: "Dentum – oppfølging på telefon", channel: .phone, step: 1, stepTotal: 4, used: 0, conversion: 0, status: .active),
+        LeadbookTemplate(name: "Dentum – pilotmøte", channel: .video, step: 1, stepTotal: 4, used: 0, conversion: 0, status: .active),
+    ]
+
     /// Demo PÅ → mock; ellers EKTE Pondus-maler m/ usage-tall fra
     /// LeadbookLiveStore (backenden fantes hele tiden — mig 0355/0364).
     @MainActor static var templates: [LeadbookTemplate] {
-        DemoModeManager.isActiveNonisolated ? _templates : LeadbookLiveStore.shared.templates
+        guard DemoModeManager.isActiveNonisolated else {
+            return LeadbookLiveStore.shared.templates
+        }
+        return DemoModeManager.isDentumTour ? _dentumTemplates : _templates
     }
 
     /// Krasj-safe fallback for `@State`-init.
     static var firstOrPlaceholder: LeadbookTemplate {
-        _templates[0]
+        DemoModeManager.isDentumTour ? _dentumTemplates[0] : _templates[0]
     }
 
     static let steps: [LeadbookStep] = [
@@ -217,10 +230,56 @@ enum LeadbookData {
         ],
     ]
 
+    private static let dentumContentByStep: [Int: [LeadbookContent]] = [
+        1: [
+            LeadbookContent(icon: "target", iconColor: LBrand.purpleLight, title: "Formål",
+                            body: "Bekreft at du snakker med riktig klinikk og forklar Dentum-piloten kort."),
+            LeadbookContent(icon: "envelope.fill", iconColor: LBrand.blue, title: "Åpning",
+                            body: "Hei! Jeg heter Daniel og jobber med Dentum. Vi lager en pilot som gjør det enklere for pasienter å finne riktig tannklinikk og behandling i Oslo."),
+            LeadbookContent(icon: "checkmark.shield.fill", iconColor: LBrand.green, title: "Før utsendelse",
+                            body: "Bruk bare en verifisert fellesadresse. Navngitte personadresser er blokkert uten dokumentert samtykke eller gyldig kundeforhold."),
+        ],
+        2: [
+            LeadbookContent(icon: "questionmark.bubble.fill", iconColor: LBrand.green, title: "Spørsmål",
+                            body: "Hvilke behandlinger ønsker dere å bli funnet for? Hvilke områder henter dere pasienter fra? Hvem kvalitetssikrer klinikkprofilen?"),
+            LeadbookContent(icon: "ear.fill", iconColor: LBrand.blue, title: "Lytt etter",
+                            body: "Prioriterte behandlinger, kapasitet, geografi og hva klinikken må godkjenne før publisering."),
+        ],
+        3: [
+            LeadbookContent(icon: "sparkles", iconColor: LBrand.pink, title: "Dentum-piloten",
+                            body: "Vis hvordan en korrekt klinikkprofil kobler behandlinger, geografi og pasientbehov uten å erstatte klinikkens eksisterende nettside."),
+            LeadbookContent(icon: "shield.lefthalf.filled", iconColor: LBrand.orange, title: "Trygghet",
+                            body: "Klinikken får kvalitetssikre innholdet og kontaktgrunnlaget før noe publiseres eller sendes."),
+        ],
+        4: [
+            LeadbookContent(icon: "calendar.badge.plus", iconColor: LBrand.blue, title: "Avtal godkjenning",
+                            body: "Sett et konkret tidspunkt for gjennomgang av klinikkprofil, behandlinger og fellesadresse."),
+            LeadbookContent(icon: "doc.text.fill", iconColor: LBrand.green, title: "Send etter møtet",
+                            body: "Send en kort oppsummering med oppdatert profilutkast og punktene klinikken skal godkjenne."),
+        ],
+    ]
+
+    static func content(for step: Int) -> [LeadbookContent] {
+        if DemoModeManager.isDentumTour { return dentumContentByStep[step] ?? [] }
+        return contentByStep[step] ?? []
+    }
+
     /// Demo PÅ → mock; ellers innvendinger fra publiserte Pondus-maler.
     @MainActor static var objections: [Objection] {
-        DemoModeManager.isActiveNonisolated ? _objections : LeadbookLiveStore.shared.objections
+        guard DemoModeManager.isActiveNonisolated else {
+            return LeadbookLiveStore.shared.objections
+        }
+        return DemoModeManager.isDentumTour ? _dentumObjections : _objections
     }
+
+    private static let _dentumObjections: [Objection] = [
+        Objection(title: "\"Vi har allerede en nettside\"",
+                  response: "Det er bra. Dentum erstatter ikke det som fungerer – piloten viser hvordan klinikkprofilen kan gjøre det enklere for riktige pasienter å finne og velge dere.",
+                  icon: "globe", iconColor: LBrand.green),
+        Objection(title: "\"Send informasjon på e-post\"",
+                  response: "Gjerne. Jeg tilpasser eksemplet til klinikkens tjenester og sender en kort forhåndsvisning før vi følger opp.",
+                  icon: "envelope.fill", iconColor: LBrand.blue),
+    ]
 
     private static let _objections: [Objection] = [
         Objection(title: "\"Vi har allerede leverandør\"",
@@ -239,7 +298,10 @@ enum LeadbookData {
 
     /// Mock ytelses-tall — KUN i demo-modus (ingen per-mal-analytics enda).
     @MainActor static var perf: [PerformanceRow] {
-        DemoModeManager.isActiveNonisolated ? _perf : LeadbookLiveStore.shared.performanceRows
+        guard DemoModeManager.isActiveNonisolated else {
+            return LeadbookLiveStore.shared.performanceRows
+        }
+        return DemoModeManager.isDentumTour ? [] : _perf
     }
     private static let _perf: [PerformanceRow] = [
         PerformanceRow(name: "Møtebooking – telefon",     responseRate: 0.52, conversion: 0.41),
@@ -251,7 +313,9 @@ enum LeadbookData {
 
     /// Mock versjonshistorikk — KUN i demo-modus (versjons-backend mangler).
     static var versions: [VersionEntry] {
-        DemoModeManager.isActiveNonisolated ? _versions : []
+        guard DemoModeManager.isActiveNonisolated,
+              !DemoModeManager.isDentumTour else { return [] }
+        return _versions
     }
     private static let _versions: [VersionEntry] = [
         VersionEntry(version: "v2.1", date: "Oppdatert i dag av Kari Nordmann", author: "Kari Nordmann",
@@ -294,9 +358,6 @@ struct LeadbookView: View {
     @State private var activePondusCoach: PondusTemplateDTO?
     @State private var activePondusInitialStep = 0
     @Environment(AppState.self) private var appState
-    /// iPhone-compact vs. iPad/Mac-regular. Brukes til å velge 2×2-grid
-    /// vs. 1×4-rekke for KPI-kortene og andre tetthetsvalg.
-    @Environment(\.horizontalSizeClass) private var hSize
     /// Lokalt alias for delt store — bevarer eksisterende callsteder som
     /// refererer `pondusStore.*`.
     private var pondusStore: PondusStore { appState.pondusStore }
@@ -305,10 +366,6 @@ struct LeadbookView: View {
             || ["admin", "owner", "salgssjef", "teamleder"].contains(appState.roleInOrg ?? "")
             || appState.can("pondus.manage")
     }
-
-    /// True på iPhone-portrait og trange split-view på iPad. Bruk til å
-    /// bytte til vertikal single-column layout.
-    private var isCompactLayout: Bool { hSize == .compact }
 
     var body: some View {
         // iPhone: fullScreenCover — LeadbookView er pushet inne i Mer-
@@ -341,53 +398,63 @@ struct LeadbookView: View {
             LBrand.bg.ignoresSafeArea()
             VStack(spacing: 0) {
                 DemoModeBanner()
-                ScrollView {
-                    VStack(spacing: 16) {
-                        header
-                        kpiRow
-                        subTabBar
-                        Group {
-                            switch subTab {
-                            case .oversikt:  oversiktContent
-                            case .maler:     malerContent.gated(.leadbookMaler)
-                            case .pondus:    pondusContent.gated(.leadbookPondus)
-                            case .akademi:   AcademyTabView()
-                            case .eksempler:
-                                LeadbookExamplesView(
-                                    requestedExampleId: appState.deepLinkLeadbookExampleId
-                                )
-                                .gated(.leadbookEksempler)
-                            case .innsikt:   LeadbookInnsiktView().gated(.leadbookInnsikt)
+                GeometryReader { geo in
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            header
+                            kpiRow
+                            subTabBar
+                            Group {
+                                switch subTab {
+                                case .oversikt:  oversiktContent
+                                case .maler:     malerContent.gated(.leadbookMaler)
+                                case .pondus:    pondusContent.gated(.leadbookPondus)
+                                case .akademi:   AcademyTabView()
+                                case .eksempler:
+                                    LeadbookExamplesView(
+                                        requestedExampleId: appState.deepLinkLeadbookExampleId
+                                    )
+                                    .gated(.leadbookEksempler)
+                                case .innsikt:   LeadbookInnsiktView().gated(.leadbookInnsikt)
+                                }
                             }
+                            // Telefon: den flytende tab-baren overlapper de
+                            // siste ~100pt — innhold lakk bak den (QA 2026-07-05).
+                            Color.clear.frame(height: DeviceIdiom.isPhone ? 110 : 20)
                         }
-                        // Telefon: den flytende tab-baren overlapper de
-                        // siste ~100pt — innhold lakk bak den (QA 2026-07-05).
-                        Color.clear.frame(height: DeviceIdiom.isPhone ? 110 : 20)
+                        // En vertikal ScrollView kan ellers arve idealbredden fra
+                        // en bred fane-/Pondus-rad og sentrere hele innholdet bak
+                        // iPad-sidepanelet. Lås innholdet til faktisk detaljbredde.
+                        .frame(width: max(0, geo.size.width - 40), alignment: .leading)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 14)
                     }
-                    .padding(.horizontal, 20).padding(.top, 14)
-                }
-                .refreshable {
-                    await pondusStore.load(
-                        api: appState.api,
-                        organizationId: appState.activeOrganizationId
-                    )
-                    await LeadbookLiveStore.shared.refresh()
-                    await AcademyLiveStore.shared.load()
+                    .refreshable {
+                        await pondusStore.load(
+                            api: appState.api,
+                            organizationId: appState.activeOrganizationId,
+                            projectId: appState.activeProjectId
+                        )
+                        await LeadbookLiveStore.shared.refresh()
+                        await AcademyLiveStore.shared.load()
+                    }
                 }
             }
         }
         .preferredColorScheme(.dark)
-        .task(id: appState.activeOrganizationId) {
+        .task(id: "\(appState.activeOrganizationId ?? "")|\(appState.activeProjectId ?? "")") {
             await pondusStore.load(
                 api: appState.api,
-                organizationId: appState.activeOrganizationId
+                organizationId: appState.activeOrganizationId,
+                projectId: appState.activeProjectId
             )
             // Uke 2-oppfølger: live-store for fanens mal-liste/KPI-er
             // (Pondus-maler + usage-stats). Idempotent attach.
             if let api = appState.api {
                 LeadbookLiveStore.shared.attach(
                     api: api,
-                    organizationId: appState.activeOrganizationId
+                    organizationId: appState.activeOrganizationId,
+                    projectId: appState.activeProjectId
                 )
                 await LeadbookLiveStore.shared.refresh()
                 if let first = LeadbookLiveStore.shared.templates.first,
@@ -538,6 +605,8 @@ struct LeadbookView: View {
             .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
             .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
         }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
         .buttonStyle(.plain)
         .macCatalystHover()
     }
@@ -559,6 +628,8 @@ struct LeadbookView: View {
             .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
             .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
         }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
         .buttonStyle(.plain)
         .macCatalystHover()
     }
@@ -586,6 +657,8 @@ struct LeadbookView: View {
             .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
             .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
         }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
         .buttonStyle(.plain)
         .macCatalystHover()
     }
@@ -675,6 +748,8 @@ struct LeadbookView: View {
                             .fill(subTab == tab ? LBrand.purpleLight : .clear)
                             .frame(height: 2)
                     }
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 // Stabil id for QA-harnessen — label-CONTAINS-søk traff
@@ -684,34 +759,29 @@ struct LeadbookView: View {
         }
     }
 
-    @ViewBuilder
     private var subTabBar: some View {
-        if DeviceIdiom.isPhone {
-            // iPhone: fem faner får ikke plass side om side på compact width —
-            // horisontal scroller i stedet. Full-bleed (negativ padding
-            // opphever ytre 20pt-marg) med marg lagt inn i innholdet, slik at
-            // siste fane kan scrolles helt inn.
-            ScrollView(.horizontal, showsIndicators: false) {
-                subTabButtons
-                    .padding(.horizontal, 20)
-            }
-            .accessibilityIdentifier("leadbook-subtab-scroller")
-            .padding(.horizontal, -20)
-            .background(
-                Rectangle().fill(LBrand.stroke).frame(height: 1),
-                alignment: .bottom
-            )
-        } else {
-            // iPad/Mac: behold dagens faste rad — her er det alltid plass.
+        ViewThatFits(in: .horizontal) {
             HStack(spacing: 4) {
                 subTabButtons
                 Spacer()
             }
-            .background(
-                Rectangle().fill(LBrand.stroke).frame(height: 1),
-                alignment: .bottom
-            )
+            // Behold fast rad når detaljflaten faktisk har plass, uavhengig
+            // av om enheten er iPad, iPad mini eller ekstern skjerm.
+            .frame(minWidth: 680)
+
+            // Trange iPad-vinduer trenger samme scrollbar rad som iPhone.
+            ScrollView(.horizontal, showsIndicators: false) {
+                subTabButtons
+                    .padding(.horizontal, 20)
+            }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("leadbook-subtab-scroller")
+            .padding(.horizontal, -20)
         }
+        .background(
+            Rectangle().fill(LBrand.stroke).frame(height: 1),
+            alignment: .bottom
+        )
     }
 
     // MARK: Content per sub-tab
@@ -763,7 +833,8 @@ struct LeadbookView: View {
                     Task {
                         await pondusStore.load(
                             api: appState.api,
-                            organizationId: appState.activeOrganizationId
+                            organizationId: appState.activeOrganizationId,
+                            projectId: appState.activeProjectId
                         )
                     }
                 },
@@ -806,7 +877,9 @@ struct LeadbookView: View {
 
     private var statsButton: some View {
         let isDemo = DemoModeManager.isActiveNonisolated
-        let activeTemplates = isDemo ? LeadbookKPI.activeTemplates.value : LeadbookKPI.activeTemplates.liveValue
+        let activeTemplates = DemoModeManager.isDentumTour
+            ? "\(LeadbookData.templates.filter { $0.status == .active || $0.status == .highPerf }.count)"
+            : (isDemo ? LeadbookKPI.activeTemplates.value : LeadbookKPI.activeTemplates.liveValue)
         return Button {
             showStatsModal = true
         } label: {
@@ -876,12 +949,12 @@ struct LeadbookView: View {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 7) {
                     Text(kpi.title).font(.appScaled(size: 12, weight: .semibold)).foregroundStyle(LBrand.textSecondary)
-                    Text(isDemo ? kpi.value : kpi.liveValue)
+                    Text(DemoModeManager.isDentumTour ? kpi.dentumValue : (isDemo ? kpi.value : kpi.liveValue))
                         .font(.appScaled(size: 26, weight: .bold, design: .rounded)).foregroundStyle(.white)
                         .monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
                     HStack(spacing: 6) {
-                        Text(isDemo ? "vs. forrige periode" : LeadbookKPI.liveSubtitle).font(.appScaled(size: 10)).foregroundStyle(LBrand.textTertiary)
-                        if isDemo {
+                        Text(DemoModeManager.isDentumTour ? "Dentum-prosjektet" : (isDemo ? "vs. forrige periode" : LeadbookKPI.liveSubtitle)).font(.appScaled(size: 10)).foregroundStyle(LBrand.textTertiary)
+                        if isDemo && !DemoModeManager.isDentumTour {
                             Text(kpi.trend).font(.appScaled(size: 11, weight: .bold)).foregroundStyle(LBrand.green).monospacedDigit()
                         }
                     }
@@ -926,6 +999,16 @@ enum LeadbookKPI: String, CaseIterable, Identifiable {
         }
     }
 
+    @MainActor var dentumValue: String {
+        switch self {
+        case .activeTemplates:
+            return "\(LeadbookData.templates.filter { $0.status == .active || $0.status == .highPerf }.count)"
+        case .usedToday: return "0"
+        case .meetingRate: return "—"
+        case .teamAdoption: return "100 %"
+        }
+    }
+
     /// EKTE verdi fra LeadbookLiveStore (usage-stats, mig 0364) — brukes
     /// når demo er AV så KPI-kortene ikke viser mockup-tallene over.
     /// 2026-08-03 (audit): viste stille 0/— mens storen lastet eller hadde
@@ -941,6 +1024,15 @@ enum LeadbookKPI: String, CaseIterable, Identifiable {
         case .meetingRate:     return store.kpiMeetingRate
         case .teamAdoption:    return store.kpiTeamAdoption
         }
+    }
+
+    @MainActor var scopedValue: String {
+        if DemoModeManager.isDentumTour { return dentumValue }
+        return DemoModeManager.usesGenericFixtures ? value : liveValue
+    }
+
+    var scopedTrend: String? {
+        DemoModeManager.usesGenericFixtures ? trend : nil
     }
 
     /// Undertekst til KPI-kortet i live-modus — sier ærlig fra når tallene
@@ -1070,7 +1162,11 @@ struct PondusSuggestionPair: Identifiable, Hashable {
 // MARK: - PondusData mock
 
 enum PondusData {
-    static let templates: [PondusTemplate] = [
+    static var templates: [PondusTemplate] {
+        DemoModeManager.isDentumTour ? _dentumTemplates : _templates
+    }
+
+    private static let _templates: [PondusTemplate] = [
         PondusTemplate(
             name: "Første kontakt med pondus",
             score: 82,
@@ -1150,5 +1246,55 @@ enum PondusData {
             usage: PondusUsage(brukt: 165, svarrate: 0.47, svarrateDelta: 0.11, moeterate: 0.21, moerateDelta: 0.06, konvertering: 0.082, konverteringDelta: 0.019),
             suggestions: []
         )
+    ]
+
+    private static let _dentumTemplates: [PondusTemplate] = [
+        PondusTemplate(
+            name: "Dentum – første kontakt med tannklinikk",
+            score: 88,
+            channel: .email,
+            summary: "En kort, trygg og klinikktilpasset invitasjon til Dentum-piloten.",
+            steps: [
+                PondusStep(icon: "target", iconColor: LBrand.purpleLight, label: "Formål", content: "Få riktig beslutningstaker til å vurdere en tilpasset Dentum-profil for klinikken.", charLimit: nil),
+                PondusStep(icon: "envelope.fill", iconColor: LBrand.blue, label: "Emnefelt", content: "En Dentum-profil for {selskap}", charLimit: 60),
+                PondusStep(icon: "bubble.left.fill", iconColor: LBrand.purpleLight, label: "Åpning", content: "Hei {navn}. Jeg heter Daniel og setter opp Dentum for tannklinikker i Oslo. Jeg har sett på {selskap} og hvilke behandlinger dere tilbyr.", charLimit: 220),
+                PondusStep(icon: "diamond.fill", iconColor: LBrand.green, label: "Verdiforslag", content: "Dentum gjør det enklere for pasienter å finne en klinikk som passer behovet deres. Før publisering får dere kontrollere og endre hele klinikkprofilen.", charLimit: 240),
+                PondusStep(icon: "arrow.right.circle.fill", iconColor: LBrand.purpleLight, label: "Neste steg", content: "Kan jeg sende en kort forhåndsvisning til riktig person hos dere?", charLimit: 120),
+            ],
+            analysis: PondusAnalysis(score: 88, scoreLabel: "Sterk pondus", autoritet: 86, klarhet: 94, troverdighet: 88, trygghet: 90, fremdrift: 84, tips: ["Nevn én faktisk behandling fra klinikkens nettside.", "Be om riktig kontaktperson, ikke et stort møte.", "Ikke lov flere pasienter uten dokumentasjon."]),
+            usage: PondusUsage(brukt: 0, svarrate: 0, svarrateDelta: 0, moeterate: 0, moerateDelta: 0, konvertering: 0, konverteringDelta: 0),
+            suggestions: [
+                PondusSuggestionPair(stronger: "Jeg har sett på behandlingene hos {selskap} og laget en kort forhåndsvisning.", weaker: "Vi tilbyr en spennende markedsføringsløsning."),
+                PondusSuggestionPair(stronger: "Dere kontrollerer hele profilen før noe publiseres.", weaker: "Dette går raskt og automatisk."),
+            ]
+        ),
+        PondusTemplate(
+            name: "Dentum – oppfølging på telefon",
+            score: 85,
+            channel: .phone,
+            summary: "Følg opp forhåndsvisningen uten press og avklar eierskap.",
+            steps: [
+                PondusStep(icon: "phone.fill", iconColor: LBrand.green, label: "Åpning", content: "Hei {navn}, det er Daniel fra Dentum. Jeg følger opp forhåndsvisningen vi sendte for {selskap}.", charLimit: 160),
+                PondusStep(icon: "questionmark.circle.fill", iconColor: LBrand.blue, label: "Avklaring", content: "Er du riktig person til å vurdere klinikkprofilen, eller bør jeg snakke med klinikkleder?", charLimit: 170),
+                PondusStep(icon: "arrow.right.circle.fill", iconColor: LBrand.purpleLight, label: "Neste steg", content: "Skal vi bruke ti minutter på å gå gjennom profilen og eventuelle endringer?", charLimit: 130),
+            ],
+            analysis: PondusAnalysis(score: 85, scoreLabel: "Sterk pondus", autoritet: 84, klarhet: 91, troverdighet: 86, trygghet: 88, fremdrift: 80, tips: ["Vis til den konkrete forhåndsvisningen.", "Avklar beslutningstaker tidlig."]),
+            usage: PondusUsage(brukt: 0, svarrate: 0, svarrateDelta: 0, moeterate: 0, moerateDelta: 0, konvertering: 0, konverteringDelta: 0),
+            suggestions: []
+        ),
+        PondusTemplate(
+            name: "Dentum – pilotmøte",
+            score: 86,
+            channel: .video,
+            summary: "Bekreft fakta, behandlinger og godkjenning før publisering.",
+            steps: [
+                PondusStep(icon: "calendar", iconColor: LBrand.blue, label: "Agenda", content: "Først bekrefter vi klinikkdataene, så ser vi på pasientbehov og behandlinger, og til slutt avtaler vi eventuelle endringer og godkjenning.", charLimit: 220),
+                PondusStep(icon: "checkmark.shield.fill", iconColor: LBrand.green, label: "Trygghet", content: "Ingenting publiseres før dere har kontrollert profilen.", charLimit: 100),
+                PondusStep(icon: "arrow.right.circle.fill", iconColor: LBrand.purpleLight, label: "Avslutning", content: "Hvem godkjenner den endelige profilen, og når passer det at vi følger opp?", charLimit: 140),
+            ],
+            analysis: PondusAnalysis(score: 86, scoreLabel: "Sterk pondus", autoritet: 85, klarhet: 92, troverdighet: 88, trygghet: 91, fremdrift: 76, tips: ["Skill bekreftede fakta fra forslag.", "Avtal én navngitt godkjenner."]),
+            usage: PondusUsage(brukt: 0, svarrate: 0, svarrateDelta: 0, moeterate: 0, moerateDelta: 0, konvertering: 0, konverteringDelta: 0),
+            suggestions: []
+        ),
     ]
 }

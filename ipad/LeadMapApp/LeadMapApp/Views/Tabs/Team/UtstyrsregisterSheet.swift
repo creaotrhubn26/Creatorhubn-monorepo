@@ -78,6 +78,7 @@ struct UtstyrsregisterSheet: View {
     @State private var discardTarget: APIClient.EquipmentDTO?
 
     private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
+    private var usesGenericFixtures: Bool { DemoModeManager.usesGenericFixtures }
 
     private var filtered: [APIClient.EquipmentDTO] {
         items.filter { item in
@@ -502,8 +503,14 @@ struct UtstyrsregisterSheet: View {
     // MARK: Data
 
     private func load() async {
-        if isDemo {
+        if usesGenericFixtures {
             items = Self.demoRows()
+            loading = false
+            loadError = nil
+            return
+        }
+        if DemoModeManager.isDentumTour {
+            items = []
             loading = false
             loadError = nil
             return

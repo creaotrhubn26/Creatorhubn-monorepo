@@ -816,6 +816,20 @@ struct AssignSellerSheet: View {
     /// (`/sales-leadership/team-members`). winRate/online har ingen
     /// datakilde enda → 0/false.
     private var sellers: [Seller] {
+        if DemoModeManager.isDentumTour {
+            return [
+                Seller(
+                    userId: "qa-tour-user",
+                    name: "Daniel Qazi",
+                    role: "Prosjektadmin",
+                    initials: "DQ",
+                    color: MABrand.purple,
+                    load: 1,
+                    winRate: 0,
+                    online: true
+                )
+            ]
+        }
         if DemoModeManager.isActiveNonisolated { return Self.mockSellers }
         let team = TeamLiveStore.shared
         return team.memberDTOs.map { dto in
@@ -1089,13 +1103,32 @@ struct AddToCampaignSheet: View {
         }
     }
 
-    private let campaigns: [Campaign] = [
+    private static let genericCampaigns: [Campaign] = [
         Campaign(name: "Q2-løft: SMB-elektroentreprenører", kind: .nurture,       status: .active, leadsCount: 142, valueNok: 4_200_000, endDate: "30. juni"),
         Campaign(name: "Webinar: ERP-migrering 2026",        kind: .event,         status: .active, leadsCount: 87,  valueNok: 1_800_000, endDate: "12. juni"),
         Campaign(name: "AI-modulen 2.0 — early access",      kind: .productLaunch, status: .active, leadsCount: 56,  valueNok: 2_500_000, endDate: "5. juli"),
         Campaign(name: "Re-engasjer kalde leads >90 dager",   kind: .email,         status: .active, leadsCount: 234, valueNok: 0,          endDate: "Løpende"),
         Campaign(name: "Pilot: Bygg-bransjen (vinter 2026)",  kind: .nurture,       status: .paused, leadsCount: 41,  valueNok: 980_000,    endDate: "Pauset"),
     ]
+
+    /// Kampanjene i arket må følge aktivt prosjekt. Dentum-touren har én
+    /// prosjektspesifikk pilotkampanje med ærlige starttall; den generiske
+    /// elektro/ERP-katalogen brukes bare av den generiske salgsdemoen.
+    private var campaigns: [Campaign] {
+        if DemoModeManager.isDentumTour {
+            return [
+                Campaign(
+                    name: "Dentum-pilot · Tannklinikker i Oslo",
+                    kind: .email,
+                    status: .active,
+                    leadsCount: 1,
+                    valueNok: 0,
+                    endDate: "Løpende"
+                )
+            ]
+        }
+        return DemoModeManager.usesGenericFixtures ? Self.genericCampaigns : []
+    }
 
     private var filtered: [Campaign] {
         if search.isEmpty { return campaigns }
@@ -1310,10 +1343,11 @@ struct CreateCampaignSheet: View {
     @State private var startDate: Date = Date()
     @State private var endDate: Date = Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date()
     @State private var hasEndDate: Bool = true
-    @State private var owner: String = "Lars Kristensen"
+    @State private var owner: String = DemoModeManager.isDentumTour
+        ? "Daniel Qazi" : "Lars Kristensen"
     @State private var segmentMode: SegmentMode = .auto
     @State private var manualSegment: String = ""
-    @State private var expectedValueK: Double = 500   // i tusen NOK
+    @State private var expectedValueK: Double = DemoModeManager.isDentumTour ? 0 : 500   // i tusen NOK
     @State private var addCurrentLead: Bool = true
     @State private var templateChosen: Template?
 
@@ -1369,6 +1403,28 @@ struct CreateCampaignSheet: View {
     }
 
     private var canSave: Bool { !name.isEmpty }
+
+    private func templateTitle(_ template: Template) -> String {
+        guard DemoModeManager.isDentumTour else { return template.rawValue }
+        switch template {
+        case .blank: return "Tom kampanje"
+        case .productLaunch: return "Dentum-pilot · klinikkprofil"
+        case .nurture30: return "Klinikkoppfølging · 30 dager"
+        case .eventInvite: return "Invitasjon til profilgjennomgang"
+        case .winback: return "Følg opp interesserte klinikker"
+        }
+    }
+
+    private func templateDescription(_ template: Template) -> String {
+        guard DemoModeManager.isDentumTour else { return template.beskrivelse }
+        switch template {
+        case .blank: return "Start fra bunnen"
+        case .productLaunch: return "Introduksjon → profilutkast → godkjenning"
+        case .nurture30: return "Verdi → eksempel → konkret neste steg"
+        case .eventInvite: return "Invitt → påminnelse → gjennomgang"
+        case .winback: return "Personlig oppfølging uten masseutsendelse"
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -1427,21 +1483,39 @@ struct CreateCampaignSheet: View {
                 switch t {
                 case .blank: name = ""; description = ""
                 case .productLaunch:
-                    name = "Produkt-lansering — Q3 2026"
-                    kind = .productLaunch
-                    description = "3 faser: tease, reveal, demo. 90 dager."
+                    if DemoModeManager.isDentumTour {
+                        name = "Dentum-pilot · Nye tannklinikker i Oslo"
+                        kind = .email
+                        description = "Introduksjon, klinikkprofil og avtalt godkjenning."
+                    } else {
+                        name = "Produkt-lansering — Q3 2026"
+                        kind = .productLaunch
+                        description = "3 faser: tease, reveal, demo. 90 dager."
+                    }
                 case .nurture30:
-                    name = "Nurture-flyt 30 dager"
+                    name = DemoModeManager.isDentumTour
+                        ? "Dentum · Klinikkoppfølging 30 dager"
+                        : "Nurture-flyt 30 dager"
                     kind = .nurture
-                    description = "5 e-poster over 30 dager — verdi-først."
+                    description = DemoModeManager.isDentumTour
+                        ? "Rolig oppfølging med klinikkverdi og konkret neste steg."
+                        : "5 e-poster over 30 dager — verdi-først."
                 case .eventInvite:
-                    name = "Event-invitt"
+                    name = DemoModeManager.isDentumTour
+                        ? "Dentum · Invitasjon til profilgjennomgang"
+                        : "Event-invitt"
                     kind = .event
-                    description = "Save the date + 2 påminnelser."
+                    description = DemoModeManager.isDentumTour
+                        ? "Invitasjon og påminnelse før gjennomgang av klinikkprofilen."
+                        : "Save the date + 2 påminnelser."
                 case .winback:
-                    name = "Re-engasjer kalde leads >90 dager"
+                    name = DemoModeManager.isDentumTour
+                        ? "Dentum · Følg opp interesserte klinikker"
+                        : "Re-engasjer kalde leads >90 dager"
                     kind = .email
-                    description = "Personlig outreach for å vekke interesse."
+                    description = DemoModeManager.isDentumTour
+                        ? "Personlig oppfølging av klinikker som allerede har vist interesse."
+                        : "Personlig outreach for å vekke interesse."
                 }
             }
         } label: {
@@ -1461,11 +1535,11 @@ struct CreateCampaignSheet: View {
                             .foregroundStyle(t.color)
                     }
                 }
-                Text(t.rawValue)
+                Text(templateTitle(t))
                     .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
-                Text(t.beskrivelse)
+                Text(templateDescription(t))
                     .font(.appScaled(size: 10))
                     .foregroundStyle(MABrand.textSecondary)
                     .lineLimit(2)
@@ -1499,7 +1573,9 @@ struct CreateCampaignSheet: View {
                         .background(MABrand.card, in: RoundedRectangle(cornerRadius: 11))
                         .overlay(RoundedRectangle(cornerRadius: 11).stroke(MABrand.stroke, lineWidth: 1))
                     if name.isEmpty {
-                        Text("F.eks. Q3 ERP-løft")
+                        Text(DemoModeManager.isDentumTour
+                             ? "F.eks. Dentum-pilot · Tannklinikker i Oslo"
+                             : "F.eks. Q3 ERP-løft")
                             .font(.appScaled(size: 14))
                             .foregroundStyle(MABrand.textTertiary)
                             .padding(.horizontal, 15)
@@ -1661,7 +1737,9 @@ struct CreateCampaignSheet: View {
                     Text("AI velger leads basert på kampanje-type")
                         .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
-                    Text("~120 leads · pipeline-stage: discovery + demo")
+                    Text(DemoModeManager.isDentumTour
+                         ? "1 godkjent lead · tannklinikker i Oslo"
+                         : "~120 leads · pipeline-stage: discovery + demo")
                         .font(.appScaled(size: 10))
                         .foregroundStyle(MABrand.textSecondary)
                 }
@@ -1669,7 +1747,9 @@ struct CreateCampaignSheet: View {
             }
         case .bransje:
             HStack(spacing: 6) {
-                ForEach(["Elektro", "Bygg", "VVS", "IT"], id: \.self) { b in
+                ForEach(DemoModeManager.isDentumTour
+                        ? ["Tannhelse"]
+                        : ["Elektro", "Bygg", "VVS", "IT"], id: \.self) { b in
                     Text(b)
                         .font(.appScaled(size: 10, weight: .bold))
                         .foregroundStyle(MABrand.purpleLight)
@@ -1745,10 +1825,14 @@ struct CreateCampaignSheet: View {
                     .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(MABrand.textSecondary)
                 Menu {
-                    Button("Lars Kristensen") { owner = "Lars Kristensen" }
-                    Button("Anna Berg")       { owner = "Anna Berg" }
-                    Button("Erik Nilsen")     { owner = "Erik Nilsen" }
-                    Button("Maja Solberg")    { owner = "Maja Solberg" }
+                    if DemoModeManager.isDentumTour {
+                        Button("Daniel Qazi") { owner = "Daniel Qazi" }
+                    } else {
+                        Button("Lars Kristensen") { owner = "Lars Kristensen" }
+                        Button("Anna Berg")       { owner = "Anna Berg" }
+                        Button("Erik Nilsen")     { owner = "Erik Nilsen" }
+                        Button("Maja Solberg")    { owner = "Maja Solberg" }
+                    }
                 } label: {
                     HStack(spacing: 6) {
                         ZStack {

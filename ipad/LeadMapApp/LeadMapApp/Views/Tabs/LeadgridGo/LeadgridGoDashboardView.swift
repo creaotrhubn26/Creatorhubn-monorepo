@@ -119,7 +119,8 @@ struct LeadgridGoDashboardView: View {
             subtitle: "Elektronisk kjørebok, flåte og kjøretøy.",
             leads: headerLeads
         ) {
-            Button { showBooking = true } label: {
+            if !DemoModeManager.isDentumTour {
+                Button { showBooking = true } label: {
                 // HStack + fixedSize (ikke Label): i trang header ble teksten
                 // komprimert til 0 bredde → knappen så ut som en lilla klump
                 // med bare ikon (Daniels screenshot 2026-07-19).
@@ -134,8 +135,9 @@ struct LeadgridGoDashboardView: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12).padding(.vertical, 8)
                 .background(NavPOIBrand.purple, in: Capsule())
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
     }
 
@@ -145,7 +147,10 @@ struct LeadgridGoDashboardView: View {
         VStack(spacing: 0) {
             AnyView(goHeader)
                 .padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 12)
-            ScrollView {
+            if DemoModeManager.isDentumTour {
+                dentumEmptyState
+            } else {
+                ScrollView {
                 VStack(spacing: 14) {
                     if isGoAdmin {
                         adminSection
@@ -157,9 +162,35 @@ struct LeadgridGoDashboardView: View {
                     Color.clear.frame(height: 24)
                 }
                 .padding(16)
+                }
             }
         }
         .background(NavPOIBrand.bg.ignoresSafeArea())
+    }
+
+    private var dentumEmptyState: some View {
+        VStack(spacing: 18) {
+            Image(systemName: "car.side.lock.fill")
+                .font(.appScaled(size: 44, weight: .semibold))
+                .foregroundStyle(NavPOIBrand.purpleLight)
+            Text("Ingen kjøring registrert for Dentum")
+                .font(.appScaled(size: 21, weight: .bold))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+            Text("Prosjektet har ingen firmabiler, bookinger eller yrkesturer. Leadgrid Go begynner å vise data når Daniel registrerer den første turen for Dentum.")
+                .font(.appScaled(size: 13))
+                .foregroundStyle(NavPOIBrand.textSecondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 520)
+            HStack(spacing: 10) {
+                goTile("Daniel Qazi", "Ansvarlig", NavPOIBrand.purpleLight)
+                goTile("0 km", "Yrkeskjøring", NavPOIBrand.green)
+                goTile("0", "Kjøretøy", NavPOIBrand.orange)
+            }
+            .frame(maxWidth: 560)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(24)
     }
 
     private func loadTeam() async {

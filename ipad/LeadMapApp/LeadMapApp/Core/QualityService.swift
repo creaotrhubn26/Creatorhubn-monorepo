@@ -250,17 +250,34 @@ final class KvalitetDemoStore {
                 verifiedAt: verifiedBy != nil ? daysAgo(max(0, wonDaysAgo - 1)) : nil
             )
         }
-        items = [
-            sale("demo-v1", "Sandvika Service AS", "+47 22 77 88 99", "Espen Berg",     280_000, 0, "pending"),
-            sale("demo-v2", "Holy Crust AS",       "+47 22 41 52 63", "Marit Johansen", 240_000, 1, "pending"),
-            sale("demo-v3", "Frogner Tannlege",    "+47 22 66 77 88", "Lars Erik Moen", 210_000, 1, "pending"),
-            sale("demo-v4", "Vesuvio Pizzeria",    "+47 22 44 55 66", "Helena Dahl",     75_000, 2, "needs_followup"),
-            sale("demo-v5", "Nordic Elektro AS",   "+47 22 12 34 56", "Espen Berg",     350_000, 4, "verified", verifiedBy: "Aaron Nilsen"),
-            sale("demo-v6", "Grünerløkka Café",    nil,               "Lars Erik Moen",  45_000, 5, "rejected",
-                 reason: "kunde_angret", verifiedBy: "Aaron Nilsen"),
-        ]
-        templates = [
-            VerificationTemplate(
+        if DemoModeManager.isDentumTour {
+            // The approved Dentum lead has not been won yet. An empty queue is
+            // truthful; a fabricated completed sale would hide a scope leak.
+            items = []
+            templates = [VerificationTemplate(
+                id: "dentum-mal-1",
+                name: "Dentum klinikkprofil",
+                productName: "Dentum-pilot",
+                introScript: "Hei, jeg ringer fra Dentum for å bekrefte at klinikkprofilen og pilotoppsettet stemmer.",
+                questions: [
+                    TemplateQuestion(id: "dentum-q1", question: "Er klinikknavn, adresse og kontaktperson riktig?", checkHint: "Bekreft mot klinikkens egne opplysninger."),
+                    TemplateQuestion(id: "dentum-q2", question: "Har klinikken godkjent veiledende priser og hvilke behandlinger som vises?", checkHint: "Profilen publiseres ikke før klinikken har godkjent innholdet."),
+                    TemplateQuestion(id: "dentum-q3", question: "Hvem skal motta pasientforespørsler fra Dentum?", checkHint: "Registrer avtalt e-post eller telefon på klinikken."),
+                ],
+                outroScript: "Takk — vi oppdaterer Dentum-profilen og sender en bekreftelse før publisering.",
+                isActive: true,
+            )]
+        } else {
+            items = [
+                sale("demo-v1", "Sandvika Service AS", "+47 22 77 88 99", "Espen Berg",     280_000, 0, "pending"),
+                sale("demo-v2", "Holy Crust AS",       "+47 22 41 52 63", "Marit Johansen", 240_000, 1, "pending"),
+                sale("demo-v3", "Frogner Tannlege",    "+47 22 66 77 88", "Lars Erik Moen", 210_000, 1, "pending"),
+                sale("demo-v4", "Vesuvio Pizzeria",    "+47 22 44 55 66", "Helena Dahl",     75_000, 2, "needs_followup"),
+                sale("demo-v5", "Nordic Elektro AS",   "+47 22 12 34 56", "Espen Berg",     350_000, 4, "verified", verifiedBy: "Aaron Nilsen"),
+                sale("demo-v6", "Grünerløkka Café",    nil,               "Lars Erik Moen",  45_000, 5, "rejected",
+                     reason: "kunde_angret", verifiedBy: "Aaron Nilsen"),
+            ]
+            templates = [VerificationTemplate(
                 id: "demo-mal-1",
                 name: "Standard velkomstsamtale",
                 productName: "Strømavtale Bedrift",
@@ -277,8 +294,8 @@ final class KvalitetDemoStore {
                 ],
                 outroScript: "Tusen takk for tiden din — velkommen som kunde! Du hører fra oss ved oppstart.",
                 isActive: true
-            ),
-        ]
+            )]
+        }
     }
 
     var counts: [String: Int] {
@@ -287,6 +304,7 @@ final class KvalitetDemoStore {
 
     /// Historikk-baserte stats (litt større tall enn køen — køen er «denne uka»).
     var sellerStats: [QualitySellerStat] {
+        if DemoModeManager.isDentumTour { return [] }
         func stat(_ name: String, _ total: Int, _ verified: Int, _ rejected: Int,
                   _ pending: Int, _ followup: Int) -> QualitySellerStat {
             QualitySellerStat(sellerUserId: "demo-s-\(name)", sellerName: name,
@@ -302,8 +320,9 @@ final class KvalitetDemoStore {
     }
 
     var reasonStats: [QualityReasonStat] {
-        [QualityReasonStat(reasonCode: "kunde_angret", count: 2),
-         QualityReasonStat(reasonCode: "feil_pris", count: 1)]
+        if DemoModeManager.isDentumTour { return [] }
+        return [QualityReasonStat(reasonCode: "kunde_angret", count: 2),
+                QualityReasonStat(reasonCode: "feil_pris", count: 1)]
     }
 
     /// Demo-verdikt: bytt status på raden (structen er all-let → rebuild).

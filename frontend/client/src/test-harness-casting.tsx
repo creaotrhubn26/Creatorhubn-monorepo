@@ -227,6 +227,95 @@ function buildFirstAssistantDirectorSeedProject(): CastingProject {
   } as CastingProject;
 }
 
+function buildSecondAssistantDirectorTrollSeedProject(): CastingProject {
+  const project = buildDirectorSeedProject();
+  return {
+    ...project,
+    id: 'e2e-troll-production',
+    name: 'Troll',
+    description: 'Autentisert CI-prosjekt for 2nd AD og callsheet',
+    roles: [{
+      id: 'troll-role-nora',
+      projectId: 'e2e-troll-production',
+      name: 'NORA',
+      status: 'filled',
+      assignedCandidateId: 'troll-candidate-nora',
+      sceneIds: ['troll-scene-1'],
+    }],
+    candidates: [{
+      id: 'troll-candidate-nora',
+      projectId: 'e2e-troll-production',
+      name: 'Ada Skuespiller',
+      status: 'selected',
+      contactInfo: { email: 'ada@example.test', phone: '+47 900 00 001' },
+      assignedRoles: ['troll-role-nora'],
+    }],
+    shotLists: [],
+    sceneBreakdowns: [{
+      id: 'troll-scene-1',
+      manuscriptId: 'e2e-troll-manuscript',
+      projectId: 'e2e-troll-production',
+      sceneNumber: 1,
+      sceneHeading: 'EXT. TROLLSKOG - DAG',
+      locationName: 'Trollskogen',
+      intExt: 'EXT',
+      timeOfDay: 'DAY',
+      description: 'Nora følger sporene gjennom skogen.',
+      characters: ['troll-role-nora'],
+    }],
+    locations: [{
+      id: 'troll-location-forest',
+      projectId: 'e2e-troll-production',
+      name: 'Trollskogen',
+      address: 'Skogveien 1, Oslo',
+      accessNotes: 'Basecamp ved sørporten',
+    }],
+    crew: [{
+      id: 'troll-second-ad',
+      projectId: 'e2e-troll-production',
+      name: 'Siv Regiassistent',
+      role: 'second_ad',
+      department: 'Regi',
+      status: 'confirmed',
+      contactInfo: { email: 'siv@example.test' },
+    }],
+    productionDays: [{
+      id: 'troll-production-day-1',
+      projectId: 'e2e-troll-production',
+      date: '2026-09-14',
+      scenes: ['troll-scene-1'],
+      locationId: 'troll-location-forest',
+      crew: ['troll-second-ad'],
+      props: [],
+      callTime: '07:00',
+      wrapTime: '18:00',
+      status: 'planned',
+      secondAd: {
+        entries: [{
+          id: 'cast:troll-candidate-nora',
+          personType: 'cast',
+          personId: 'troll-candidate-nora',
+          name: 'Ada Skuespiller',
+          roleName: 'NORA',
+          pickupTime: '05:45',
+          callTime: '06:15',
+          makeupTime: '06:30',
+          wardrobeTime: '06:45',
+          onSetTime: '07:30',
+          transport: 'Bil 2 · Ola',
+          status: 'acknowledged',
+        }],
+      },
+    }],
+    userRoles: [{
+      id: 'troll-second-ad-user-role',
+      projectId: 'e2e-troll-production',
+      userId: 'e2e-test-user',
+      role: 'second_ad',
+    }],
+  } as unknown as CastingProject;
+}
+
 /**
  * Wrapper that pre-seeds a mock auth session before rendering CastingPlannerPanel.
  * This prevents the "no adminUser → redirect to /casting.html" path that fires
@@ -248,6 +337,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
       const isContentProducerSession = sessionMode === 'content-producer';
       const isCinematographerSession = sessionMode === 'cinematographer';
       const isFirstAssistantDirectorSession = sessionMode === 'first-ad';
+      const isSecondAssistantDirectorSession = sessionMode === 'second-ad';
 
       // Pre-seed admin user so CastingPlannerPanel won't redirect when isStandalone=true
       await authSessionService.setAdminUser({
@@ -255,13 +345,15 @@ function SessionSeeder({ children }: { children: ReactNode }) {
         email: 'e2e@test.local',
         role: isFirstAssistantDirectorSession
           ? 'first_ad'
+          : isSecondAssistantDirectorSession
+            ? 'second_ad'
           : isCinematographerSession
             ? 'cinematographer'
             : 'admin',
         display_name: 'E2E Tester',
         loginAs: isContentProducerSession
           ? 'content_producer'
-          : isCinematographerSession || isFirstAssistantDirectorSession
+          : isCinematographerSession || isFirstAssistantDirectorSession || isSecondAssistantDirectorSession
             ? 'production_team'
             : undefined,
         requestedRole: isContentProducerSession
@@ -270,6 +362,8 @@ function SessionSeeder({ children }: { children: ReactNode }) {
             ? 'cinematographer'
             : isFirstAssistantDirectorSession
               ? 'first_ad'
+              : isSecondAssistantDirectorSession
+                ? 'second_ad'
               : null,
       });
       // Lokal backend (NODE_ENV≠production) godtar dette dev-token-et som
@@ -290,7 +384,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
       // 'photographer' ellers — vi setter begge for å være trygge.
       await settingsService.setSetting(
         'roleRoom_onboardingCompleted',
-        { photographer: true, producer: true, director: true, cinematographer: true, first_ad: true, general: true },
+        { photographer: true, producer: true, director: true, cinematographer: true, first_ad: true, second_ad: true, general: true },
         { userId: 'e2e-test-user' },
       );
 
@@ -299,7 +393,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
         ? 'roleRoom_workspaceState_content_producer'
         : 'roleRoom_workspaceState_production_team';
 
-      if (seedFlag === 'basic' || seedFlag === 'demo' || seedFlag === 'story-writer' || seedFlag === 'director' || seedFlag === 'cinematographer' || seedFlag === 'first-ad') {
+      if (seedFlag === 'basic' || seedFlag === 'demo' || seedFlag === 'story-writer' || seedFlag === 'director' || seedFlag === 'cinematographer' || seedFlag === 'first-ad' || seedFlag === 'second-ad-troll') {
         try {
           const seedProject = seedFlag === 'director'
             ? buildDirectorSeedProject()
@@ -307,6 +401,8 @@ function SessionSeeder({ children }: { children: ReactNode }) {
               ? buildCinematographerSeedProject()
               : seedFlag === 'first-ad'
                 ? buildFirstAssistantDirectorSeedProject()
+              : seedFlag === 'second-ad-troll'
+                ? buildSecondAssistantDirectorTrollSeedProject()
               : buildBasicSeedProject();
           await castingService.saveProject(seedProject);
 
@@ -318,21 +414,23 @@ function SessionSeeder({ children }: { children: ReactNode }) {
               projectId: seedProject.id,
               lastRealProjectId: seedProject.id,
               activeTab: 0,
+              workspaceLens: seedFlag === 'second-ad-troll' ? 'assistant-direction' : undefined,
+              firstAssistantDirectorSurface: seedFlag === 'second-ad-troll' ? 'today' : undefined,
               storyArcView: 'main',
               updatedAt: new Date().toISOString(),
             },
             { userId: 'e2e-test-user' },
           );
 
-          if (seedFlag === 'story-writer' || seedFlag === 'director' || seedFlag === 'cinematographer' || seedFlag === 'first-ad') {
+          if (seedFlag === 'story-writer' || seedFlag === 'director' || seedFlag === 'cinematographer' || seedFlag === 'first-ad' || seedFlag === 'second-ad-troll') {
             const now = new Date().toISOString();
-            const isDirectorSeed = seedFlag === 'director' || seedFlag === 'cinematographer' || seedFlag === 'first-ad';
+            const isDirectorSeed = seedFlag === 'director' || seedFlag === 'cinematographer' || seedFlag === 'first-ad' || seedFlag === 'second-ad-troll';
             await settingsService.setSetting(
               'virtualStudio_manuscripts',
               [{
-                id: isDirectorSeed ? 'e2e-director-manuscript' : 'e2e-story-writer-manuscript',
+                id: seedFlag === 'second-ad-troll' ? 'e2e-troll-manuscript' : isDirectorSeed ? 'e2e-director-manuscript' : 'e2e-story-writer-manuscript',
                 projectId: seedProject.id,
-                title: isDirectorSeed ? 'Siste servering' : 'E2E Story Writer',
+                title: seedFlag === 'second-ad-troll' ? 'Troll' : isDirectorSeed ? 'Siste servering' : 'E2E Story Writer',
                 subtitle: '',
                 author: 'E2E Tester',
                 version: '1.0',

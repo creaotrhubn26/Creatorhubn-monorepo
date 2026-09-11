@@ -347,6 +347,18 @@ struct LeadAssignSellerSheet: View {
         // teammedlemmer fra team-members-endepunktet (2026-07-17; listen var
         // hardkodet for alle og valget var toast-only).
         if DemoModeManager.isActiveNonisolated {
+            if DemoModeManager.isDentumTour {
+                return [
+                    LeadSeller(
+                        name: "Daniel Qazi",
+                        title: "Prosjektadmin",
+                        avatarColor: .purple,
+                        leadsCount: 1,
+                        winRateText: "—",
+                        userId: "qa-tour-user"
+                    )
+                ]
+            }
             return [
                 LeadSeller(name: "Anniken Sørli",   title: "Salgsdirektør",   avatarColor: .purple,      leadsCount: 42, winRateText: "34 %"),
                 LeadSeller(name: "Mikkel Berg",     title: "Senior selger",   avatarColor: .green,       leadsCount: 38, winRateText: "31 %"),

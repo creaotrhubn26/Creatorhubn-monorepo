@@ -232,6 +232,22 @@ extension Organization {
 }
 
 enum SuperAdminData {
+    /// Project-specific QA seed. A customer tour must never display the global
+    /// showcase customer list or its fictional contacts.
+    static let dentumOrganizations: [Organization] = [
+        Organization(
+            name: "Dentum", domain: "dentum.no", industry: "Tannhelse",
+            logo: "cross.case.fill", logoColor: LBrand.purpleLight,
+            plan: .trial, memberCount: 1, activeUsers30d: 1, monthlySpend: 0,
+            contractRenewal: Date().addingTimeInterval(86_400 * 30),
+            billingStatus: .trial, country: "Norge",
+            primaryContact: "daniel@creatorhubn.com",
+            entitlements: PlanDefaults.allEntitlements(for: .trial),
+            notes: "Prototypeprosjekt for tannklinikker i Oslo.",
+            createdAt: Date()
+        )
+    ]
+
     static let organizations: [Organization] = [
         Organization(
             name: "Skanska Norge AS", domain: "skanska.no", industry: "Bygg & anlegg",
@@ -332,8 +348,9 @@ struct SuperAdminDashboard: View {
     // Demo-modus: mock-orgs. Ekte modus: `/api/superadmin/organizations`
     // lastes i .task og ERSTATTER mocken — konsollen skal aldri vise
     // oppdiktede kunder til en innlogget Leadgrid-ansatt.
-    @State private var orgs: [Organization] = DemoModeManager.isActiveNonisolated
-        ? SuperAdminData.organizations : []
+    @State private var orgs: [Organization] = DemoModeManager.isDentumTour
+        ? SuperAdminData.dentumOrganizations
+        : (DemoModeManager.usesGenericFixtures ? SuperAdminData.organizations : [])
     @State private var isLive = false
     @State private var loadError: String?
     @State private var search: String = ""
@@ -523,7 +540,11 @@ struct SuperAdminDashboard: View {
             Label("LIVE — \(orgs.count) organisasjoner fra backend", systemImage: "dot.radiowaves.left.and.right")
                 .font(.appScaled(size: 11, weight: .semibold))
                 .foregroundStyle(LBrand.green)
-        } else if DemoModeManager.isActiveNonisolated {
+        } else if DemoModeManager.isDentumTour {
+            Label("DENTUM QA — prosjektisolerte data", systemImage: "checkmark.shield.fill")
+                .font(.appScaled(size: 11, weight: .semibold))
+                .foregroundStyle(LBrand.green)
+        } else if DemoModeManager.usesGenericFixtures {
             Label("DEMO-DATA — mock-organisasjoner", systemImage: "eye.fill")
                 .font(.appScaled(size: 11, weight: .semibold))
                 .foregroundStyle(LBrand.yellow)
@@ -1531,7 +1552,7 @@ struct OrgDetailSheet: View {
     /// en ekte kunde-org er villedende.
     @ViewBuilder
     private var auditTab: some View {
-        if org.serverId != nil, !DemoModeManager.isActiveNonisolated {
+        if !DemoModeManager.usesGenericFixtures {
             realAuditList
         } else {
             mockAuditList

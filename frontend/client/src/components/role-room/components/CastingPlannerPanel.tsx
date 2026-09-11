@@ -261,6 +261,7 @@ const DirectorWorkspace = lazyWithRetry(() => import('./director/DirectorWorkspa
 const CinematographerWorkspace = lazyWithRetry(() => import('./cinematographer/CinematographerWorkspace').then(m => ({ default: m.CinematographerWorkspace })));
 const FirstAssistantDirectorWorkspace = lazyWithRetry(() => import('./assistant-director/FirstAssistantDirectorWorkspace').then(m => ({ default: m.FirstAssistantDirectorWorkspace })));
 const SecondAssistantDirectorWorkspace = lazyWithRetry(() => import('./assistant-director/SecondAssistantDirectorWorkspace').then(m => ({ default: m.SecondAssistantDirectorWorkspace })));
+const CallSheetGenerator = lazyWithRetry(() => import('./CallSheetGenerator').then(m => ({ default: m.CallSheetGenerator })));
 const SharingPanel = lazyWithRetry(() => import('./SharingPanel').then(m => ({ default: m.SharingPanel })));
 const LiveSetMode = lazyWithRetry(() => import('./LiveSetMode').then(m => ({ default: m.LiveSetMode })));
 
@@ -1300,6 +1301,9 @@ type RoleRoomProjectWorkspaceState = {
   const [calendarViewMode, setCalendarViewMode] = useState<'production' | 'crew' | 'productionDay'>('production');
   const [projects, setProjects] = useState<CastingProject[]>([]);
   const [currentProject, setCurrentProject] = useState<CastingProject | null>(null);
+  const [canonicalProductionDataProjectId, setCanonicalProductionDataProjectId] = useState<string | null>(null);
+  const [canonicalCallSheetDayId, setCanonicalCallSheetDayId] = useState<string | null>(null);
+  const [callSheetDeliveryRefreshSignal, setCallSheetDeliveryRefreshSignal] = useState(0);
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null);
@@ -4595,8 +4599,12 @@ type RoleRoomProjectWorkspaceState = {
   // scene → character graph (instead of each workspace seeing a partial shell).
   useEffect(() => {
     const projectId = currentProject?.id;
-    if (!projectId) return;
+    if (!projectId) {
+      setCanonicalProductionDataProjectId(null);
+      return;
+    }
     let cancelled = false;
+    setCanonicalProductionDataProjectId(null);
 
     void Promise.allSettled([
       castingService.getProductionDays(projectId),
@@ -4605,6 +4613,7 @@ type RoleRoomProjectWorkspaceState = {
       if (cancelled) return;
       const productionDays = daysResult.status === 'fulfilled' ? daysResult.value : null;
       const sceneBreakdowns = scenesResult.status === 'fulfilled' ? scenesResult.value : null;
+      setCanonicalProductionDataProjectId(projectId);
       if (!productionDays && !sceneBreakdowns) return;
 
       const hydrate = (project: CastingProject): CastingProject => project.id !== projectId
@@ -10950,7 +10959,9 @@ type RoleRoomProjectWorkspaceState = {
                 key={`second-ad-${currentProject.id}`}
                 project={currentProject}
                 readOnly={!permissions.canEditProduction || !canManageTab(CALENDAR_TAB_INDEX)}
-                onOpenCallSheet={() => handleFirstAssistantDirectorNavigate('call-sheet')}
+                dataLoading={canonicalProductionDataProjectId !== currentProject.id}
+                deliveryRefreshSignal={callSheetDeliveryRefreshSignal}
+                onOpenCallSheet={(productionDayId) => setCanonicalCallSheetDayId(productionDayId ?? null)}
                 onOpenSchedule={() => handleFirstAssistantDirectorNavigate('shooting-plan')}
                 onOpenLiveSet={() => handleFirstAssistantDirectorNavigate('on-set')}
                 onOpenFullWorkspace={handleOpenFullWorkspace}
@@ -14855,6 +14866,46 @@ type RoleRoomProjectWorkspaceState = {
           </ErrorBoundary>
         </Box>
       )}
+
+
+      <Dialog
+        open={Boolean(currentProject && canonicalCallSheetDayId)}
+        onClose={() => setCanonicalCallSheetDayId(null)}
+        maxWidth="xl"
+        fullWidth
+        fullScreen={isMobile}
+        PaperProps={{
+          'data-testid': 'canonical-call-sheet-dialog',
+          sx: { height: { xs: '100%', sm: '92vh' }, bgcolor: '#f8fafc', overflow: 'hidden' },
+        }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: '#07110f', color: '#f8fafc', py: 1.25 }}>
+          <Box>
+            <Typography component="span" sx={{ display: 'block', fontWeight: 800 }}>Callsheet og utsending</Typography>
+            <Typography component="span" sx={{ display: 'block', color: 'rgba(226,232,240,.72)', fontSize: '.78rem' }}>
+              {currentProject?.productionDays?.find((day) => day.id === canonicalCallSheetDayId)?.date || 'Valgt produksjonsdag'} · felles produksjonsdata
+            </Typography>
+          </Box>
+          <IconButton aria-label="Lukk callsheet" onClick={() => setCanonicalCallSheetDayId(null)} sx={{ color: '#f8fafc' }}><CloseIcon /></IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, overflow: 'auto' }}>
+          {currentProject && canonicalCallSheetDayId ? (
+            <ErrorBoundary>
+              <Suspense fallback={<Box sx={{ display: 'grid', placeItems: 'center', minHeight: 320 }}><CircularProgress /></Box>}>
+                <CallSheetGenerator
+                  projectId={currentProject.id}
+                  productionDay={currentProject.productionDays?.find((day) => day.id === canonicalCallSheetDayId)}
+                  productionDayId={canonicalCallSheetDayId}
+                  scenes={currentProject.sceneBreakdowns || []}
+                  crew={currentProject.crew || []}
+                  locations={currentProject.locations || []}
+                  onDeliverySent={() => setCallSheetDeliveryRefreshSignal((signal) => signal + 1)}
+                />
+              </Suspense>
+            </ErrorBoundary>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
 
       {/* Role Dialog - Optimized */}

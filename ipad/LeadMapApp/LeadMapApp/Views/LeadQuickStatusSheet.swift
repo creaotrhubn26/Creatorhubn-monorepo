@@ -19,6 +19,7 @@ struct LeadQuickStatusSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var updating = false
     @State private var lastStatus: LeadStatus?
+    @State private var showEmailTemplates = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -43,6 +44,12 @@ struct LeadQuickStatusSheet: View {
         }
         .padding()
         .background(Color(.systemBackground).ignoresSafeArea())
+        .sheet(isPresented: $showEmailTemplates) {
+            EmailTemplatePicker(
+                lead: LeadRow(from: lead),
+                toEmail: lead.email ?? ""
+            )
+        }
     }
 
     // MARK: - Header
@@ -161,9 +168,14 @@ struct LeadQuickStatusSheet: View {
                 .foregroundStyle(Color(red: 0.66, green: 0.32, blue: 0.99))
             }
             .buttonStyle(.plain)
-            if let email = lead.email, !email.isEmpty,
-               let url = URL(string: "mailto:\(email)") {
-                contactQuickAction(label: "E-post", icon: "envelope.fill", tint: .blue, url: url, channel: .email)
+            if let email = lead.email, !email.isEmpty {
+                Button {
+                    showEmailTemplates = true
+                } label: {
+                    quickActionLabel(label: "Klar e-post", icon: "envelope.fill", tint: .blue)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("lead.outreach.open")
             }
             if let site = lead.websiteUrl, !site.isEmpty,
                let url = URL(string: site) {

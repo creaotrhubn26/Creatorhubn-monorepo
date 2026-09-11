@@ -27,6 +27,7 @@
     "marketing:screenshots:local": "node scripts/marketing-screenshots.playwright.mjs --base http://localhost:5173",
     "test:e2e": "playwright test",
     "test:e2e:story-arc-regression": "playwright test e2e/story-arc-regression.spec.ts --project=chromium",
+    "test:e2e:role-room-troll": "playwright test e2e/role-room-second-ad-troll.spec.ts --project=chromium",
     "test:e2e:visual-editor-regression": "playwright test e2e/visual-editor-regression.spec.ts --project=chromium",
     "test:e2e:visual-editor-hardened": "playwright test e2e/visual-editor-regression.spec.ts --project=chromium --repeat-each=2 --retries=1",
     "test:e2e:story-arc-edit-tools": "playwright test e2e/story-arc-edit-tools-isolated.spec.ts --project=chromium",

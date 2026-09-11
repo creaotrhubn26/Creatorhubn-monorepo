@@ -596,6 +596,7 @@ import { setupControlCenterRoutes } from "./control-center-routes.js";
 import { setupAdminLeadMapPricingRoutes } from "./admin-lead-map-pricing-routes.js";
 import { setupLeadMapRoutes } from "./lead-map-routes.js";
 import { registerLeadMapCollaborationRoutes } from "./lead-map-collaboration-routes.js";
+import { registerLeadgridOutreachComplianceRoutes } from "./leadgrid-outreach-compliance-routes.js";
 import { registerLeadMapFileRoutes } from "./lead-map-file-routes.js";
 import { createLeadMapSessionHydrator } from "./lead-map-session-helper.js";
 import { registerLeadMapCompetitorRoutes } from "./lead-map-competitor-routes.js";
@@ -25682,6 +25683,7 @@ app.use("/api/leadgrid", enforceOrgStatus(pool, activeSessions));
 // Lead Map (Phase 1 — Marketing Cockpit-utvidelse)
 setupLeadMapRoutes({ app, pool, activeSessions });
 registerLeadMapCollaborationRoutes({ app, pool, activeSessions });
+registerLeadgridOutreachComplianceRoutes({ app, pool, activeSessions });
 registerLeadMapFileRoutes({ app, pool, activeSessions });
 // Lead Map ↔ Konkurrent-management (manuell add, Claude threat-assessment,
 // lead-rangering, kombinert /market-points-endepunkt)

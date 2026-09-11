@@ -35,8 +35,8 @@ private enum CBrand {
     static let yellow = Color(red: 0.98, green: 0.75, blue: 0.14)
     static let green = Color(red: 0.20, green: 0.85, blue: 0.60)
     static let blue = Color(red: 0.34, green: 0.60, blue: 0.98)
-    static let textSecondary = Color.white.opacity(0.62)
-    static let textTertiary = Color.white.opacity(0.45)
+    static let textSecondary = Color.white.opacity(0.78)
+    static let textTertiary = Color.white.opacity(0.64)
 }
 
 // MARK: - CalendarModePicker (segmented header)
@@ -66,11 +66,16 @@ struct CalendarModePicker: View {
                     }
                     .foregroundStyle(mode == m ? .white : CBrand.textSecondary)
                     .padding(.horizontal, compact ? 9 : 10).padding(.vertical, 6)
+                    .frame(minWidth: 44, minHeight: 44)
                     .background(
                         mode == m ? AnyShapeStyle(CBrand.purple) : AnyShapeStyle(Color.clear),
                         in: Capsule()
                     )
                 }
+                // Legg minimumsstørrelsen på selve Button også. På iPad
+                // rapporterer XCUI ellers bare SF-symbolets lille ramme.
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text(m.rawValue))
             }
@@ -622,7 +627,10 @@ struct MonthCalendarView: View {
     }
 
     private func eventCount(_ day: Int) -> Int {
-        if DemoModeManager.isActiveNonisolated {
+        if DemoModeManager.isDentumTour {
+            return day == today ? meetings.count : 0
+        }
+        if DemoModeManager.usesGenericFixtures {
             // Demo-seed: dagens dato får agenda-listen, faste dager får dots.
             if day == today { return meetings.count }
             if [21, 22, 16].contains(day) { return 2 }
@@ -634,7 +642,8 @@ struct MonthCalendarView: View {
     }
 
     private func eventValue(_ day: Int) -> Int {
-        if DemoModeManager.isActiveNonisolated {
+        if DemoModeManager.isDentumTour { return 0 }
+        if DemoModeManager.usesGenericFixtures {
             return eventCount(day) * 250_000  // demo-seed kr/møte
         }
         return realMeetingsByDay[day]?.reduce(0) { $0 + $1.valueNok } ?? 0
