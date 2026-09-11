@@ -44,6 +44,7 @@ import RoleRoomOnboardingDialog from './RoleRoomOnboardingDialog';
 import RoleRoomMemberDirectoryDialog from './RoleRoomMemberDirectoryDialog';
 import { AvailabilityCalendar } from './AvailabilityCalendar';
 import RoleRoomStoragePanel from './RoleRoomStoragePanel';
+import RoleRoomAffiliateConnectCard from './RoleRoomAffiliateConnectCard';
 import { roleRoomMemberProfileService } from '../services/roleRoomMemberProfileService';
 import type { RoleRoomMemberProfile } from '../services/roleRoomMemberProfileService';
 
@@ -65,6 +66,7 @@ interface RoleRoomMobileProfileSheetProps {
   onLogout?: () => void;
   /** Admin-only: vis profession-mode-switcher i profilen. */
   isAdmin?: boolean;
+  organizationId?: string | null;
 }
 
 function initialsOf(name?: string | null, email?: string | null): string {
@@ -86,6 +88,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
   workspaceSummary,
   onLogout,
   isAdmin,
+  organizationId,
 }) => {
   const usePopover =
     mode === 'tabletPortrait' || mode === 'tabletLandscape' || mode === 'desktop';
@@ -382,6 +385,9 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
       </DialogTitle>
       <DialogContent>
         <RoleRoomStoragePanel />
+        {organizationId ? (
+          <RoleRoomAffiliateConnectCard organizationId={organizationId} />
+        ) : null}
       </DialogContent>
     </Dialog>
   );
