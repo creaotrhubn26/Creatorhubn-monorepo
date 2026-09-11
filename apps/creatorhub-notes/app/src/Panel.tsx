@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Paragraph, Retting, Understanding } from "./api";
+import type { Paragraph, Retting, Tidligere, Understanding } from "./api";
 
 /// Plassene i panelet, med brukerens ord. De rå typene og handlingene —
 /// `beslutning`, `marker_åpent`, `hold` — er vårt vokabular, ikke hennes.
@@ -48,6 +48,61 @@ const kortformen = (p: Paragraph) => p.correction?.summary?.trim() || p.summary;
 
 type Velg = (p: Paragraph) => void;
 type Rett = (r: Retting) => void;
+type Åpne = (sti: string, hash: string) => void;
+
+const dagMåned = new Intl.DateTimeFormat("nb-NO", { day: "numeric", month: "long" });
+const dagMånedÅr = new Intl.DateTimeFormat("nb-NO", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
+function dato(sekunder: number) {
+  const d = new Date(sekunder * 1000);
+  return d.getFullYear() === new Date().getFullYear() ? dagMåned.format(d) : dagMånedÅr.format(d);
+}
+
+/// Hva forholdet er, sagt på vanlig norsk. Et forhold som ikke står her — det
+/// som bare deler et ord — har ingen setning, og vises derfor aldri.
+const SETNINGER: Record<string, (dato: string) => string> = {
+  motsier: (d) => `Du forkastet dette ${d}`,
+  besvarer: (d) => `Dette svarer på spørsmålet du stilte ${d}`,
+  bekrefter: (d) => `Du bestemte det samme ${d}`,
+};
+
+/// Linjene som skal vises, i den rekkefølgen de kom — motsigelsen først, fordi
+/// den er den eneste som er verdt å avbryte skrivingen for. Det samme
+/// tidligere avsnittet står bare én gang, selv om flere avsnitt peker på det.
+export function tidligereLinjer(alle: Tidligere[]): Tidligere[] {
+  const sett = new Set<string>();
+  return alle.filter((t) => {
+    if (!(t.forhold in SETNINGER) || sett.has(t.hash)) return false;
+    sett.add(t.hash);
+    return true;
+  });
+}
+
+/// Det hun har tenkt om dette før. Klikk åpner notatet og markerer avsnittet:
+/// uten det er koblingen en påstand hun ikke kan etterprøve.
+function Tidligere_({ linjer, onÅpne }: { linjer: Tidligere[]; onÅpne: Åpne }) {
+  return (
+    <>
+      <h2>Tidligere om dette</h2>
+      <ul className="tidligere">
+        {linjer.map((t) => (
+          <li key={`${t.gjelder}-${t.hash}`} className={t.forhold === "motsier" ? "mot" : undefined}>
+            <button onClick={() => onÅpne(t.sti, t.hash)}>
+              <span className="forhold">{SETNINGER[t.forhold](dato(t.tidspunkt))}</span>
+              <span className="kilde">
+                «{t.kortform}» · {t.tittel}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
 
 /// Én linje som brukeren holder på å rette. Ingen dialog, ingen overlegg:
 /// skjemaet står der linja sto, og linja kommer tilbake når hun er ferdig.
@@ -161,12 +216,14 @@ export function Panel({
   onVelg,
   onRett,
   onLukkMerknad,
+  onÅpne,
 }: {
   forståelse: Understanding | null;
   sti: string;
   onVelg: Velg;
   onRett: Rett;
   onLukkMerknad: () => void;
+  onÅpne: Åpne;
 }) {
   /// Hvilken linje som rettes, og veien tilbake fra hver retting. Stabelen er
   /// hele angrehistorikken for økta: en feilklikket sletting skal ikke være
@@ -221,6 +278,7 @@ export function Panel({
   const idéer = i("idé");
   const sist = angre[angre.length - 1];
   const lestPåNytt = forståelse?.reread ?? [];
+  const tidligere = tidligereLinjer(forståelse?.earlier ?? []);
 
   const rad = (p: Paragraph, plass: Plass) =>
     redigerer === p.start ? (
@@ -270,6 +328,8 @@ export function Panel({
         </p>
       )}
 
+      {tidligere.length > 0 && <Tidligere_ linjer={tidligere} onÅpne={onÅpne} />}
+
       <h2>Hva vi har forstått</h2>
       {forstått.length === 0 && uavklarte.length === 0 ? (
         <p className="ingenting">{forståelse ? "Ingenting er bestemt ennå." : "Leser notatet."}</p>
@@ -298,4 +358,4 @@ export function Panel({
 }
 
 /** Eksportert for testing: plasseringen er produktlogikk, ikke pynt. */
-export const _test = { lest, plassen, kortformen, PLASSER, FJERNET };
+export const _test = { lest, plassen, kortformen, tidligereLinjer, SETNINGER, PLASSER, FJERNET };

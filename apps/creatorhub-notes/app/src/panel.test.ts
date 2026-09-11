@@ -4,9 +4,9 @@
 import { expect, test } from "vitest";
 import { _test } from "./Panel";
 import { lesTema, settTema, type Tema } from "./tema";
-import type { Paragraph, Rettelse } from "./api";
+import type { Paragraph, Rettelse, Tidligere } from "./api";
 
-const { lest, plassen, kortformen } = _test;
+const { lest, plassen, kortformen, tidligereLinjer, SETNINGER } = _test;
 
 function avsnitt(kind: string, action: string, ekstra: Partial<Paragraph> = {}): Paragraph {
   return {
@@ -79,4 +79,39 @@ test("temavalget huskes over omstart", () => {
   settTema("system", etterOmstart, lager);
   expect(etterOmstart.dataset.tema).toBe(undefined);
   expect(lesTema(lager)).toBe("system");
+});
+
+function tidligere(forhold: string, hash: string): Tidligere {
+  return {
+    forhold,
+    gjelder: "abc",
+    kortform: "Depositum",
+    sti: "2026-09-10-laane-app.md",
+    tittel: "Låne-app",
+    hash,
+    tidspunkt: 1_757_500_000,
+  };
+}
+
+test("det som bare deler et ord vises aldri", () => {
+  const linjer = tidligereLinjer([
+    tidligere("urelatert", "a"),
+    tidligere("motsier", "b"),
+    tidligere("bekrefter", "c"),
+    tidligere("besvarer", "d"),
+    // Peker to avsnitt på det samme tidligere avsnittet, står det én gang.
+    tidligere("bekrefter", "c"),
+    tidligere("finnesikke", "e"),
+  ]);
+  expect(linjer.map((l) => l.hash)).toEqual(["b", "c", "d"]);
+});
+
+test("forholdet sies med ord brukeren kjenner", () => {
+  expect(SETNINGER.motsier("10. september")).toBe("Du forkastet dette 10. september");
+  expect(SETNINGER.bekrefter("3. september")).toBe("Du bestemte det samme 3. september");
+  expect(SETNINGER.besvarer("28. august")).toBe(
+    "Dette svarer på spørsmålet du stilte 28. august",
+  );
+  // Vokabularet vårt skal ikke ha en setning, og kan derfor ikke vises.
+  expect(SETNINGER.urelatert).toBe(undefined);
 });

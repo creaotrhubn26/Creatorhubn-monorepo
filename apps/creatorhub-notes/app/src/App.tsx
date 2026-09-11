@@ -3,17 +3,20 @@ import { Editor } from "./Editor";
 import { Panel } from "./Panel";
 import {
   createNote,
+  finnAvsnitt,
   listNotes,
   readNote,
   reindex,
   rettAvsnitt,
   searchNotes,
+  sporNotater,
   understandNote,
   writeNote,
   type Note,
   type Paragraph,
   type Retting,
   type SearchHit,
+  type Sporsmal,
   type Understanding,
 } from "./api";
 import { lesTema, settTema, TEMAER, type Tema } from "./tema";
@@ -92,6 +95,7 @@ function Utdrag({ tekst }: { tekst: string }) {
 export default function App() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [treff, setTreff] = useState<SearchHit[] | null>(null);
+  const [spurt, setSpurt] = useState<Sporsmal | null>(null);
   const [query, setQuery] = useState("");
   const [path, setPath] = useState<string | null>(null);
   const [doc, setDoc] = useState("");
@@ -180,7 +184,7 @@ export default function App() {
   );
 
   const åpne = useCallback(
-    async (p: string, ferskt = false) => {
+    async (p: string, ferskt = false, avsnitt?: string) => {
       await lagre();
       try {
         const tekst = await readNote(p);
@@ -191,6 +195,15 @@ export default function App() {
         setPeker(null);
         setForståelse(null);
         void les(p, tekst);
+        // Kom man hit fra en linje om noe som ble skrevet før, skal avsnittet
+        // markeres. Er det skrevet om siden, står notatet åpent uten merke.
+        if (avsnitt) {
+          finnAvsnitt(p, avsnitt)
+            .then((sted) => {
+              if (sted) setPeker((forrige) => ({ from: sted[0], to: sted[1], n: (forrige?.n ?? 0) + 1 }));
+            })
+            .catch(() => undefined);
+        }
         // Lagringsmerket står alltid. Er ingenting endret ennå, er sannheten
         // tidspunktet fila sist ble skrevet.
         const rørt = notater.current.find((n) => n.path === p)?.modified;
@@ -224,6 +237,7 @@ export default function App() {
       const p = await createNote("");
       setQuery("");
       setTreff(null);
+      setSpurt(null);
       await åpne(p, true);
       setNotes(await listNotes());
       await reindex().catch(() => undefined);
@@ -249,6 +263,7 @@ export default function App() {
     const q = query.trim();
     if (!q) {
       setTreff(null);
+      setSpurt(null);
       return;
     }
     const t = window.setTimeout(async () => {
@@ -258,6 +273,9 @@ export default function App() {
       } catch (e) {
         setFeil(String(e));
       }
+      // Treffer ordene et av spørsmålene appen kjenner, kommer de strukturerte
+      // treffene i tillegg. Bommer den, er fritekstsøket akkurat som før.
+      setSpurt(await sporNotater(q).catch(() => null));
     }, 160);
     return () => window.clearTimeout(t);
   }, [query, lagre]);
@@ -275,6 +293,7 @@ export default function App() {
       } else if (e.key === "Escape") {
         setQuery("");
         setTreff(null);
+        setSpurt(null);
         document.querySelector<HTMLElement>(".cm-content")?.focus();
       }
     };
@@ -307,6 +326,7 @@ export default function App() {
               onClick={() => {
                 setQuery("");
                 setTreff(null);
+                setSpurt(null);
                 søkefelt.current?.focus();
               }}
             >
@@ -346,6 +366,25 @@ export default function App() {
 
       <div className={panel ? "kropp med-panel" : "kropp"}>
         <nav className="liste" aria-label="Notater">
+          {spurt && spurt.treff.length > 0 && (
+            <section className="spurt">
+              <h2 className="dag">{spurt.overskrift}</h2>
+              <p className="spurtOm">Fra det du har skrevet før, ikke fra ordene du søkte på.</p>
+              {spurt.treff.map((t) => (
+                <button
+                  key={`${t.sti}-${t.hash}`}
+                  className="rad"
+                  onClick={() => void åpne(t.sti, false, t.hash)}
+                >
+                  <span className="tittel">{t.kortform}</span>
+                  <span className="fra">
+                    {t.venter ? `venter på ${t.venter} · ` : ""}
+                    {t.tittel}
+                  </span>
+                </button>
+              ))}
+            </section>
+          )}
           {treff !== null ? (
             treff.length === 0 ? (
               <p className="tomt">
@@ -453,6 +492,7 @@ export default function App() {
               onLukkMerknad={() =>
                 setForståelse((f) => (f ? { ...f, reread: [] } : f))
               }
+              onÅpne={(annen, avsnitt) => void åpne(annen, false, avsnitt)}
             />
           ) : (
             // Ingen notat åpent: spalten holder plassen sin, og sier ingenting.

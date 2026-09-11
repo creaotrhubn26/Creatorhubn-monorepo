@@ -25,6 +25,7 @@
   --merke-uavklart: #1b5c96;
   --merke-oppgave: #8a5312;
   --merke-idé: #5b4a8f;
+  --merke-motsier: #a3401f;
 
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --serif: "Iowan Old Style", "Charter", "Palatino Linotype", Palatino, Georgia, serif;
@@ -52,6 +53,7 @@
     --merke-uavklart: #7db4e8;
     --merke-oppgave: #d9a55c;
     --merke-idé: #ac9ce0;
+    --merke-motsier: #e8977a;
   }
 }
 
@@ -71,6 +73,7 @@
     --merke-uavklart: #7db4e8;
     --merke-oppgave: #d9a55c;
     --merke-idé: #ac9ce0;
+    --merke-motsier: #e8977a;
 }
 
 :root[data-tema="lyst"] {
@@ -755,9 +758,75 @@ kbd {
   border-radius: 8px;
 }
 
+/* Det hun har tenkt om det samme før. Setningen står med ord — «du forkastet
+   dette 10. september» — og under den hennes egen kortform, slik at hun kan
+   se hva koblingen bygger på før hun klikker seg videre. */
+.tidligere button {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 20px;
+  text-align: left;
+  border-left: 3px solid transparent;
+}
+
+.tidligere button:hover {
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+
+.tidligere .forhold {
+  display: block;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.tidligere .kilde {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+/* Motsigelsen er den ene av de tre som er verdt å stoppe for, og den eneste
+   som får farge og vekt. Fargen er et tillegg til ordene, aldri det eneste:
+   setningen sier selv hva den er. */
+.tidligere li.mot button {
+  border-left-color: var(--merke-motsier);
+}
+
+.tidligere li.mot .forhold {
+  font-weight: 600;
+  color: var(--merke-motsier);
+}
+
+/* Svaret på et spørsmål om det som er lest, over de vanlige søketreffene og
+   skilt fra dem med en strek. Fritekstsøket står uendret under. */
+.spurt {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.spurtOm {
+  margin: 0 20px 2px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.fra {
+  grid-column: 1 / -1;
+  margin-top: 3px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .rad,
   .linje,
+  .tidligere button,
   .endre,
   .bryter,
   .nytt,
