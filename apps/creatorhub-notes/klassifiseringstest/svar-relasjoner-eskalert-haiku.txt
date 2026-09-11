@@ -3,9 +3,9 @@
 3|urelatert
 4|motsier
 5|bekrefter
-6|urelatert
+6|bekrefter
 7|motsier
-8|urelatert
+8|besvarer
 9|besvarer
 10|urelatert
 11|urelatert
@@ -19,6 +19,6 @@
 19|besvarer
 20|besvarer
 21|urelatert
-22|urelatert
+22|bekrefter
 23|bekrefter
 24|motsier

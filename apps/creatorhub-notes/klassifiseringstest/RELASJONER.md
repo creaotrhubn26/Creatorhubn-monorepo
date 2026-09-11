@@ -95,6 +95,58 @@ avgjørelsene: først «handler disse om den samme saken?», så «er det nye en
 eller uenig med det gamle?». Det er et kall til, og det bør måles før det
 bygges, ikke antas.
 
+## Rettet 12. september: retningen krever enighet
+
+Etiketten løses ikke, men påstanden gjøres ærlig. Eskaleringen fantes
+allerede — Haiku dømmer alt, Sonnet leser det Haiku koblet — og den brukes nå
+til én ting til:
+
+- **enige om retningen** → formuleringen som før («Du forkastet dette
+  3. september»)
+- **enige om at det er en kobling, uenige om hvilken** → `nevnt`, som i appen
+  blir **«Du skrev om dette 3. september»**. Ingen påstand om retning.
+- **én av dem sier `urelatert`** → ingenting vises, som før
+
+Ordlyden er valgt for å ikke antyde noe: ikke «du har vært innom dette før»
+(antyder gjentakelse), ikke «se også» (antyder relevans uten innhold).
+
+### Tallene med den nye regelen
+
+Tre kjøringer, samme sett, samme prompt:
+
+| | Falsk koblingsrate | Truffet nøyaktig | Vist uten retning | Påstår retning / nøytralt |
+|---|---|---|---|---|
+| kjøring 1 | 0/10 = 0 % | 12/14 | 1/14 | 12 av 13 (92 %) / 1 (8 %) |
+| kjøring 2 | 0/10 = 0 % | 13/14 | 1/14 | 13 av 14 (93 %) / 1 (7 %) |
+| kjøring 3 | 0/10 = 0 % | 13/14 | 1/14 | 13 av 14 (93 %) / 1 (7 %) |
+
+**Appen faller tilbake på nøytralt i 7–8 % av linjene den viser.** Langt under
+halvparten, så funksjonen er ikke svakere enn den ser ut — den sier fortsatt
+noe i over ni av ti tilfeller.
+
+Og den fanger nøyaktig det den ble bygget for. Par 1 — «Kartet skal ikke være
+startsiden likevel» mot «man først ser et kart» — er det paret som ble kalt
+`bekrefter` i to av fire målinger over. I kjøring 2 og 3 er lesningene uenige
+om retningen, og brukeren får «Du skrev om dette» i stedet for «Du bestemte
+det samme» om noe hun snudde. I kjøring 1 var de enige, og enige om riktig
+svar. Par 24 (Stripe mot Vipps, fasit `motsier`) gikk samme vei i kjøring 1.
+
+### Hva dette ikke er
+
+**De to lesningene er ikke uavhengige.** Sonnet ser det samme paret, med den
+samme prompten, og lander ofte likt. At de er enige er derfor et svakere bevis
+enn det ser ut som — enighet om en gal etikett gir fortsatt en gal påstand.
+Regelen fjerner de tilfellene der modellene *ser* ulikt, ikke de der de tar
+feil sammen.
+
+**Fallraten på 7–8 % er målt på 13–14 viste linjer.** Ett utfall flytter den
+sju prosentpoeng. Tallet bærer en retning: «sjelden», ikke «én av fjorten».
+
+Den feilmodusen som står igjen er den samme som før: to modeller som er enige
+om at et avsnitt bekrefter noe det egentlig snur. Å skille «samme sak?» fra
+«enig eller uenig?» i to kall er fortsatt det som ville hjulpet, og er fortsatt
+ikke målt.
+
 **Par 8 bommer alle.** «Render-noden hos Marius står og koker» mot «Henger et
 sted mellom render og lagring» kalles relatert av både Haiku og Sonnet, i
 nesten hver kjøring. Begge handler om render som går galt. At det er
@@ -142,3 +194,8 @@ det som gjør seksjonen til støy.
 Den neste risikoen å måle er ikke denne. Det er om etiketten stemmer når
 koblingen er ekte — for det er `motsier` som bærer hele funksjonen, og det er
 den etiketten som bommer oftest.
+
+Etiketten er ikke løst, men påstanden er gjort ærlig: er lesningene uenige om
+retningen, påstår appen ingen. Det koster 7–8 % av linjene en formulering, og
+det er en billig pris for å slutte å si «du bestemte det samme» om noe hun
+forkastet.

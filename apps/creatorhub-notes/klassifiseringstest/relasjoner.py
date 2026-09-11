@@ -23,6 +23,9 @@ MINNE = HER.parent / "app/src-tauri/src/minne.rs"
 MODELL = "claude-haiku-4-5-20251001"
 STOR = "claude-sonnet-5"
 FORHOLD = ("motsier", "bekrefter", "besvarer", "urelatert")
+# Ikke et svar en modell kan gi. Det oppstår bare av at de to lesningene er
+# uenige om retningen, og er da det appen viser: «Du skrev om dette 3. september».
+NEVNT = "nevnt"
 
 
 def les_prompt() -> str:
@@ -97,11 +100,24 @@ def skår(navn: str, par, svar):
     ekte = [i for i in ider if par[i]["fasit"] != "urelatert" and nummer[i] in svar]
     funnet = [i for i in ekte if svar[nummer[i]] == par[i]["fasit"]]
     tapt = [i for i in ekte if svar[nummer[i]] == "urelatert"]
+    uten_retning = [i for i in ekte if svar[nummer[i]] == NEVNT]
+
+    # Det brukeren faktisk får se, og hva appen påstår om det.
+    vist = [i for i in ider if nummer[i] in svar and svar[nummer[i]] != "urelatert"]
+    nøytrale = [i for i in vist if svar[nummer[i]] == NEVNT]
+    retning = [i for i in vist if svar[nummer[i]] != NEVNT]
 
     print(f"\n== {navn} ==")
     print(f"Falsk koblingsrate: {len(falske)}/{len(urelaterte)} = {rate:.0%}")
     print(f"Ekte forhold truffet nøyaktig: {len(funnet)}/{len(ekte)}")
     print(f"Ekte forhold kalt urelatert:   {len(tapt)}/{len(ekte)}")
+    print(f"Ekte forhold vist uten retning: {len(uten_retning)}/{len(ekte)}")
+    if vist:
+        print(
+            f"Av {len(vist)} viste linjer påstår appen en retning i {len(retning)} "
+            f"({len(retning) / len(vist):.0%}) og faller tilbake på nøytralt i "
+            f"{len(nøytrale)} ({len(nøytrale) / len(vist):.0%})"
+        )
     if mangler:
         print(f"Uten svar: {mangler}")
     for i in falske:
@@ -116,9 +132,13 @@ def eskaler(par):
     """Arkitekturen RESULTAT.md pekte på, brukt på den ene dyre avgjørelsen her.
 
     Haiku dømmer alt. Bare parene Haiku faktisk koblet sendes videre til
-    Sonnet, og Sonnets svar er det som gjelder. Et par Haiku kalte urelatert
-    blir stående urelatert — Haiku mister nesten aldri et ekte forhold, den
-    kobler for mye.
+    Sonnet. Et par Haiku kalte urelatert blir stående urelatert — Haiku mister
+    nesten aldri et ekte forhold, den kobler for mye.
+
+    Retningen krever enighet, som i `slå_sammen` i minne.rs: sier begge det
+    samme vises den formuleringen, ser begge en kobling uten å være enige om
+    hvilken vises `nevnt` — linja uten retning — og sier Sonnet urelatert
+    vises ingenting.
     """
     ider = sorted(par)
     rått = kjør(bygg(par))
@@ -137,7 +157,11 @@ def eskaler(par):
     stor = les_svar(rått, len(delmengde))
     ut = {n: "urelatert" for n in range(1, len(par) + 1)}
     for plass, i in enumerate(koblet, 1):
-        ut[ider.index(i) + 1] = stor.get(plass, "urelatert")
+        n = ider.index(i) + 1
+        andre = stor.get(plass, "urelatert")
+        if andre == "urelatert":
+            continue
+        ut[n] = andre if andre == liten[n] else NEVNT
     return ut
 
 

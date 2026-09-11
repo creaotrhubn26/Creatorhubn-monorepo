@@ -2,7 +2,9 @@
 # par 2
 # par 4
 # par 5
+# par 6
 # par 7
+# par 8
 # par 9
 # par 12
 # par 13
@@ -11,20 +13,24 @@
 # par 17
 # par 19
 # par 20
+# par 22
 # par 23
 # par 24
-1|besvarer
-2|urelatert
+1|bekrefter
+2|besvarer
 3|motsier
 4|bekrefter
-5|motsier
-6|bekrefter
-7|bekrefter
-8|motsier
+5|urelatert
+6|motsier
+7|urelatert
+8|besvarer
 9|bekrefter
-10|besvarer
+10|motsier
 11|bekrefter
 12|besvarer
-13|besvarer
-14|urelatert
-15|urelatert
+13|bekrefter
+14|besvarer
+15|besvarer
+16|urelatert
+17|urelatert
+18|motsier

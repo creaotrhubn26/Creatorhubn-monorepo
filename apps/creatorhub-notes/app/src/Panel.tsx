@@ -64,10 +64,16 @@ function dato(sekunder: number) {
 
 /// Hva forholdet er, sagt på vanlig norsk. Et forhold som ikke står her — det
 /// som bare deler et ord — har ingen setning, og vises derfor aldri.
+///
+/// `nevnt` er linja appen viser når de to lesningene så en kobling men ikke
+/// den samme retningen. Den skal ikke antyde retning i det hele tatt: ikke
+/// gjentakelse («du har vært innom dette før»), ikke relevans uten innhold
+/// («se også»). Datoen og kortformen er alt hun trenger for å lese selv.
 const SETNINGER: Record<string, (dato: string) => string> = {
   motsier: (d) => `Du forkastet dette ${d}`,
   besvarer: (d) => `Dette svarer på spørsmålet du stilte ${d}`,
   bekrefter: (d) => `Du bestemte det samme ${d}`,
+  nevnt: (d) => `Du skrev om dette ${d}`,
 };
 
 /// Linjene som skal vises, i den rekkefølgen de kom — motsigelsen først, fordi

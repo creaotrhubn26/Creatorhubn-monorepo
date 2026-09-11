@@ -482,20 +482,29 @@ impl Classifier for Cli {
 /// ødelegger funksjonen. Derfor dømmer Haiku alt, og bare parene den faktisk
 /// koblet leses en gang til av den dyre modellen. Et par Haiku kalte urelatert
 /// er ferdig der, og koster ingenting mer.
+///
+/// Den andre lesningen avgjør ikke bare *om* det er en kobling, men også om
+/// appen tør å påstå en retning: er de to uenige om hvilken, vises linja uten
+/// retning. Se [`crate::minne::slå_sammen`].
 impl crate::minne::Dommer for Cli {
     fn døm(&self, par: &[(String, String)]) -> Result<String, String> {
         let svar = kjør(MODEL, &crate::minne::relasjonsprompt(par))?;
-        let koblet: Vec<usize> = crate::minne::parse_forhold(&svar, par.len())
+        // Etiketten den første lesningen ga blir med videre: uten den kan ikke
+        // enigheten avgjøres etterpå.
+        let koblet: Vec<(usize, String)> = crate::minne::parse_forhold(&svar, par.len())
             .into_iter()
             .enumerate()
-            .filter(|(_, f)| f.as_deref().is_some_and(|f| f != crate::minne::URELATERT))
-            .map(|(i, _)| i)
+            .filter_map(|(i, f)| match f {
+                Some(f) if f != crate::minne::URELATERT => Some((i, f)),
+                _ => None,
+            })
             .collect();
         if koblet.is_empty() {
             return Ok(svar);
         }
 
-        let delmengde: Vec<(String, String)> = koblet.iter().map(|i| par[*i].clone()).collect();
+        let delmengde: Vec<(String, String)> =
+            koblet.iter().map(|(i, _)| par[*i].clone()).collect();
         // Feiler annenlesningen, feiler hele dømmingen. Det er med vilje:
         // ingenting lagres, og parene prøves igjen senere. Å slippe gjennom
         // Haikus egne koblinger ville vært å vise brukeren nøyaktig den støyen

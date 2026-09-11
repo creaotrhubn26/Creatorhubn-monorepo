@@ -39,9 +39,10 @@ export type Paragraph = {
 };
 
 /** Noe brukeren har tenkt om det samme før. `forhold` er `motsier`,
- *  `bekrefter` eller `besvarer`; det som ikke handler om det samme kommer
- *  aldri hit. `gjelder` er avsnittet i notatet som står åpent, `hash` er
- *  avsnittet i det andre notatet. */
+ *  `bekrefter`, `besvarer` eller `nevnt` — det siste når de to lesningene så
+ *  en kobling men ikke den samme retningen, og appen derfor ikke påstår noen.
+ *  Det som ikke handler om det samme kommer aldri hit. `gjelder` er avsnittet
+ *  i notatet som står åpent, `hash` er avsnittet i det andre notatet. */
 export type Tidligere = {
   forhold: string;
   gjelder: string;

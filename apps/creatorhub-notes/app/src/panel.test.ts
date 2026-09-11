@@ -99,11 +99,12 @@ test("det som bare deler et ord vises aldri", () => {
     tidligere("motsier", "b"),
     tidligere("bekrefter", "c"),
     tidligere("besvarer", "d"),
+    tidligere("nevnt", "f"),
     // Peker to avsnitt på det samme tidligere avsnittet, står det én gang.
     tidligere("bekrefter", "c"),
     tidligere("finnesikke", "e"),
   ]);
-  expect(linjer.map((l) => l.hash)).toEqual(["b", "c", "d"]);
+  expect(linjer.map((l) => l.hash)).toEqual(["b", "c", "d", "f"]);
 });
 
 test("forholdet sies med ord brukeren kjenner", () => {
@@ -114,4 +115,14 @@ test("forholdet sies med ord brukeren kjenner", () => {
   );
   // Vokabularet vårt skal ikke ha en setning, og kan derfor ikke vises.
   expect(SETNINGER.urelatert).toBe(undefined);
+});
+
+test("uten enighet om retningen sier linja ingenting om retning", () => {
+  const linje = SETNINGER.nevnt("3. september");
+  expect(linje).toBe("Du skrev om dette 3. september");
+  // Ingen av ordene som ville smuglet inn en retning, en gjentakelse eller en
+  // relevans appen ikke har dekning for.
+  for (const antydning of ["forkastet", "bestemte", "svarer", "igjen", "før", "også"]) {
+    expect(linje).not.toContain(antydning);
+  }
 });

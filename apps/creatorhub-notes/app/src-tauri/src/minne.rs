@@ -273,6 +273,21 @@ pub fn kandidater(
 pub const FORHOLD: [&str; 4] = ["motsier", "bekrefter", "besvarer", "urelatert"];
 pub const URELATERT: &str = "urelatert";
 
+/// Begge lesningene så en kobling, men ikke den samme. Da påstår ikke appen
+/// noen retning — den sier bare at hun har skrevet om dette før, og lar henne
+/// lese selv.
+///
+/// Dette er ikke et svar en modell kan gi. Det oppstår bare av at de to
+/// lesningene er uenige, og `parse_forhold` tar det imot fordi `slå_sammen`
+/// skriver det inn i den samme svarstrengen som modellen svarer med.
+///
+/// Grunnen står i `klassifiseringstest/RELASJONER.md`: måltallet «falsk
+/// kobling» er rent, men etiketten på en *ekte* kobling bommer ofte, og den
+/// som bommer er `motsier` — den ene som bærer hele funksjonen. «Du bestemte
+/// det samme 3. september» om et avsnitt der hun snudde er verre enn å ikke
+/// vise linja i det hele tatt.
+pub const NEVNT: &str = "nevnt";
+
 /// Høyst så mange par sendes i ett kall. Grensen holder prompten kort og
 /// svartiden nede; resten dømmes ved neste lagring.
 const MAKS_PAR: usize = 15;
@@ -342,7 +357,7 @@ pub fn parse_forhold(svar: &str, antall: usize) -> Vec<Option<String>> {
             .find(|d| !d.is_empty())
             .unwrap_or("")
             .to_lowercase();
-        if n == 0 || n > antall || !FORHOLD.contains(&forhold.as_str()) {
+        if n == 0 || n > antall || !(FORHOLD.contains(&forhold.as_str()) || forhold == NEVNT) {
             continue;
         }
         ut[n - 1] = Some(forhold);
@@ -350,19 +365,31 @@ pub fn parse_forhold(svar: &str, antall: usize) -> Vec<Option<String>> {
     ut
 }
 
-/// Setter sammen svaret fra to lesninger: alt er urelatert, unntatt parene den
-/// andre lesningen sto ved. `koblet` er plassene den første lesningen koblet,
-/// i samme rekkefølge som `dom`.
+/// Setter sammen svaret fra to lesninger. `koblet` er plassene den første
+/// lesningen koblet, med etiketten den ga dem, i samme rekkefølge som `dom`.
+///
+/// Retningen krever enighet:
+///
+/// - begge sier det samme → den formuleringen vises
+/// - begge ser en kobling, men ikke den samme → [`NEVNT`], uten retning
+/// - én av dem sier `urelatert` → ingenting vises
 ///
 /// At det blir en svarstreng og ikke en ferdig liste er med vilje: da er
 /// tolkningen fortsatt ett sted, og `parse_forhold` er det eneste som vet
 /// hvordan et svar ser ut.
-pub fn slå_sammen(antall: usize, koblet: &[usize], dom: &[Option<String>]) -> String {
+pub fn slå_sammen(antall: usize, koblet: &[(usize, String)], dom: &[Option<String>]) -> String {
     let mut linjer: Vec<String> =
         (1..=antall).map(|n| format!("{n}|{URELATERT}")).collect();
-    for (plass, i) in koblet.iter().enumerate() {
-        if let (Some(forhold), Some(linje)) = (dom.get(plass).and_then(|f| f.as_ref()), linjer.get_mut(*i))
-        {
+    for (plass, (i, først)) in koblet.iter().enumerate() {
+        // Uten svar er uten kobling: den trygge utgangen, som før.
+        let Some(andre) = dom.get(plass).and_then(|f| f.as_ref()) else {
+            continue;
+        };
+        if andre == URELATERT {
+            continue;
+        }
+        let forhold = if andre == først { andre.as_str() } else { NEVNT };
+        if let Some(linje) = linjer.get_mut(*i) {
             *linje = format!("{}|{forhold}", i + 1);
         }
     }
@@ -378,7 +405,8 @@ pub trait Dommer {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Tidligere {
-    /// `motsier`, `bekrefter` eller `besvarer`. `urelatert` kommer aldri hit.
+    /// `motsier`, `bekrefter`, `besvarer` eller [`NEVNT`]. `urelatert` kommer
+    /// aldri hit.
     pub forhold: String,
     /// Nøkkelen til avsnittet i notatet som står åpent.
     pub gjelder: String,
@@ -465,11 +493,13 @@ pub fn tidligere(
     }
 
     // `urelatert` vises aldri. Rekkefølgen er hva som er verdt å avbryte
-    // skrivingen for: en motsigelse først, så et svar, så en bekreftelse.
+    // skrivingen for: en motsigelse først, så et svar, så en bekreftelse, og
+    // sist den linja som ikke påstår noen retning i det hele tatt.
     let rang = |f: &str| match f {
         "motsier" => 0,
         "besvarer" => 1,
-        _ => 2,
+        "bekrefter" => 2,
+        _ => 3,
     };
     dømt.retain(|l| l.forhold != URELATERT);
     dømt.sort_by_key(|l| (rang(&l.forhold), -l.tidspunkt));
@@ -922,18 +952,72 @@ mod tests {
         assert_eq!(ut[3], None, "et ukjent forhold er ikke et forhold");
     }
 
+    fn koblet(par: &[(usize, &str)]) -> Vec<(usize, String)> {
+        par.iter().map(|(i, f)| (*i, f.to_string())).collect()
+    }
+
     /// Annenlesningen: bare det den dyre modellen sto ved blir stående som en
     /// kobling. Alt annet — også det den første lesningen koblet — er
     /// urelatert, og det er den trygge retningen.
     #[test]
     fn andre_lesning_avgjør_hva_som_blir_en_kobling() {
         let dom = vec![Some("motsier".to_string()), Some(URELATERT.to_string()), None];
-        let svar = slå_sammen(5, &[0, 2, 4], &dom);
+        let svar = slå_sammen(5, &koblet(&[(0, "motsier"), (2, "bekrefter"), (4, "besvarer")]), &dom);
         let ut = parse_forhold(&svar, 5);
         assert_eq!(ut[0].as_deref(), Some("motsier"), "sto ved koblingen");
         assert_eq!(ut[1].as_deref(), Some(URELATERT), "aldri koblet");
         assert_eq!(ut[2].as_deref(), Some(URELATERT), "trukket tilbake");
         assert_eq!(ut[4].as_deref(), Some(URELATERT), "uten svar er uten kobling");
+    }
+
+    /// Retningen er den påstanden som koster noe å ta feil av. Den krever at
+    /// begge lesningene sier det samme.
+    #[test]
+    fn retning_krever_enighet_ellers_står_linja_uten_retning() {
+        let først = koblet(&[(0, "motsier"), (1, "bekrefter"), (2, "bekrefter"), (3, "besvarer")]);
+        let dom = vec![
+            Some("motsier".to_string()),   // enige
+            Some("motsier".to_string()),   // uenige om retningen
+            Some(URELATERT.to_string()),   // én sier urelatert
+            Some("besvarer".to_string()),  // enige
+        ];
+        let ut = parse_forhold(&slå_sammen(4, &først, &dom), 4);
+        assert_eq!(ut[0].as_deref(), Some("motsier"), "enighet gir retningen");
+        assert_eq!(
+            ut[1].as_deref(),
+            Some(NEVNT),
+            "uenige om retningen: ingen påstand, bare at hun skrev om det"
+        );
+        assert_eq!(ut[2].as_deref(), Some(URELATERT), "urelatert fra én gir ingenting");
+        assert_eq!(ut[3].as_deref(), Some("besvarer"));
+    }
+
+    /// Linja uten retning er fortsatt en linje: den vises, men sist, fordi den
+    /// ikke sier noe som er verdt å avbryte skrivingen for.
+    #[test]
+    fn linja_uten_retning_vises_men_står_nederst() {
+        let conn = base();
+        legg_inn(&conn, "a.md", "Låne-app", "Depositum blir for høy terskel.", "Depositum");
+        legg_inn(&conn, "b.md", "Låne-app", "Skal depositum være valgfritt?", "Valgfritt depositum");
+
+        let tekst = "Depositum tar vi likevel.";
+        let nytt = vec![Paragraph {
+            start: 0,
+            end: 0,
+            hash: understand::nøkkel(tekst),
+            text: tekst.to_string(),
+            summary: "Depositum".into(),
+            kind: "beslutning".into(),
+            action: "bygg".into(),
+            dependency: None,
+            correction: None,
+        }];
+
+        let dommer = FakeDommer::new(&format!("1|{NEVNT}\n2|besvarer"));
+        let ut = tidligere(&conn, &nytt, &dommer).unwrap();
+        assert_eq!(ut.len(), 2);
+        assert_eq!(ut[0].forhold, "besvarer", "en retning står over en linje uten");
+        assert_eq!(ut[1].forhold, NEVNT);
     }
 
     #[test]
