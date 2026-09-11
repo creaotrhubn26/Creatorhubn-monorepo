@@ -50,6 +50,7 @@ interface Props {
 interface DeliverySummary {
   id: string;
   revision: number;
+  status?: 'published' | 'superseded' | 'retracted';
   createdAt: string;
   total: number;
   sent: number;
@@ -157,7 +158,8 @@ export function SecondAssistantDirectorWorkspace({
 
   useEffect(() => { void loadDeliveries(); }, [deliveryRefreshSignal, loadDeliveries]);
 
-  const latestDelivery = deliveries[0];
+  const latestDelivery = deliveries.find((delivery) => delivery.status === 'published')
+    ?? deliveries.find((delivery) => !delivery.status);
   const missingAcknowledgements = useMemo(
     () => latestDelivery?.recipients.filter((recipient) => recipient.deliveryStatus === 'sent' && !recipient.acknowledgedAt) ?? [],
     [latestDelivery],

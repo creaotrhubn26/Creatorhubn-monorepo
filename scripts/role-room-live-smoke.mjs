@@ -59,7 +59,8 @@ const assertShaMatches = (label, actualSha) => {
 };
 
 const health = await assertOkResponse('Backend health', `${baseUrl}/api/health`);
-assertShaMatches('Backend commit', health.commit);
+const version = await assertOkResponse('Backend version', `${baseUrl}/api/version`);
+assertShaMatches('Backend commit', version.commit);
 
 const buildInfoResult = await fetchJson(`${baseUrl}/build-info.json`, {
   headers: {
@@ -101,10 +102,12 @@ const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
 const matchingConsoleErrors = [];
 const failedStatusRequests = [];
+const targetedApiFailures = [];
 const statusRequestCounts = new Map();
 const errorPattern =
   /ERR_INSUFFICIENT_RESOURCES|\[MODULE ERROR\]|Cannot access .* before initialization|ProducerMediaPanel.*Failed to load|Failed to load Google access status|Failed to load LinkedIn access status/i;
 const statusPattern = /\/api\/role-room\/(google|linkedin)\/status/;
+const targetedApiPattern = /\/api\/presence\/heartbeat(?:[/?#]|$)|\/selftapes(?:[/?#]|$)/i;
 
 page.on('console', (message) => {
   const text = message.text();
@@ -127,6 +130,12 @@ page.on('requestfailed', (request) => {
   }
 });
 
+page.on('response', (response) => {
+  if (response.status() >= 400 && targetedApiPattern.test(response.url())) {
+    targetedApiFailures.push(`${response.status()} ${response.request().method()} ${response.url()}`);
+  }
+});
+
 await page.goto(`${baseUrl}/theroleroom`, {
   waitUntil: 'domcontentloaded',
   timeout: 60_000,
@@ -138,10 +147,11 @@ const excessiveStatusRequests = Array.from(statusRequestCounts.entries())
   .filter(([, count]) => count > statusRequestBudget)
   .map(([url, count]) => ({ url, count, budget: statusRequestBudget }));
 
-if (matchingConsoleErrors.length || failedStatusRequests.length || excessiveStatusRequests.length) {
+if (matchingConsoleErrors.length || failedStatusRequests.length || targetedApiFailures.length || excessiveStatusRequests.length) {
   fail('Live browser smoke feilet', {
     matchingConsoleErrors,
     failedStatusRequests,
+    targetedApiFailures,
     excessiveStatusRequests,
   });
 }
@@ -150,7 +160,7 @@ console.log(JSON.stringify({
   ok: true,
   baseUrl,
   expectedSha: expectedSha || null,
-  backendCommit: health.commit || null,
+  backendCommit: version.commit || null,
   frontendGitSha: buildInfo?.gitSha || null,
   mainAsset: mainAssetMatch[0],
   linkedInState: linkedInStatus.state,

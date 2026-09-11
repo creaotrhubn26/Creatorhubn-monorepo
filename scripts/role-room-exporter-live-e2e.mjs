@@ -393,7 +393,8 @@ const uploadedFileIds = [];
 
 try {
   const health = await assertOkJson("Backend health", `${baseUrl}/api/health`);
-  assertShaMatches("Backend commit", health.commit);
+  const version = await assertOkJson("Backend version", `${baseUrl}/api/version`);
+  assertShaMatches("Backend commit", version.commit);
 
   await ensureAuthSessionTable();
   const session = await insertLiveE2eSession();
@@ -416,7 +417,7 @@ try {
     ok: true,
     baseUrl,
     expectedSha: expectedSha || null,
-    backendCommit: health.commit || null,
+    backendCommit: version.commit || null,
     runId,
     projectId,
     uploadedFileId: file.id,

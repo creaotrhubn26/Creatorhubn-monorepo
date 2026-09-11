@@ -9,7 +9,10 @@ on:
       - 'frontend/package.json'
       - 'backend/server/role-room-call-sheet-routes.ts'
       - 'backend/migrations/0583_role_room_call_sheet_reminders.sql'
+      - 'backend/migrations/0584_role_room_call_sheet_revisions.sql'
       - 'backend/migrations/role-room-schema.ts'
+      - 'scripts/role-room-*-live-e2e.mjs'
+      - 'scripts/role-room-live-smoke.mjs'
       - '.github/workflows/role-room-second-ad-e2e-gate.yml'
   merge_group:
   workflow_dispatch:

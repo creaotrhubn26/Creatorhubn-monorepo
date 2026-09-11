@@ -95,6 +95,10 @@ async function installAuthenticatedTrollApi(page: Page) {
       body: JSON.stringify({ tabAccess: null, source: 'default', role: 'second_ad', tabValues: null }),
     });
   });
+  await page.route('**/api/role-room/casting-roles/*/selftapes', async (route) => {
+    authenticatedRequests.push(route.request().headers().authorization ?? '');
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
+  });
   await page.route(`**/api/role-room/projects/${projectId}/call-sheet-deliveries**`, async (route) => {
     authenticatedRequests.push(route.request().headers().authorization ?? '');
     await route.fulfill({
@@ -104,12 +108,14 @@ async function installAuthenticatedTrollApi(page: Page) {
         id: deliveryId,
         productionDayId: initialDay.id,
         revision: 2,
+        status: 'published',
         subject: 'Troll · dag 1',
         createdAt: '2026-09-11T08:00:00.000Z',
         total: 3,
         sent: 2,
         failed: 1,
         acknowledged: 1,
+        events: [],
         recipients: [
           { id: '22222222-2222-4222-8222-222222222222', name: 'Ada', email: 'ada@example.test', deliveryStatus: 'sent', acknowledgedAt: '2026-09-11T08:05:00.000Z', reminderCount: 0 },
           { id: missingRecipientId, name: 'Bo', email: 'bo@example.test', deliveryStatus: 'sent', acknowledgedAt: null, reminderCount },
@@ -139,10 +145,21 @@ async function installAuthenticatedTrollApi(page: Page) {
 test.describe('Autentisert Troll-flyt · 2nd AD', () => {
   test('bruker én produksjonsdag for dagsstatus, callsheet, mottak og trygg preview', async ({ page }) => {
     const runtimeErrors: string[] = [];
+    const targetedApiFailures: string[] = [];
     page.on('pageerror', (error) => runtimeErrors.push(error.message));
     page.on('console', (message) => {
       if (message.type() === 'error' && /TypeError|ReferenceError|Rendered fewer hooks|Minified React error/i.test(message.text())) {
         runtimeErrors.push(message.text());
+      }
+    });
+    page.on('response', (response) => {
+      if (response.status() >= 400 && /\/api\/presence\/heartbeat|\/selftapes(?:[/?#]|$)/i.test(response.url())) {
+        targetedApiFailures.push(`${response.status()} ${response.url()}`);
+      }
+    });
+    page.on('requestfailed', (request) => {
+      if (/\/api\/presence\/heartbeat|\/selftapes(?:[/?#]|$)/i.test(request.url())) {
+        targetedApiFailures.push(`requestfailed ${request.url()}`);
       }
     });
     const api = await installAuthenticatedTrollApi(page);
@@ -170,15 +187,19 @@ test.describe('Autentisert Troll-flyt · 2nd AD', () => {
     await expect(page.getByTestId('pmv-shooting-day-planner-dialog')).toHaveCount(0);
     await expect(page.getByText('05:55').first()).toBeVisible();
     await expect(page.getByText('Bil 4 · Liv').first()).toBeVisible();
+    await expect(page.getByTestId('call-sheet-revision-status')).toContainText('Upubliserte endringer');
 
-    const previewButton = page.getByRole('button', { name: 'Kontroller mottakere' });
+    const previewButton = page.getByRole('button', { name: 'Kontroller revisjon 3' });
     await expect(previewButton).toBeEnabled({ timeout: 15_000 });
     await previewButton.click();
     await expect(page.getByTestId('call-sheet-recipient-preview')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Publiser revisjon 3' })).toBeVisible();
+    await expect(page.getByText(/Endringer:/)).toBeVisible();
     await expect(page.getByText('ada@example.test · Cast')).toBeVisible();
     expect(api.getCallSheetSendCount()).toBe(0);
     expect(api.authenticatedRequests.length).toBeGreaterThan(0);
     expect(api.authenticatedRequests.every((header) => header === 'Bearer dev-admin-local-session')).toBe(true);
     expect(runtimeErrors).toEqual([]);
+    expect(targetedApiFailures).toEqual([]);
   });
 });
