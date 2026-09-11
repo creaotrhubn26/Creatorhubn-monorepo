@@ -40,6 +40,7 @@ import {
   Snackbar,
   TextField,
   CircularProgress,
+  Skeleton,
 } from '@mui/material';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
@@ -97,6 +98,7 @@ import {
   CloudDownload,
   DeleteOutline,
   Inbox,
+  BugReport,
 } from '@mui/icons-material';
 import AdminStats from './AdminStats';
 import { ThemeProvider as AdminSectionThemeProvider } from '@mui/material/styles';
@@ -481,7 +483,7 @@ export default function AdminDashboard({
     automations: !isKnownUnavailableApiEndpoint('/api/admin/automations/status'),
   };
 
-  const { data: dashboardData } = useQuery({
+  const { data: dashboardData, isLoading: dashboardQueryLoading } = useQuery({
     queryKey: ['/api/admin/dashboard'],
     queryFn: () => fetchOptionalAdminData('/api/admin/dashboard', null),
     enabled: overviewFeedAvailability.dashboard && Boolean(currentUser?.isAdmin),
@@ -513,7 +515,7 @@ export default function AdminDashboard({
     retry: false,
   });
 
-  const { data: auditData } = useQuery({
+  const { data: auditData, isLoading: auditLoading } = useQuery({
     queryKey: ['/api/admin/audit/recent'],
     queryFn: () => fetchOptionalAdminData('/api/admin/audit/recent', []),
     enabled: overviewFeedAvailability.audit && Boolean(currentUser?.isAdmin),
@@ -521,7 +523,7 @@ export default function AdminDashboard({
     retry: false,
   });
 
-  const { data: healthData } = useQuery({
+  const { data: healthData, isLoading: healthLoading } = useQuery({
     queryKey: ['/api/admin/system/health'],
     queryFn: () => fetchOptionalAdminData('/api/admin/system/health', null),
     enabled: overviewFeedAvailability.health && Boolean(currentUser?.isAdmin),
@@ -550,6 +552,31 @@ export default function AdminDashboard({
     queryFn: () => fetchOptionalAdminData('/api/admin/automations/status', null),
     enabled: overviewFeedAvailability.automations && Boolean(currentUser?.isAdmin),
     staleTime: 30000,
+    retry: false,
+  });
+
+  // ─── Pending counts for overview "needs attention" ──────────
+  const { data: pendingCountsData, isLoading: pendingCountsLoading } = useQuery({
+    queryKey: ['/api/admin/pending-counts'] as const,
+    queryFn: () => fetchOptionalAdminData<{
+      total?: number;
+      inviteRequests?: number;
+      prototypeFeedback?: number;
+      bugReports?: number;
+    } | null>('/api/admin/pending-counts', null),
+    enabled: Boolean(currentUser?.isAdmin),
+    staleTime: 15000,
+    retry: false,
+  });
+
+  const { data: unreadAlertsData } = useQuery({
+    queryKey: ['/api/admin/inbound-alerts/count'] as const,
+    queryFn: () => fetchOptionalAdminData<{ unread?: number } | null>(
+      '/api/admin/inbound-alerts/count',
+      null,
+    ),
+    enabled: Boolean(currentUser?.isAdmin),
+    staleTime: 15000,
     retry: false,
   });
 
@@ -1624,6 +1651,7 @@ export default function AdminDashboard({
     typeof value === 'number' && Number.isFinite(value)
       ? `${value.toLocaleString('nb-NO')} kr`
       : '—';
+  const dashboardLoading = dashboardQueryLoading;
   const overviewKpis = [
     {
       label: 'CRM-kunder',
@@ -1654,6 +1682,7 @@ export default function AdminDashboard({
       tone: '#c084fc',
     },
   ];
+
   const overviewStatusCards = [
     {
       label: 'Rollenivå',
@@ -1674,6 +1703,91 @@ export default function AdminDashboard({
       value: hasSessionToken ? 'Aktiv' : 'Mangler token',
       tone: hasSessionToken ? '#93c5fd' : '#fca5a5',
       background: hasSessionToken ? 'rgba(30,64,175,0.18)' : 'rgba(239,68,68,0.15)',
+    },
+  ];
+
+  // ─── "Trenger oppfølging" items ─────────────────────────────
+  const pendingInviteRequests = pendingCountsData?.inviteRequests ?? 0;
+  const pendingPrototypeFeedback = pendingCountsData?.prototypeFeedback ?? 0;
+  const pendingBugReports = pendingCountsData?.bugReports ?? 0;
+  const unreadAlertCount = unreadAlertsData?.unread ?? 0;
+  const academyPendingPayoutsCount = academySummary?.pendingPayoutsCount ?? 0;
+  const academyPendingPayoutsAmount = academySummary?.pendingPayoutsAmount ?? 0;
+  const criticalAlerts = (securityData as any)?.unreadCriticalAlerts ?? 0;
+  const totalPendingItems = pendingInviteRequests + academyPendingPayoutsCount + unreadAlertCount + criticalAlerts + pendingBugReports + pendingPrototypeFeedback;
+
+  const needsAttentionItems = [
+    pendingInviteRequests > 0 && {
+      key: 'invite-requests',
+      label: `${pendingInviteRequests} ventende søknader`,
+      description: 'Tilgangsforespørsler som venter på godkjenning',
+      icon: HowToReg,
+      tone: '#ff8c00',
+      action: () => activateTab(tabIndexFor('invite-requests')),
+    },
+    academyPendingPayoutsCount > 0 && {
+      key: 'academy-payouts',
+      label: `${academyPendingPayoutsCount} utbetalinger · ${formatKpiCurrency(academyPendingPayoutsAmount)}`,
+      description: 'Academy-instruktører venter på utbetaling',
+      icon: Payments,
+      tone: '#ffd54f',
+      action: () => activateTab(tabIndexFor('academy')),
+    },
+    unreadAlertCount > 0 && {
+      key: 'inbound-alerts',
+      label: `${unreadAlertCount} uleste varsler`,
+      description: 'Innkommende varsler som trenger oppfølging',
+      icon: Inbox,
+      tone: '#ef5350',
+      action: () => activateTab(tabIndexFor('inbound-alerts')),
+    },
+    criticalAlerts > 0 && {
+      key: 'critical-alerts',
+      label: `${criticalAlerts} kritiske varsler`,
+      description: 'Sikkerhets- eller systemhendelser med høy prioritet',
+      icon: Warning,
+      tone: '#f44336',
+      action: () => activateTab(tabIndexFor('control-center')),
+    },
+    pendingBugReports > 0 && {
+      key: 'bug-reports',
+      label: `${pendingBugReports} feilrapporter`,
+      description: 'Prototype-feil som ikke er løst',
+      icon: BugReport,
+      tone: '#ff7043',
+      action: () => activateTab(tabIndexFor('prototype-feedback')),
+    },
+    pendingPrototypeFeedback > 0 && {
+      key: 'prototype-feedback',
+      label: `${pendingPrototypeFeedback} tilbakemeldinger`,
+      description: 'Prototype-tilbakemeldinger som ikke er behandlet',
+      icon: Feedback,
+      tone: '#ab47bc',
+      action: () => activateTab(tabIndexFor('prototype-feedback')),
+    },
+  ].filter(Boolean) as Array<{
+    key: string;
+    label: string;
+    description: string;
+    icon: React.ComponentType<any>;
+    tone: string;
+    action: () => void;
+  }>;
+
+  // ─── System helse-nøkkeltall ────────────────────────────────
+  const healthSnapshot = healthData as any;
+  const systemHealthItems = [
+    {
+      label: 'DB',
+      status: healthSnapshot?.database?.status === 'healthy' ? 'ok' : healthSnapshot?.database ? 'warn' : 'unknown',
+    },
+    {
+      label: 'Stripe',
+      status: (integrationData as any)?.environment?.stripeConfigured ? 'ok' : 'unknown',
+    },
+    {
+      label: 'Sesjon',
+      status: hasSessionToken ? 'ok' : 'error',
     },
   ];
 
@@ -1830,6 +1944,7 @@ export default function AdminDashboard({
 
       {overviewSection === 'summary' && (
         <>
+      {/* ─── KPI-rader med loading-skeleton ──────────────────── */}
       <Grid container spacing={{ xs: 1.5, sm: 2 }}>
         {overviewKpis.map((kpi) => {
           const KpiIcon = kpi.icon;
@@ -1884,16 +1999,23 @@ export default function AdminDashboard({
                       {kpi.hint}
                     </Typography>
                   </Box>
-                  <Typography
-                    sx={{
-                      fontSize: { xs: '1.35rem', md: '1.6rem' },
-                      fontWeight: 700,
-                      color: '#fff',
-                      lineHeight: 1.1,
-                    }}
-                  >
-                    {kpi.value}
-                  </Typography>
+                  {dashboardLoading ? (
+                    <Skeleton
+                      variant="text"
+                      sx={{ bgcolor: 'rgba(255,255,255,0.08)', width: '60%', height: 32, mt: 0.5 }}
+                    />
+                  ) : (
+                    <Typography
+                      sx={{
+                        fontSize: { xs: '1.35rem', md: '1.6rem' },
+                        fontWeight: 700,
+                        color: '#fff',
+                        lineHeight: 1.1,
+                      }}
+                    >
+                      {kpi.value}
+                    </Typography>
+                  )}
                   <Typography
                     sx={{
                       mt: 0.4,
@@ -1909,6 +2031,380 @@ export default function AdminDashboard({
             </Grid>
           );
         })}
+      </Grid>
+
+      {/* ─── Trenger oppfølging + Systemhelse side om side ──── */}
+      <Grid container spacing={{ xs: 2, sm: 3 }}>
+        {/* Trenger oppfølging */}
+        <Grid item xs={12} lg={7}>
+          <Card
+            sx={{
+              borderRadius: '24px',
+              border: '1px solid rgba(255,255,255,0.12)',
+              background:
+                'linear-gradient(135deg, rgba(15,23,42,0.94), rgba(255,255,255,0.04))',
+              boxShadow: '0 22px 44px rgba(0,0,0,0.35)',
+              height: '100%',
+            }}
+          >
+            <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                <Box>
+                  <Typography
+                    sx={{
+                      fontSize: '0.72rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.12em',
+                      color: '#ff8c00',
+                      fontWeight: 700,
+                    }}
+                  >
+                    Trenger oppfølging
+                  </Typography>
+                  <Typography variant="h5" sx={{ mt: 0.5, fontWeight: 700, color: '#fff' }}>
+                    Hva bør du gjøre nå?
+                  </Typography>
+                </Box>
+                {needsAttentionItems.length > 0 && (
+                  <Chip
+                    label={`${totalPendingItems} ${totalPendingItems === 1 ? 'oppgave' : 'oppgaver'}`}
+                    sx={{
+                      bgcolor: 'rgba(255,140,0,0.18)',
+                      color: '#ffb74d',
+                      fontWeight: 700,
+                      border: '1px solid rgba(255,140,0,0.35)',
+                    }}
+                  />
+                )}
+              </Box>
+
+              {pendingCountsLoading ? (
+                <Box sx={{ display: 'grid', gap: 1.5 }}>
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton
+                      key={i}
+                      variant="rounded"
+                      height={64}
+                      sx={{ bgcolor: 'rgba(255,255,255,0.06)', borderRadius: '16px' }}
+                    />
+                  ))}
+                </Box>
+              ) : needsAttentionItems.length === 0 ? (
+                <Box
+                  sx={{
+                    p: 3,
+                    textAlign: 'center',
+                    borderRadius: '18px',
+                    border: '1px dashed rgba(255,255,255,0.15)',
+                    bgcolor: 'rgba(34,197,94,0.08)',
+                  }}
+                >
+                  <CheckCircle sx={{ fontSize: 40, color: '#4ade80', mb: 1 }} />
+                  <Typography sx={{ fontWeight: 700, color: '#fff' }}>
+                    Alt er oppdatert
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.65)', mt: 0.5 }}>
+                    Ingen ventende oppgaver akkurat nå.
+                  </Typography>
+                </Box>
+              ) : (
+                <Box sx={{ display: 'grid', gap: 1 }}>
+                  {needsAttentionItems.map((item) => {
+                    const ItemIcon = item.icon;
+                    return (
+                      <Button
+                        key={item.key}
+                        fullWidth
+                        onClick={item.action}
+                        sx={{
+                          p: 1.5,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1.5,
+                          borderRadius: '16px',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          bgcolor: 'rgba(255,255,255,0.03)',
+                          color: '#fff',
+                          textTransform: 'none',
+                          textAlign: 'left',
+                          boxShadow: 'none',
+                          '&:hover': {
+                            bgcolor: `${item.tone}12`,
+                            borderColor: `${item.tone}44`,
+                          },
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            width: 38,
+                            height: 38,
+                            flexShrink: 0,
+                            borderRadius: '10px',
+                            display: 'grid',
+                            placeItems: 'center',
+                            bgcolor: `${item.tone}22`,
+                            color: item.tone,
+                          }}
+                        >
+                          <ItemIcon sx={{ fontSize: 20 }} />
+                        </Box>
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography sx={{ fontWeight: 700, fontSize: '0.92rem' }}>
+                            {item.label}
+                          </Typography>
+                          <Typography
+                            sx={{
+                              fontSize: '0.78rem',
+                              color: 'rgba(255,255,255,0.6)',
+                              mt: 0.25,
+                            }}
+                          >
+                            {item.description}
+                          </Typography>
+                        </Box>
+                        <ExpandMore
+                          sx={{
+                            color: 'rgba(255,255,255,0.5)',
+                            transform: 'rotate(-90deg)',
+                            transition: 'transform 180ms ease',
+                          }}
+                        />
+                      </Button>
+                    );
+                  })}
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Systemhelse + Nylig aktivitet */}
+        <Grid item xs={12} lg={5}>
+          <Box sx={{ display: 'grid', gap: 3, height: '100%' }}>
+            {/* Systemhelse */}
+            <Card
+              sx={{
+                borderRadius: '24px',
+                border: '1px solid rgba(255,255,255,0.12)',
+                bgcolor: 'rgba(255,255,255,0.06)',
+                boxShadow: '0 22px 44px rgba(0,0,0,0.35)',
+              }}
+            >
+              <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
+                <Typography
+                  sx={{
+                    fontSize: '0.72rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.12em',
+                    color: '#ff8c00',
+                    fontWeight: 700,
+                  }}
+                >
+                  Systemhelse
+                </Typography>
+                <Typography variant="h6" sx={{ mt: 0.5, fontWeight: 700, color: '#fff' }}>
+                  Nøkkeltall
+                </Typography>
+
+                <Box sx={{ display: 'grid', gap: 1, mt: 2 }}>
+                  {healthLoading ? (
+                    [1, 2, 3].map((i) => (
+                      <Skeleton
+                        key={i}
+                        variant="rounded"
+                        height={44}
+                        sx={{ bgcolor: 'rgba(255,255,255,0.06)', borderRadius: '12px' }}
+                      />
+                    ))
+                  ) : (
+                    systemHealthItems.map((item) => (
+                      <Box
+                        key={item.label}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          px: 1.5,
+                          py: 1,
+                          borderRadius: '12px',
+                          bgcolor: 'rgba(255,255,255,0.04)',
+                        }}
+                      >
+                        <Typography sx={{ fontSize: '0.88rem', fontWeight: 600, color: '#fff' }}>
+                          {item.label}
+                        </Typography>
+                        <Chip
+                          size="small"
+                          label={item.status === 'ok' ? 'OK' : item.status === 'error' ? 'Feil' : 'Ukjent'}
+                          sx={{
+                            fontWeight: 700,
+                            bgcolor: item.status === 'ok'
+                              ? 'rgba(34,197,94,0.18)'
+                              : item.status === 'error'
+                                ? 'rgba(239,68,68,0.18)'
+                                : 'rgba(255,255,255,0.08)',
+                            color: item.status === 'ok'
+                              ? '#86efac'
+                              : item.status === 'error'
+                                ? '#fca5a5'
+                                : 'rgba(255,255,255,0.6)',
+                          }}
+                        />
+                      </Box>
+                    ))
+                  )}
+                </Box>
+
+                <Button
+                  fullWidth
+                  onClick={() => activateTab(tabIndexFor('drift-helse'))}
+                  sx={{
+                    mt: 2,
+                    py: 1,
+                    borderRadius: '12px',
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    color: 'rgba(255,255,255,0.7)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    '&:hover': {
+                      bgcolor: 'rgba(255,255,255,0.06)',
+                      color: '#fff',
+                    },
+                  }}
+                >
+                  Se full helseoversikt
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Nylig aktivitet (mini) */}
+            <Card
+              sx={{
+                borderRadius: '24px',
+                border: '1px solid rgba(255,255,255,0.12)',
+                bgcolor: 'rgba(255,255,255,0.06)',
+                boxShadow: '0 22px 44px rgba(0,0,0,0.35)',
+                flex: 1,
+              }}
+            >
+              <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+                  <Typography
+                    sx={{
+                      fontSize: '0.72rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.12em',
+                      color: '#ff8c00',
+                      fontWeight: 700,
+                    }}
+                  >
+                    Nylig aktivitet
+                  </Typography>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setOverviewSection('activity');
+                    }}
+                    sx={{
+                      textTransform: 'none',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      color: 'rgba(255,255,255,0.6)',
+                      '&:hover': { color: '#fff' },
+                    }}
+                  >
+                    Se alle
+                  </Button>
+                </Box>
+
+                {auditLoading ? (
+                  <Box sx={{ display: 'grid', gap: 0.75 }}>
+                    {[1, 2, 3, 4].map((i) => (
+                      <Skeleton
+                        key={i}
+                        variant="rounded"
+                        height={48}
+                        sx={{ bgcolor: 'rgba(255,255,255,0.06)', borderRadius: '10px' }}
+                      />
+                    ))}
+                  </Box>
+                ) : (() => {
+                  const recentAudit = Array.isArray(auditData) ? auditData.slice(0, 4) : [];
+                  if (recentAudit.length === 0) {
+                    return (
+                      <Typography sx={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', py: 2, textAlign: 'center' }}>
+                        Ingen nylig aktivitet
+                      </Typography>
+                    );
+                  }
+                  return (
+                    <Box sx={{ display: 'grid', gap: 0.75 }}>
+                      {recentAudit.map((item: any) => (
+                        <Box
+                          key={item.id}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: 1.25,
+                            py: 1,
+                            borderBottom: '1px solid rgba(255,255,255,0.06)',
+                            '&:last-child': { borderBottom: 'none' },
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: '50%',
+                              mt: 0.6,
+                              flexShrink: 0,
+                              bgcolor:
+                                item.priority === 'high'
+                                  ? '#ef5350'
+                                  : item.priority === 'medium'
+                                    ? '#ff9800'
+                                    : 'rgba(255,255,255,0.3)',
+                            }}
+                          />
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Typography
+                              sx={{
+                                fontSize: '0.82rem',
+                                fontWeight: 600,
+                                color: '#fff',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {item.title}
+                            </Typography>
+                            <Typography
+                              sx={{
+                                fontSize: '0.72rem',
+                                color: 'rgba(255,255,255,0.5)',
+                                mt: 0.25,
+                              }}
+                            >
+                              {item.timestamp
+                                ? new Date(item.timestamp).toLocaleString('nb-NO', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    day: 'numeric',
+                                    month: 'short',
+                                  })
+                                : ''}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      ))}
+                    </Box>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+          </Box>
+        </Grid>
       </Grid>
 
       <CustomerSuccessSnapshotCard />
@@ -3734,14 +4230,14 @@ export default function AdminDashboard({
           sx={{
             minHeight: '100vh',
             bgcolor: '#0a0f1a',
-            px: { md: 2.5, xl: 4 },
-            py: { md: 2.5, xl: 4 },
+            px: 0,
+            py: 0,
           }}
         >
           <Box
             sx={{
-              maxWidth: '1480px',
-              mx: 'auto',
+              maxWidth: '100%',
+              mx: 0,
               minHeight: 'calc(100vh - 40px)',
               display: 'grid',
               gridTemplateColumns: '260px minmax(0, 1fr)',
@@ -4101,7 +4597,7 @@ export default function AdminDashboard({
                 bgcolor: isVisualCmsTab ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.04)',
               }}
             >
-              <Box sx={{ maxWidth: isVisualCmsTab ? '100%' : '1280px', mx: 'auto' }}>
+              <Box sx={{ maxWidth: '100%', mx: 0 }}>
                 <AdminErrorBoundary
                   key={currentTab.id}
                   fallback={
@@ -4251,12 +4747,13 @@ export default function AdminDashboard({
 
       <Box sx={{ minHeight: '100vh', bgcolor: '#0a0f1a', pb: 12 }}>
         <Container
-          maxWidth={isVisualCmsTab ? false : 'xl'}
-          disableGutters={isVisualCmsTab}
+          maxWidth={false}
+          disableGutters
           sx={{
             width: '100%',
-            py: isVisualCmsTab ? 0 : { xs: 2, sm: 3 },
-            px: isVisualCmsTab ? 0 : { xs: 1, sm: 3 },
+            maxWidth: '100%',
+            py: 0,
+            px: 0,
           }}
         >
           {!isVisualCmsTab && (
@@ -4264,7 +4761,7 @@ export default function AdminDashboard({
               sx={{
                 mt: { xs: 1, sm: 2 },
                 mb: 2.5,
-                px: { xs: 0.5, sm: 0 },
+                px: { xs: 1.5, sm: 3 },
               }}
             >
               <Typography sx={{ fontSize: '0.76rem', color: 'rgba(255,255,255,0.65)', mb: 0.75 }}>
