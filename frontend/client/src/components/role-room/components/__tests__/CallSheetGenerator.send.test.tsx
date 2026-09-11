@@ -2,7 +2,12 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CallSheetGenerator } from '../CallSheetGenerator';
+import {
+  CallSheetGenerator,
+  describeCallSheetRevisionChanges,
+  selectAffectedCallSheetRecipients,
+  type CallSheetRevisionSnapshot,
+} from '../CallSheetGenerator';
 
 const {
   getProject,
@@ -72,9 +77,14 @@ describe('CallSheetGenerator recipient confirmation', () => {
       id: 'scene-1', sceneNumber: 1, sceneHeading: 'INT. ROM - DAG', characters: ['role-nora'],
     }]);
     getMyTabs.mockResolvedValue({ tabAccess: null, source: 'default', role: 'second_ad', tabValues: null });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ sent: 1, total: 1 }),
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes('/call-sheet-deliveries?')) {
+        return { ok: true, json: async () => ({ deliveries: [] }) };
+      }
+      if (init?.method === 'POST') {
+        return { ok: true, json: async () => ({ sent: 1, total: 1, revision: 1 }) };
+      }
+      throw new Error(`Unexpected fetch: ${String(input)}`);
     }));
   });
 
@@ -90,18 +100,20 @@ describe('CallSheetGenerator recipient confirmation', () => {
     await waitFor(() => expect(previewButton).toBeEnabled());
     fireEvent.click(previewButton);
 
-    expect(fetch).not.toHaveBeenCalled();
+    expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
     expect(screen.getByTestId('call-sheet-recipient-preview')).toBeInTheDocument();
     expect(screen.getByText('ada@example.test · Cast')).toBeInTheDocument();
     expect(screen.getByText('kari@example.test · Crew')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('checkbox', { name: /Kari Foto/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Send til 1 mottakere' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publiser til 1 mottakere' }));
 
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
-    const [, request] = vi.mocked(fetch).mock.calls[0];
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1));
+    const [, request] = vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === 'POST')!;
     const payload = JSON.parse(String(request?.body));
     expect(payload).toMatchObject({ projectId: 'project-1', productionDayId: 'day-1' });
+    expect(payload).not.toHaveProperty('revision');
+    expect(payload.snapshot).toMatchObject({ schemaVersion: 1, recipientEmails: ['ada@example.test', 'kari@example.test'] });
     expect(payload.recipients).toEqual([{ name: 'Ada Skuespiller', email: 'ada@example.test' }]);
     expect(payload.html).toContain('Kostyme');
     expect(payload.html).toContain('06:45');
@@ -141,6 +153,44 @@ describe('CallSheetGenerator recipient confirmation', () => {
     const readOnlyButton = await screen.findByRole('button', { name: 'Kun lesetilgang' });
     expect(readOnlyButton).toBeDisabled();
     expect(await screen.findByText('Ada Skuespiller')).toBeInTheDocument();
-    expect(fetch).not.toHaveBeenCalled();
+    expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
+  });
+});
+
+describe('call sheet revision planning', () => {
+  const snapshot = (overrides: Partial<CallSheetRevisionSnapshot> = {}): CallSheetRevisionSnapshot => ({
+    schemaVersion: 1,
+    general: { callTime: '07:00' },
+    locations: [],
+    scenes: [],
+    cast: [],
+    crew: [],
+    instructions: { specialInstructions: '', notes: '', emergencyContacts: [], weatherForecast: null },
+    recipientEmails: ['ada@example.test'],
+    ...overrides,
+  });
+
+  it('distinguishes content changes from recipient-only changes', () => {
+    expect(describeCallSheetRevisionChanges(snapshot(), snapshot({ recipientEmails: ['ada@example.test', 'kari@example.test'] }))).toEqual({
+      labels: ['Mottakerliste'],
+      contentChanged: false,
+      recipientsChanged: true,
+    });
+    expect(describeCallSheetRevisionChanges(snapshot(), snapshot({ general: { callTime: '08:00' } }))).toMatchObject({
+      labels: ['Dato og tider'],
+      contentChanged: true,
+    });
+  });
+
+  it('selects everyone for content changes, otherwise only new and previously failed recipients', () => {
+    const previous = {
+      recipients: [
+        { id: '1', email: 'ada@example.test', deliveryStatus: 'sent' },
+        { id: '2', email: 'kari@example.test', deliveryStatus: 'failed' },
+      ],
+    };
+    const current = ['ada@example.test', 'kari@example.test', 'new@example.test'];
+    expect(selectAffectedCallSheetRecipients(current, previous, { contentChanged: false })).toEqual(['kari@example.test', 'new@example.test']);
+    expect(selectAffectedCallSheetRecipients(current, previous, { contentChanged: true })).toEqual(current);
   });
 });
