@@ -28,7 +28,11 @@ describe("Dentum surface project-scope migrations", () => {
   it("isolates Canvas notes and recovers linked notes from their lead", () => {
     expect(canvas).toContain("leadgrid_canvas_notater_project_required_check");
     expect(canvas).toContain("FOREIGN KEY (project_id) REFERENCES leadgrid_projects(id)");
-    expect(canvas).toContain("note.lead_id = customer.id");
+    // Production keeps Canvas' legacy lead_id as TEXT while crm_customers.id
+    // is UUID. Comparing as text avoids both operator errors and unsafe casts
+    // of malformed historical Canvas values.
+    expect(canvas).toContain("note.lead_id = customer.id::text");
+    expect(canvas).not.toMatch(/note\.lead_id\s*=\s*customer\.id\s*(?:\n|AND)/);
     expect(canvas).toContain("customer.project_id IS NOT NULL");
     expect(canvas.match(/HAVING COUNT\(\*\) = 1/g)).toHaveLength(1);
     expect(canvas).not.toMatch(/LIMIT\s+1/i);
