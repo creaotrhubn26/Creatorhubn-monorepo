@@ -62,7 +62,11 @@ function normalized(value: unknown): string {
 
 function assignedCandidate(role: Role | undefined, candidates: Candidate[]): Candidate | undefined {
   if (!role) return undefined;
-  const directId = typeof role.assignedCandidateId === 'string' ? role.assignedCandidateId : undefined;
+  const directId = typeof role.assignedCandidateId === 'string'
+    ? role.assignedCandidateId
+    : typeof role.assigned_candidate_id === 'string'
+      ? role.assigned_candidate_id
+      : undefined;
   if (directId) return candidates.find((candidate) => candidate.id === directId);
   return candidates.find((candidate) => {
     const ids = candidate.assignedRoles ?? candidate.assigned_roles ?? [];
@@ -76,40 +80,51 @@ export function buildSecondAdMovementEntries(
 ): SecondAdMovementEntry[] {
   const scenes = Array.isArray(project.sceneBreakdowns) ? project.sceneBreakdowns : [];
   const daySceneIds = new Set(Array.isArray(day.scenes) ? day.scenes : []);
-  const characterNames = Array.from(new Set(
-    scenes
-      .filter((scene) => daySceneIds.has(scene.id))
-      .flatMap((scene) => Array.isArray(scene.characters) ? scene.characters : [])
-      .map((name) => String(name).trim())
-      .filter(Boolean),
-  ));
   const roles = Array.isArray(project.roles) ? project.roles : [];
   const candidates = Array.isArray(project.candidates) ? project.candidates : [];
+  const characterRefs = scenes
+    .filter((scene) => daySceneIds.has(scene.id))
+    .flatMap((scene) => Array.isArray(scene.characters) ? scene.characters : [])
+    .map((character) => String(character).trim())
+    .filter(Boolean);
+  const resolvedCharacters = new Map<string, { reference: string; role?: Role }>();
+  for (const reference of characterRefs) {
+    const role = roles.find((item) => item.id === reference)
+      ?? roles.find((item) => normalized(item.name) === normalized(reference));
+    const key = role?.id || normalized(reference);
+    if (!resolvedCharacters.has(key)) resolvedCharacters.set(key, { reference, role });
+  }
   const persisted = Array.isArray(day.secondAd?.entries) ? day.secondAd.entries : [];
-  const persistedById = new Map(persisted.map((entry) => [entry.id, entry]));
   const generatedIds = new Set<string>();
+  const consumedPersistedIds = new Set<string>();
 
-  const generated = characterNames.map((character): SecondAdMovementEntry => {
-    const role = roles.find((item) => normalized(item.name) === normalized(character));
+  const generated = [...resolvedCharacters.values()].map(({ reference, role }): SecondAdMovementEntry => {
     const candidate = assignedCandidate(role, candidates);
-    const id = `cast:${candidate?.id ?? role?.id ?? normalized(character)}`;
+    const roleName = role?.name || reference;
+    const id = `cast:${candidate?.id ?? role?.id ?? normalized(reference)}`;
     generatedIds.add(id);
-    const existing = persistedById.get(id);
+    const existing = persisted.find((entry) => (
+      entry.id === id
+      || Boolean(candidate?.id && entry.personId === candidate.id)
+      || normalized(entry.roleName) === normalized(roleName)
+      || normalized(entry.roleName) === normalized(reference)
+    ));
+    if (existing) consumedPersistedIds.add(existing.id);
     return {
+      ...existing,
       id,
       personType: 'cast',
-      personId: candidate?.id,
-      name: candidate?.name || character,
-      roleName: character,
-      callTime: day.callTime || '',
-      status: 'not_called',
-      ...existing,
+      personId: candidate?.id ?? existing?.personId,
+      name: existing?.name || candidate?.name || roleName,
+      roleName,
+      callTime: existing?.callTime ?? day.callTime ?? '',
+      status: existing?.status ?? 'not_called',
     };
   });
 
   return [
     ...generated,
-    ...persisted.filter((entry) => !generatedIds.has(entry.id)),
+    ...persisted.filter((entry) => !generatedIds.has(entry.id) && !consumedPersistedIds.has(entry.id)),
   ];
 }
 

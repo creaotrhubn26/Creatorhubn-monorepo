@@ -1,8 +1,19 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { canQueryCastingRoleSelftapes } from './roleRoomSelfTapesService';
+const { getAuthHeadersSync } = vi.hoisted(() => ({ getAuthHeadersSync: vi.fn() }));
+vi.mock('./authSessionService', () => ({ default: { getAuthHeadersSync } }));
+
+import { canQueryCastingRoleSelftapes, listCastingRoleSelftapes } from './roleRoomSelfTapesService';
 
 describe('canQueryCastingRoleSelftapes', () => {
+  beforeEach(() => {
+    getAuthHeadersSync.mockReturnValue({ Authorization: 'Bearer role-room-token' });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('accepts canonical roles persisted for the current project', () => {
     expect(canQueryCastingRoleSelftapes(
       { project_id: 'troll-project' },
@@ -20,5 +31,22 @@ describe('canQueryCastingRoleSelftapes', () => {
       { project_id: 'another-project' },
       'troll-project',
     )).toBe(false);
+  });
+
+  it('authenticates production-side role requests with the Role Room session', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ selftapes: [] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(listCastingRoleSelftapes('role-nora')).resolves.toEqual({ selftapes: [] });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/role-room/casting-roles/role-nora/selftapes',
+      expect.objectContaining({
+        credentials: 'include',
+        headers: expect.objectContaining({ Authorization: 'Bearer role-room-token' }),
+      }),
+    );
   });
 });

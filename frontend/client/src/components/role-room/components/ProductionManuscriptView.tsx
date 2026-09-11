@@ -8565,6 +8565,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 1, sm: 2, md: 3 } }}>
             <CallSheetGenerator
               projectId={projectId}
+              productionDayId={currentCallSheet?.shootingDayId}
+              scenes={scenes}
             />
           </Box>
         </DialogContent>

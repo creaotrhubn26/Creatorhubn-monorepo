@@ -121,6 +121,23 @@ function buildRouteApp(
   return app;
 }
 
+function buildSuperAdminRouteApp(pool: Pool, stripe: Stripe): Express {
+  const app = express();
+  app.use(express.json());
+  registerRoleRoomAffiliatePayoutRoutes({
+    app,
+    pool,
+    stripe,
+    activeSessions: new Map(),
+    requireAdminSession: () => ({
+      userId: "super-admin-1",
+      email: "admin@example.test",
+      role: "super_admin",
+    }),
+  });
+  return app;
+}
+
 function transactionalPool(query: ReturnType<typeof vi.fn>): Pool {
   const client = { query, release: vi.fn() } as unknown as PoolClient;
   return { query, connect: vi.fn(async () => client) } as unknown as Pool;
@@ -220,6 +237,306 @@ describe("Role Room affiliate Connect onboarding", () => {
     expect(response.status).toBe(403);
     expect(response.body.error).toBe("kun_organisasjonsadmin");
     expect(stripe.accounts.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("Role Room affiliate superadmin overview", () => {
+  afterEach(() => {
+    delete process.env.ROLE_ROOM_AFFILIATE_PAYOUTS_ENABLED;
+    delete process.env.ROLE_ROOM_STRIPE_CONNECT_WEBHOOK_SECRET;
+    delete process.env.ROLE_ROOM_STORAGE_1_TIB_CHECKOUT_ENABLED;
+  });
+
+  it("returns organization, member, agreement and ledger readiness without exposing secrets", async () => {
+    process.env.ROLE_ROOM_AFFILIATE_PAYOUTS_ENABLED = "false";
+    process.env.ROLE_ROOM_STRIPE_CONNECT_WEBHOOK_SECRET = "whsec_private";
+    process.env.ROLE_ROOM_STORAGE_1_TIB_CHECKOUT_ENABLED = "false";
+    const query = vi.fn(async (sqlValue: unknown) => {
+      const sql = String(sqlValue);
+      if (sql.includes("WITH commission_rows AS")) {
+        return {
+          rows: [
+            {
+              id: PARTNER_ID,
+              organization_id: ORG_ID,
+              organization_name: "Nordic Casting AS",
+              organization_number: "999888777",
+              contact_email: "kontakt@example.test",
+              billing_email: "faktura@example.test",
+              organization_owner_user_id: "user-1",
+              organization_admin_count: 1,
+              referral_code: "NORDIC15",
+              commission_basis_points: 1500,
+              storage_commission_basis_points: 500,
+              commission_months: 12,
+              referred_org_bonus_bytes: "10737418240",
+              referred_org_bonus_months: 3,
+              status: "active",
+              stripe_connect_account_id: "acct_affiliate",
+              stripe_connect_country: "NO",
+              stripe_connect_onboarding_status: "complete",
+              stripe_connect_details_submitted: true,
+              stripe_connect_payouts_enabled: true,
+              stripe_connect_transfers_status: "active",
+              stripe_connect_requirements: {},
+              stripe_connect_synced_at: "2026-09-11T08:00:00.000Z",
+              payout_currency: "nok",
+              minimum_payout_minor: "100000",
+              last_connect_payout_id: "po_bank",
+              last_connect_payout_status: "paid",
+              last_connect_payout_at: "2026-09-10T08:00:00.000Z",
+              referral_count: 3,
+              paying_referral_count: 2,
+              accrued_minor: "160000",
+              adjustment_minor: "-10000",
+              reserved_or_transferred_minor: "20000",
+              available_minor: "130000",
+              next_maturity_at: null,
+              transferred_minor: "20000",
+              failed_payout_count: 0,
+              pending_payout_count: 0,
+              last_payout_id: PAYOUT_ID,
+              last_payout_status: "transferred",
+              last_payout_amount_minor: "20000",
+              last_payout_created_at: "2026-09-01T08:00:00.000Z",
+              created_at: "2026-08-01T08:00:00.000Z",
+              updated_at: "2026-09-11T08:00:00.000Z",
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      if (
+        sql.includes("FROM organizations organization") &&
+        sql.includes("member_count")
+      ) {
+        return {
+          rows: [
+            {
+              id: ORG_ID,
+              name: "Nordic Casting AS",
+              organization_number: "999888777",
+              contact_email: "kontakt@example.test",
+              billing_email: "faktura@example.test",
+              owner_user_id: "user-1",
+              member_count: 1,
+              admin_count: 1,
+              affiliate_partner_id: PARTNER_ID,
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      if (
+        sql.includes("FROM organization_members member") &&
+        sql.includes("user_row.last_login_at")
+      ) {
+        return {
+          rows: [
+            {
+              organization_id: ORG_ID,
+              user_id: "user-1",
+              email: "owner@example.test",
+              first_name: "Nora",
+              last_name: "Nordmann",
+              platform_role: "user",
+              member_role: "admin",
+              is_active: true,
+              joined_at: "2026-08-01T08:00:00.000Z",
+              last_login_at: "2026-09-11T07:00:00.000Z",
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      if (
+        sql.includes("FROM role_room_affiliate_payouts payout") &&
+        sql.includes("initiated_by")
+      ) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (
+        sql.includes("FROM role_room_affiliate_connected_payout_events event")
+      ) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (sql.includes("FROM partner_intent_agreements agreement")) {
+        return {
+          rows: [
+            {
+              organization_id: ORG_ID,
+              id: "55555555-5555-4555-8555-555555555555",
+              title: "Partneravtale",
+              status: "signed",
+              partner_type: "reseller",
+              template_version: "reseller_v2",
+              signer_email: "owner@example.test",
+              signer_name: "Nora Nordmann",
+              sent_at: "2026-08-02T08:00:00.000Z",
+              viewed_at: "2026-08-02T09:00:00.000Z",
+              signed_at: "2026-08-02T09:30:00.000Z",
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      throw new Error(`Unexpected query: ${sql}`);
+    });
+
+    const response = await request(
+      buildSuperAdminRouteApp({ query } as unknown as Pool, buildStripe()),
+    ).get("/api/admin/role-room/affiliates/overview");
+
+    expect(response.status).toBe(200);
+    expect(response.body.config).toMatchObject({
+      payoutsEnabled: false,
+      stripeConfigured: true,
+      connectWebhookConfigured: true,
+      oneTiBCheckoutEnabled: false,
+      maturityHoldDays: 30,
+    });
+    expect(JSON.stringify(response.body)).not.toContain("whsec_private");
+    expect(response.body.summary).toMatchObject({
+      totalPartners: 1,
+      connectReadyPartners: 1,
+      availableMinor: 130000,
+    });
+    expect(response.body.partners[0]).toMatchObject({
+      organization: {
+        name: "Nordic Casting AS",
+        members: [
+          expect.objectContaining({
+            email: "owner@example.test",
+            memberRole: "admin",
+          }),
+        ],
+      },
+      agreement: { status: "signed", scope: "organization_partner_intent" },
+      payoutReadiness: {
+        connectReady: true,
+        minimumReached: true,
+        partnerActive: true,
+      },
+    });
+  });
+
+  it("rejects ordinary admins before reading financial or member data", async () => {
+    const query = vi.fn();
+    const app = express();
+    app.use(express.json());
+    registerRoleRoomAffiliatePayoutRoutes({
+      app,
+      pool: { query } as unknown as Pool,
+      stripe: buildStripe(),
+      activeSessions: new Map(),
+      requireAdminSession: () => ({ userId: "admin-1", role: "admin" }),
+    });
+
+    const response = await request(app).get(
+      "/api/admin/role-room/affiliates/overview",
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("super_admin_tilgang_kreves");
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it("changes partner status in the same transaction as the audit record", async () => {
+    const statements: Array<{ sql: string; params: unknown[] }> = [];
+    const query = vi.fn(async (sqlValue: unknown, params: unknown[] = []) => {
+      const sql = String(sqlValue);
+      statements.push({ sql, params });
+      if (sql.includes("UPDATE role_room_affiliate_partners")) {
+        return {
+          rows: [
+            {
+              id: PARTNER_ID,
+              organization_id: ORG_ID,
+              status: "paused",
+              updated_at: "2026-09-11T10:00:00.000Z",
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    const response = await request(
+      buildSuperAdminRouteApp(transactionalPool(query), buildStripe()),
+    )
+      .patch(`/api/admin/role-room/affiliates/partners/${PARTNER_ID}/status`)
+      .send({ status: "paused" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.partner).toMatchObject({
+      id: PARTNER_ID,
+      organizationId: ORG_ID,
+      status: "paused",
+    });
+    expect(statements[0]?.sql).toBe("BEGIN");
+    expect(statements.at(-1)?.sql).toBe("COMMIT");
+    expect(statements.some(({ sql }) => sql === "ROLLBACK")).toBe(false);
+    expect(
+      statements.some(
+        ({ sql, params }) =>
+          sql.includes("INSERT INTO superadmin_audit_log") &&
+          params[1] === "role_room_affiliate_status" &&
+          params[2] === ORG_ID,
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects partner creation when organization identity and administration are incomplete", async () => {
+    const statements: Array<{ sql: string; params: unknown[] }> = [];
+    const query = vi.fn(async (sqlValue: unknown, params: unknown[] = []) => {
+      const sql = String(sqlValue);
+      statements.push({ sql, params });
+      if (sql.includes("FROM organizations organization")) {
+        return {
+          rows: [
+            {
+              id: ORG_ID,
+              organization_number: null,
+              contact_email: null,
+              billing_email: null,
+              has_administrator: false,
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    const response = await request(
+      buildSuperAdminRouteApp(transactionalPool(query), buildStripe()),
+    )
+      .post("/api/admin/role-room/affiliates/partners")
+      .send({
+        organizationId: ORG_ID,
+        referralCode: "NORDIC15",
+        commissionBasisPoints: 1500,
+        storageCommissionBasisPoints: 500,
+        commissionMonths: 12,
+        minimumPayoutMinor: 100_000,
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({
+      error: "affiliate_organization_not_ready",
+      issues: [
+        "organization_number_missing",
+        "contact_email_missing",
+        "organization_admin_missing",
+      ],
+    });
+    expect(
+      statements.some(({ sql }) =>
+        sql.includes("INSERT INTO role_room_affiliate_partners"),
+      ),
+    ).toBe(false);
+    expect(statements.at(-1)?.sql).toBe("ROLLBACK");
   });
 });
 

@@ -453,7 +453,7 @@ export async function listCastingRoleSelftapes(
     .replace('/api/role-room/talents/selftapes', '/api/role-room');
   const r = await fetch(url, {
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authSessionService.getAuthHeadersSync() },
   });
   const payload: unknown = await r.json().catch(() => null);
   if (!r.ok) {
@@ -472,7 +472,7 @@ export async function remindTalentToUpload(submissionId: string): Promise<{ ok: 
   const r = await fetch(url, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authSessionService.getAuthHeadersSync() },
   });
   const payload: unknown = await r.json().catch(() => null);
   if (!r.ok) {
@@ -494,7 +494,7 @@ export async function setSelftapeDeadline(
   const r = await fetch(url, {
     method: 'PATCH',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authSessionService.getAuthHeadersSync() },
     body: JSON.stringify({ deadline_at: deadlineAt }),
   });
   const payload: unknown = await r.json().catch(() => null);
@@ -517,7 +517,7 @@ export async function addProductionComment(
   const r = await fetch(url, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authSessionService.getAuthHeadersSync() },
     body: JSON.stringify({ body }),
   });
   const payload: unknown = await r.json().catch(() => null);
@@ -554,7 +554,7 @@ export async function trackSelftapeView(
   const r = await fetch(url, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authSessionService.getAuthHeadersSync() },
   });
   const payload: unknown = await r.json().catch(() => null);
   if (!r.ok) {

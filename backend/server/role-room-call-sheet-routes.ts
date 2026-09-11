@@ -4,7 +4,7 @@ import type { Pool } from "pg";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
 import { aiRateLimit } from "./ai-rate-limiter.js";
 import { canAccessRoleRoomProject } from "./role-room-projects-routes.js";
-import { viewerMeetsTabLevel } from "./role-room-tab-access.js";
+import { resolveTabAccessLevel, viewerMeetsTabLevel } from "./role-room-tab-access.js";
 
 export interface CallSheetRoutesDeps { app: express.Application; pool: Pool; requireUserSession: (req: any, res: any) => any }
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -15,6 +15,45 @@ const receiptLimit = aiRateLimit({ windowMs: 60_000, max: 30, label: "Call sheet
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 const esc = (value: unknown) => String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 const publicBase = () => (process.env.ROLE_ROOM_PUBLIC_URL ?? "https://theroleroom.com").replace(/\/+$/, "");
+
+// Mirrors the roles whose standard workspace preset owns call-sheet
+// distribution. Explicit project overrides still win. Unknown/legacy roles are
+// deliberately denied for the external side effect even though read-only tab
+// routing remains backwards-compatible elsewhere.
+const DEFAULT_CALL_SHEET_MANAGERS = new Set([
+  "producer",
+  "production_manager",
+  "production_coordinator",
+  "first_ad",
+  "first_assistant_director",
+  "1st_ad",
+  "second_ad",
+  "second_assistant_director",
+  "2nd_ad",
+]);
+
+async function canManageCallSheetDistribution(
+  pool: Pool,
+  projectId: string,
+  viewerId: string,
+): Promise<boolean> {
+  const explicitLevel = await resolveTabAccessLevel(pool, projectId, viewerId, "callsheet");
+  if (explicitLevel !== null) return explicitLevel === "manage";
+  try {
+    const result = await pool.query(
+      `SELECT role FROM casting_user_roles
+        WHERE project_id = $1 AND user_id = $2 AND deactivated_at IS NULL LIMIT 1`,
+      [projectId, viewerId],
+    );
+    const role = typeof result.rows[0]?.role === "string"
+      ? result.rows[0].role.trim().toLowerCase().replace(/[\s-]+/g, "_")
+      : "";
+    return DEFAULT_CALL_SHEET_MANAGERS.has(role);
+  } catch (error) {
+    console.error("[role-room-call-sheet] could not resolve distribution role:", error);
+    return false;
+  }
+}
 
 function receiptPage(input: { subject?: string; acknowledged?: boolean; expired?: boolean }): string {
   const title = input.expired ? "Lenken er utløpt" : input.acknowledged ? "Mottak bekreftet" : "Bekreft call sheet";
@@ -39,7 +78,7 @@ export function setupRoleRoomCallSheetRoutes({ app, pool, requireUserSession }: 
       const body = req.body && typeof req.body === "object" ? req.body as Record<string, unknown> : {};
       const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
       if (!projectId) return res.status(400).json({ error: "projectId er påkrevd.", sent: 0, total: 0, results: [] });
-      if (!(await canAccessRoleRoomProject(pool, session.userId, projectId)) || !(await viewerMeetsTabLevel(pool, projectId, session.userId, "callsheet", "manage"))) return res.status(403).json({ error: "ingen_tilgang", sent: 0, total: 0, results: [] });
+      if (!(await canAccessRoleRoomProject(pool, session.userId, projectId)) || !(await canManageCallSheetDistribution(pool, projectId, session.userId))) return res.status(403).json({ error: "ingen_tilgang", sent: 0, total: 0, results: [] });
       const subject = typeof body.subject === "string" && body.subject.trim() ? body.subject.trim().slice(0, 200) : "Call Sheet";
       const html = typeof body.html === "string" ? body.html : "";
       const dayId = typeof body.productionDayId === "string" ? body.productionDayId.trim().slice(0, 255) : null;
