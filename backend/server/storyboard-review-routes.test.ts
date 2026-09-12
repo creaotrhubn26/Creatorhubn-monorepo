@@ -50,6 +50,7 @@ function source() {
 describe('storyboard review snapshots', () => {
   it('ships tenant-scoped immutable SQL with hashed tokens and append-only decisions', () => {
     const sql = readFileSync(new URL('../migrations/0592_storyboard_review_rounds.sql', import.meta.url), 'utf8');
+    const queueSql = readFileSync(new URL('../migrations/0595_storyboard_review_resolution_queue.sql', import.meta.url), 'utf8');
     expect(sql).toContain('FOREIGN KEY (manuscript_id, project_id)');
     expect(sql).toContain('token_hash CHAR(64) NOT NULL UNIQUE');
     expect(sql).toContain('storyboard review snapshots are immutable');
@@ -59,6 +60,10 @@ describe('storyboard review snapshots', () => {
     expect(registerStoryboardReviewRoutes.toString()).toContain('rejectIfRateLimited');
     expect(registerStoryboardReviewRoutes.toString()).toContain('Cache-Control');
     expect(registerStoryboardReviewRoutes.toString()).toContain('no-store');
+    expect(queueSql).toContain('assigned_to VARCHAR(180)');
+    expect(queueSql).toContain('resolved_in_round_id');
+    expect(queueSql).toContain('carried_from_comment_id');
+    expect(queueSql).toContain("WHERE status = 'open'");
   });
 
   it('is canonical and detached from mutable manuscript state', () => {
@@ -138,6 +143,7 @@ describe('storyboard review share security', () => {
       query: vi.fn(async (sql: string) => {
         if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rows: [] };
         if (sql.includes('pg_advisory_xact_lock')) return { rows: [] };
+        if (sql.includes('ORDER BY version DESC LIMIT 1')) return { rows: [{ id: 'round-2' }] };
         if (sql.includes("SET status = 'superseded'")) return { rows: [] };
         if (sql.includes('COALESCE(MAX(version)')) return { rows: [{ version: 3 }] };
         if (sql.includes('INSERT INTO storyboard_review_rounds')) return { rows: [{
@@ -148,6 +154,10 @@ describe('storyboard review share security', () => {
           total_duration_seconds: 2, created_by: 'owner-1', approved_by: null,
           submitted_at: createdAt, approved_at: null, created_at: createdAt,
         }] };
+        if (sql.includes('INSERT INTO storyboard_review_comments')) {
+          expect(sql).toContain("WHERE review_round_id = $2 AND status = 'open'");
+          return { rows: [{ id: 'carried-1' }, { id: 'carried-2' }], rowCount: 2 };
+        }
         throw new Error(`unexpected client query: ${sql}`);
       }),
     };
@@ -166,6 +176,7 @@ describe('storyboard review share security', () => {
     }, res, (error: unknown) => { throw error; });
 
     expect(res.statusCode).toBe(201);
+    expect(res.body.data.carriedCommentCount).toBe(2);
     expect(upsertNotification).toHaveBeenCalledWith(expect.objectContaining({
       projectId: 'project-1', eventType: 'storyboard_review_round_created',
       linkedEntityId: 'round-3', initiallyReadByUserId: 'owner-1',
@@ -219,6 +230,84 @@ describe('storyboard review share security', () => {
     expect(res.statusCode).toBe(404);
     expect(query).toHaveBeenCalledTimes(1);
     expect(query.mock.calls[0][1]).toEqual(['notification-other', 'project-1', 'manuscript-1']);
+  });
+
+  it('updates resolution metadata only through the scoped round and validates the fixed revision', async () => {
+    const now = new Date('2026-09-12T12:05:00Z');
+    const fixedRoundId = '00000000-0000-4000-8000-000000000002';
+    const query = vi.fn(async (sql: string, values: unknown[]) => {
+      if (sql.includes('SELECT id, version FROM storyboard_review_rounds')) {
+        return { rows: [{ id: 'round-1', version: 2 }] };
+      }
+      if (sql.includes('SELECT id FROM storyboard_review_rounds')) {
+        expect(values).toEqual([fixedRoundId, 'project-1', 'manuscript-1']);
+        return { rows: [{ id: fixedRoundId }] };
+      }
+      if (sql.includes('UPDATE storyboard_review_comments AS comment')) {
+        expect(sql).toContain('review_round.project_id = $3');
+        expect(sql).toContain('review_round.manuscript_id = $4');
+        expect(values.slice(0, 5)).toEqual([
+          'comment-1', 'round-1', 'project-1', 'manuscript-1', 'resolved',
+        ]);
+        return { rows: [{
+          id: 'comment-1', review_round_id: 'round-1', frame_id: 'frame-a',
+          parent_id: null, author_display_name: 'Kari', body: 'Hold bildet.',
+          visibility: 'client', anchor_x: null, anchor_y: null, status: 'resolved',
+          assigned_to: 'Mina', due_at: new Date('2026-09-14T10:00:00Z'),
+          resolution_note: 'Forlenget to frames', resolved_by: 'owner-1', resolved_at: now,
+          resolved_in_round_id: fixedRoundId, carried_from_comment_id: null,
+          created_at: new Date('2026-09-12T12:01:00Z'), updated_at: now,
+        }] };
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    });
+    const upsertNotification = vi.fn().mockResolvedValue(undefined);
+    const router = Router();
+    registerStoryboardReviewRoutes(router, { query } as any, {
+      auth: pass, canView: pass, canManage: pass, manuscriptsService: unusedManuscripts,
+      upsertNotification,
+    });
+    const handler = routeHandler(router, 'patch',
+      '/projects/:projectId/manuscripts/:manuscriptId/storyboard-review-rounds/:roundId/comments/:commentId');
+    const res = response();
+    await handler({ params: {
+      projectId: 'project-1', manuscriptId: 'manuscript-1', roundId: 'round-1', commentId: 'comment-1',
+    }, body: {
+      status: 'resolved', assignedTo: 'Mina', dueAt: '2026-09-14T10:00:00Z',
+      resolutionNote: 'Forlenget to frames', resolvedInRoundId: fixedRoundId,
+    }, userId: 'owner-1' }, res, (error: unknown) => { throw error; });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.data).toMatchObject({
+      id: 'comment-1', status: 'resolved', assignedTo: 'Mina',
+      resolutionNote: 'Forlenget to frames', resolvedInRoundId: fixedRoundId,
+    });
+    expect(upsertNotification).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'storyboard_review_comment_resolved', initiallyReadByUserId: 'owner-1',
+    }));
+  });
+
+  it('rejects a fixed-in revision outside the scoped manuscript before touching the comment', async () => {
+    const fixedRoundId = '00000000-0000-4000-8000-000000000099';
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ id: 'round-1', version: 2 }] })
+      .mockResolvedValueOnce({ rows: [] });
+    const router = Router();
+    registerStoryboardReviewRoutes(router, { query } as any, {
+      auth: pass, canView: pass, canManage: pass, manuscriptsService: unusedManuscripts,
+    });
+    const handler = routeHandler(router, 'patch',
+      '/projects/:projectId/manuscripts/:manuscriptId/storyboard-review-rounds/:roundId/comments/:commentId');
+    const res = response();
+    await handler({ params: {
+      projectId: 'project-1', manuscriptId: 'manuscript-1', roundId: 'round-1', commentId: 'comment-1',
+    }, body: { status: 'resolved', resolvedInRoundId: fixedRoundId }, userId: 'owner-1' }, res,
+    (error: unknown) => { throw error; });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error: 'resolved_revision_not_in_manuscript' });
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('UPDATE storyboard_review_comments'))).toBe(false);
   });
 
   it('rate-limits unauthenticated review traffic before repeated database lookups', async () => {
@@ -345,6 +434,7 @@ describe('storyboard review share security', () => {
       query: vi.fn(async (sql: string, values?: unknown[]) => {
         if (sql === 'BEGIN' || sql === 'ROLLBACK' || sql === 'COMMIT') return { rows: [] };
         if (sql.includes('FOR UPDATE')) return { rows: [{ id: 'round-1', status, snapshot_hash: 'a'.repeat(64) }] };
+        if (sql.includes('COUNT(*)::int')) return { rows: [{ count: 1 }] };
         if (sql.includes('INSERT INTO storyboard_review_decisions')) {
           inserts += 1;
           return { rows: [{ id: `decision-${inserts}`, review_round_id: 'round-1',
@@ -374,9 +464,20 @@ describe('storyboard review share security', () => {
     expect(wrong.statusCode).toBe(409);
     expect(inserts).toBe(0);
 
-    const approved = response();
+    const unconfirmed = response();
     await handler({ params: { token: 'raw-share-token' }, body: {
       decision: 'approved', expectedSnapshotHash: 'a'.repeat(64),
+    }, header: () => 'raw-reviewer-token' }, unconfirmed, (error: any) => {
+      unconfirmed.status(error.status || 500).json({ error: error.message });
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(unconfirmed.statusCode).toBe(409);
+    expect(unconfirmed.body).toEqual({ error: 'open_comments_require_confirmation' });
+    expect(inserts).toBe(0);
+
+    const approved = response();
+    await handler({ params: { token: 'raw-share-token' }, body: {
+      decision: 'approved', expectedSnapshotHash: 'a'.repeat(64), confirmOpenComments: true,
     }, header: () => 'raw-reviewer-token' }, approved, (error: any) => {
       approved.status(error.status || 500).json({ error: error.message });
     });

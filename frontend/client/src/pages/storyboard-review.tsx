@@ -5,10 +5,12 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   Chip,
   CircularProgress,
   Container,
   Divider,
+  FormControlLabel,
   Stack,
   TextField,
   Typography,
@@ -37,6 +39,7 @@ export default function StoryboardReviewPage() {
   const [selectedFrame, setSelectedFrame] = useState<StoryboardReviewSnapshotFrame | null>(null);
   const [comment, setComment] = useState('');
   const [decisionNote, setDecisionNote] = useState('');
+  const [confirmOpenComments, setConfirmOpenComments] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -50,6 +53,16 @@ export default function StoryboardReviewPage() {
   }, [reviewerToken, token]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (!reviewerToken) return;
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible' && navigator.onLine !== false) {
+        void load(reviewerToken);
+      }
+    }, 20_000);
+    return () => window.clearInterval(interval);
+  }, [load, reviewerToken]);
 
   const join = async (event: FormEvent) => {
     event.preventDefault();
@@ -70,6 +83,10 @@ export default function StoryboardReviewPage() {
   const frames = useMemo(() => interactiveData?.round.snapshot.scenes.flatMap((scene) =>
     scene.storyboardFrames.map((frame) => ({ ...frame, sceneHeading: scene.heading }))) ?? [], [interactiveData]);
   const isLocked = interactiveData?.round.status === 'approved' || interactiveData?.round.status === 'superseded';
+  const openComments = useMemo(
+    () => (interactiveData?.round.comments ?? []).filter((entry) => entry.status === 'open'),
+    [interactiveData?.round.comments],
+  );
 
   const submitComment = async () => {
     if (!selectedFrame || !comment.trim() || !reviewerToken) return;
@@ -90,6 +107,9 @@ export default function StoryboardReviewPage() {
         decision,
         expectedSnapshotHash: interactiveData.round.snapshotHash,
         note: decisionNote.trim() || undefined,
+        confirmOpenComments: decision === 'approved' && openComments.length > 0
+          ? confirmOpenComments
+          : undefined,
       });
       setDecisionNote('');
       setMessage(decision === 'approved'
@@ -168,8 +188,22 @@ export default function StoryboardReviewPage() {
                         .filter((entry) => !selectedFrame || entry.frameId === selectedFrame.id)
                         .map((entry) => (
                           <Box key={entry.id} sx={{ py: 1.25 }}>
-                            <Typography variant="subtitle2">{entry.authorDisplayName}</Typography>
+                            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                              <Typography variant="subtitle2">{entry.authorDisplayName}</Typography>
+                              <Chip
+                                size="small"
+                                color={entry.status === 'resolved' ? 'success' : 'warning'}
+                                label={entry.status === 'resolved' ? 'Løst' : 'Åpent'}
+                                data-testid={`storyboard-review-comment-status-${entry.id}`}
+                              />
+                              {entry.assignedTo && <Chip size="small" variant="outlined" label={`Ansvarlig: ${entry.assignedTo}`} sx={{ color: '#fff' }} />}
+                            </Stack>
                             <Typography variant="body2" color="rgba(255,255,255,.72)">{entry.body}</Typography>
+                            {entry.resolutionNote && (
+                              <Typography variant="caption" color="rgba(167,243,208,.9)" display="block">
+                                Løsning: {entry.resolutionNote}
+                              </Typography>
+                            )}
                           </Box>
                         ))}
                       {!isLocked && interactiveData.share.accessMode !== 'view' && reviewerToken && (
@@ -186,11 +220,23 @@ export default function StoryboardReviewPage() {
                       <CardContent>
                         <Typography variant="h6">Sign-off</Typography>
                         <Typography variant="body2" color="rgba(255,255,255,.65)" mb={1.5}>Beslutningen bindes til nøyaktig revisjon v{interactiveData.round.version} og hash {interactiveData.round.snapshotHash.slice(0, 12)}…</Typography>
+                        {openComments.length > 0 && (
+                          <Alert severity="warning" sx={{ mb: 1.5 }} data-testid="storyboard-review-open-comments-warning">
+                            {openComments.length} review-punkt er fortsatt {openComments.length === 1 ? 'åpent' : 'åpne'}. Be om endringer, eller bekreft eksplisitt at revisjonen skal godkjennes likevel.
+                          </Alert>
+                        )}
                         <TextField multiline minRows={2} fullWidth label="Beslutningsnotat" value={decisionNote} onChange={(event) => setDecisionNote(event.target.value)} />
+                        {openComments.length > 0 && (
+                          <FormControlLabel
+                            control={<Checkbox checked={confirmOpenComments} onChange={(event) => setConfirmOpenComments(event.target.checked)} />}
+                            label={`Jeg godkjenner med ${openComments.length} åpne punkt`}
+                            data-testid="storyboard-review-confirm-open-comments"
+                          />
+                        )}
                         <Divider sx={{ my: 1.5 }} />
                         <Stack direction="row" spacing={1}>
                           <Button color="warning" variant="outlined" onClick={() => decide('changes_requested')} disabled={busy} data-testid="request-storyboard-changes">Be om endringer</Button>
-                          <Button color="success" variant="contained" onClick={() => decide('approved')} disabled={busy} data-testid="approve-storyboard-review">Godkjenn revisjon</Button>
+                          <Button color="success" variant="contained" onClick={() => decide('approved')} disabled={busy || (openComments.length > 0 && !confirmOpenComments)} data-testid="approve-storyboard-review">Godkjenn revisjon</Button>
                         </Stack>
                       </CardContent>
                     </Card>

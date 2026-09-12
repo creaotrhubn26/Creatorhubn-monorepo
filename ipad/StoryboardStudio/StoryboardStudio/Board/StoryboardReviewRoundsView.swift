@@ -13,6 +13,39 @@ struct StoryboardReviewRoundDTO: Decodable, Identifiable, Sendable {
     let frameCount: Int
     let totalDurationSeconds: Double
     let createdAt: String
+    var comments: [StoryboardReviewCommentDTO]? = nil
+    var carriedCommentCount: Int? = nil
+}
+
+struct StoryboardReviewCommentDTO: Decodable, Identifiable, Sendable {
+    let id: String
+    let reviewRoundId: String
+    let frameId: String?
+    let authorDisplayName: String
+    let body: String
+    let status: String
+    let assignedTo: String?
+    let dueAt: String?
+    let resolutionNote: String?
+    let resolvedBy: String?
+    let resolvedAt: String?
+    let resolvedInRoundId: String?
+    let carriedFromCommentId: String?
+    let createdAt: String
+    let updatedAt: String?
+}
+
+enum StoryboardReviewFieldUpdate: Sendable {
+    case unchanged
+    case value(String?)
+}
+
+struct StoryboardReviewCommentChanges: Sendable {
+    var status: String?
+    var assignedTo: StoryboardReviewFieldUpdate = .unchanged
+    var dueAt: StoryboardReviewFieldUpdate = .unchanged
+    var resolutionNote: StoryboardReviewFieldUpdate = .unchanged
+    var resolvedInRoundId: StoryboardReviewFieldUpdate = .unchanged
 }
 
 struct StoryboardReviewDiffDTO: Decodable, Sendable {
@@ -69,6 +102,8 @@ struct StoryboardReviewRoundsView: View {
     @State private var inbox: [StoryboardReviewInboxItemDTO] = []
     @State private var selectedID: String?
     @State private var diff: StoryboardReviewDiffDTO?
+    @State private var comments: [StoryboardReviewCommentDTO] = []
+    @State private var showOpenCommentsOnly = true
     @State private var label = "Storyboard review"
     @State private var summary = ""
     @State private var accessMode = "approve"
@@ -85,6 +120,14 @@ struct StoryboardReviewRoundsView: View {
     }
 
     private var unreadCount: Int { inbox.filter { !$0.read }.count }
+    private var visibleComments: [StoryboardReviewCommentDTO] {
+        comments
+            .filter { !showOpenCommentsOnly || $0.status == "open" }
+            .sorted {
+                if $0.status != $1.status { return $0.status == "open" }
+                return ($0.dueAt ?? "9999") < ($1.dueAt ?? "9999")
+            }
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -205,6 +248,40 @@ struct StoryboardReviewRoundsView: View {
                             .accessibilityIdentifier("storyboard.review.diff")
                         }
 
+                        GroupBox {
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Løsningskø").font(.headline)
+                                        Text("\(comments.filter { $0.status == "open" }.count) åpne av \(comments.count) punkt")
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Button(showOpenCommentsOnly ? "Vis alle" : "Bare åpne") {
+                                        showOpenCommentsOnly.toggle()
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .accessibilityIdentifier("storyboard.review.comments.filter")
+                                }
+                                if visibleComments.isEmpty {
+                                    ContentUnavailableView(
+                                        comments.isEmpty ? "Ingen kommentarer" : "Alle punkt er løst",
+                                        systemImage: comments.isEmpty ? "text.bubble" : "checkmark.circle",
+                                        description: Text(comments.isEmpty
+                                            ? "Kommentarer fra review-lenken vises her."
+                                            : "Vis alle for å se løste punkt."))
+                                } else {
+                                    ForEach(visibleComments) { comment in
+                                        StoryboardReviewResolutionRow(
+                                            comment: comment, rounds: rounds, busy: busy,
+                                            onUpdate: { changes in updateComment(comment, changes: changes) })
+                                        .id(comment.updatedAt ?? comment.id)
+                                    }
+                                }
+                            }
+                        }
+                        .accessibilityIdentifier("storyboard.review.resolutionQueue")
+
                         GroupBox("Sikker gjestelenke") {
                             VStack(alignment: .leading, spacing: 12) {
                                 Picker("Tilgang", selection: $accessMode) {
@@ -285,6 +362,15 @@ struct StoryboardReviewRoundsView: View {
                         read: true, readAt: "2026-09-12T12:00:00Z")
                 ]
                 selectedID = demo.id
+                comments = [
+                    StoryboardReviewCommentDTO(
+                        id: "comment-demo", reviewRoundId: demo.id, frameId: "frame-3",
+                        authorDisplayName: "Kari", body: "Hold totalbildet litt lenger.",
+                        status: "open", assignedTo: "Mina", dueAt: nil, resolutionNote: nil,
+                        resolvedBy: nil, resolvedAt: nil, resolvedInRoundId: nil,
+                        carriedFromCommentId: nil, createdAt: "2026-09-12T12:03:00Z",
+                        updatedAt: "2026-09-12T12:03:00Z")
+                ]
                 diff = StoryboardReviewDiffDTO(
                     currentHash: String(repeating: "c", count: 64),
                     baselineHash: demo.snapshotHash, scriptChanged: true,
@@ -297,9 +383,18 @@ struct StoryboardReviewRoundsView: View {
         }
         .task(id: selectedID) {
             if ProcessInfo.processInfo.environment["SB_REVIEW_ROUNDS_DEMO"] == "1" { return }
-            guard let selectedID else { diff = nil; return }
-            diff = try? await RoleRoomAPIClient.shared.fetchStoryboardReviewDiff(
+            guard let selectedID else { diff = nil; comments = []; return }
+            async let nextDiff = RoleRoomAPIClient.shared.fetchStoryboardReviewDiff(
                 projectId: projectId, manuscriptId: manuscriptId, roundId: selectedID)
+            async let nextDetail = RoleRoomAPIClient.shared.fetchStoryboardReviewRound(
+                projectId: projectId, manuscriptId: manuscriptId, roundId: selectedID)
+            do {
+                let loaded = try await (nextDiff, nextDetail)
+                diff = loaded.0
+                comments = loaded.1.comments ?? []
+            } catch {
+                errorMessage = error.localizedDescription
+            }
             shareURL = nil
             restoreCode = ""
         }
@@ -324,6 +419,8 @@ struct StoryboardReviewRoundsView: View {
         case "storyboard_review_approved": return "checkmark.seal.fill"
         case "storyboard_review_changes_requested": return "arrow.triangle.2.circlepath"
         case "storyboard_review_comment_added": return "text.bubble.fill"
+        case "storyboard_review_comment_resolved": return "checkmark.circle.fill"
+        case "storyboard_review_comment_reopened": return "arrow.uturn.backward.circle.fill"
         default: return "paperplane.fill"
         }
     }
@@ -340,6 +437,13 @@ struct StoryboardReviewRoundsView: View {
             rounds = loaded.0
             inbox = loaded.1.items
             selectedID = id ?? selectedID ?? rounds.first?.id
+            if let selectedID {
+                let detail = try await RoleRoomAPIClient.shared.fetchStoryboardReviewRound(
+                    projectId: projectId, manuscriptId: manuscriptId, roundId: selectedID)
+                comments = detail.comments ?? []
+            } else {
+                comments = []
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -388,7 +492,9 @@ struct StoryboardReviewRoundsView: View {
                 let created = try await RoleRoomAPIClient.shared.createStoryboardReviewRound(
                     projectId: projectId, manuscriptId: manuscriptId,
                     label: label, summary: summary)
+                let carried = created.carriedCommentCount ?? 0
                 successMessage = "Revisjon v\(created.version) er låst til \(String(created.snapshotHash.prefix(10)))…"
+                    + (carried > 0 ? " \(carried) åpne punkt ble videreført." : "")
                 await reload(prefer: created.id)
             } catch {
                 errorMessage = error.localizedDescription; busy = false
@@ -426,5 +532,138 @@ struct StoryboardReviewRoundsView: View {
             } catch { errorMessage = error.localizedDescription }
             busy = false
         }
+    }
+
+    private func updateComment(_ comment: StoryboardReviewCommentDTO, changes: StoryboardReviewCommentChanges) {
+        busy = true; errorMessage = nil; successMessage = nil
+        Task {
+            do {
+                let updated = try await RoleRoomAPIClient.shared.updateStoryboardReviewComment(
+                    projectId: projectId, manuscriptId: manuscriptId,
+                    roundId: comment.reviewRoundId, commentId: comment.id, changes: changes)
+                if let index = comments.firstIndex(where: { $0.id == updated.id }) {
+                    comments[index] = updated
+                }
+                successMessage = updated.status == "resolved"
+                    ? "Review-punktet er markert som løst."
+                    : "Review-punktet er oppdatert."
+                await reload(prefer: selectedID)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            busy = false
+        }
+    }
+}
+
+private struct StoryboardReviewResolutionRow: View {
+    let comment: StoryboardReviewCommentDTO
+    let rounds: [StoryboardReviewRoundDTO]
+    let busy: Bool
+    let onUpdate: (StoryboardReviewCommentChanges) -> Void
+
+    @State private var assignedTo: String
+    @State private var hasDueDate: Bool
+    @State private var dueDate: Date
+    @State private var resolutionNote: String
+    @State private var resolvedInRoundId: String
+
+    init(
+        comment: StoryboardReviewCommentDTO,
+        rounds: [StoryboardReviewRoundDTO],
+        busy: Bool,
+        onUpdate: @escaping (StoryboardReviewCommentChanges) -> Void
+    ) {
+        self.comment = comment
+        self.rounds = rounds
+        self.busy = busy
+        self.onUpdate = onUpdate
+        _assignedTo = State(initialValue: comment.assignedTo ?? "")
+        _hasDueDate = State(initialValue: comment.dueAt != nil)
+        _dueDate = State(initialValue: comment.dueAt.flatMap(Self.parseDate) ?? Date())
+        _resolutionNote = State(initialValue: comment.resolutionNote ?? "")
+        _resolvedInRoundId = State(initialValue: comment.resolvedInRoundId ?? "")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Label(comment.status == "open" ? "Åpent" : "Løst",
+                      systemImage: comment.status == "open" ? "circle.dashed" : "checkmark.circle.fill")
+                    .font(.caption.bold())
+                    .foregroundStyle(comment.status == "open" ? .orange : .green)
+                if let frameId = comment.frameId {
+                    Text("Shot \(frameId)").font(.caption.monospaced()).foregroundStyle(.secondary)
+                }
+                if comment.carriedFromCommentId != nil {
+                    Text("VIDEREFØRT").font(.caption2.bold()).foregroundStyle(BoardBrand.accent)
+                }
+                Spacer()
+                Text(comment.authorDisplayName).font(.caption).foregroundStyle(.secondary)
+            }
+            Text(comment.body).font(.subheadline)
+            Divider()
+            TextField("Ansvarlig", text: $assignedTo)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("storyboard.review.comment.assignee.\(comment.id)")
+            Toggle("Sett frist", isOn: $hasDueDate)
+            if hasDueDate {
+                DatePicker("Frist", selection: $dueDate, displayedComponents: [.date, .hourAndMinute])
+                    .accessibilityIdentifier("storyboard.review.comment.due.\(comment.id)")
+            }
+            Button("Lagre ansvar og frist") {
+                let assignee = assignedTo.trimmingCharacters(in: .whitespacesAndNewlines)
+                onUpdate(StoryboardReviewCommentChanges(
+                    status: nil,
+                    assignedTo: .value(assignee.isEmpty ? nil : assignee),
+                    dueAt: .value(hasDueDate ? ISO8601DateFormatter().string(from: dueDate) : nil)))
+            }
+            .buttonStyle(.bordered)
+            .disabled(busy)
+            .accessibilityIdentifier("storyboard.review.comment.save.\(comment.id)")
+
+            if comment.status == "open" {
+                TextField("Løsningsnotat", text: $resolutionNote, axis: .vertical)
+                    .lineLimit(2...4)
+                    .textFieldStyle(.roundedBorder)
+                Picker("Rettet i revisjon", selection: $resolvedInRoundId) {
+                    Text("Ikke angitt").tag("")
+                    ForEach(rounds) { round in
+                        Text("v\(round.version) · \(round.label)").tag(round.id)
+                    }
+                }
+                Button {
+                    let note = resolutionNote.trimmingCharacters(in: .whitespacesAndNewlines)
+                    onUpdate(StoryboardReviewCommentChanges(
+                        status: "resolved",
+                        resolutionNote: .value(note.isEmpty ? nil : note),
+                        resolvedInRoundId: .value(resolvedInRoundId.isEmpty ? nil : resolvedInRoundId)))
+                } label: {
+                    Label("Marker løst", systemImage: "checkmark.circle.fill")
+                }
+                .buttonStyle(.borderedProminent).tint(.green)
+                .disabled(busy)
+                .accessibilityIdentifier("storyboard.review.comment.resolve.\(comment.id)")
+            } else {
+                if let note = comment.resolutionNote, !note.isEmpty {
+                    Text("Løsning: \(note)").font(.caption).foregroundStyle(.green)
+                }
+                Button {
+                    onUpdate(StoryboardReviewCommentChanges(status: "open"))
+                } label: {
+                    Label("Gjenåpne", systemImage: "arrow.uturn.backward.circle")
+                }
+                .buttonStyle(.bordered).tint(.orange)
+                .disabled(busy)
+                .accessibilityIdentifier("storyboard.review.comment.reopen.\(comment.id)")
+            }
+        }
+        .padding(12)
+        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private static func parseDate(_ value: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        return formatter.date(from: value)
     }
 }

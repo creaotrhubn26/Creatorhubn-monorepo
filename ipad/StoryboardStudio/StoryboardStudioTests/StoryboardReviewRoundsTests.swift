@@ -62,4 +62,23 @@ final class StoryboardReviewRoundsTests: XCTestCase {
         XCTAssertEqual(inbox.items.first?.frameId, "frame-a")
         XCTAssertFalse(inbox.items.first?.read ?? true)
     }
+
+    func testResolutionQueueDecodesAssignmentDueDateAndCarryProvenance() throws {
+        let data = Data(#"""
+        {
+          "id":"comment-2","reviewRoundId":"round-2","frameId":"frame-a",
+          "authorDisplayName":"Kari","body":"Hold bildet lenger.","status":"resolved",
+          "assignedTo":"Mina","dueAt":"2026-09-14T10:00:00Z",
+          "resolutionNote":"Forlenget to frames","resolvedBy":"owner-1",
+          "resolvedAt":"2026-09-12T12:05:00Z","resolvedInRoundId":"round-3",
+          "carriedFromCommentId":"comment-1","createdAt":"2026-09-12T12:01:00Z",
+          "updatedAt":"2026-09-12T12:05:00Z"
+        }
+        """#.utf8)
+        let comment = try JSONDecoder().decode(StoryboardReviewCommentDTO.self, from: data)
+        XCTAssertEqual(comment.status, "resolved")
+        XCTAssertEqual(comment.assignedTo, "Mina")
+        XCTAssertEqual(comment.resolvedInRoundId, "round-3")
+        XCTAssertEqual(comment.carriedFromCommentId, "comment-1")
+    }
 }

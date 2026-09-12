@@ -48,7 +48,15 @@ const decisionBody = z.object({
   decision: z.enum(['approved', 'changes_requested']),
   expectedSnapshotHash: z.string().regex(HASH_PATTERN),
   note: z.string().trim().max(5_000).nullable().optional(),
+  confirmOpenComments: z.boolean().default(false),
 }).strict();
+const commentResolutionBody = z.object({
+  status: z.enum(['open', 'resolved']).optional(),
+  assignedTo: z.string().trim().min(1).max(180).nullable().optional(),
+  dueAt: z.string().datetime({ offset: true }).nullable().optional(),
+  resolutionNote: z.string().trim().max(5_000).nullable().optional(),
+  resolvedInRoundId: z.string().uuid().nullable().optional(),
+}).strict().refine((value) => Object.keys(value).length > 0);
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -254,7 +262,15 @@ function mapComment(row: JsonRecord) {
     parentId: row.parent_id ?? null, authorDisplayName: String(row.author_display_name),
     body: String(row.body), visibility: row.visibility, anchorX: row.anchor_x ?? null,
     anchorY: row.anchor_y ?? null, status: row.status,
+    assignedTo: row.assigned_to ?? null,
+    dueAt: row.due_at ? new Date(row.due_at).toISOString() : null,
+    resolutionNote: row.resolution_note ?? null,
+    resolvedBy: row.resolved_by ?? null,
+    resolvedAt: row.resolved_at ? new Date(row.resolved_at).toISOString() : null,
+    resolvedInRoundId: row.resolved_in_round_id ?? null,
+    carriedFromCommentId: row.carried_from_comment_id ?? null,
     createdAt: new Date(row.created_at).toISOString(),
+    updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : undefined,
   };
 }
 
@@ -519,18 +535,25 @@ export function registerStoryboardReviewRoutes(
     const scriptFingerprint = storyboardReviewHash(scriptView(snapshot));
     const frames = snapshot.scenes.flatMap((scene) => scene.storyboardFrames);
     const duration = frames.reduce((sum, frame) => sum + Math.max(0, Number(frame.duration) || 0), 0);
-    const row = await withClient(pool, async (client) => {
+    const created = await withClient(pool, async (client) => {
       await client.query('BEGIN');
       try {
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`storyboard-review:${manuscriptId}`]);
+        const previousResult = await client.query(
+          `SELECT id FROM storyboard_review_rounds
+            WHERE project_id = $1 AND manuscript_id = $2
+            ORDER BY version DESC LIMIT 1`,
+          [projectId, manuscriptId],
+        );
         await client.query(
           `UPDATE storyboard_review_rounds SET status = 'superseded'
             WHERE project_id = $1 AND manuscript_id = $2 AND status = 'in_review'`,
           [projectId, manuscriptId],
         );
         const versionResult = await client.query(
-          'SELECT COALESCE(MAX(version), 0) + 1 AS version FROM storyboard_review_rounds WHERE manuscript_id = $1',
-          [manuscriptId],
+          `SELECT COALESCE(MAX(version), 0) + 1 AS version
+             FROM storyboard_review_rounds WHERE project_id = $1 AND manuscript_id = $2`,
+          [projectId, manuscriptId],
         );
         const inserted = await client.query(
           `INSERT INTO storyboard_review_rounds
@@ -542,13 +565,33 @@ export function registerStoryboardReviewRoutes(
             parsed.data.summary ?? null, JSON.stringify(snapshot), snapshotHash, scriptFingerprint,
             frames.length, duration, (req as AuthedRequest).userId],
         );
+        let carriedCommentCount = 0;
+        const previousRoundId = previousResult.rows[0]?.id;
+        if (previousRoundId) {
+          const carried = await client.query(
+            `INSERT INTO storyboard_review_comments
+               (review_round_id, frame_id, author_kind, author_user_id, reviewer_session_id,
+                author_display_name, body, visibility, anchor_x, anchor_y, status,
+                assigned_to, due_at, carried_from_comment_id)
+             SELECT $1, frame_id, author_kind, author_user_id, reviewer_session_id,
+                    author_display_name, body, visibility, anchor_x, anchor_y, 'open',
+                    assigned_to, due_at, id
+               FROM storyboard_review_comments
+              WHERE review_round_id = $2 AND status = 'open'
+              ORDER BY created_at
+             RETURNING id`,
+            [inserted.rows[0].id, previousRoundId],
+          );
+          carriedCommentCount = carried.rowCount ?? carried.rows.length;
+        }
         await client.query('COMMIT');
-        return inserted.rows[0];
+        return { row: inserted.rows[0], carriedCommentCount };
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;
       }
     });
+    const { row, carriedCommentCount } = created;
     const actorUserId = String((req as AuthedRequest).userId ?? '');
     await upsertNotification({
       projectId,
@@ -566,7 +609,9 @@ export function registerStoryboardReviewRoutes(
         roundVersion: Number(row.version), snapshotHash: String(row.snapshot_hash),
       },
     });
-    res.status(201).json({ success: true, data: mapRound(row, true) });
+    res.status(201).json({ success: true, data: {
+      ...mapRound(row, true), carriedCommentCount,
+    } });
   }));
 
   router.get(`${base}/:roundId`, deps.auth, deps.canView, asyncHandler(async (req, res) => {
@@ -591,6 +636,88 @@ export function registerStoryboardReviewRoutes(
         createdAt: new Date(link.created_at).toISOString(),
       })),
     } });
+  }));
+
+  router.patch(`${base}/:roundId/comments/:commentId`, deps.auth, deps.canManage, asyncHandler(async (req, res) => {
+    const parsed = commentResolutionBody.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_request' }); return; }
+    const { projectId, manuscriptId, roundId, commentId } = req.params;
+    const sourceRound = await pool.query(
+      `SELECT id, version FROM storyboard_review_rounds
+        WHERE id = $1 AND project_id = $2 AND manuscript_id = $3`,
+      [roundId, projectId, manuscriptId],
+    );
+    if (!sourceRound.rows[0]) { res.status(404).json({ error: 'review_round_not_found' }); return; }
+    if (parsed.data.resolvedInRoundId) {
+      const targetRound = await pool.query(
+        `SELECT id FROM storyboard_review_rounds
+          WHERE id = $1 AND project_id = $2 AND manuscript_id = $3`,
+        [parsed.data.resolvedInRoundId, projectId, manuscriptId],
+      );
+      if (!targetRound.rows[0]) {
+        res.status(400).json({ error: 'resolved_revision_not_in_manuscript' }); return;
+      }
+    }
+    const hasAssignedTo = Object.prototype.hasOwnProperty.call(parsed.data, 'assignedTo');
+    const hasDueAt = Object.prototype.hasOwnProperty.call(parsed.data, 'dueAt');
+    const hasResolutionNote = Object.prototype.hasOwnProperty.call(parsed.data, 'resolutionNote');
+    const hasResolvedInRoundId = Object.prototype.hasOwnProperty.call(parsed.data, 'resolvedInRoundId');
+    const actorUserId = String((req as AuthedRequest).userId ?? '');
+    const updated = await pool.query(
+      `UPDATE storyboard_review_comments AS comment
+          SET status = COALESCE($5::varchar, comment.status),
+              assigned_to = CASE WHEN $6 THEN $7 ELSE comment.assigned_to END,
+              due_at = CASE WHEN $8 THEN $9::timestamptz ELSE comment.due_at END,
+              resolution_note = CASE
+                WHEN $5::text = 'open' THEN NULL
+                WHEN $10 THEN $11 ELSE comment.resolution_note END,
+              resolved_in_round_id = CASE
+                WHEN $5::text = 'open' THEN NULL
+                WHEN $12 THEN $13::uuid ELSE comment.resolved_in_round_id END,
+              resolved_by = CASE
+                WHEN $5::text = 'resolved' THEN $14
+                WHEN $5::text = 'open' THEN NULL ELSE comment.resolved_by END,
+              resolved_at = CASE
+                WHEN $5::text = 'resolved' THEN now()
+                WHEN $5::text = 'open' THEN NULL ELSE comment.resolved_at END,
+              updated_at = now()
+         FROM storyboard_review_rounds AS review_round
+        WHERE comment.id = $1
+          AND comment.review_round_id = $2
+          AND review_round.id = comment.review_round_id
+          AND review_round.project_id = $3
+          AND review_round.manuscript_id = $4
+      RETURNING comment.*`,
+      [commentId, roundId, projectId, manuscriptId, parsed.data.status ?? null,
+        hasAssignedTo, parsed.data.assignedTo ?? null,
+        hasDueAt, parsed.data.dueAt ?? null,
+        hasResolutionNote, parsed.data.resolutionNote ?? null,
+        hasResolvedInRoundId, parsed.data.resolvedInRoundId ?? null,
+        actorUserId],
+    );
+    const comment = updated.rows[0];
+    if (!comment) { res.status(404).json({ error: 'review_comment_not_found' }); return; }
+    if (parsed.data.status) {
+      const resolved = parsed.data.status === 'resolved';
+      await upsertNotification({
+        projectId: String(projectId),
+        audience: 'producer_team',
+        eventType: resolved ? 'storyboard_review_comment_resolved' : 'storyboard_review_comment_reopened',
+        title: `${resolved ? 'Løst' : 'Gjenåpnet'} review-punkt i storyboard v${Number(sourceRound.rows[0].version)}`,
+        message: parsed.data.resolutionNote || String(comment.body).slice(0, 500),
+        linkedEntityType: 'storyboard_review_comment',
+        linkedEntityId: String(comment.id),
+        createdByUserId: actorUserId,
+        createdByRole: 'storyboard_manager',
+        initiallyReadByUserId: actorUserId,
+        metadata: {
+          inboxType: 'storyboard_review', manuscriptId, reviewRoundId: roundId,
+          roundVersion: Number(sourceRound.rows[0].version), frameId: comment.frame_id ?? null,
+          resolvedInRoundId: comment.resolved_in_round_id ?? null,
+        },
+      });
+    }
+    res.json({ success: true, data: mapComment(comment) });
   }));
 
   router.get(`${base}/:roundId/diff`, deps.auth, deps.canView, asyncHandler(async (req, res) => {
@@ -827,6 +954,17 @@ export function registerStoryboardReviewRoutes(
         if (round.snapshot_hash !== parsed.data.expectedSnapshotHash) {
           const error = new Error('snapshot_confirmation_mismatch') as Error & { status?: number };
           error.status = 409; throw error;
+        }
+        if (parsed.data.decision === 'approved' && !parsed.data.confirmOpenComments) {
+          const openComments = await client.query(
+            `SELECT COUNT(*)::int AS count FROM storyboard_review_comments
+              WHERE review_round_id = $1 AND status = 'open'`,
+            [share.id],
+          );
+          if (Number(openComments.rows[0]?.count ?? 0) > 0) {
+            const error = new Error('open_comments_require_confirmation') as Error & { status?: number };
+            error.status = 409; throw error;
+          }
         }
         const inserted = await client.query(
           `INSERT INTO storyboard_review_decisions

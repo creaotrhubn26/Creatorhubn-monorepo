@@ -30,6 +30,13 @@ const diff = {
 async function managerApi(page: Page) {
   let created = false;
   let inboxRead = false;
+  let managerComment = {
+    id: 'comment-e2e', reviewRoundId: 'round-e2e', frameId: 'frame-e2e',
+    authorDisplayName: 'Kari Klient', body: 'Hold to bilder lenger.',
+    visibility: 'client', status: 'open', assignedTo: null, dueAt: null,
+    resolutionNote: null, resolvedInRoundId: null, carriedFromCommentId: 'comment-v0',
+    createdAt: '2026-09-12T12:02:00Z', updatedAt: '2026-09-12T12:02:00Z',
+  };
   await page.route('**/api/role-room/projects/project-e2e/manuscripts/manuscript-e2e/storyboard-review-inbox**', async (route: Route) => {
     const url = route.request().url();
     const method = route.request().method();
@@ -62,7 +69,7 @@ async function managerApi(page: Page) {
       await route.fulfill({ json: { success: true, data: created ? [round] : [] } }); return;
     }
     if (url.endsWith('/storyboard-review-rounds') && method === 'POST') {
-      created = true; await route.fulfill({ status: 201, json: { success: true, data: { ...round, snapshot } } }); return;
+      created = true; await route.fulfill({ status: 201, json: { success: true, data: { ...round, snapshot, carriedCommentCount: 1 } } }); return;
     }
     if (url.endsWith('/round-e2e/diff')) {
       await route.fulfill({ json: { success: true, data: diff } }); return;
@@ -76,8 +83,20 @@ async function managerApi(page: Page) {
     if (url.endsWith('/round-e2e/restore') && method === 'POST') {
       await route.fulfill({ status: 409, json: { error: 'current_storyboard_changed', currentHash: 'd'.repeat(64) } }); return;
     }
+    if (url.endsWith('/round-e2e/comments/comment-e2e') && method === 'PATCH') {
+      const body = route.request().postDataJSON();
+      managerComment = {
+        ...managerComment, ...body,
+        assignedTo: body.assignedTo === undefined ? managerComment.assignedTo : body.assignedTo,
+        dueAt: body.dueAt === undefined ? managerComment.dueAt : body.dueAt,
+        resolutionNote: body.status === 'open' ? null : body.resolutionNote ?? managerComment.resolutionNote,
+        resolvedInRoundId: body.status === 'open' ? null : body.resolvedInRoundId ?? managerComment.resolvedInRoundId,
+        updatedAt: '2026-09-12T12:05:00Z',
+      };
+      await route.fulfill({ json: { success: true, data: managerComment } }); return;
+    }
     if (url.endsWith('/round-e2e') && method === 'GET') {
-      await route.fulfill({ json: { success: true, data: { ...round, snapshot, comments: [], decisions: [], shareLinks: [] } } }); return;
+      await route.fulfill({ json: { success: true, data: { ...round, snapshot, comments: [managerComment], decisions: [], shareLinks: [] } } }); return;
     }
     await route.fulfill({ status: 404, json: { error: 'not_found' } });
   });
@@ -101,6 +120,16 @@ test('manager locks a revision, receives a one-time guest URL and sees stale res
   await page.getByTestId('create-storyboard-review-link').click();
   await expect(page.getByTestId('storyboard-review-created-url').locator('input')).toHaveValue(/\/storyboard-review\/review-token-e2e$/);
 
+  await expect(page.getByTestId('storyboard-review-resolution-queue')).toContainText('1 åpne av 1 punkt');
+  await page.getByTestId('storyboard-review-assignee-comment-e2e').fill('Mina');
+  await page.getByTestId('storyboard-review-resolution-note-comment-e2e').fill('Forlenget til fire sekunder.');
+  await page.getByTestId('storyboard-review-resolve-comment-e2e').click();
+  await expect(page.getByTestId('storyboard-review-resolution-empty')).toContainText('Alle review-punkt er løst');
+  await page.getByTestId('storyboard-review-open-comment-filter').click();
+  await expect(page.getByTestId('storyboard-review-resolution-comment-comment-e2e')).toContainText('Løst');
+  await expect(page.getByTestId('storyboard-review-assignee-comment-e2e')).toHaveValue('Mina');
+  await expect(page.getByTestId('storyboard-review-resolution-note-comment-e2e')).toHaveValue('Forlenget til fire sekunder.');
+
   await page.getByLabel(`Skriv ${snapshotHash.slice(0, 8)} for å bekrefte`).fill(snapshotHash.slice(0, 8));
   await page.getByTestId('restore-storyboard-review-round').click();
   await expect(page.getByRole('alert').filter({ hasText: 'current storyboard changed' })).toBeVisible();
@@ -110,7 +139,12 @@ test('manager locks a revision, receives a one-time guest URL and sees stale res
 test('guest identity, frame comment and exact-revision sign-off work end to end', async ({ page }) => {
   let identified = false;
   let approved = false;
-  const comments: any[] = [];
+  const comments: any[] = [{
+    id: 'comment-resolved-e2e', reviewRoundId: 'round-e2e', frameId: 'frame-e2e',
+    authorDisplayName: 'Ola Kunde', body: 'Gjør utsnittet tettere.', visibility: 'client',
+    status: 'resolved', assignedTo: 'Mina', resolutionNote: 'Byttet til nærbilde.',
+    resolvedInRoundId: 'round-e2e', createdAt: '2026-09-12T12:01:00Z',
+  }];
   await page.route('**/api/role-room/storyboard-review/review-token-e2e**', async (route) => {
     const url = route.request().url();
     const method = route.request().method();
@@ -125,11 +159,12 @@ test('guest identity, frame comment and exact-revision sign-off work end to end'
       comments.push({ id: 'comment-e2e', reviewRoundId: 'round-e2e', frameId: body.frameId,
         authorDisplayName: 'Kari Klient', body: body.body, visibility: 'client', status: 'open',
         createdAt: '2026-09-12T12:02:00Z' });
-      await route.fulfill({ status: 201, json: { success: true, data: comments[0] } }); return;
+      await route.fulfill({ status: 201, json: { success: true, data: comments.at(-1) } }); return;
     }
     if (url.endsWith('/decisions') && method === 'POST') {
       const body = route.request().postDataJSON();
       expect(body.expectedSnapshotHash).toBe(snapshotHash);
+      expect(body.confirmOpenComments).toBe(true);
       approved = true;
       await route.fulfill({ status: 201, json: { success: true, data: {
         id: 'decision-e2e', reviewRoundId: 'round-e2e', decision: 'approved',
@@ -162,9 +197,14 @@ test('guest identity, frame comment and exact-revision sign-off work end to end'
   await page.getByTestId('start-storyboard-review').click();
   await expect(page.getByTestId('storyboard-review-frame-0')).toBeVisible();
   await page.getByTestId('storyboard-review-frame-0').click();
+  await expect(page.getByTestId('storyboard-review-comment-status-comment-resolved-e2e')).toContainText('Løst');
+  await expect(page.getByText('Løsning: Byttet til nærbilde.')).toBeVisible();
   await page.getByTestId('storyboard-review-comment').fill('Hold to bilder lenger.');
   await page.getByTestId('submit-storyboard-review-comment').click();
   await expect(page.getByText('Hold to bilder lenger.')).toBeVisible();
+  await expect(page.getByTestId('storyboard-review-open-comments-warning')).toContainText('1 review-punkt');
+  await expect(page.getByTestId('approve-storyboard-review')).toBeDisabled();
+  await page.getByLabel('Jeg godkjenner med 1 åpne punkt').check();
   await page.getByTestId('approve-storyboard-review').click();
   await expect(page.getByText(/Denne revisjonen er låst/)).toBeVisible();
   await expect(page.getByTestId('submit-storyboard-review-comment')).toHaveCount(0);
