@@ -54,10 +54,22 @@ function useExperienceMedia(): Scene[] {
   return scenes;
 }
 
+const NARROW_QUERY = '(max-width: 700px)';
+
+function matchesNarrow(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia(NARROW_QUERY).matches;
+}
+
 function useIsNarrow() {
-  const [narrow, setNarrow] = useState(false);
+  // Lazy init, IKKE useState(false): med false i første render er narrow
+  // fortsatt usann under den aller første commiten på telefon, og det er
+  // nettopp da framer-motion monterer og Element.animate() kaster. En
+  // passiv useEffect kommer for sent til å rekke å skru av animasjonene.
+  const [narrow, setNarrow] = useState(matchesNarrow);
   useEffect(() => {
-    const mq = window.matchMedia('(max-width: 700px)');
+    const mq = window.matchMedia(NARROW_QUERY);
     const apply = () => setNarrow(mq.matches);
     apply();
     mq.addEventListener('change', apply);

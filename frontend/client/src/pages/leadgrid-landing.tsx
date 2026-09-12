@@ -332,7 +332,11 @@ export default function LeadgridLanding() {
           gjør at filmen faller bort mens resten av landingssiden består. */}
       <ErrorBoundary
         componentName="leadgrid-landing-experience"
-        fallback={null}
+        // IKKE fallback={null}: ErrorBoundary gjør `if (this.props.fallback)`,
+        // så null er falsy og faller gjennom til standard «Oops!»-panelet —
+        // altså nøyaktig boksen vi prøver å bli kvitt, bare inline midt på
+        // siden. Et tomt fragment er truthy og rendrer ingenting.
+        fallback={<></>}
         // ErrorBoundary rapporterer kun til Sentry, som er en no-op uten
         // VITE_SENTRY_DSN. Derfor sluttet denne krasjen å dukke opp i
         // error_log den dagen root-boundaryen ble lagt inn (siste window.error
