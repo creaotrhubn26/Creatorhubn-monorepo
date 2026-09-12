@@ -1414,15 +1414,20 @@ final class QASweepTests: XCTestCase {
             return
         }
 
-        let uniqueName = "[E2E] iPad reconnect \(UUID().uuidString.prefix(8))"
+        let runID = UUID()
+        let uniqueName = "[E2E] iPad reconnect \(runID.uuidString.prefix(8))"
+        let coordinateBytes = runID.uuid
+        let latitude = 58.8 + Double(coordinateBytes.0) * 0.005
+        let longitude = 9.7 + Double(coordinateBytes.1) * 0.005
         let app = XCUIApplication()
         app.launchEnvironment["QA_BEARER_TOKEN"] = token
         app.launchEnvironment["LEADGRID_API_BASE_URL"] = stagingURL
         app.launchEnvironment["QA_NETWORK_CONTROLS"] = "1"
+        app.launchEnvironment["QA_RESET_OFFLINE_QUEUE"] = "1"
         app.launchEnvironment["QA_ORGANIZATION_ID"] = organizationID
         app.launchEnvironment["QA_PROJECT_ID"] = projectID
-        app.launchEnvironment["QA_LEAD_LATITUDE"] = "59.9139"
-        app.launchEnvironment["QA_LEAD_LONGITUDE"] = "10.7522"
+        app.launchEnvironment["QA_LEAD_LATITUDE"] = String(format: "%.6f", latitude)
+        app.launchEnvironment["QA_LEAD_LONGITUDE"] = String(format: "%.6f", longitude)
         app.launchEnvironment["QA_TAB"] = "2"
         app.launch()
 
@@ -1551,6 +1556,7 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["QA_BEARER_TOKEN"] = token
         app.launchEnvironment["LEADGRID_API_BASE_URL"] = stagingURL
         app.launchEnvironment["QA_NETWORK_CONTROLS"] = "1"
+        app.launchEnvironment["QA_RESET_OFFLINE_QUEUE"] = "1"
         app.launchEnvironment["QA_ORGANIZATION_ID"] = organizationID
         app.launchEnvironment["QA_PROJECT_ID"] = projectID
         app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "6" : "5"
@@ -1582,6 +1588,10 @@ final class QASweepTests: XCTestCase {
             ).firstMatch.exists
         )
         app.buttons["pondus-outcome-meeting_booked"].tap()
+        let closeCoach = app.buttons["Lukk"].firstMatch
+        XCTAssertTrue(closeCoach.waitForExistence(timeout: 5))
+        closeCoach.tap()
+        XCTAssertFalse(app.staticTexts["pondus-active-coach"].waitForExistence(timeout: 3))
         let syncStatus = app.buttons["global-sync-status"]
         XCTAssertTrue(syncStatus.waitForExistence(timeout: 5))
         XCTAssertTrue(syncStatus.label.localizedCaseInsensitiveContains("lagret lokalt"))
