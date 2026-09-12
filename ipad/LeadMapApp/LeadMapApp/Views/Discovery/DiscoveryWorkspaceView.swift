@@ -3,7 +3,7 @@
 import SwiftUI
 
 private enum DiscoveryWorkspaceSection: String, CaseIterable, Identifiable {
-    case candidates, marketing
+    case candidates, profiles, marketing
     var id: String { rawValue }
 }
 
@@ -163,6 +163,11 @@ struct DiscoveryWorkspaceView: View {
                     offlineBar
                 }
             }
+            .onChange(of: coordinator.phase) { _, _ in
+                if selectedSection == .marketing && !showsMarketingSwitcher {
+                    selectedSection = .candidates
+                }
+            }
         }
         .preferredColorScheme(.dark)
         .interactiveDismissDisabled(coordinator.isBusy)
@@ -202,18 +207,29 @@ struct DiscoveryWorkspaceView: View {
 
     @ViewBuilder
     private var workspaceContent: some View {
-        if showsMarketingSwitcher {
+        if showsWorkspaceSwitcher {
             VStack(spacing: 0) {
                 Picker("Discovery-visning", selection: $selectedSection) {
-                    Text("Kandidater").tag(DiscoveryWorkspaceSection.candidates)
-                    Text("Markedsinnsikt").tag(DiscoveryWorkspaceSection.marketing)
+                    Text("Kandidater")
+                        .tag(DiscoveryWorkspaceSection.candidates)
+                        .accessibilityIdentifier("discovery.workspace.candidates")
+                    Text("Profiler")
+                        .tag(DiscoveryWorkspaceSection.profiles)
+                        .accessibilityIdentifier("discovery.workspace.profiles")
+                    if showsMarketingSwitcher {
+                        Text("Markedsinnsikt")
+                            .tag(DiscoveryWorkspaceSection.marketing)
+                            .accessibilityIdentifier("discovery.workspace.marketing")
+                    }
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
                 .accessibilityIdentifier("discovery.workspace.section")
                 Divider().overlay(LeadgridDiscoveryTheme.stroke)
-                if selectedSection == .marketing {
+                if selectedSection == .profiles {
+                    profilesWorkspaceView
+                } else if selectedSection == .marketing && showsMarketingSwitcher {
                     marketingInsightsView
                 } else {
                     phaseContent
@@ -222,6 +238,69 @@ struct DiscoveryWorkspaceView: View {
         } else {
             phaseContent
         }
+    }
+
+    private var showsWorkspaceSwitcher: Bool {
+        coordinator.projectId != nil
+    }
+
+    private var profilesWorkspaceView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                if coordinator.run != nil {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label(
+                            canStartNewSearch
+                                ? "Kandidatene dine er trygt lagret"
+                                : "Discovery-søket arbeider",
+                            systemImage: canStartNewSearch
+                                ? "checkmark.shield.fill"
+                                : "magnifyingglass.circle.fill"
+                        )
+                            .font(.headline)
+                            .foregroundStyle(LeadgridDiscoveryTheme.success)
+                        Text(
+                            canStartNewSearch
+                                ? "Du kan se profilene nå. Start et nytt søk når du vil bytte profil eller endre søkegrunnlaget. Den forrige kjøringen og vurderingene beholdes."
+                                : "Du kan se profilene mens søket kjører. Gå tilbake til kandidater for å følge fremdriften."
+                        )
+                            .font(.subheadline)
+                            .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+                        HStack(spacing: 10) {
+                            if canStartNewSearch {
+                                Button {
+                                    coordinator.beginAnotherSearch()
+                                } label: {
+                                    Label("Start nytt søk", systemImage: "plus.magnifyingglass")
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(LeadgridDiscoveryTheme.accent)
+                                .disabled(coordinator.isBusy)
+                                .accessibilityIdentifier("discovery.profiles.new-search")
+                            }
+
+                            Button("Tilbake til kandidater") {
+                                selectedSection = .candidates
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityIdentifier("discovery.profiles.back-to-candidates")
+                        }
+                    }
+                    .discoverySurface()
+                }
+
+                DiscoveryProfileManagerView(coordinator: coordinator)
+            }
+            .frame(maxWidth: horizontalSizeClass == .regular ? 760 : .infinity)
+            .padding(20)
+            .padding(.bottom, DeviceIdiom.isPhone ? 72 : 0)
+            .frame(maxWidth: .infinity)
+        }
+        .accessibilityIdentifier("discovery.profiles.workspace")
+    }
+
+    private var canStartNewSearch: Bool {
+        coordinator.phase == .review || coordinator.phase == .completed
     }
 
     @ViewBuilder
@@ -260,6 +339,9 @@ struct DiscoveryWorkspaceView: View {
     }
 
     private var navigationTitle: String {
+        if selectedSection == .profiles {
+            return "Discovery-profiler"
+        }
         if selectedSection == .marketing && showsMarketingSwitcher {
             return "Markedsinnsikt"
         }
@@ -377,7 +459,7 @@ struct DiscoveryWorkspaceView: View {
             VStack(alignment: .leading, spacing: 7) {
                 Text("Skriv hva slags kunder du ønsker")
                     .font(.headline)
-                Text("For eksempel tannklinikker, reklamebyråer eller skoler.")
+                Text("For eksempel omsorgsaktører, reklamebyråer eller skoler.")
                     .font(.subheadline)
                     .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
                 TextField("Hva slags kunder?", text: simpleCustomerTypeBinding, axis: .vertical)

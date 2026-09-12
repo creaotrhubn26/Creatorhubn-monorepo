@@ -202,8 +202,7 @@ const CATEGORY_RULES: CategoryRule[] = [
     customerTypes: ["tannlege"],
     idealCustomer:
       "Aktiv tannklinikk eller tannlegesenter med lokal pasientbase og beslutningstaker som kan vurdere synlighet, pasienthenvendelser og vekst.",
-    goal:
-      "Finne og kvalifisere tannklinikker som kan få flere relevante pasienthenvendelser.",
+    goal: "Finne og kvalifisere tannklinikker som kan få flere relevante pasienthenvendelser.",
     exclusions: ["tannteknisk laboratorium", "tannlegeutdanning"],
     minimumFitScore: 65,
   },
@@ -221,8 +220,7 @@ const CATEGORY_RULES: CategoryRule[] = [
     customerTypes: ["produksjonsselskap", "castingbyrå", "reklamebyrå"],
     idealCustomer:
       "Norsk produksjonsselskap, castingmiljø eller reklamebyrå som håndterer brief, casting, kontrakter og talentflyt i kommersielle eller redaksjonelle produksjoner.",
-    goal:
-      "Finne produksjonsmiljøer som kan effektivisere casting, dokumentasjon og samarbeid.",
+    goal: "Finne produksjonsmiljøer som kan effektivisere casting, dokumentasjon og samarbeid.",
     exclusions: ["kino", "filmklubb", "privat skuespiller"],
     minimumFitScore: 60,
   },
@@ -240,25 +238,41 @@ const CATEGORY_RULES: CategoryRule[] = [
     customerTypes: ["fotograf", "videoproduksjon", "produksjonsselskap"],
     idealCustomer:
       "Profesjonell fotograf, videoprodusent eller kreativt produksjonsteam som leverer kundeprosjekter og trenger en samlet arbeidsflyt for salg, produksjon og levering.",
-    goal:
-      "Finne kreative virksomheter som kan samle kunde-, prosjekt- og leveranseflyten i én plattform.",
+    goal: "Finne kreative virksomheter som kan samle kunde-, prosjekt- og leveranseflyten i én plattform.",
     exclusions: ["hobbyklubb", "fotobutikk"],
     minimumFitScore: 60,
   },
   {
     category: "Servering",
-    tokens: ["restaurant", "servering", "catering", "pizzeria", "bakeri", "kafe"],
+    tokens: [
+      "restaurant",
+      "servering",
+      "catering",
+      "pizzeria",
+      "bakeri",
+      "kafe",
+    ],
     customerTypes: ["restaurant", "serveringssted", "catering"],
-    idealCustomer: "Aktiv serveringsbedrift med lokal kundebase og kommersiell beslutningstaker.",
+    idealCustomer:
+      "Aktiv serveringsbedrift med lokal kundebase og kommersiell beslutningstaker.",
     goal: "Finne relevante serveringsbedrifter for kvalifisert B2B-oppfølging.",
     exclusions: ["matbutikk", "privat kjøkken"],
     minimumFitScore: 55,
   },
   {
     category: "Bygg og håndverk",
-    tokens: ["bygg", "håndverk", "handverk", "elektriker", "rørlegger", "rorlegger", "entreprenør"],
+    tokens: [
+      "bygg",
+      "håndverk",
+      "handverk",
+      "elektriker",
+      "rørlegger",
+      "rorlegger",
+      "entreprenør",
+    ],
     customerTypes: ["byggentreprenør", "håndverksbedrift"],
-    idealCustomer: "Aktiv bygg- eller håndverksbedrift med dokumentert drift og tydelig lokalt marked.",
+    idealCustomer:
+      "Aktiv bygg- eller håndverksbedrift med dokumentert drift og tydelig lokalt marked.",
     goal: "Finne relevante bygg- og håndverksbedrifter for kvalifisert oppfølging.",
     exclusions: ["byggevarebutikk", "privatperson"],
     minimumFitScore: 55,
@@ -267,7 +281,8 @@ const CATEGORY_RULES: CategoryRule[] = [
     category: "Eiendom",
     tokens: ["eiendom", "megler", "bolig", "property", "real estate"],
     customerTypes: ["eiendomsmegler", "eiendomsselskap"],
-    idealCustomer: "Aktiv eiendomsvirksomhet med eget marked, portefølje eller oppdragsinngang.",
+    idealCustomer:
+      "Aktiv eiendomsvirksomhet med eget marked, portefølje eller oppdragsinngang.",
     goal: "Finne relevante eiendomsvirksomheter for kvalifisert B2B-oppfølging.",
     exclusions: ["borettslag", "privat utleier"],
     minimumFitScore: 60,
@@ -276,25 +291,42 @@ const CATEGORY_RULES: CategoryRule[] = [
     category: "Økonomitjenester",
     tokens: ["regnskap", "revisjon", "økonomi", "accounting", "bookkeeping"],
     customerTypes: ["regnskapsbyrå", "revisjonsselskap"],
-    idealCustomer: "Etablert regnskaps- eller revisjonsmiljø med bedriftskunder og tydelig beslutningstaker.",
+    idealCustomer:
+      "Etablert regnskaps- eller revisjonsmiljø med bedriftskunder og tydelig beslutningstaker.",
     goal: "Finne økonomimiljøer som passer den analyserte løsningen.",
     exclusions: ["utdanning", "privatøkonomi"],
     minimumFitScore: 60,
   },
   {
     category: "Helse",
-    tokens: ["helse", "klinikk", "lege", "fysioterapi", "kiropraktor", "medical"],
+    tokens: [
+      "helse",
+      "klinikk",
+      "lege",
+      "fysioterapi",
+      "kiropraktor",
+      "medical",
+    ],
     customerTypes: ["helseklinikk", "legesenter"],
-    idealCustomer: "Aktiv privat helsevirksomhet med lokal pasientbase og kommersiell beslutningstaker.",
+    idealCustomer:
+      "Aktiv privat helsevirksomhet med lokal pasientbase og kommersiell beslutningstaker.",
     goal: "Finne relevante helsevirksomheter for kvalifisert oppfølging.",
     exclusions: ["sykehus", "offentlig etat"],
     minimumFitScore: 60,
   },
   {
     category: "Teknologi og SaaS",
-    tokens: ["saas", "software", "programvare", "teknologi", "plattform", "platform"],
+    tokens: [
+      "saas",
+      "software",
+      "programvare",
+      "teknologi",
+      "plattform",
+      "platform",
+    ],
     customerTypes: ["programvareselskap", "teknologibedrift"],
-    idealCustomer: "B2B-teknologibedrift med aktiv drift, tydelig marked og kommersiell beslutningstaker.",
+    idealCustomer:
+      "B2B-teknologibedrift med aktiv drift, tydelig marked og kommersiell beslutningstaker.",
     goal: "Finne relevante teknologi- og programvareselskaper for kvalifisert oppfølging.",
     exclusions: ["studentprosjekt", "hobbyprosjekt"],
     minimumFitScore: 60,
@@ -323,7 +355,9 @@ function normalizedSearchText(value: string): string {
 }
 
 function safeText(value: string | null | undefined, maximum: number): string {
-  return String(value ?? "").trim().slice(0, maximum);
+  return String(value ?? "")
+    .trim()
+    .slice(0, maximum);
 }
 
 function titleFromDomain(domain: string): string {
@@ -349,7 +383,9 @@ function detectedCity(corpus: string): string {
     "Drammen",
     "Fredrikstad",
   ];
-  return cities.find((city) => corpus.includes(normalizedSearchText(city))) ?? "Oslo";
+  return (
+    cities.find((city) => corpus.includes(normalizedSearchText(city))) ?? "Oslo"
+  );
 }
 
 function fallbackCategory(profile: BrandProfile): CategoryRule {
@@ -360,11 +396,15 @@ function fallbackCategory(profile: BrandProfile): CategoryRule {
       ? industry.replaceAll("_", " ")
       : audience || "bedrift";
   return {
-    category: industry && industry !== "other" ? industry.replaceAll("_", " ") : "Generell B2B",
+    category:
+      industry && industry !== "other"
+        ? industry.replaceAll("_", " ")
+        : "Generell B2B",
     tokens: [],
     customerTypes: [query.slice(0, 120)],
     idealCustomer:
-      audience || "Aktiv norsk virksomhet med tydelig behov og identifiserbar beslutningstaker.",
+      audience ||
+      "Aktiv norsk virksomhet med tydelig behov og identifiserbar beslutningstaker.",
     goal: "Finne og kvalifisere relevante virksomheter basert på nettsidens tilbud og målgruppe.",
     exclusions: [],
     minimumFitScore: 50,
@@ -505,8 +545,7 @@ function buildRoleRoomOnboardingPlan(
           exclusions: ["kino", "filmklubb"],
           idealCustomer:
             "Norsk film-, TV- eller postproduksjon som koordinerer roller, crew, opptaksdager, dokumentasjon og leveranser.",
-          goal:
-            "Finne produksjonsselskaper som kan samle casting og produksjonsstyring i The Role Room.",
+          goal: "Finne produksjonsselskaper som kan samle casting og produksjonsstyring i The Role Room.",
           qualificationTerms: [
             "filmproduksjon",
             "tv-produksjon",
@@ -524,9 +563,13 @@ function buildRoleRoomOnboardingPlan(
           exclusions: ["avis", "trykkeri", "fotobutikk", "hobbyklubb"],
           idealCustomer:
             "Norsk reklame-, innholds- eller fotoproduksjonsmiljø som bruker talent og crew i kundeproduksjoner.",
-          goal:
-            "Finne byråer og innholdsprodusenter med gjentakende behov for casting, team og produksjonsplan.",
-          qualificationTerms: ["reklame", "innholdsproduksjon", "film", "casting"],
+          goal: "Finne byråer og innholdsprodusenter med gjentakende behov for casting, team og produksjonsplan.",
+          qualificationTerms: [
+            "reklame",
+            "innholdsproduksjon",
+            "film",
+            "casting",
+          ],
           qualificationRequirement: "required",
         }),
       ),
@@ -548,8 +591,7 @@ function buildRoleRoomOnboardingPlan(
           ],
           idealCustomer:
             "Norsk casting-, skuespiller-, modell- eller talentbyrå som administrerer profiler, samtykker, forespørsler og self-tapes.",
-          goal:
-            "Finne spesialiserte casting- og talentmiljøer uten å blande inn generelle bemanningsbyråer.",
+          goal: "Finne spesialiserte casting- og talentmiljøer uten å blande inn generelle bemanningsbyråer.",
           targetCount: 40,
           minimumFitScore: 70,
           qualificationTerms: [
@@ -593,8 +635,7 @@ function buildRoleRoomOnboardingPlan(
           ],
           idealCustomer:
             "Norsk universitet, høyskole, fagskole eller filmskole med praktiske film-, TV- eller medieproduksjoner for studenter.",
-          goal:
-            "Finne utdanningsmiljøer som trenger en sammenhengende produksjonsflate fra klasserom til ferdig film.",
+          goal: "Finne utdanningsmiljøer som trenger en sammenhengende produksjonsflate fra klasserom til ferdig film.",
           targetCount: 50,
           minimumFitScore: 70,
           requireBusinessRegistration: null,
@@ -630,8 +671,7 @@ function buildRoleRoomOnboardingPlan(
           ],
           idealCustomer:
             "Norsk dansestudio, danseskole eller ballettskole som organiserer elever, ensembler, prøver, opptak og forestillinger.",
-          goal:
-            "Finne dansestudioer som kan samle talentprofiler, prøver, koreografi og produksjonsplan i The Role Room.",
+          goal: "Finne dansestudioer som kan samle talentprofiler, prøver, koreografi og produksjonsplan i The Role Room.",
           targetCount: 50,
           minimumFitScore: 70,
           requireBusinessRegistration: null,
@@ -656,13 +696,18 @@ function buildRoleRoomOnboardingPlan(
           ],
           idealCustomer:
             "Norsk skuespiller, statist eller audiovisuelt talent med registrert virksomhet og behov for profil, self-tapes, samtykker og castingforespørsler.",
-          goal:
-            "Finne skuespillere og talenter som kan onboardes til The Role Room Talents.",
+          goal: "Finne skuespillere og talenter som kan onboardes til The Role Room Talents.",
           targetCount: 60,
           minimumFitScore: 70,
           requireBusinessRegistration: null,
           subjectKind: "person",
-          qualificationTerms: ["skuespiller", "actor", "talent", "film", "scene"],
+          qualificationTerms: [
+            "skuespiller",
+            "actor",
+            "talent",
+            "film",
+            "scene",
+          ],
           qualificationRequirement: "required",
         }),
       ),
@@ -740,8 +785,7 @@ function buildTidumOnboardingPlan(
           exclusions: commonPrivateExclusions,
           idealCustomer:
             "Norsk barneverns-, barnebolig- eller avlastningsvirksomhet med minst fem ansatte og døgn-, felt- eller turnusbasert arbeid.",
-          goal:
-            "Finne barneverns- og avlastningsaktører som trenger enklere arbeidstidsregistrering, dokumentasjon og lederoversikt.",
+          goal: "Finne barneverns- og avlastningsaktører som trenger enklere arbeidstidsregistrering, dokumentasjon og lederoversikt.",
           targetCount: 60,
           minimumFitScore: 70,
           qualificationTerms: [
@@ -764,8 +808,7 @@ function buildTidumOnboardingPlan(
           exclusions: commonPrivateExclusions,
           idealCustomer:
             "Norsk virksomhet med minst fem ansatte som driver bofellesskap, døgnbemannet botilbud eller miljøarbeid innen psykisk helse, rus eller tilrettelagt omsorg.",
-          goal:
-            "Finne omsorgs- og miljøarbeidsvirksomheter som trenger sporbar timeføring og oversikt på tvers av ansatte og tiltak.",
+          goal: "Finne omsorgs- og miljøarbeidsvirksomheter som trenger sporbar timeføring og oversikt på tvers av ansatte og tiltak.",
           targetCount: 60,
           minimumFitScore: 70,
           qualificationTerms: [
@@ -787,8 +830,7 @@ function buildTidumOnboardingPlan(
           exclusions: commonPrivateExclusions,
           idealCustomer:
             "Norsk BPA-, støttekontakt- eller avlastningsvirksomhet med minst fem ansatte som koordinerer arbeid ute hos brukere.",
-          goal:
-            "Finne feltbaserte omsorgsteam som trenger enkel registrering, dokumentasjon og lederoppfølging.",
+          goal: "Finne feltbaserte omsorgsteam som trenger enkel registrering, dokumentasjon og lederoppfølging.",
           targetCount: 40,
           minimumFitScore: 70,
           qualificationTerms: [
@@ -804,18 +846,31 @@ function buildTidumOnboardingPlan(
       ),
       nationalDiscoveryProfilePlan(
         "tidum.municipal_services",
-        "Kommunale omsorgstjenester – Norge",
+        "Kommunale tjenestesteder – Norge",
         nationalDiscoveryBrief({
-          organizationNameQueries: ["kommune"],
-          exclusions: [],
+          organizationNameQueries: [
+            "barneverntjeneste",
+            "avlastning",
+            "bofellesskap",
+            "BPA",
+            "miljøarbeidertjeneste",
+          ],
+          exclusions: [
+            "barnehage",
+            "skole",
+            "sykehjem",
+            "natur",
+            "eiendom",
+            "husholdning",
+            "administrasjon",
+          ],
           idealCustomer:
-            "Norsk kommune med tjenester innen barnevern, avlastning, bofellesskap, BPA eller miljøarbeid og behov for trygg arbeidstidsdokumentasjon.",
-          goal:
-            "Finne kommuner der relevante omsorgs- og miljøtjenester kan kvalifiseres videre før kontakt.",
+            "Registrert norsk tjenesteenhet innen barnevern, avlastning, bofellesskap, BPA eller miljøarbeid. Overordnet offentlig eier og riktig tjenesteansvarlig må bekreftes før kontakt.",
+          goal: "Finne konkrete kommunale tjenestesteder i stedet for brede kommuneadministrasjoner, og kvalifisere overordnet eier og riktig kontaktpunkt før oppfølging.",
           targetCount: 60,
-          minimumFitScore: 65,
+          minimumFitScore: 70,
           requireBusinessRegistration: null,
-          organizationForms: ["KOMM"],
+          organizationForms: ["BEDR"],
         }),
       ),
     ],
@@ -977,12 +1032,16 @@ export function normalizeProjectOnboardingWebsite(rawValue: string): {
   if (!raw || raw.length > 2_048) throw new Error("invalid_website_url");
   const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
   const parsed = assertPublicUrl(candidate);
-  if (parsed.username || parsed.password) throw new Error("invalid_website_url");
+  if (parsed.username || parsed.password)
+    throw new Error("invalid_website_url");
   if (parsed.port && parsed.port !== "80" && parsed.port !== "443") {
     throw new Error("invalid_website_url");
   }
-  const domain = parsed.hostname.replace(/^www\./i, "").toLocaleLowerCase("en-US");
-  if (!domain.includes(".") || domain.length > 253) throw new Error("invalid_website_url");
+  const domain = parsed.hostname
+    .replace(/^www\./i, "")
+    .toLocaleLowerCase("en-US");
+  if (!domain.includes(".") || domain.length > 253)
+    throw new Error("invalid_website_url");
   parsed.hash = "";
   for (const key of [...parsed.searchParams.keys()]) {
     if (key.toLocaleLowerCase("en-US").startsWith("utm_")) {
@@ -990,7 +1049,10 @@ export function normalizeProjectOnboardingWebsite(rawValue: string): {
     }
   }
   if (parsed.pathname === "/" && !parsed.search) parsed.pathname = "";
-  return { websiteUrl: parsed.toString().replace(/\/$/, ""), websiteDomain: domain };
+  return {
+    websiteUrl: parsed.toString().replace(/\/$/, ""),
+    websiteDomain: domain,
+  };
 }
 
 export function buildProjectOnboardingPlan(
@@ -1021,7 +1083,9 @@ export function buildProjectOnboardingPlan(
   );
   const matched = CATEGORY_RULES.map((rule) => ({
     rule,
-    matches: rule.tokens.filter((token) => corpus.includes(normalizedSearchText(token))),
+    matches: rule.tokens.filter((token) =>
+      corpus.includes(normalizedSearchText(token)),
+    ),
   }))
     .filter((entry) => entry.matches.length > 0)
     .sort((left, right) => right.matches.length - left.matches.length)[0];
@@ -1054,10 +1118,15 @@ export function buildProjectOnboardingPlan(
     },
   });
   const reasons = matched
-    ? matched.matches.slice(0, 4).map((token) => `Nettsiden omtaler «${token}».`)
+    ? matched.matches
+        .slice(0, 4)
+        .map((token) => `Nettsiden omtaler «${token}».`)
     : ["Profilen er foreslått fra nettsidens bransje- og målgruppesignaler."];
   const confidence = matched
-    ? matched.matches.length >= 2 || matched.matches.some((token) => token.endsWith(".com") || token.endsWith(".no"))
+    ? matched.matches.length >= 2 ||
+      matched.matches.some(
+        (token) => token.endsWith(".com") || token.endsWith(".no"),
+      )
       ? "high"
       : "medium"
     : "low";
@@ -1067,7 +1136,10 @@ export function buildProjectOnboardingPlan(
     website_url: websiteUrl,
     website_domain: websiteDomain,
     project_name: name,
-    project_description: safeText(profile.description || profile.tagline, 1_000),
+    project_description: safeText(
+      profile.description || profile.tagline,
+      1_000,
+    ),
     category: rule.category,
     category_confidence: confidence,
     classification_reasons: reasons,
@@ -1162,7 +1234,10 @@ function profilePersistenceValues(brief: DiscoveryBrief) {
   };
 }
 
-function brandFieldConfidence(profile: BrandProfile, overrides: Record<string, unknown>) {
+function brandFieldConfidence(
+  profile: BrandProfile,
+  overrides: Record<string, unknown>,
+) {
   const fields = [
     "businessName",
     "tagline",
@@ -1181,7 +1256,8 @@ function brandFieldConfidence(profile: BrandProfile, overrides: Record<string, u
       field,
       overrides[field] !== undefined
         ? "user"
-        : profile[field as keyof BrandProfile] !== undefined && profile[field as keyof BrandProfile] !== ""
+        : profile[field as keyof BrandProfile] !== undefined &&
+            profile[field as keyof BrandProfile] !== ""
           ? "auto"
           : "missing",
     ]),
@@ -1351,7 +1427,8 @@ async function loadActiveProfiles(
       version: row.version,
       brief: discoveryBriefSchema.parse(row.brief),
       places_details_enabled:
-        googlePlaces.enabled === true && googlePlaces.mode === "transient_details_only",
+        googlePlaces.enabled === true &&
+        googlePlaces.mode === "transient_details_only",
       status: row.status,
       template_key: row.template_key,
       template_version: row.template_version,
@@ -1368,8 +1445,13 @@ async function ensureRecommendedProfiles(
     plans: ProjectOnboardingProfilePlan[];
   },
 ): Promise<void> {
-  const current = await loadActiveProfiles(client, args.organizationId, args.projectId);
-  if (current.length > 0 && args.plans.every((plan) => !plan.template_key)) return;
+  const current = await loadActiveProfiles(
+    client,
+    args.organizationId,
+    args.projectId,
+  );
+  if (current.length > 0 && args.plans.every((plan) => !plan.template_key))
+    return;
   const hasDefault = current.some((profile) => profile.is_default);
   for (const [index, plan] of args.plans.entries()) {
     const brief = discoveryBriefSchema.parse(plan.brief);
@@ -1499,7 +1581,9 @@ async function ensureTargetOrganization(
     accessSetup?: ProjectOnboardingAccessSetup;
   },
 ): Promise<{ id: string; name: string; reused: boolean }> {
-  const selection = args.accessSetup?.organization ?? { mode: "current" as const };
+  const selection = args.accessSetup?.organization ?? {
+    mode: "current" as const,
+  };
   if (selection.mode === "create") {
     const existing = await client.query<{ id: string; name: string }>(
       `SELECT id::text, name
@@ -1515,7 +1599,10 @@ async function ensureTargetOrganization(
       [args.plan.website_domain],
     );
     if (existing.rows[0]) return { ...existing.rows[0], reused: true };
-    const baseSlug = slug(selection.name || args.plan.project_name).slice(0, 60);
+    const baseSlug = slug(selection.name || args.plan.project_name).slice(
+      0,
+      60,
+    );
     const created = await client.query<{ id: string; name: string }>(
       `INSERT INTO organizations (
          name, slug, org_type, plan, owner_user_id, website, industry,
@@ -1538,18 +1625,21 @@ async function ensureTargetOrganization(
         args.plan.website_domain,
       ],
     );
-    if (!created.rows[0]) throw new Error("project_onboarding_organization_failed");
+    if (!created.rows[0])
+      throw new Error("project_onboarding_organization_failed");
     return { ...created.rows[0], reused: false };
   }
 
-  const organizationId = selection.mode === "existing"
-    ? selection.organization_id
-    : args.sourceOrganizationId;
+  const organizationId =
+    selection.mode === "existing"
+      ? selection.organization_id
+      : args.sourceOrganizationId;
   const result = await client.query<{ id: string; name: string }>(
     `SELECT id::text, name FROM organizations WHERE id = $1::uuid LIMIT 1 FOR UPDATE`,
     [organizationId],
   );
-  if (!result.rows[0]) throw new Error("project_onboarding_organization_not_found");
+  if (!result.rows[0])
+    throw new Error("project_onboarding_organization_not_found");
   return { ...result.rows[0], reused: true };
 }
 
@@ -1594,7 +1684,13 @@ async function ensureProjectMembership(
          WHEN leadgrid_project_members.role = 'viewer' AND EXCLUDED.role = 'member' THEN 'member'
          ELSE leadgrid_project_members.role
        END`,
-    [args.organizationId, args.projectId, args.userId, args.role, args.invitedBy],
+    [
+      args.organizationId,
+      args.projectId,
+      args.userId,
+      args.role,
+      args.invitedBy,
+    ],
   );
 }
 
@@ -1639,7 +1735,13 @@ async function ensureSalesTeam(
            organization_id, id, name, color_hex, member_user_ids, created_by
          ) VALUES ($1, $2, $3, $4, '[]'::jsonb, $5)
          RETURNING id, name`,
-        [args.organizationId, id, args.team.name, args.team.color_hex, args.userId],
+        [
+          args.organizationId,
+          id,
+          args.team.name,
+          args.team.color_hex,
+          args.userId,
+        ],
       );
       if (!created.rows[0]) throw new Error("project_onboarding_team_failed");
       team = { ...created.rows[0], reused: false };
@@ -1917,13 +2019,15 @@ async function loadProvisionedAccess(
     [args.organizationId, args.projectId],
   );
   const row = base.rows[0];
-  const administratorEmail = typeof row?.metadata?.customer_admin_email === "string"
-    ? normalizeEmail(row.metadata.customer_admin_email)
-    : "";
+  const administratorEmail =
+    typeof row?.metadata?.customer_admin_email === "string"
+      ? normalizeEmail(row.metadata.customer_admin_email)
+      : "";
   if (!row || !administratorEmail) return undefined;
-  const teamId = typeof row.metadata.sales_team_id === "string"
-    ? row.metadata.sales_team_id
-    : null;
+  const teamId =
+    typeof row.metadata.sales_team_id === "string"
+      ? row.metadata.sales_team_id
+      : null;
   let team: ProjectOnboardingAccessResult["team"] = null;
   if (teamId) {
     const teamResult = await client.query<{ id: string; name: string }>(
@@ -1955,17 +2059,20 @@ async function loadProvisionedAccess(
     if (!rawEntry || typeof rawEntry !== "object") continue;
     const entry = rawEntry as Record<string, unknown>;
     if (
-      typeof entry.email !== "string"
-      || !["owner", "member", "viewer"].includes(String(entry.project_role))
-      || !["leader", "member", "none"].includes(String(entry.team_role))
-    ) continue;
-    invitations.push(await loadAccessEntrySummary(client, {
-      organizationId: args.organizationId,
-      projectId: args.projectId,
-      email: entry.email,
-      projectRole: entry.project_role as ProjectOnboardingProjectRole,
-      teamRole: entry.team_role as ProjectOnboardingTeamRole,
-    }));
+      typeof entry.email !== "string" ||
+      !["owner", "member", "viewer"].includes(String(entry.project_role)) ||
+      !["leader", "member", "none"].includes(String(entry.team_role))
+    )
+      continue;
+    invitations.push(
+      await loadAccessEntrySummary(client, {
+        organizationId: args.organizationId,
+        projectId: args.projectId,
+        email: entry.email,
+        projectRole: entry.project_role as ProjectOnboardingProjectRole,
+        teamRole: entry.team_role as ProjectOnboardingTeamRole,
+      }),
+    );
   }
   const authorized = await client.query<{ allowed: boolean }>(
     `SELECT EXISTS (
@@ -2032,12 +2139,15 @@ export async function commitProjectOnboarding(
     );
     const preview = previewResult.rows[0];
     if (!preview) throw new Error("project_onboarding_preview_not_found");
-    if (!preview.committed_at && new Date(preview.expires_at).getTime() <= Date.now()) {
+    if (
+      !preview.committed_at &&
+      new Date(preview.expires_at).getTime() <= Date.now()
+    ) {
       throw new Error("project_onboarding_preview_expired");
     }
     if (preview.committed_project_id) {
-      const committedOrganizationId = preview.committed_organization_id
-        ?? args.organizationId;
+      const committedOrganizationId =
+        preview.committed_organization_id ?? args.organizationId;
       const project = await loadResultProject(
         client,
         committedOrganizationId,
@@ -2068,34 +2178,39 @@ export async function commitProjectOnboarding(
       preview.plan,
       args.brandOverrides,
     );
-    const plans = (args.editedProfiles ?? storedPlan.recommended_profiles).map((item) => ({
-      ...item,
-      status: "active" as const,
-      approval_mode: "manual" as const,
-      auto_discover_enabled: false,
-      brief: discoveryBriefSchema.parse(item.brief),
-    }));
+    const plans = (args.editedProfiles ?? storedPlan.recommended_profiles).map(
+      (item) => ({
+        ...item,
+        status: "active" as const,
+        approval_mode: "manual" as const,
+        auto_discover_enabled: false,
+        brief: discoveryBriefSchema.parse(item.brief),
+      }),
+    );
     if (plans.length < 1 || plans.length > 10) {
       throw new Error("project_onboarding_profiles_invalid");
     }
-    if (new Set(plans.map((item) => item.name.trim().toLocaleLowerCase("nb-NO"))).size !== plans.length) {
+    if (
+      new Set(plans.map((item) => item.name.trim().toLocaleLowerCase("nb-NO")))
+        .size !== plans.length
+    ) {
       throw new Error("project_onboarding_profiles_invalid");
     }
     if (plans.filter((item) => item.is_default).length > 1) {
       throw new Error("project_onboarding_profiles_invalid");
     }
     const requestedDefaultIndex = plans.findIndex((item) => item.is_default);
-    const effectiveDefaultIndex = requestedDefaultIndex >= 0
-      ? requestedDefaultIndex
-      : 0;
+    const effectiveDefaultIndex =
+      requestedDefaultIndex >= 0 ? requestedDefaultIndex : 0;
     plans.forEach((item, index) => {
       item.name = safeText(item.name, 120);
       item.is_default = index === effectiveDefaultIndex;
     });
 
-    await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
-      `project-domain-onboarding|${storedPlan.website_domain}`,
-    ]);
+    await client.query(
+      `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+      [`project-domain-onboarding|${storedPlan.website_domain}`],
+    );
 
     const organization = await ensureTargetOrganization(client, {
       sourceOrganizationId: args.organizationId,
@@ -2247,7 +2362,8 @@ export async function commitProjectOnboarding(
         teamId: team?.id ?? null,
         teamRole: team ? "leader" : "none",
       });
-      if (administrator.dispatch) invitationDispatches.push(administrator.dispatch);
+      if (administrator.dispatch)
+        invitationDispatches.push(administrator.dispatch);
       if (administrator.userId) {
         await client.query(
           `UPDATE organizations
@@ -2255,26 +2371,34 @@ export async function commitProjectOnboarding(
                   contact_email = COALESCE(NULLIF(contact_email, ''), $3),
                   updated_at = NOW()
             WHERE id = $1::uuid`,
-          [targetOrganizationId, administrator.userId, administrator.summary.email],
+          [
+            targetOrganizationId,
+            administrator.userId,
+            administrator.summary.email,
+          ],
         );
       }
 
-      const invitationSummaries: ProjectOnboardingAccessResult["invitations"] = [];
+      const invitationSummaries: ProjectOnboardingAccessResult["invitations"] =
+        [];
       for (const invitation of args.accessSetup.invitations) {
-        if (normalizeEmail(invitation.email) === administrator.summary.email) continue;
+        if (normalizeEmail(invitation.email) === administrator.summary.email)
+          continue;
         const provisioned = await provisionAccessEntry(client, {
           organizationId: targetOrganizationId,
           projectId,
           projectName: storedPlan.project_name,
           invitedBy: args.userId,
           email: invitation.email,
-          organizationRole: invitation.project_role === "viewer" ? "viewer" : "member",
+          organizationRole:
+            invitation.project_role === "viewer" ? "viewer" : "member",
           projectRole: invitation.project_role,
           teamId: team?.id ?? null,
           teamRole: team ? invitation.team_role : "none",
         });
         invitationSummaries.push(provisioned.summary);
-        if (provisioned.dispatch) invitationDispatches.push(provisioned.dispatch);
+        if (provisioned.dispatch)
+          invitationDispatches.push(provisioned.dispatch);
       }
 
       await client.query(
@@ -2289,7 +2413,11 @@ export async function commitProjectOnboarding(
             customer_admin_email: administrator.summary.email,
             sales_team_id: team?.id ?? null,
             onboarding_access_entries: args.accessSetup.invitations
-              .filter((invitation) => normalizeEmail(invitation.email) !== administrator.summary.email)
+              .filter(
+                (invitation) =>
+                  normalizeEmail(invitation.email) !==
+                  administrator.summary.email,
+              )
               .map((invitation) => ({
                 email: normalizeEmail(invitation.email),
                 project_role: invitation.project_role,
@@ -2344,8 +2472,16 @@ export async function commitProjectOnboarding(
         projectId,
       ],
     );
-    const project = await loadResultProject(client, targetOrganizationId, projectId);
-    const profiles = await loadActiveProfiles(client, targetOrganizationId, projectId);
+    const project = await loadResultProject(
+      client,
+      targetOrganizationId,
+      projectId,
+    );
+    const profiles = await loadActiveProfiles(
+      client,
+      targetOrganizationId,
+      projectId,
+    );
     await client.query("COMMIT");
     return {
       project,

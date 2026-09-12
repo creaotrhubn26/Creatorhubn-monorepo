@@ -54,11 +54,7 @@ import {
 export const LEADGRID_DISCOVERY_JOB_TYPE = "leadgrid_discovery_run";
 
 export type DiscoveryTriggerKind =
-  | "manual"
-  | "scheduled"
-  | "workflow"
-  | "api"
-  | "retry";
+  "manual" | "scheduled" | "workflow" | "api" | "retry";
 
 export type DiscoveryRunStatus =
   | "planning"
@@ -381,7 +377,7 @@ export interface DiscoveryCandidateDto {
   entity_kind: DiscoveryEntityKind;
   entity_kind_confidence: DiscoveryClassificationConfidence;
   entity_kind_evidence: string[];
-  clinic_group: DiscoveryClinicGroup;
+  clinic_group?: DiscoveryClinicGroup;
   nace_code: string | null;
   nace_description: string | null;
   employee_count: number | null;
@@ -1257,7 +1253,7 @@ async function cancelDiscoveryRunInProject(
 ): Promise<DiscoveryRunMutationDto> {
   return withTransaction(pool, async (client) => {
     const run = input.campaignId
-      ? (
+      ? ((
           await client.query<RunRow>(
             `SELECT ${RUN_COLUMNS}
                FROM leadgrid_discovery_runs r
@@ -1279,7 +1275,7 @@ async function cancelDiscoveryRunInProject(
               input.campaignId,
             ],
           )
-        ).rows[0] ?? null
+        ).rows[0] ?? null)
       : await loadRun(client, input.project, input.runId, true);
     if (!run) throw new DiscoveryServiceError("not_found");
     if (run.status === "cancelled") {
@@ -1550,7 +1546,10 @@ function observationMetadata(input: {
 }
 
 function defaultClinicGroup(
-  row: Pick<CandidateListRow, "id" | "name" | "entity_kind" | "imported_lead_id">,
+  row: Pick<
+    CandidateListRow,
+    "id" | "name" | "entity_kind" | "imported_lead_id"
+  >,
 ): DiscoveryClinicGroup {
   const kind = candidateEntityKind(row.entity_kind);
   return {
@@ -1604,6 +1603,11 @@ function toCandidateDto(
       : "unknown";
   const source =
     row.source === "nhn_flr_public" ? "nhn_flr_public" : "brreg_open_data";
+  const entityKind = candidateEntityKind(row.entity_kind);
+  const resolvedClinicGroup =
+    entityKind === "unknown"
+      ? undefined
+      : (clinicGroup ?? defaultClinicGroup(row));
   return {
     id: row.id,
     run_id: row.run_id,
@@ -1624,7 +1628,7 @@ function toCandidateDto(
     organization_form_code: row.organization_form_code,
     organization_structure: organizationStructure,
     subject_kind: row.subject_kind === "person" ? "person" : "organization",
-    entity_kind: candidateEntityKind(row.entity_kind),
+    entity_kind: entityKind,
     entity_kind_confidence: candidateEntityConfidence(
       row.entity_kind_confidence,
     ),
@@ -1633,7 +1637,7 @@ function toCandidateDto(
           (evidence): evidence is string => typeof evidence === "string",
         )
       : [],
-    clinic_group: clinicGroup ?? defaultClinicGroup(row),
+    ...(resolvedClinicGroup ? { clinic_group: resolvedClinicGroup } : {}),
     nace_code: row.nace_code,
     nace_description: row.nace_description,
     employee_count: row.employee_count,
@@ -1947,25 +1951,29 @@ export async function listDiscoveryCandidates(
       ),
     ),
   ];
-  let groupCandidates: DiscoveryClinicGroupCandidate[] = pageRows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    organizationNumber: row.organization_number,
-    entityKind: candidateEntityKind(row.entity_kind),
-    entityConfidence: candidateEntityConfidence(row.entity_kind_confidence),
-    normalizedLocationKey: row.normalized_location_key,
-    address: row.address,
-    websiteUrl: row.website_url,
-    status: row.status,
-    importedLeadId: row.imported_lead_id,
-  }));
+  let groupCandidates: DiscoveryClinicGroupCandidate[] = pageRows
+    .filter((row) => candidateEntityKind(row.entity_kind) !== "unknown")
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      organizationNumber: row.organization_number,
+      entityKind: candidateEntityKind(row.entity_kind),
+      entityConfidence: candidateEntityConfidence(row.entity_kind_confidence),
+      normalizedLocationKey: row.normalized_location_key,
+      address: row.address,
+      websiteUrl: row.website_url,
+      status: row.status,
+      importedLeadId: row.imported_lead_id,
+    }));
   if (locationKeys.length > 0) {
     const context = await loadClinicGroupCandidates(
       pool,
       input.project,
       locationKeys,
     );
-    const byId = new Map(groupCandidates.map((candidate) => [candidate.id, candidate]));
+    const byId = new Map(
+      groupCandidates.map((candidate) => [candidate.id, candidate]),
+    );
     for (const candidate of context) byId.set(candidate.id, candidate);
     groupCandidates = [...byId.values()];
   }
@@ -2679,7 +2687,8 @@ export async function decideDiscoveryCandidate(
         )
       : [];
     const clinicGroup =
-      buildDiscoveryClinicGroups(clinicContext).get(candidateId) ?? {
+      buildDiscoveryClinicGroups(clinicContext).get(candidateId) ??
+      ({
         role:
           candidateEntityKind(candidate.entity_kind) === "clinic"
             ? "clinic_account"
@@ -2698,7 +2707,7 @@ export async function decideDiscoveryCandidate(
         relationship_confidence: null,
         evidence: ["insufficient_group_context"],
         practitioners: [],
-      } satisfies DiscoveryClinicGroup;
+      } satisfies DiscoveryClinicGroup);
     if (
       decision.decision === "approve" &&
       clinicGroup.role === "practitioner_contact" &&
@@ -2733,11 +2742,7 @@ export async function decideDiscoveryCandidate(
               AND project_id IS NOT DISTINCT FROM $3
               AND archived_at IS NULL
             FOR UPDATE`,
-          [
-            clinicLeadId,
-            input.project.organizationId,
-            input.project.id,
-          ],
+          [clinicLeadId, input.project.organizationId, input.project.id],
         );
         if (!scopedClinicLead.rows[0]) {
           throw new DiscoveryServiceError("invalid_state");
@@ -2775,100 +2780,108 @@ export async function decideDiscoveryCandidate(
         groupedAffectedRunIds = attached.affectedRunIds;
         candidateStateAlreadyUpdated = true;
       } else {
-      const promotionEnrichment = safePromotionEnrichment(candidate);
-      if (!promotionEnrichment.organizationNumber) {
-        throw new DiscoveryServiceError("invalid_state");
-      }
-      const websiteDomain = normalizeWebsiteDomain(candidate.website_url);
-      const confirmedGooglePlaceId = decision.confirmed_google_place_id ?? null;
-      const googlePlaceConfirmedAt = confirmedGooglePlaceId
-        ? new Date().toISOString()
-        : null;
-      const briefSnapshot = objectValue(candidate.brief_snapshot);
-      const candidateRawData = objectValue(candidate.raw_data);
-      const discoverySource =
-        candidateRawData.source === "nhn_flr_public"
-          ? "nhn_flr_public"
-          : "brreg_open_data";
-      const subjectKind =
-        briefSnapshot.subject_kind === "person" ? "person" : "organization";
-      const territoryCode = nullableText(briefSnapshot.territory_code);
-      const municipalityNumbers = Array.isArray(
-        briefSnapshot.municipality_numbers,
-      )
-        ? briefSnapshot.municipality_numbers.filter(
-            (value): value is string =>
-              typeof value === "string" && /^\d{4}$/.test(value),
-          )
-        : [];
-      const municipalityNames = Array.isArray(briefSnapshot.municipality_names)
-        ? briefSnapshot.municipality_names.filter(
-            (value): value is string => typeof value === "string",
-          )
-        : [];
-      const observation = observationMetadata({
-        origin: candidate.observation_origin,
-        observedAt: candidate.observation_observed_at,
-        capturedAt: candidate.observation_captured_at,
-      });
-      const promotionMetadata = {
-        discovery: {
-          run_id: runId,
-          candidate_id: candidateId,
-          profile_id: candidate.profile_id,
-          profile_version: candidate.profile_version,
-          territory_code: territoryCode,
-          municipality_numbers: municipalityNumbers,
-          municipality_names: municipalityNames,
-          source: discoverySource,
-          subject_kind: subjectKind,
-          privacy:
-            subjectKind === "person"
+        const promotionEnrichment = safePromotionEnrichment(candidate);
+        if (!promotionEnrichment.organizationNumber) {
+          throw new DiscoveryServiceError("invalid_state");
+        }
+        const websiteDomain = normalizeWebsiteDomain(candidate.website_url);
+        const confirmedGooglePlaceId =
+          decision.confirmed_google_place_id ?? null;
+        const googlePlaceConfirmedAt = confirmedGooglePlaceId
+          ? new Date().toISOString()
+          : null;
+        const briefSnapshot = objectValue(candidate.brief_snapshot);
+        const candidateRawData = objectValue(candidate.raw_data);
+        const discoverySource =
+          candidateRawData.source === "nhn_flr_public"
+            ? "nhn_flr_public"
+            : "brreg_open_data";
+        const subjectKind =
+          briefSnapshot.subject_kind === "person" ? "person" : "organization";
+        const territoryCode = nullableText(briefSnapshot.territory_code);
+        const municipalityNumbers = Array.isArray(
+          briefSnapshot.municipality_numbers,
+        )
+          ? briefSnapshot.municipality_numbers.filter(
+              (value): value is string =>
+                typeof value === "string" && /^\d{4}$/.test(value),
+            )
+          : [];
+        const municipalityNames = Array.isArray(
+          briefSnapshot.municipality_names,
+        )
+          ? briefSnapshot.municipality_names.filter(
+              (value): value is string => typeof value === "string",
+            )
+          : [];
+        const observation = observationMetadata({
+          origin: candidate.observation_origin,
+          observedAt: candidate.observation_observed_at,
+          capturedAt: candidate.observation_captured_at,
+        });
+        const promotionMetadata = {
+          discovery: {
+            run_id: runId,
+            candidate_id: candidateId,
+            profile_id: candidate.profile_id,
+            profile_version: candidate.profile_version,
+            territory_code: territoryCode,
+            municipality_numbers: municipalityNumbers,
+            municipality_names: municipalityNames,
+            source: discoverySource,
+            subject_kind: subjectKind,
+            privacy:
+              subjectKind === "person"
+                ? {
+                    source: discoverySource,
+                    purpose: "b2b_prospecting",
+                    role_room_talent_profile_created: false,
+                    consent_status: "not_requested",
+                    notice_status: "required_before_outreach",
+                    review_after_days: 90,
+                  }
+                : null,
+            observation,
+            source_hits: Array.isArray(candidate.source_hits)
+              ? candidate.source_hits
+              : [],
+            candidate_provenance: Array.isArray(candidate.provenance)
+              ? candidate.provenance
+              : [],
+            dedupe_checks: {
+              organization_number: "checked",
+              normalized_domain: websiteDomain ? "checked" : "not_available",
+              google_place_id: confirmedGooglePlaceId
+                ? "confirmed_match_checked"
+                : "not_performed_no_confirmed_place_id",
+            },
+            google_places: confirmedGooglePlaceId
               ? {
-                  source: discoverySource,
-                  purpose: "b2b_prospecting",
-                  role_room_talent_profile_created: false,
-                  consent_status: "not_requested",
-                  notice_status: "required_before_outreach",
-                  review_after_days: 90,
+                  place_id: confirmedGooglePlaceId,
+                  confirmed_at: googlePlaceConfirmedAt,
+                  persisted_fields: ["place_id"],
                 }
-              : null,
-          observation,
-          source_hits: Array.isArray(candidate.source_hits)
-            ? candidate.source_hits
-            : [],
-          candidate_provenance: Array.isArray(candidate.provenance)
-            ? candidate.provenance
-            : [],
-          dedupe_checks: {
-            organization_number: "checked",
-            normalized_domain: websiteDomain ? "checked" : "not_available",
-            google_place_id: confirmedGooglePlaceId
-              ? "confirmed_match_checked"
-              : "not_performed_no_confirmed_place_id",
+              : {
+                  status: "not_performed_no_confirmed_place_id",
+                  persisted_fields: [],
+                },
+            ...(candidateEntityKind(candidate.entity_kind) === "unknown"
+              ? {}
+              : {
+                  clinic_group: {
+                    role: clinicGroup.role,
+                    clinic_candidate_id: clinicGroup.clinic_candidate_id,
+                    included_contact_candidate_ids:
+                      clinicGroup.practitioners.map(
+                        (practitioner) => practitioner.candidate_id,
+                      ),
+                  },
+                }),
           },
-          google_places: confirmedGooglePlaceId
-            ? {
-                place_id: confirmedGooglePlaceId,
-                confirmed_at: googlePlaceConfirmedAt,
-                persisted_fields: ["place_id"],
-              }
-            : {
-                status: "not_performed_no_confirmed_place_id",
-                persisted_fields: [],
-              },
-          clinic_group: {
-            role: clinicGroup.role,
-            clinic_candidate_id: clinicGroup.clinic_candidate_id,
-            included_contact_candidate_ids: clinicGroup.practitioners.map(
-              (practitioner) => practitioner.candidate_id,
-            ),
-          },
-        },
-      };
-      if (confirmedGooglePlaceId) {
-        const confirmation = await client.query<{ place_id: string }>(
-          `SELECT place_id
+        };
+        if (confirmedGooglePlaceId) {
+          const confirmation = await client.query<{ place_id: string }>(
+            `SELECT place_id
              FROM leadgrid_discovery_place_confirmations
             WHERE organization_id = $1::uuid
               AND project_id = $2
@@ -2879,42 +2892,42 @@ export async function decideDiscoveryCandidate(
               AND consumed_at IS NULL
               AND expires_at > NOW()
             FOR UPDATE`,
-          [
-            input.project.organizationId,
-            input.project.id,
-            runId,
-            candidateId,
-            confirmedGooglePlaceId,
-            userId,
-          ],
-        );
-        if (!confirmation.rows[0]) {
-          throw new DiscoveryServiceError("place_confirmation_required");
+            [
+              input.project.organizationId,
+              input.project.id,
+              runId,
+              candidateId,
+              confirmedGooglePlaceId,
+              userId,
+            ],
+          );
+          if (!confirmation.rows[0]) {
+            throw new DiscoveryServiceError("place_confirmation_required");
+          }
         }
-      }
-      const identityLocks = [
-        `organization_number:${promotionEnrichment.organizationNumber}`,
-        websiteDomain ? `website_domain:${websiteDomain}` : null,
-        confirmedGooglePlaceId
-          ? `google_place_id:${confirmedGooglePlaceId}`
-          : null,
-      ]
-        .filter((value): value is string => value !== null)
-        .map((identity) =>
-          ["leadgrid", input.project.organizationId, identity].join(":"),
-        )
-        .sort();
-      for (const identity of identityLocks) {
-        await client.query(
-          `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
-          [identity],
-        );
-      }
-      const existingLead = await client.query<{
-        id: string;
-        google_place_id: string | null;
-      }>(
-        `SELECT id::text, google_place_id
+        const identityLocks = [
+          `organization_number:${promotionEnrichment.organizationNumber}`,
+          websiteDomain ? `website_domain:${websiteDomain}` : null,
+          confirmedGooglePlaceId
+            ? `google_place_id:${confirmedGooglePlaceId}`
+            : null,
+        ]
+          .filter((value): value is string => value !== null)
+          .map((identity) =>
+            ["leadgrid", input.project.organizationId, identity].join(":"),
+          )
+          .sort();
+        for (const identity of identityLocks) {
+          await client.query(
+            `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+            [identity],
+          );
+        }
+        const existingLead = await client.query<{
+          id: string;
+          google_place_id: string | null;
+        }>(
+          `SELECT id::text, google_place_id
                FROM crm_customers
               WHERE organization_id = $1::uuid
                 AND project_id IS NOT DISTINCT FROM $2
@@ -2927,39 +2940,39 @@ export async function decideDiscoveryCandidate(
               ORDER BY created_at ASC, id ASC
               LIMIT 2
               FOR UPDATE`,
-        [
-          input.project.organizationId,
-          input.project.id,
-          promotionEnrichment.organizationNumber,
-          websiteDomain,
-          confirmedGooglePlaceId,
-        ],
-      );
-      const existingIds = new Set([
-        ...existingLead.rows.map((row) => row.id),
-        ...(candidate.imported_lead_id ? [candidate.imported_lead_id] : []),
-        ...(candidate.existing_lead_id ? [candidate.existing_lead_id] : []),
-      ]);
-      if (existingIds.size > 1) {
-        throw new DiscoveryServiceError("invalid_state");
-      }
-      const existingRow = existingLead.rows[0] ?? null;
-      if (
-        confirmedGooglePlaceId &&
-        existingRow?.google_place_id &&
-        existingRow.google_place_id !== confirmedGooglePlaceId
-      ) {
-        throw new DiscoveryServiceError("invalid_state");
-      }
-      leadId =
-        candidate.imported_lead_id ??
-        candidate.existing_lead_id ??
-        existingRow?.id ??
-        null;
+          [
+            input.project.organizationId,
+            input.project.id,
+            promotionEnrichment.organizationNumber,
+            websiteDomain,
+            confirmedGooglePlaceId,
+          ],
+        );
+        const existingIds = new Set([
+          ...existingLead.rows.map((row) => row.id),
+          ...(candidate.imported_lead_id ? [candidate.imported_lead_id] : []),
+          ...(candidate.existing_lead_id ? [candidate.existing_lead_id] : []),
+        ]);
+        if (existingIds.size > 1) {
+          throw new DiscoveryServiceError("invalid_state");
+        }
+        const existingRow = existingLead.rows[0] ?? null;
+        if (
+          confirmedGooglePlaceId &&
+          existingRow?.google_place_id &&
+          existingRow.google_place_id !== confirmedGooglePlaceId
+        ) {
+          throw new DiscoveryServiceError("invalid_state");
+        }
+        leadId =
+          candidate.imported_lead_id ??
+          candidate.existing_lead_id ??
+          existingRow?.id ??
+          null;
 
-      if (!leadId) {
-        const promoted = await client.query<{ id: string }>(
-          `INSERT INTO crm_customers (
+        if (!leadId) {
+          const promoted = await client.query<{ id: string }>(
+            `INSERT INTO crm_customers (
               id, name, company, phone, email, address, city, postal_code,
               latitude, longitude, website_url, website_domain_normalized,
               enrichment_org_nr, enrichment_data, enriched_at,
@@ -2979,37 +2992,37 @@ export async function decideDiscoveryCandidate(
               'leadgrid_discovery', $20::jsonb, NOW(), NOW()
             )
             RETURNING id::text`,
-          [
-            candidate.name,
-            candidate.phone,
-            candidate.email,
-            candidate.address,
-            candidate.city,
-            candidate.postal_code,
-            candidate.latitude,
-            candidate.longitude,
-            candidate.website_url,
-            websiteDomain,
-            promotionEnrichment.organizationNumber,
-            promotionEnrichment.data
-              ? JSON.stringify(promotionEnrichment.data)
-              : null,
-            promotionEnrichment.enrichedAt,
-            confirmedGooglePlaceId,
-            googlePlaceConfirmedAt,
-            territoryCode,
-            userId,
-            input.project.organizationId,
-            input.project.id,
-            JSON.stringify(promotionMetadata),
-          ],
-        );
-        leadId = promoted.rows[0]?.id ?? null;
-        if (!leadId) throw new DiscoveryServiceError("internal_error");
-        createdLead = true;
-      } else {
-        await client.query(
-          `UPDATE crm_customers
+            [
+              candidate.name,
+              candidate.phone,
+              candidate.email,
+              candidate.address,
+              candidate.city,
+              candidate.postal_code,
+              candidate.latitude,
+              candidate.longitude,
+              candidate.website_url,
+              websiteDomain,
+              promotionEnrichment.organizationNumber,
+              promotionEnrichment.data
+                ? JSON.stringify(promotionEnrichment.data)
+                : null,
+              promotionEnrichment.enrichedAt,
+              confirmedGooglePlaceId,
+              googlePlaceConfirmedAt,
+              territoryCode,
+              userId,
+              input.project.organizationId,
+              input.project.id,
+              JSON.stringify(promotionMetadata),
+            ],
+          );
+          leadId = promoted.rows[0]?.id ?? null;
+          if (!leadId) throw new DiscoveryServiceError("internal_error");
+          createdLead = true;
+        } else {
+          await client.query(
+            `UPDATE crm_customers
               SET website_domain_normalized = COALESCE(
                     website_domain_normalized,
                     $4
@@ -3034,43 +3047,43 @@ export async function decideDiscoveryCandidate(
             WHERE id = $1::uuid
               AND organization_id = $2::uuid
               AND project_id IS NOT DISTINCT FROM $3`,
-          [
+            [
+              leadId,
+              input.project.organizationId,
+              input.project.id,
+              websiteDomain,
+              confirmedGooglePlaceId,
+              googlePlaceConfirmedAt,
+              territoryCode,
+              JSON.stringify(promotionMetadata),
+            ],
+          );
+        }
+
+        if (subjectKind === "person" && leadId) {
+          await attachTalentProspect(client, {
+            project: input.project,
+            userId,
+            candidateId,
             leadId,
-            input.project.organizationId,
-            input.project.id,
-            websiteDomain,
-            confirmedGooglePlaceId,
-            googlePlaceConfirmedAt,
-            territoryCode,
-            JSON.stringify(promotionMetadata),
-          ],
-        );
-      }
+            name: candidate.name,
+            organizationNumber: promotionEnrichment.organizationNumber,
+          });
+          groupedContactCount = Math.max(groupedContactCount, 1);
+        }
 
-      if (subjectKind === "person" && leadId) {
-        await attachTalentProspect(client, {
-          project: input.project,
-          userId,
-          candidateId,
-          leadId,
-          name: candidate.name,
-          organizationNumber: promotionEnrichment.organizationNumber,
-        });
-        groupedContactCount = Math.max(groupedContactCount, 1);
-      }
+        if (leadId && discoverySource === "nhn_flr_public") {
+          groupedContactCount = await attachFlrPractitioners(client, {
+            project: input.project,
+            userId,
+            leadId,
+            rawData: candidate.raw_data,
+          });
+        }
 
-      if (leadId && discoverySource === "nhn_flr_public") {
-        groupedContactCount = await attachFlrPractitioners(client, {
-          project: input.project,
-          userId,
-          leadId,
-          rawData: candidate.raw_data,
-        });
-      }
-
-      if (confirmedGooglePlaceId) {
-        const consumed = await client.query(
-          `UPDATE leadgrid_discovery_place_confirmations
+        if (confirmedGooglePlaceId) {
+          const consumed = await client.query(
+            `UPDATE leadgrid_discovery_place_confirmations
               SET consumed_at = NOW()
             WHERE organization_id = $1::uuid
               AND project_id = $2
@@ -3080,37 +3093,37 @@ export async function decideDiscoveryCandidate(
               AND requested_by = $6
               AND consumed_at IS NULL
               AND expires_at > NOW()`,
-          [
-            input.project.organizationId,
-            input.project.id,
-            runId,
-            candidateId,
-            confirmedGooglePlaceId,
-            userId,
-          ],
-        );
-        if ((consumed.rowCount ?? 0) !== 1) {
-          throw new DiscoveryServiceError("place_confirmation_required");
+            [
+              input.project.organizationId,
+              input.project.id,
+              runId,
+              candidateId,
+              confirmedGooglePlaceId,
+              userId,
+            ],
+          );
+          if ((consumed.rowCount ?? 0) !== 1) {
+            throw new DiscoveryServiceError("place_confirmation_required");
+          }
         }
-      }
 
-      if (
-        clinicGroup.role === "clinic_account" &&
-        leadId &&
-        candidate.normalized_location_key
-      ) {
-        const attached = await attachClinicPractitioners(client, {
-          project: input.project,
-          userId,
-          runId,
-          clinicCandidateId: candidateId,
-          leadId,
-          normalizedLocationKey: candidate.normalized_location_key,
-          group: clinicGroup,
-        });
-        groupedContactCount = attached.contactCount;
-        groupedAffectedRunIds = attached.affectedRunIds;
-      }
+        if (
+          clinicGroup.role === "clinic_account" &&
+          leadId &&
+          candidate.normalized_location_key
+        ) {
+          const attached = await attachClinicPractitioners(client, {
+            project: input.project,
+            userId,
+            runId,
+            clinicCandidateId: candidateId,
+            leadId,
+            normalizedLocationKey: candidate.normalized_location_key,
+            group: clinicGroup,
+          });
+          groupedContactCount = attached.contactCount;
+          groupedAffectedRunIds = attached.affectedRunIds;
+        }
       }
 
       candidateStatus = "imported";
@@ -3679,22 +3692,23 @@ function rawCandidateData(
   candidate: DiscoveryRegistryCandidate,
   classification = candidate.entityClassification ??
     classifyDiscoveryEntity({
-    name: candidate.name,
-    address: candidate.address,
-    postalCode: candidate.postalCode,
-    city: candidate.city,
-    organizationFormCode: candidate.organizationFormCode,
-    naceCode: candidate.naceCode,
-    naceDescription: candidate.naceDescription,
-    employeeCount: candidate.employeeCount,
-    website: candidate.website,
-  }),
+      name: candidate.name,
+      address: candidate.address,
+      postalCode: candidate.postalCode,
+      city: candidate.city,
+      organizationFormCode: candidate.organizationFormCode,
+      naceCode: candidate.naceCode,
+      naceDescription: candidate.naceDescription,
+      employeeCount: candidate.employeeCount,
+      website: candidate.website,
+    }),
 ): Record<string, unknown> {
   const source = candidate.source ?? "brreg_open_data";
   return {
     source,
     source_uri: candidate.sourceUri,
     organization_number: candidate.organizationNumber,
+    parent_organization_number: candidate.parentOrganizationNumber ?? null,
     organization_form: candidate.organizationForm,
     organization_form_code: candidate.organizationFormCode ?? null,
     organization_form_description:
@@ -3708,6 +3722,8 @@ function rawCandidateData(
     location: candidate.location,
     distance_meters: candidate.distanceFromSearchCenterMeters,
     website: candidate.website,
+    phone: candidate.phone ?? null,
+    email: candidate.email ?? null,
     employee_count: candidate.employeeCount,
     employee_count_known: candidate.hasRegisteredEmployeeCount ?? null,
     nace_code: candidate.naceCode,
@@ -4279,6 +4295,8 @@ async function persistProviderCandidate(
     {
       source: providerSource,
       organization_number: input.candidate.organizationNumber,
+      parent_organization_number:
+        input.candidate.parentOrganizationNumber ?? null,
       source_uri: input.candidate.sourceUri,
       license: providerLicense,
       run_id: input.run.id,
@@ -4293,16 +4311,16 @@ async function persistProviderCandidate(
   const entityClassification =
     input.candidate.entityClassification ??
     classifyDiscoveryEntity({
-    name: input.candidate.name,
-    address: input.candidate.address,
-    postalCode: input.candidate.postalCode,
-    city: input.candidate.city,
-    organizationFormCode: input.candidate.organizationFormCode,
-    naceCode: input.candidate.naceCode,
-    naceDescription: input.candidate.naceDescription,
-    employeeCount: input.candidate.employeeCount,
-    website: input.candidate.website,
-  });
+      name: input.candidate.name,
+      address: input.candidate.address,
+      postalCode: input.candidate.postalCode,
+      city: input.candidate.city,
+      organizationFormCode: input.candidate.organizationFormCode,
+      naceCode: input.candidate.naceCode,
+      naceDescription: input.candidate.naceDescription,
+      employeeCount: input.candidate.employeeCount,
+      website: input.candidate.website,
+    });
   const rawData = rawCandidateData(input.candidate, entityClassification);
   const enrichmentData = {
     found: true,
@@ -4312,6 +4330,8 @@ async function persistProviderCandidate(
     matchedName: input.candidate.name,
     company: {
       orgNr: input.candidate.organizationNumber,
+      parentOrganizationNumber:
+        input.candidate.parentOrganizationNumber ?? null,
       name: input.candidate.name,
       status: input.candidate.status,
       website: input.candidate.website,
@@ -4339,7 +4359,7 @@ async function persistProviderCandidate(
     longitude: input.candidate.location?.longitude ?? null,
     website_url: input.candidate.website,
     phone: input.candidate.phone ?? null,
-    email: null,
+    email: input.candidate.email ?? null,
     organization_number: input.candidate.organizationNumber,
     raw_data: rawData,
     enrichment_data: enrichmentData,
@@ -4353,18 +4373,18 @@ async function persistProviderCandidate(
     );
     const canonical = await client.query<PersistedCandidateRow>(
       `INSERT INTO leadgrid_discovery_candidates (
-          organization_id, project_id, identity_key, name, website_url,
+          organization_id, project_id, identity_key, name, website_url, phone, email,
           address, postal_code, city, country_code, latitude, longitude,
           organization_number, entity_kind, entity_kind_confidence,
           entity_kind_evidence, normalized_location_key,
           research_status, enrichment_data, raw_data, provenance,
           created_by, updated_by
         ) VALUES (
-          $1::uuid, $2, $3, $4, $5,
-          $6, $7, $8, 'NO', $9, $10,
-          $11, $12, $13, $14::jsonb, $15,
-          'completed', $16::jsonb, $17::jsonb, $18::jsonb,
-          $19, $19
+          $1::uuid, $2, $3, $4, $5, $6, $7,
+          $8, $9, $10, 'NO', $11, $12,
+          $13, $14, $15, $16::jsonb, $17,
+          'completed', $18::jsonb, $19::jsonb, $20::jsonb,
+          $21, $21
         )
         ON CONFLICT (organization_id, project_id, identity_key)
         DO UPDATE SET
@@ -4375,6 +4395,8 @@ async function persistProviderCandidate(
           END,
           name = EXCLUDED.name,
           website_url = COALESCE(EXCLUDED.website_url, leadgrid_discovery_candidates.website_url),
+          phone = COALESCE(EXCLUDED.phone, leadgrid_discovery_candidates.phone),
+          email = COALESCE(EXCLUDED.email, leadgrid_discovery_candidates.email),
           address = COALESCE(EXCLUDED.address, leadgrid_discovery_candidates.address),
           postal_code = COALESCE(EXCLUDED.postal_code, leadgrid_discovery_candidates.postal_code),
           city = COALESCE(EXCLUDED.city, leadgrid_discovery_candidates.city),
@@ -4402,7 +4424,7 @@ async function persistProviderCandidate(
           updated_by = EXCLUDED.updated_by,
           version = leadgrid_discovery_candidates.version + 1
         RETURNING id::text, status, research_status, name, address,
-                  latitude, longitude, website_url, phone,
+                  latitude, longitude, website_url, phone, email,
                   organization_number, enrichment_data, raw_data,
                   existing_lead_id::text, imported_lead_id::text,
                   seen_count`,
@@ -4412,6 +4434,8 @@ async function persistProviderCandidate(
         `brreg_org:${input.candidate.organizationNumber}`,
         input.candidate.name,
         input.candidate.website,
+        input.candidate.phone ?? null,
+        input.candidate.email ?? null,
         input.candidate.address,
         input.candidate.postalCode,
         input.candidate.city,
@@ -4468,7 +4492,7 @@ async function persistProviderCandidate(
         latitude: input.candidate.location?.latitude ?? null,
         longitude: input.candidate.location?.longitude ?? null,
         website_url: input.candidate.website,
-        phone: null,
+        phone: input.candidate.phone ?? null,
         organization_number: input.candidate.organizationNumber,
         enrichment_data: enrichmentData,
         raw_data: rawData,

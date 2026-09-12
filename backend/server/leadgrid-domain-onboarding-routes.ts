@@ -50,10 +50,12 @@ const previewSchema = z
   })
   .strict();
 
-const accessOptionsSchema = z.object({
-  source_organization_id: z.string().uuid(),
-  target_organization_id: z.string().uuid().optional(),
-}).strict();
+const accessOptionsSchema = z
+  .object({
+    source_organization_id: z.string().uuid(),
+    target_organization_id: z.string().uuid().optional(),
+  })
+  .strict();
 
 const editableProfileSchema = z
   .object({
@@ -76,48 +78,67 @@ const editableProfileSchema = z
   })
   .strict();
 
-const brandOverridesSchema = z.object({
-  project_name: z.string().trim().min(1).max(200).optional(),
-  project_description: z.string().trim().max(1_000).optional(),
-  category: z.string().trim().min(1).max(120).optional(),
-  target_audience: z.string().trim().max(1_000).optional(),
-}).strict();
+const brandOverridesSchema = z
+  .object({
+    project_name: z.string().trim().min(1).max(200).optional(),
+    project_description: z.string().trim().max(1_000).optional(),
+    category: z.string().trim().min(1).max(120).optional(),
+    target_audience: z.string().trim().max(1_000).optional(),
+  })
+  .strict();
 
 const organizationSelectionSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("current") }).strict(),
-  z.object({
-    mode: z.literal("existing"),
-    organization_id: z.string().uuid(),
-  }).strict(),
-  z.object({
-    mode: z.literal("create"),
-    name: z.string().trim().min(1).max(200),
-  }).strict(),
+  z
+    .object({
+      mode: z.literal("existing"),
+      organization_id: z.string().uuid(),
+    })
+    .strict(),
+  z
+    .object({
+      mode: z.literal("create"),
+      name: z.string().trim().min(1).max(200),
+    })
+    .strict(),
 ]);
 
 const teamSelectionSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("none") }).strict(),
-  z.object({
-    mode: z.literal("existing"),
-    id: z.string().trim().min(1).max(120),
-  }).strict(),
-  z.object({
-    mode: z.literal("create"),
-    name: z.string().trim().min(1).max(120),
-    color_hex: z.string().regex(/^#[0-9a-fA-F]{6}$/),
-  }).strict(),
+  z
+    .object({
+      mode: z.literal("existing"),
+      id: z.string().trim().min(1).max(120),
+    })
+    .strict(),
+  z
+    .object({
+      mode: z.literal("create"),
+      name: z.string().trim().min(1).max(120),
+      color_hex: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    })
+    .strict(),
 ]);
 
-const accessSetupSchema = z.object({
-  organization: organizationSelectionSchema,
-  administrator_email: z.string().trim().toLowerCase().email().max(200),
-  team: teamSelectionSchema,
-  invitations: z.array(z.object({
-    email: z.string().trim().toLowerCase().email().max(200),
-    project_role: z.enum(["owner", "member", "viewer"]),
-    team_role: z.enum(["leader", "member", "none"]),
-  }).strict()).max(50).default([]),
-}).strict();
+const accessSetupSchema = z
+  .object({
+    organization: organizationSelectionSchema,
+    administrator_email: z.string().trim().toLowerCase().email().max(200),
+    team: teamSelectionSchema,
+    invitations: z
+      .array(
+        z
+          .object({
+            email: z.string().trim().toLowerCase().email().max(200),
+            project_role: z.enum(["owner", "member", "viewer"]),
+            team_role: z.enum(["leader", "member", "none"]),
+          })
+          .strict(),
+      )
+      .max(50)
+      .default([]),
+  })
+  .strict();
 
 const commitSchema = z
   .object({
@@ -160,8 +181,10 @@ const commitSchema = z
         });
       }
       if (
-        value.access_setup.team.mode === "none"
-        && value.access_setup.invitations.some((invitation) => invitation.team_role !== "none")
+        value.access_setup.team.mode === "none" &&
+        value.access_setup.invitations.some(
+          (invitation) => invitation.team_role !== "none",
+        )
       ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -252,14 +275,16 @@ function mappedServiceError(error: unknown): {
       return {
         status: 400,
         code,
-        message: "Skriv inn et gyldig offentlig nettsted, for eksempel dentum.no.",
+        message:
+          "Skriv inn et gyldig offentlig nettsted, for eksempel kunde.no.",
         field: "website_url",
       };
     case "project_onboarding_preview_not_found":
       return {
         status: 404,
         code,
-        message: "Forhåndsvisningen finnes ikke eller tilhører en annen bruker.",
+        message:
+          "Forhåndsvisningen finnes ikke eller tilhører en annen bruker.",
       };
     case "project_onboarding_preview_expired":
       return {
@@ -292,7 +317,8 @@ function mappedServiceError(error: unknown): {
       return {
         status: 500,
         code,
-        message: "Prosjektet ble ikke åpnet fordi Discovery-tilgangen ikke kunne bekreftes.",
+        message:
+          "Prosjektet ble ikke åpnet fordi Discovery-tilgangen ikke kunne bekreftes.",
       };
     default:
       return null;
@@ -388,7 +414,9 @@ export async function dispatchProjectOnboardingInvitations(args: {
     if (args.result.access?.administrator.email === dispatch.email) {
       args.result.access.administrator.email_status = emailStatus;
     }
-    const invitation = args.result.access?.invitations.find((item) => item.id === dispatch.id);
+    const invitation = args.result.access?.invitations.find(
+      (item) => item.id === dispatch.id,
+    );
     if (invitation) invitation.email_status = emailStatus;
   }
 }
@@ -574,9 +602,12 @@ export function registerLeadgridDomainOnboardingRoutes({
           previewId: body.preview_id,
           organizationId: scope.organizationId,
           userId: scope.userId,
-          editedProfiles: body.profiles as ProjectOnboardingProfilePlan[] | undefined,
-          brandOverrides: body.brand_overrides as ProjectOnboardingBrandOverrides | undefined,
-          accessSetup: body.access_setup as ProjectOnboardingAccessSetup | undefined,
+          editedProfiles: body.profiles as
+            ProjectOnboardingProfilePlan[] | undefined,
+          brandOverrides: body.brand_overrides as
+            ProjectOnboardingBrandOverrides | undefined,
+          accessSetup: body.access_setup as
+            ProjectOnboardingAccessSetup | undefined,
         });
         const { invitation_dispatches: dispatches, ...result } = serviceResult;
         await dispatchProjectOnboardingInvitations({
@@ -586,7 +617,9 @@ export function registerLeadgridDomainOnboardingRoutes({
           dispatches,
           sendEmail: sendTransactionalEmailFn,
         });
-        res.status(result.replayed || result.reused_project ? 200 : 201).json(result);
+        res
+          .status(result.replayed || result.reused_project ? 200 : 201)
+          .json(result);
       } catch (error) {
         handleError(res, error);
       }
