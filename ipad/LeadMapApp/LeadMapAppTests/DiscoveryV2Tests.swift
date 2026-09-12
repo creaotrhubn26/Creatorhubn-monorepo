@@ -43,8 +43,32 @@ final class DiscoveryV2Tests: XCTestCase {
         XCTAssertTrue(preview.plan.queries.first?.hardGeoFilter == true)
         XCTAssertEqual(preview.plan.version, 2)
         XCTAssertEqual(preview.plan.source, "brreg_open_data")
+        XCTAssertNil(preview.brief.registrySource)
         XCTAssertEqual(preview.sources?.first?.id, "brreg")
         XCTAssertEqual(preview.sources?.first?.license, "NLOD 2.0")
+    }
+
+    func testMedSideBriefPreservesFastlegeregisterSource() throws {
+        var brief = DiscoveryV2Brief(
+            industryQueries: ["86.210"],
+            exclusionTerms: ["sykehus"],
+            countryCode: "NO",
+            city: nil,
+            geo: nil,
+            targetCount: 60,
+            enrichmentCount: 30,
+            minimumFitScore: 70,
+            idealCustomer: "Fastlegekontor",
+            goal: "Finne relevante fastlegekontor")
+        brief.registrySource = "nhn_flr_public"
+
+        let encoded = try JSONEncoder().encode(brief)
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertEqual(object["registry_source"] as? String, "nhn_flr_public")
+
+        let decoded = try JSONDecoder().decode(DiscoveryV2Brief.self, from: encoded)
+        XCTAssertEqual(decoded.registrySource, "nhn_flr_public")
     }
 
     func testBriefRequestPreservesZeroCoordinatesAndSnakeCase() throws {

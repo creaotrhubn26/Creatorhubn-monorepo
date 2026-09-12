@@ -704,6 +704,7 @@ describe("Leadgrid Discovery HTTP contract", () => {
           approval_mode: "manual",
           places_details_enabled: false,
           brief: {
+            registry_source: "brreg_open_data",
             industry_queries: ["regnskapsbyrå"],
             organization_name_queries: [],
             exclusion_terms: [],
@@ -1034,6 +1035,7 @@ describe("Leadgrid Discovery HTTP contract", () => {
     expect(insert?.[0]).toContain("schedule_timezone, next_run_at");
     expect(JSON.parse(String(insert?.[1]?.[15]))).toEqual({
       brreg_open_data: { enabled: true },
+      nhn_flr_public: { enabled: false },
       google_places: {
         enabled: false,
         mode: "transient_details_only",
@@ -1106,6 +1108,11 @@ describe("Leadgrid Discovery HTTP contract", () => {
           expected_version: 7,
           name: "Ny profil",
           places_details_enabled: true,
+          brief: {
+            ...brief(),
+            registry_source: "nhn_flr_public",
+            industry_queries: ["86.210"],
+          },
         },
       },
     );
@@ -1118,8 +1125,11 @@ describe("Leadgrid Discovery HTTP contract", () => {
     expect(updateCall?.[0]).toContain("id = $3::uuid");
     expect(updateCall?.[0]).toContain("version = $4");
     expect(updateCall?.[0]).toContain("source_config = jsonb_set");
+    expect(updateCall?.[0]).toContain("source_config || jsonb_build_object");
+    expect(updateCall?.[0]).toContain("nhn_flr_public");
     expect(updateCall?.[0]).toContain("transient_details_only");
     expect(updateCall?.[1]).toContain(true);
+    expect(updateCall?.[1]).toContain("nhn_flr_public");
     expect(response.body).toMatchObject({
       profile: { places_details_enabled: true },
     });

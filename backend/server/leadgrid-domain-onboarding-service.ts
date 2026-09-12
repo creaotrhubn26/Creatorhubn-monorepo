@@ -301,9 +301,13 @@ const CATEGORY_RULES: CategoryRule[] = [
   },
 ];
 
-function profileSourceConfig(placesDetailsEnabled: boolean) {
+function profileSourceConfig(
+  placesDetailsEnabled: boolean,
+  registrySource: DiscoveryBrief["registry_source"],
+) {
   return {
-    brreg_open_data: { enabled: true },
+    brreg_open_data: { enabled: registrySource === "brreg_open_data" },
+    nhn_flr_public: { enabled: registrySource === "nhn_flr_public" },
     google_places: {
       enabled: placesDetailsEnabled,
       mode: "transient_details_only",
@@ -376,6 +380,7 @@ function nationalDiscoveryBrief(input: {
   targetCount?: number;
   minimumFitScore?: number;
   requireBusinessRegistration?: boolean | null;
+  registrySource?: DiscoveryBrief["registry_source"];
   subjectKind?: "organization" | "person";
   qualificationTerms?: string[];
   qualificationRequirement?: "preferred" | "required";
@@ -383,6 +388,7 @@ function nationalDiscoveryBrief(input: {
   employeeCount?: { minimum: number | null; maximum: number | null } | null;
 }): DiscoveryBrief {
   return discoveryBriefSchema.parse({
+    registry_source: input.registrySource ?? "brreg_open_data",
     industry_queries: input.industryQueries ?? [],
     organization_name_queries: input.organizationNameQueries ?? [],
     exclusion_terms: input.exclusions,
@@ -817,6 +823,152 @@ function buildTidumOnboardingPlan(
   };
 }
 
+function buildMedSideOnboardingPlan(
+  websiteUrl: string,
+  profile: BrandProfile,
+): ProjectOnboardingPlan {
+  const commonExclusions = [
+    "sykehus",
+    "helseforetak",
+    "tannlege",
+    "tannklinikk",
+    "veterinær",
+    "apotek",
+    "laboratorium",
+    "bemanning",
+    "holding",
+    "eiendom",
+  ];
+  const brandProfile: BrandProfile = {
+    ...profile,
+    url: websiteUrl,
+    businessName: "MedSide",
+    tagline: "KI-basert klinisk dokumentasjon",
+    description:
+      "MedSide hjelper helsepersonell med sikker, KI-basert klinisk dokumentasjon og mindre administrasjon i arbeidshverdagen.",
+    toneOfVoice: "professional",
+    usps: [
+      "Mindre tid på klinisk dokumentasjon",
+      "Tilpasset norsk helsepraksis",
+      "Sikker arbeidsflyt for helsepersonell",
+    ],
+    primaryCTA: "Start gratis prøveperiode",
+    colors: {
+      primary: "#212A42",
+      secondary: "#7A5C16",
+      accent: "#A9842E",
+      background: "#FFFFFF",
+      text: "#212A42",
+    },
+    fonts: { heading: "Inter", body: "Inter" },
+    logoUrl: "https://medside.no/medside-logo.svg",
+    faviconUrl: "https://medside.no/favicon.ico",
+    productCategories: [
+      "KI-basert journaldokumentasjon",
+      "Klinisk arbeidsflyt",
+      "Helsepersonell og klinikker",
+    ],
+    hasShop: false,
+    industry: "ai_clinical_documentation",
+    targetAudience:
+      "Fastlegekontor, private spesialistklinikker, fysioterapi- og ergoterapivirksomheter, kiropraktorer og psykologpraksiser i Norge.",
+  };
+
+  return {
+    version: 1,
+    website_url: websiteUrl,
+    website_domain: "medside.no",
+    project_name: "MedSide",
+    project_description: brandProfile.description,
+    category: "KI-basert klinisk dokumentasjon",
+    category_confidence: "high",
+    classification_reasons: [
+      "Domenet er verifisert som MedSide.",
+      "Nettsiden beskriver KI-basert klinisk dokumentasjon for helsepersonell.",
+      "Målgruppene er delt i fem autoritative, nasjonale Discovery-profiler.",
+    ],
+    brand_profile: brandProfile,
+    recommended_profiles: [
+      nationalDiscoveryProfilePlan(
+        "medside.gp_offices",
+        "Fastlegekontor – Norge",
+        nationalDiscoveryBrief({
+          industryQueries: ["86.210"],
+          exclusions: commonExclusions,
+          idealCustomer:
+            "Aktivt norsk fastlegekontor eller legesenter med klinisk dokumentasjonsbehov. Kontoret er kundekonto; tilknyttede leger behandles som kontakter.",
+          goal: "Finne fastlegekontor fra det offentlige Fastlegeregisteret og kvalifisere dem for MedSide.",
+          targetCount: 60,
+          minimumFitScore: 70,
+          requireBusinessRegistration: null,
+          registrySource: "nhn_flr_public",
+        }),
+        true,
+      ),
+      nationalDiscoveryProfilePlan(
+        "medside.medical_specialists",
+        "Private spesialistklinikker – Norge",
+        nationalDiscoveryBrief({
+          industryQueries: ["86.221", "86.222"],
+          exclusions: commonExclusions,
+          idealCustomer:
+            "Aktiv privat spesialistklinikk innen somatikk eller psykisk helse med gjentakende behov for sikker klinisk dokumentasjon.",
+          goal: "Finne private spesialistklinikker som kan redusere dokumentasjonstiden med MedSide.",
+          minimumFitScore: 70,
+          qualificationTerms: ["klinikk", "spesialist", "lege"],
+        }),
+      ),
+      nationalDiscoveryProfilePlan(
+        "medside.physiotherapy",
+        "Fysioterapi og ergoterapi – Norge",
+        nationalDiscoveryBrief({
+          industryQueries: ["86.950"],
+          exclusions: commonExclusions,
+          idealCustomer:
+            "Aktiv fysioterapi- eller ergoterapiklinikk som dokumenterer konsultasjoner og oppfølging i en travel klinisk hverdag.",
+          goal: "Finne fysioterapi- og ergoterapivirksomheter som passer MedSides dokumentasjonsflyt.",
+          minimumFitScore: 70,
+          qualificationTerms: ["fysioterapi", "ergoterapi", "klinikk"],
+        }),
+      ),
+      nationalDiscoveryProfilePlan(
+        "medside.chiropractic",
+        "Kiropraktorer – Norge",
+        nationalDiscoveryBrief({
+          organizationNameQueries: [
+            "kiropraktor",
+            "kiropraktikk",
+            "kiropraktorklinikk",
+          ],
+          exclusions: commonExclusions,
+          idealCustomer:
+            "Aktiv norsk kiropraktor eller kiropraktorklinikk med behov for effektiv og sikker konsultasjonsdokumentasjon.",
+          goal: "Finne kiropraktorvirksomheter som kan bruke MedSide i den kliniske arbeidshverdagen.",
+          targetCount: 50,
+          minimumFitScore: 70,
+          qualificationTerms: ["kiropraktor", "kiropraktikk"],
+          qualificationRequirement: "required",
+          requireBusinessRegistration: null,
+        }),
+      ),
+      nationalDiscoveryProfilePlan(
+        "medside.psychology",
+        "Psykolog- og psykoterapitjenester – Norge",
+        nationalDiscoveryBrief({
+          industryQueries: ["86.930"],
+          exclusions: commonExclusions,
+          idealCustomer:
+            "Aktiv privat psykolog- eller psykoterapipraksis med konsultasjoner som krever strukturert, sikker klinisk dokumentasjon.",
+          goal: "Finne psykolog- og psykoterapitjenester som kan redusere administrativt arbeid med MedSide.",
+          minimumFitScore: 70,
+          qualificationTerms: ["psykolog", "psykoterapi", "klinikk"],
+        }),
+      ),
+    ],
+    skills: LEADGRID_ONBOARDING_SKILLS,
+  };
+}
+
 export function normalizeProjectOnboardingWebsite(rawValue: string): {
   websiteUrl: string;
   websiteDomain: string;
@@ -851,6 +1003,9 @@ export function buildProjectOnboardingPlan(
   }
   if (websiteDomain === "tidum.no") {
     return buildTidumOnboardingPlan(websiteUrl, profile);
+  }
+  if (websiteDomain === "medside.no") {
+    return buildMedSideOnboardingPlan(websiteUrl, profile);
   }
   const corpus = normalizedSearchText(
     [
@@ -1302,7 +1457,12 @@ async function ensureRecommendedProfiles(
         JSON.stringify(brief),
         JSON.stringify(values.desiredSignals),
         JSON.stringify({ terms: brief.exclusion_terms }),
-        JSON.stringify(profileSourceConfig(plan.places_details_enabled)),
+        JSON.stringify(
+          profileSourceConfig(
+            plan.places_details_enabled,
+            plan.brief.registry_source,
+          ),
+        ),
         brief.target_count,
         brief.enrichment_count,
         plan.schedule_cron,
