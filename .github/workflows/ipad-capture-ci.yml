@@ -54,3 +54,24 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
+
+      # StoryboardStudio har egen XcodeGen-konfig og ble tidligere ikke bygget
+      # av denne sjekken, selv om workflowen trigges av alle endringer i ipad/**.
+      # build-for-testing kompilerer app-, unit- og UI-testmålene uten å kreve
+      # en navngitt simulator på GitHub-runneren.
+      - name: Generate StoryboardStudio Xcode project
+        working-directory: ipad/StoryboardStudio
+        run: xcodegen generate
+
+      - name: Compile StoryboardStudio and test bundles
+        working-directory: ipad/StoryboardStudio
+        run: |
+          xcodebuild \
+            -project StoryboardStudio.xcodeproj \
+            -scheme StoryboardStudio \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug \
+            build-for-testing \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
