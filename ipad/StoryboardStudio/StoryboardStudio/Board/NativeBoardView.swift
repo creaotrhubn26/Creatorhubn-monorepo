@@ -320,6 +320,7 @@ struct NativeBoardView: View {
     @State private var showShotList = false
     @State private var showScript = false
     @State private var showReview = false
+    @State private var showSkills = false
     @State private var exportPDFURL: URL?
     @State private var boardTool: BoardTool = .draw
     @State private var textPromptShown = false
@@ -865,14 +866,7 @@ struct NativeBoardView: View {
                 }
             }
             Spacer()
-            // Fanerad (mockup): Board aktiv · Shot List · Animatic.
-            HStack(spacing: 4) {
-                topTab("Board", icon: "rectangle.grid.2x2", active: true) {}
-                topTab("Script", icon: "doc.text", active: false) { showScript = true }
-                topTab("Shot List", icon: "list.bullet", active: false) { showShotList = true }
-                topTab("Review", icon: "checkmark.bubble", active: false) { showReview = true }
-                topTab("Animatic", icon: "play.rectangle", active: false) { showAnimatic = true }
-            }
+            workspaceTabs
             Spacer()
             if !pendingFrameIds.isEmpty {
                 Button { flushAllPending() } label: {
@@ -998,6 +992,36 @@ struct NativeBoardView: View {
                             in: RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
+    }
+
+    /// Full fanerad når plassen tillater det; én tilgjengelig meny i Split
+    /// View og smale Stage Manager-vinduer. Alle eksisterende flater beholdes.
+    private var workspaceTabs: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 4) {
+                topTab("Board", icon: "rectangle.grid.2x2", active: true) {}
+                topTab("Script", icon: "doc.text", active: false) { showScript = true }
+                topTab("Shot List", icon: "list.bullet", active: false) { showShotList = true }
+                topTab("Review", icon: "checkmark.bubble", active: false) { showReview = true }
+                topTab("Skills", icon: "sparkles", active: false) { showSkills = true }
+                topTab("Animatic", icon: "play.rectangle", active: false) { showAnimatic = true }
+            }
+            Menu {
+                Button("Board", systemImage: "rectangle.grid.2x2") {}
+                Button("Script", systemImage: "doc.text") { showScript = true }
+                Button("Shot List", systemImage: "list.bullet") { showShotList = true }
+                Button("Review", systemImage: "checkmark.bubble") { showReview = true }
+                Button("Skills", systemImage: "sparkles") { showSkills = true }
+                Button("Animatic", systemImage: "play.rectangle") { showAnimatic = true }
+            } label: {
+                Label("Arbeidsflater", systemImage: "square.grid.2x2")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10).padding(.vertical, 7)
+                    .background(Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+            }
+            .accessibilityLabel("Velg storyboard-arbeidsflate")
+        }
     }
 
     /// Fingerprinten gjør at SwiftUI avbryter gammel preview-lasting når
@@ -1304,6 +1328,16 @@ struct NativeBoardView: View {
         }
         .sheet(isPresented: $showScript) {
             ScriptSheet(scenes: board.scenes, activeIndex: board.selectedSceneIndex)
+        }
+        .sheet(isPresented: $showSkills) {
+            if let projectId = board.projectId {
+                StoryboardSkillsView(board: board, projectId: projectId)
+            } else {
+                ContentUnavailableView(
+                    "Prosjekt mangler",
+                    systemImage: "rectangle.badge.xmark",
+                    description: Text("Koble storyboardet til et Role Room-prosjekt før du kjører skills."))
+            }
         }
         .fullScreenCover(isPresented: $showReview) {
             // Den ekte Review-flaten (samme som hubben) — den gamle enkle

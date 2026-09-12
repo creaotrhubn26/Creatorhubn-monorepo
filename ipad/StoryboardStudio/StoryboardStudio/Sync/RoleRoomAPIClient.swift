@@ -1021,6 +1021,71 @@ actor RoleRoomAPIClient {
                                    "deviceName": UIDevice.current.name])
     }
 
+    // MARK: Storyboard professional skills
+
+    func fetchStoryboardSkillCatalog(
+        projectId: String
+    ) async throws -> [StoryboardSkillDefinitionDTO] {
+        let payload = try await getJSON(
+            path: "/api/role-room/projects/\(projectId)/storyboard-skills/catalog",
+            query: [:])
+        guard let data = payload["data"] else {
+            throw SyncError.malformed("storyboard-skills catalog")
+        }
+        return try decodeStoryboardSkillPayload(data, as: [StoryboardSkillDefinitionDTO].self)
+    }
+
+    func runStoryboardSkill(
+        projectId: String,
+        skillId: StoryboardSkillID,
+        requestBody: Data
+    ) async throws -> StoryboardSkillSuggestionDTO {
+        let payload = try await sendJSONDataResponse(
+            path: "/api/role-room/projects/\(projectId)/storyboard-skills/\(skillId.rawValue)/run",
+            method: "POST",
+            body: requestBody)
+        guard let data = payload["data"] else {
+            throw SyncError.malformed("storyboard-skills result")
+        }
+        let suggestions = try decodeStoryboardSkillPayload(
+            data, as: [StoryboardSkillSuggestionDTO].self)
+        guard let first = suggestions.first else {
+            throw SyncError.malformed("tomt storyboard-skill-resultat")
+        }
+        return first
+    }
+
+    func reviewStoryboardSkillSuggestion(
+        projectId: String,
+        suggestionId: String,
+        action: String
+    ) async throws -> StoryboardSkillSuggestionDTO {
+        guard action == "accept" || action == "reject" else {
+            throw SyncError.malformed("ukjent storyboard-skill-handling")
+        }
+        let payload = try await sendJSONResponse(
+            path: "/api/role-room/projects/\(projectId)/storyboard-skills/suggestions/\(suggestionId)/\(action)",
+            method: "POST",
+            body: ["note": action == "accept"
+                   ? "Godkjent fra Storyboard Studio på iPad."
+                   : "Avvist fra Storyboard Studio på iPad."])
+        guard let data = payload["data"] else {
+            throw SyncError.malformed("storyboard-skill review")
+        }
+        return try decodeStoryboardSkillPayload(data, as: StoryboardSkillSuggestionDTO.self)
+    }
+
+    private func decodeStoryboardSkillPayload<T: Decodable>(
+        _ payload: Any,
+        as type: T.Type
+    ) throws -> T {
+        guard JSONSerialization.isValidJSONObject(payload) else {
+            throw SyncError.malformed("storyboard-skill JSON")
+        }
+        let data = try JSONSerialization.data(withJSONObject: payload)
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+
     private func getJSON(path: String, query: [String: String]) async throws -> [String: Any] {
         let (data, response) = try await URLSession.shared.data(for: request(path: path, query: query))
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -1102,6 +1167,24 @@ actor RoleRoomAPIClient {
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200...299).contains(status) else {
+            throw status == 401 ? SyncError.unauthenticated : SyncError.http(status)
+        }
+        guard let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw SyncError.malformed(path)
+        }
+        return payload
+    }
+
+    private func sendJSONDataResponse(
+        path: String, method: String, body: Data
+    ) async throws -> [String: Any] {
+        var request = try request(path: path, query: [:])
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200...299).contains(status) else {

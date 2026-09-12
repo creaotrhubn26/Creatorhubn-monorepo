@@ -1,11 +1,14 @@
 /**
  * Storyboard AI Generation Service
  *
- * Service for generating storyboard frames using OpenAI gpt-image-1.
- * Uses Replit AI Integrations - charges are billed to your Replit credits.
+ * Compatibility facade for shot-list callers. Project-scoped requests use the
+ * production-aware Storyboard Room route (consent, cost reservation, prompt
+ * compiler and approved references). The legacy endpoint remains only for old
+ * callers that cannot identify a project yet.
  */
 
 import { apiFetch } from '@/lib/queryClient';
+import { generateAIImage, upsertStoryboard } from './storyboardApiService';
 
 export interface StoryboardTemplate {
   id: string;
@@ -111,6 +114,52 @@ export class StoryboardAIGenerationService {
 
   async generateFrame(request: GenerateFrameRequest): Promise<GenerateFrameResponse> {
     try {
+      if (request.projectId && request.frameId) {
+        const requestedSize = request.size || '1536x1024';
+        const [requestedWidth, requestedHeight] = requestedSize.split('x').map(Number);
+        const aspectRatio = Number.isFinite(requestedWidth) && Number.isFinite(requestedHeight) && requestedHeight > requestedWidth
+          ? '1024x1792'
+          : requestedWidth === requestedHeight
+            ? '1024x1024'
+            : '1792x1024';
+        const storyboard = await upsertStoryboard(request.projectId, {
+          frameId: request.frameId,
+          title: request.prompt.trim().slice(0, 300),
+          width: aspectRatio === '1024x1792' ? 1024 : aspectRatio === '1024x1024' ? 1024 : 1792,
+          height: aspectRatio === '1024x1792' ? 1792 : 1024,
+          workflowLevel: 'ai-reference',
+          metadata: {
+            source: 'shot-list-ai',
+            shotListId: request.storyboardId,
+          },
+        });
+        const styleByTemplate: Record<string, string> = {
+          cinematic: 'cinematic film look, dramatic motivated lighting',
+          documentary: 'natural documentary style, available light, realistic',
+          commercial: 'polished commercial look, clean high production value',
+          drama: 'warm intimate drama tones, soft motivated key light',
+        };
+        const generated = await generateAIImage(request.projectId, storyboard.id, {
+          prompt: request.prompt,
+          shotType: request.cameraAngle,
+          cinematicFormat: 'cinematic storyboard frame',
+          styleNote: [
+            styleByTemplate[request.template || 'cinematic'],
+            request.cameraMovement ? `Camera movement: ${request.cameraMovement}` : '',
+            request.additionalNotes || '',
+          ].filter(Boolean).join('. '),
+          quality: 'standard',
+          aspectRatio,
+        });
+        return {
+          success: true,
+          imageUrl: generated.storyboard.imageData ?? undefined,
+          prompt: generated.composedPrompt,
+          template: request.template || 'cinematic',
+          model: 'gpt-image-1-mini',
+        };
+      }
+
       const response = await apiFetch('/api/storyboards/generate-frame', {
         method: 'POST',
         body: JSON.stringify({
@@ -130,7 +179,7 @@ export class StoryboardAIGenerationService {
         const error = await response.json().catch(() => ({ detail: response.statusText }));
         
         if (response.status === 402) {
-          throw new Error('Kredittgrensen er nådd. Vennligst oppgrader din Replit-plan.');
+          throw new Error('Prosjektets AI-kostgrense er nådd.');
         }
         
         throw new Error(error.detail || `Bildegenerering feilet: ${response.statusText}`);
@@ -220,4 +269,3 @@ export class StoryboardAIGenerationService {
 }
 
 export const storyboardAIGenerationService = new StoryboardAIGenerationService();
-
