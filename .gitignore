@@ -123,6 +123,11 @@ docs/
 !docs/dance/*.md
 !docs/specs/
 !docs/specs/*.md
+!docs/superpowers/
+!docs/superpowers/specs/
+!docs/superpowers/specs/*.md
+!docs/superpowers/plans/
+!docs/superpowers/plans/*.md
 !docs/partnerships-demo/
 !docs/partnerships-demo/*.md
 !apps/resolve-script-manager/src/docs/
@@ -243,3 +248,7 @@ ipad/LeadMapApp/qa-galleri/
 !.claude/skills/
 !.claude/skills/**
 ipad/StoryboardStudio/StoryboardStudio.xcodeproj
+# Notatappens måleresultater. De er grunnlaget for modellvalgene i koden, og
+# et tall som bare finnes på én maskin er ikke etterprøvbart.
+!apps/creatorhub-notes/klassifiseringstest/RESULTAT.md
+!apps/creatorhub-notes/klassifiseringstest/RELASJONER.md

@@ -1,0 +1,854 @@
+/* Notater — én skriveflate, ett register, ingen komponentbibliotek.
+   To krav styrer alt her: teksten skal være behagelig å lese i en time, og
+   ingenting skal være skjult. Derfor ingen liten skrift, ingen handling som
+   først dukker opp ved hover, og ingen ikoner uten ord. */
+
+:root {
+  color-scheme: light dark;
+
+  --ground: #eaedeb;
+  --paper: #fbfcfb;
+  --ink: #171b19;
+  --ink-soft: #525c59;
+  --ink-faint: #7c8683;
+  --rule: #d7dcd9;
+  --accent: #1c6b59;
+  --sel: rgba(28, 107, 89, 0.15);
+  --mark: rgba(28, 107, 89, 0.18);
+  --skygge: 0 1px 0 rgba(23, 27, 25, 0.05);
+
+  /* Merkene i panelet. Fargen er et tillegg til formen, aldri det eneste
+     skillet: hake, spørsmålstegn, pil og rombe er fire forskjellige tegn, og
+     hver linje står med ord ved siden av seg. Alle fire holder minst 6:1 mot
+     bakgrunnen i begge temaene. */
+  --merke-forstått: #1c6b59;
+  --merke-uavklart: #1b5c96;
+  --merke-oppgave: #8a5312;
+  --merke-idé: #5b4a8f;
+  --merke-motsier: #a3401f;
+
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --serif: "Iowan Old Style", "Charter", "Palatino Linotype", Palatino, Georgia, serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+}
+
+/* Mørkt tema. Verdiene står to ganger med vilje: én gang for maskinens
+   innstilling, én gang for brukerens eget valg. CSS kan ikke slå sammen en
+   media-spørring og en attributtvelger i én regel, og et valg som bare gjaldt
+   halve appen ville vært verre enn en gjentakelse. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema="lyst"]) {
+    --ground: #121514;
+    --paper: #191d1c;
+    --ink: #e3e8e6;
+    --ink-soft: #a3ada9;
+    --ink-faint: #7d8784;
+    --rule: #2a302e;
+    --accent: #6bc4ae;
+    --sel: rgba(107, 196, 174, 0.2);
+    --mark: rgba(107, 196, 174, 0.24);
+    --skygge: 0 1px 0 rgba(0, 0, 0, 0.4);
+
+    --merke-forstått: #6bc4ae;
+    --merke-uavklart: #7db4e8;
+    --merke-oppgave: #d9a55c;
+    --merke-idé: #ac9ce0;
+    --merke-motsier: #e8977a;
+  }
+}
+
+:root[data-tema="mørkt"] {
+    --ground: #121514;
+    --paper: #191d1c;
+    --ink: #e3e8e6;
+    --ink-soft: #a3ada9;
+    --ink-faint: #7d8784;
+    --rule: #2a302e;
+    --accent: #6bc4ae;
+    --sel: rgba(107, 196, 174, 0.2);
+    --mark: rgba(107, 196, 174, 0.24);
+    --skygge: 0 1px 0 rgba(0, 0, 0, 0.4);
+
+    --merke-forstått: #6bc4ae;
+    --merke-uavklart: #7db4e8;
+    --merke-oppgave: #d9a55c;
+    --merke-idé: #ac9ce0;
+    --merke-motsier: #e8977a;
+}
+
+:root[data-tema="lyst"] {
+  color-scheme: light;
+}
+
+:root[data-tema="mørkt"] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+kbd {
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--ink-faint);
+}
+
+.skall {
+  display: grid;
+  grid-template-rows: 68px 1fr;
+  height: 100%;
+}
+
+/* ---- toppen: søk og nytt notat, begge alltid synlige ------------------ */
+
+.topp {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--ground);
+}
+
+.søk {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 620px;
+}
+
+.søkfelt {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.søk input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 58px 0 14px;
+  font: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  box-shadow: var(--skygge);
+  appearance: none;
+}
+
+.søk input::placeholder {
+  color: var(--ink-faint);
+}
+
+.søk input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--sel);
+}
+
+.søkfelt kbd {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.søk .tøm,
+.bryter,
+.nytt {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  align-items: center;
+  height: 44px;
+  padding: 0 14px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  box-shadow: var(--skygge);
+  white-space: nowrap;
+}
+
+.søk .tøm:hover,
+.bryter:hover,
+.nytt:hover {
+  border-color: var(--ink-faint);
+}
+
+/* Temavalget er navngitt og sier hva det gjør. Tre tilstander, ikke to: noen
+   vil ha lyst tema om kvelden uansett hva maskinen mener. */
+.tema {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  align-items: center;
+  font-size: 15px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.tema select {
+  height: 44px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 15px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  box-shadow: var(--skygge);
+}
+
+.tema select:hover {
+  border-color: var(--ink-faint);
+}
+
+/* Bryteren er navngitt og sier hva den gjør, ikke hva den er. Er panelet
+   skjult, skjer det ingen lesning i det hele tatt. */
+.bryter[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--rule));
+}
+
+/* ---- kroppen ---------------------------------------------------------- */
+
+.kropp {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  min-height: 0;
+}
+
+.kropp.med-panel {
+  grid-template-columns: 320px 1fr 336px;
+}
+
+/* I et smalt vindu er det skriveflaten som skal ha plassen. Registeret og
+   panelet gir fra seg noen piksler heller enn å presse teksten ned i en
+   spalte man ikke kan lese. */
+@media (max-width: 1180px) {
+  .kropp {
+    grid-template-columns: 250px 1fr;
+  }
+
+  .kropp.med-panel {
+    grid-template-columns: 250px 1fr 300px;
+  }
+}
+
+/* Registeret: én linje per notat, dagen som eneste inndeling. Rekkefølgen er
+   informasjonen, så ingen nummerering og ingen ikoner. */
+.liste {
+  overflow-y: auto;
+  padding: 6px 0 32px;
+  border-right: 1px solid var(--rule);
+}
+
+.dag {
+  margin: 20px 0 4px;
+  padding: 0 20px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.liste section:first-child .dag {
+  margin-top: 10px;
+}
+
+.rad {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 20px;
+  text-align: left;
+  border-left: 3px solid transparent;
+}
+
+.rad:hover {
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+
+.rad.valgt {
+  border-left-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+/* Titler brytes over to linjer heller enn å kuttes med «…». En avkortet
+   tittel er en tittel du må gjette deg til. */
+.tittel {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 16px;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.tid {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+}
+
+.utdrag {
+  grid-column: 1 / -1;
+  margin: 5px 0 0;
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.utdrag mark {
+  padding: 0 2px;
+  color: inherit;
+  background: var(--mark);
+  border-radius: 3px;
+}
+
+.tomt {
+  margin: 24px 20px;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+.tomt span {
+  display: block;
+  margin-top: 6px;
+  color: var(--ink-faint);
+}
+
+/* ---- arket ------------------------------------------------------------ */
+
+/* min-height: 0 er ikke pynt: uten den vokser arket etter innholdet i
+   editoren i stedet for å holde seg i vinduet, og lagringsmerket havner
+   under skjermkanten der ingen ser det. */
+.ark {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+.editor {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Toppfeltene er skjult i teksten. Denne linja er det de sier, lest høyt:
+   «Beslutning · 10. september». De rå feltene er ett klikk unna, for den som
+   vil se dem. Bredden følger tekstspalta, så den hører til notatet. */
+.notatinfo {
+  width: 100%;
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 14px 32px 0;
+}
+
+.notatlinje {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 16px;
+  align-items: center;
+  color: var(--ink-soft);
+}
+
+.notatlinje button {
+  min-height: 44px;
+  margin-left: auto;
+  padding: 0 12px;
+  color: var(--ink-soft);
+  border-radius: 8px;
+}
+
+.notatlinje button:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+
+.detaljer {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  margin: 4px 0 0;
+  padding: 12px 14px;
+  font-family: var(--mono);
+  font-size: 13px;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  border-radius: 8px;
+}
+
+.detaljer dt {
+  color: var(--ink-faint);
+}
+
+.detaljer dd {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.velkomst {
+  max-width: 32rem;
+  margin: 0 auto;
+  padding: 20vh 32px 0;
+}
+
+.velkomst h1 {
+  margin: 0 0 12px;
+  font-family: var(--serif);
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.velkomst p {
+  margin: 0 0 22px;
+  font-family: var(--serif);
+  font-size: 17.5px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+
+.velkomst button {
+  height: 44px;
+  padding: 0 18px;
+  font-size: 16px;
+  color: var(--paper);
+  background: var(--accent);
+  border-radius: 8px;
+}
+
+/* Lagringen sier fra av seg selv, i metalinja øverst i notatet. Nede i
+   hjørnet fant ingen den — og et lagringsmerke ingen finner gjør ingen
+   trygge. Diskré, men lesbar: samme størrelse som resten av linja. */
+.status {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+.status::before {
+  margin-right: 12px;
+  color: var(--ink-faint);
+  content: "·";
+}
+
+.feil {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin: 0;
+  padding: 12px 18px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 12%, var(--paper));
+  border-bottom: 1px solid var(--rule);
+}
+
+.feil button {
+  height: 36px;
+  margin-left: auto;
+  padding: 0 12px;
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--paper);
+}
+
+/* ---- hva vi har forstått ---------------------------------------------- */
+
+/* Panelet er notatets egne setninger, kortet ned. Derfor står kortformene i
+   samme skrift som teksten de kom fra, mens overskrifter og merknader står i
+   grensesnittskriften — det som er brukerens, ser ut som brukerens. */
+.panel {
+  overflow-y: auto;
+  padding: 6px 0 40px;
+  border-left: 1px solid var(--rule);
+}
+
+.panel h2 {
+  margin: 20px 0 2px;
+  padding: 0 20px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.panel h2:first-child {
+  margin-top: 10px;
+}
+
+.panel ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Det uavklarte står i samme liste som det bestemte, men skilt fra det: én
+   strek, ikke en ny overskrift. Det er samme spørsmål — hva har appen lest —
+   med to forskjellige svar. */
+.panel li:not(.åpen) + li.åpen {
+  margin-top: 8px;
+  border-top: 1px solid var(--rule);
+  padding-top: 8px;
+}
+
+/* «Endre» står alltid der, med ord. Skjult bak hover ville den vært usynlig
+   for den som trenger den mest. */
+.linjerad {
+  display: flex;
+  align-items: center;
+}
+
+.linje {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 18px 1fr;
+  gap: 10px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 4px 10px 20px;
+  text-align: left;
+}
+
+.endre {
+  flex: none;
+  min-height: 44px;
+  margin-right: 12px;
+  padding: 0 12px;
+  font-size: 15px;
+  color: var(--ink-soft);
+  border-radius: 8px;
+}
+
+.linje:hover,
+.endre:hover {
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+
+.endre:hover {
+  color: var(--ink);
+}
+
+.tegn {
+  font-size: 16px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.tegn-forstått {
+  color: var(--merke-forstått);
+}
+
+.tegn-uavklart {
+  color: var(--merke-uavklart);
+}
+
+.tegn-oppgave {
+  color: var(--merke-oppgave);
+}
+
+.tegn-idé {
+  color: var(--merke-idé);
+}
+
+.kort {
+  font-family: var(--serif);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+/* Hvem som sa det, i en importert samtale. Navnet skal leses først og så tre
+   til side — det er kortformen som bærer linja. */
+.avsender {
+  margin-right: 6px;
+  font-family: var(--sans);
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+/* Det oppgaven venter på hører til oppgaven, og står i samme linje som den. */
+.venter {
+  color: var(--ink-soft);
+}
+
+.merknad {
+  margin-left: 8px;
+  font-family: var(--sans);
+  font-size: 15px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.panel .av,
+.panel .ingenting,
+.panel .framdrift {
+  margin: 6px 20px 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+/* En lang kilde tar minutter. Linja sier hvor langt det er kommet, og
+   forsvinner når den er ferdig. Ingenting som krever oppmerksomhet. */
+.panel .framdrift {
+  font-size: 14px;
+  color: var(--ink-faint);
+}
+
+
+/* Rettingen står der linja sto. Ingen dialog, ingenting som legger seg over
+   noe annet: det er den samme linja, åpnet. */
+.retting {
+  display: grid;
+  gap: 12px;
+  padding: 12px 20px 16px;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+
+.rettefelt {
+  display: grid;
+  gap: 6px;
+  font-size: 15px;
+  color: var(--ink-soft);
+}
+
+.rettefelt input {
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  font-family: var(--serif);
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
+.rettefelt input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--sel);
+}
+
+.plassvalg {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.plassvalg legend {
+  padding: 0 0 2px;
+  font-size: 15px;
+  color: var(--ink-soft);
+}
+
+.plassvalg label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 44px;
+  font-size: 15px;
+}
+
+.plassvalg input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.plassvalg .tegn {
+  width: 18px;
+}
+
+.retteknapper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.retteknapper button {
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 15px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
+.retteknapper .lagre {
+  color: var(--paper);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.retteknapper .fjern {
+  margin-left: auto;
+  color: var(--ink-soft);
+}
+
+.retteknapper .fjern:hover {
+  color: var(--ink);
+}
+
+/* Angre og «lest på nytt» er de to gangene panelet snakker til brukeren.
+   Begge er rolige, begge står til de er lest, og ingen av dem gjør noe selv. */
+.angre,
+.påNytt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 10px 14px 0;
+  padding: 10px 12px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  border-radius: 8px;
+}
+
+.angre span,
+.påNytt span {
+  flex: 1 1 60%;
+}
+
+.angre button,
+.påNytt button {
+  flex: none;
+  min-height: 44px;
+  padding: 0 14px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
+/* Det hun har tenkt om det samme før. Setningen står med ord — «du forkastet
+   dette 10. september» — og under den hennes egen kortform, slik at hun kan
+   se hva koblingen bygger på før hun klikker seg videre. */
+.tidligere button {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 20px;
+  text-align: left;
+  border-left: 3px solid transparent;
+}
+
+.tidligere button:hover {
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+
+.tidligere .forhold {
+  display: block;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.tidligere .kilde {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+/* Motsigelsen er den ene av de tre som er verdt å stoppe for, og den eneste
+   som får farge og vekt. Fargen er et tillegg til ordene, aldri det eneste:
+   setningen sier selv hva den er. */
+.tidligere li.mot button {
+  border-left-color: var(--merke-motsier);
+}
+
+.tidligere li.mot .forhold {
+  font-weight: 600;
+  color: var(--merke-motsier);
+}
+
+/* Svaret på et spørsmål om det som er lest, over de vanlige søketreffene og
+   skilt fra dem med en strek. Fritekstsøket står uendret under. */
+.spurt {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.spurtOm {
+  margin: 0 20px 2px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.fra {
+  grid-column: 1 / -1;
+  margin-top: 3px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rad,
+  .linje,
+  .tidligere button,
+  .endre,
+  .bryter,
+  .nytt,
+  .søk .tøm {
+    transition: background-color 120ms ease, border-color 120ms ease;
+  }
+}

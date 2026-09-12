@@ -1,0 +1,48 @@
+1|oppgave|ingenting|admin skal alltid få beskjed
+2|begrensning|hold|ikke konverter, støtte RAW-filer
+3|spørsmål|marker_åpent|får fotograf beskjed etter nedlasting?
+4|spørsmål|marker_åpent|skulle B2 vært med?
+5|spørsmål|marker_åpent|hvorfor ikke del opp i biter
+6|observasjon|hold|ser ikke timelinen/filmstrip
+7|observasjon|hold|ser ingen forskjell
+8|observasjon|hold|ingenting syncer med vows
+9|beslutning|bygg|alt skal kunne endres
+10|begrensning|hold|demo-modus må ikke synes
+11|tvil|hold|AI trekkes fra, men kildekritisk
+12|begrensning|hold|kun 2 nærme, gjør grundigere jobb
+13|beslutning|bygg|begge, pluss kalenderfunksjon
+14|tvil|hold|flere design, men mer kreativ
+15|beslutning|bygg|mind map i mermaid for perspektiv
+16|beslutning|bygg|start uten voyage, skriv notater først
+17|spørsmål|marker_åpent|hvorfor bruker vi voyage?
+18|spørsmål|marker_åpent|hvorfor kan vi ikke bruke de?
+19|begrensning|hold|profesjonell men bestemorvennlig ux/ui
+20|begrensning|hold|bedre enn Word, Notion, Milanote
+21|beslutning|bygg|bytt main, kjør indeksering, hold enkelt
+22|spørsmål|marker_åpent|er appen laget?
+23|meta|ingenting|si ifra når klart
+24|meta|ingenting|fortsett til alle 10 ferdig
+25|begrensning|hold|løsning skal gjenkjenne tanken bak innlegg
+26|beslutning|bygg|app der folk låner verktøy
+27|beslutning|bygg|kart viser tilgjengelig utstyr i nærheten
+28|tvil|hold|depositum, men terskel kan bli høy
+29|beslutning|bygg|enkel liste først, ikke kart som start
+30|beslutning|bygg|fungerer uten konto til forespørsel sendes
+31|gjengivelse|hold|kunden ønsker innlogging
+32|uenighet|hold|kunden vil ha det, uenig
+33|beslutning|bygg|ingen innlogging
+34|spørsmål|marker_åpent|trenger vi innlogging?
+35|observasjon|hold|lagrer ikke, sjekk i morgen
+36|tvil|hold|køe thumbnails async, usikker rekkefølge
+37|tvil|hold|droppe kartet, eller ikke
+38|gjengivelse|hold|Marius mener bruk Stripe
+39|gjengivelse|hold|Skatteetaten: bilag i fem år
+40|gjengivelse|hold|alle sier onboarding trengs, uenig
+41|tvil|hold|enige om depositum, nå usikker igjen
+42|beslutning|bygg|depositum bestemt i går, kjører på
+43|beslutning|bygg|usikker på varsler, men tar det
+44|oppgave|ingenting|spør Kari om faktura
+45|oppgave|ingenting|godkjenn prototype ← før produksjon
+46|oppgave|ingenting|send råfiler til fotograf i morgen
+47|oppgave|ingenting|telle utstyr ← liste ryddet
+48|oppgave|ingenting|Marius setter opp Stripe-konto
