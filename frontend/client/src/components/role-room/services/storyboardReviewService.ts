@@ -89,6 +89,26 @@ export async function getStoryboardReviewRound(projectId: string, manuscriptId: 
   return (await readJson<{ data: StoryboardReviewRound }>(response)).data;
 }
 
+export async function updateStoryboardReviewComment(
+  projectId: string,
+  manuscriptId: string,
+  roundId: string,
+  commentId: string,
+  input: {
+    status?: 'open' | 'resolved';
+    assignedTo?: string | null;
+    dueAt?: string | null;
+    resolutionNote?: string | null;
+    resolvedInRoundId?: string | null;
+  },
+) {
+  const response = await fetch(
+    `${reviewBase(projectId, manuscriptId)}/${encodeURIComponent(roundId)}/comments/${encodeURIComponent(commentId)}`,
+    { method: 'PATCH', headers: authHeaders(), body: JSON.stringify(input) },
+  );
+  return (await readJson<{ data: StoryboardReviewComment }>(response)).data;
+}
+
 export async function getStoryboardReviewDiff(projectId: string, manuscriptId: string, roundId: string) {
   const response = await fetch(`${reviewBase(projectId, manuscriptId)}/${encodeURIComponent(roundId)}/diff`, {
     headers: authHeaders(),
@@ -177,7 +197,12 @@ export async function addSharedStoryboardComment(
 export async function decideSharedStoryboardReview(
   token: string,
   reviewerToken: string,
-  input: { decision: 'approved' | 'changes_requested'; expectedSnapshotHash: string; note?: string | null },
+  input: {
+    decision: 'approved' | 'changes_requested';
+    expectedSnapshotHash: string;
+    note?: string | null;
+    confirmOpenComments?: boolean;
+  },
 ) {
   const response = await fetch(`${publicBase(token)}/decisions`, {
     method: 'POST', headers: reviewerHeaders(reviewerToken), body: JSON.stringify(input),

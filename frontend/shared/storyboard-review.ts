@@ -61,6 +61,7 @@ export interface StoryboardReviewRound {
   comments?: StoryboardReviewComment[];
   decisions?: StoryboardReviewDecision[];
   shareLinks?: StoryboardReviewShareLink[];
+  carriedCommentCount?: number;
 }
 
 export interface StoryboardReviewShareLink {
@@ -85,7 +86,15 @@ export interface StoryboardReviewComment {
   anchorX?: number | null;
   anchorY?: number | null;
   status: 'open' | 'resolved';
+  assignedTo?: string | null;
+  dueAt?: string | null;
+  resolutionNote?: string | null;
+  resolvedBy?: string | null;
+  resolvedAt?: string | null;
+  resolvedInRoundId?: string | null;
+  carriedFromCommentId?: string | null;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface StoryboardReviewDecision {
@@ -103,6 +112,8 @@ export interface StoryboardReviewInboxItem {
   eventType:
     | 'storyboard_review_round_created'
     | 'storyboard_review_comment_added'
+    | 'storyboard_review_comment_resolved'
+    | 'storyboard_review_comment_reopened'
     | 'storyboard_review_approved'
     | 'storyboard_review_changes_requested';
   title: string;

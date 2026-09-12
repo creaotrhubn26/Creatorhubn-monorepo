@@ -21,6 +21,7 @@ import {
 import type { StoryboardSkillContext } from '@shared/storyboard-skills';
 import type {
   StoryboardReviewAccessMode,
+  StoryboardReviewComment,
   StoryboardReviewDiff,
   StoryboardReviewInboxItem,
   StoryboardReviewRound,
@@ -36,6 +37,7 @@ import {
   markStoryboardReviewNotificationRead,
   restoreStoryboardReviewRound,
   revokeStoryboardReviewShareLink,
+  updateStoryboardReviewComment,
 } from '../services/storyboardReviewService';
 
 type RevisionBaseline = NonNullable<StoryboardSkillContext['revisionBaseline']>;
@@ -46,6 +48,22 @@ const statusLabel: Record<string, string> = {
   approved: 'Godkjent',
   superseded: 'Erstattet',
 };
+
+type CommentDraft = {
+  assignedTo: string;
+  dueAt: string;
+  resolutionNote: string;
+  resolvedInRoundId: string;
+};
+
+const dateTimeLocal = (value?: string | null) => value ? value.slice(0, 16) : '';
+
+const draftFor = (comment: StoryboardReviewComment): CommentDraft => ({
+  assignedTo: comment.assignedTo ?? '',
+  dueAt: dateTimeLocal(comment.dueAt),
+  resolutionNote: comment.resolutionNote ?? '',
+  resolvedInRoundId: comment.resolvedInRoundId ?? '',
+});
 
 export const StoryboardReviewRoundsDialog: React.FC<{
   open: boolean;
@@ -58,6 +76,8 @@ export const StoryboardReviewRoundsDialog: React.FC<{
   const [rounds, setRounds] = useState<StoryboardReviewRound[]>([]);
   const [inbox, setInbox] = useState<StoryboardReviewInboxItem[]>([]);
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
+  const [showOpenCommentsOnly, setShowOpenCommentsOnly] = useState(true);
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, CommentDraft>>({});
   const [selectedId, setSelectedId] = useState<string>('');
   const [detail, setDetail] = useState<StoryboardReviewRound | null>(null);
   const [diff, setDiff] = useState<StoryboardReviewDiff | null>(null);
@@ -116,6 +136,7 @@ export const StoryboardReviewRoundsDialog: React.FC<{
     ]).then(([nextDetail, nextDiff]) => {
       if (!active) return;
       setDetail(nextDetail);
+      setCommentDrafts(Object.fromEntries((nextDetail.comments ?? []).map((comment) => [comment.id, draftFor(comment)])));
       setDiff(nextDiff);
       const snapshotScene = nextDetail.snapshot?.scenes.find((entry) => entry.id === sceneId);
       if (snapshotScene) {
@@ -159,7 +180,7 @@ export const StoryboardReviewRoundsDialog: React.FC<{
     try {
       const created = await createStoryboardReviewRound(projectId, manuscriptId, { label, summary: summary || undefined });
       await Promise.all([refreshList(created.id), refreshInbox()]);
-      setMessage(`Review-runde v${created.version} er låst til hash ${created.snapshotHash.slice(0, 10)}…`);
+      setMessage(`Review-runde v${created.version} er låst til hash ${created.snapshotHash.slice(0, 10)}…${created.carriedCommentCount ? ` ${created.carriedCommentCount} åpne punkt ble videreført.` : ''}`);
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : 'Kunne ikke opprette review-runden.');
     } finally { setBusy(false); }
@@ -167,6 +188,16 @@ export const StoryboardReviewRoundsDialog: React.FC<{
 
   const openInboxItem = async (item: StoryboardReviewInboxItem) => {
     setSelectedId(item.reviewRoundId);
+    setBusy(true); setError(null);
+    try {
+      const nextDetail = await getStoryboardReviewRound(projectId, manuscriptId, item.reviewRoundId);
+      setDetail(nextDetail);
+      setCommentDrafts(Object.fromEntries((nextDetail.comments ?? []).map((comment) => [comment.id, draftFor(comment)])));
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : 'Kunne ikke hente review-punktene.');
+    } finally {
+      setBusy(false);
+    }
     if (item.read) return;
     setInbox((current) => current.map((entry) => entry.id === item.id
       ? { ...entry, read: true, readAt: new Date().toISOString() }
@@ -244,6 +275,52 @@ export const StoryboardReviewRoundsDialog: React.FC<{
       setError(restoreError instanceof Error ? restoreError.message : 'Kunne ikke gjenopprette revisjonen.');
     } finally { setBusy(false); }
   };
+
+  const patchComment = async (
+    comment: StoryboardReviewComment,
+    patch: Parameters<typeof updateStoryboardReviewComment>[4],
+  ) => {
+    if (!detail) return;
+    setBusy(true); setError(null); setMessage(null);
+    try {
+      const updated = await updateStoryboardReviewComment(
+        projectId, manuscriptId, detail.id, comment.id, patch,
+      );
+      setDetail((current) => current ? {
+        ...current,
+        comments: (current.comments ?? []).map((entry) => entry.id === updated.id ? updated : entry),
+      } : current);
+      setCommentDrafts((current) => ({
+        ...current,
+        [updated.id]: patch.status
+          ? draftFor(updated)
+          : { ...draftFor(updated), ...(current[updated.id] ?? {}) },
+      }));
+      if (patch.status) {
+        setMessage(patch.status === 'resolved' ? 'Review-punktet er markert som løst.' : 'Review-punktet er gjenåpnet.');
+        await refreshInbox();
+      }
+    } catch (patchError) {
+      setError(patchError instanceof Error ? patchError.message : 'Kunne ikke oppdatere review-punktet.');
+    } finally { setBusy(false); }
+  };
+
+  const updateDraft = (commentId: string, patch: Partial<CommentDraft>) => {
+    setCommentDrafts((current) => ({
+      ...current,
+      [commentId]: { ...(current[commentId] ?? { assignedTo: '', dueAt: '', resolutionNote: '', resolvedInRoundId: '' }), ...patch },
+    }));
+  };
+
+  const visibleComments = useMemo(() => {
+    const comments = detail?.comments ?? [];
+    return comments
+      .filter((comment) => !showOpenCommentsOnly || comment.status === 'open')
+      .sort((left, right) => {
+        if (left.status !== right.status) return left.status === 'open' ? -1 : 1;
+        return (left.dueAt || '9999').localeCompare(right.dueAt || '9999');
+      });
+  }, [detail?.comments, showOpenCommentsOnly]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth data-testid="storyboard-review-rounds-dialog">
@@ -361,6 +438,118 @@ export const StoryboardReviewRoundsDialog: React.FC<{
                           {diff.scriptChanged ? ` Manus er endret; ${diff.impactedScriptLineRanges.length} koblede linjeområder må vurderes.` : ''}
                         </Alert>
                       )}
+
+                      <Box
+                        sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1.5 }}
+                        data-testid="storyboard-review-resolution-queue"
+                      >
+                        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1} mb={1.25}>
+                          <Box>
+                            <Typography variant="subtitle1" fontWeight={750}>Løsningskø</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {(detail.comments ?? []).filter((entry) => entry.status === 'open').length} åpne av {(detail.comments ?? []).length} punkt
+                            </Typography>
+                          </Box>
+                          <Button
+                            size="small"
+                            variant={showOpenCommentsOnly ? 'contained' : 'outlined'}
+                            onClick={() => setShowOpenCommentsOnly((current) => !current)}
+                            data-testid="storyboard-review-open-comment-filter"
+                          >
+                            {showOpenCommentsOnly ? 'Vis alle punkt' : 'Bare åpne punkt'}
+                          </Button>
+                        </Stack>
+                        {visibleComments.length === 0 ? (
+                          <Typography variant="body2" color="text.secondary" data-testid="storyboard-review-resolution-empty">
+                            {showOpenCommentsOnly && (detail.comments ?? []).length ? 'Alle review-punkt er løst.' : 'Ingen kommentarer i denne revisjonen.'}
+                          </Typography>
+                        ) : (
+                          <Stack spacing={1.25}>
+                            {visibleComments.map((comment) => {
+                              const draft = commentDrafts[comment.id] ?? draftFor(comment);
+                              return (
+                                <Box
+                                  key={comment.id}
+                                  sx={{ border: '1px solid', borderColor: comment.status === 'open' ? 'warning.main' : 'success.main', borderRadius: 1.5, p: 1.25 }}
+                                  data-testid={`storyboard-review-resolution-comment-${comment.id}`}
+                                >
+                                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                                    <Chip size="small" color={comment.status === 'open' ? 'warning' : 'success'} label={comment.status === 'open' ? 'Åpent' : 'Løst'} />
+                                    {comment.frameId && <Chip size="small" variant="outlined" label={`Shot ${comment.frameId}`} />}
+                                    {comment.carriedFromCommentId && <Chip size="small" variant="outlined" label="Videreført" />}
+                                    <Typography variant="caption" color="text.secondary">{comment.authorDisplayName}</Typography>
+                                  </Stack>
+                                  <Typography variant="body2" sx={{ my: 1 }}>{comment.body}</Typography>
+                                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
+                                    <TextField
+                                      size="small"
+                                      label="Ansvarlig"
+                                      value={draft.assignedTo}
+                                      onChange={(event) => updateDraft(comment.id, { assignedTo: event.target.value })}
+                                      onBlur={() => {
+                                        const value = draft.assignedTo.trim() || null;
+                                        if (value !== (comment.assignedTo ?? null)) void patchComment(comment, { assignedTo: value });
+                                      }}
+                                      inputProps={{ 'data-testid': `storyboard-review-assignee-${comment.id}` }}
+                                      sx={{ flex: 1 }}
+                                    />
+                                    <TextField
+                                      size="small"
+                                      label="Frist"
+                                      type="datetime-local"
+                                      value={draft.dueAt}
+                                      onChange={(event) => updateDraft(comment.id, { dueAt: event.target.value })}
+                                      onBlur={() => {
+                                        const value = draft.dueAt ? new Date(draft.dueAt).toISOString() : null;
+                                        if (value !== (comment.dueAt ?? null)) void patchComment(comment, { dueAt: value });
+                                      }}
+                                      slotProps={{ inputLabel: { shrink: true }, htmlInput: { 'data-testid': `storyboard-review-due-${comment.id}` } }}
+                                      sx={{ minWidth: 210 }}
+                                    />
+                                  </Stack>
+                                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} mt={1}>
+                                    <TextField
+                                      size="small"
+                                      label="Løsningsnotat"
+                                      value={draft.resolutionNote}
+                                      onChange={(event) => updateDraft(comment.id, { resolutionNote: event.target.value })}
+                                      multiline
+                                      maxRows={3}
+                                      inputProps={{ 'data-testid': `storyboard-review-resolution-note-${comment.id}` }}
+                                      sx={{ flex: 1 }}
+                                    />
+                                    <TextField
+                                      select
+                                      size="small"
+                                      label="Rettet i revisjon"
+                                      value={draft.resolvedInRoundId}
+                                      onChange={(event) => updateDraft(comment.id, { resolvedInRoundId: event.target.value })}
+                                      sx={{ minWidth: 190 }}
+                                      inputProps={{ 'data-testid': `storyboard-review-fixed-in-${comment.id}` }}
+                                    >
+                                      <MenuItem value="">Ikke angitt</MenuItem>
+                                      {rounds.map((round) => <MenuItem key={round.id} value={round.id}>v{round.version} · {round.label}</MenuItem>)}
+                                    </TextField>
+                                    <Button
+                                      variant={comment.status === 'open' ? 'contained' : 'outlined'}
+                                      color={comment.status === 'open' ? 'success' : 'warning'}
+                                      disabled={busy}
+                                      onClick={() => void patchComment(comment, comment.status === 'open' ? {
+                                        status: 'resolved',
+                                        resolutionNote: draft.resolutionNote.trim() || null,
+                                        resolvedInRoundId: draft.resolvedInRoundId || null,
+                                      } : { status: 'open' })}
+                                      data-testid={`storyboard-review-${comment.status === 'open' ? 'resolve' : 'reopen'}-${comment.id}`}
+                                    >
+                                      {comment.status === 'open' ? 'Marker løst' : 'Gjenåpne'}
+                                    </Button>
+                                  </Stack>
+                                </Box>
+                              );
+                            })}
+                          </Stack>
+                        )}
+                      </Box>
 
                       <Stack spacing={1}>
                         <Typography variant="subtitle2">Del låst revisjon</Typography>
