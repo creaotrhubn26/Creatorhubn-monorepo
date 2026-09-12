@@ -10,13 +10,14 @@ import {
   Box, Stack, Typography, Chip, CircularProgress, Button, IconButton, Dialog, DialogTitle, DialogContent, Avatar,
   Switch, FormControlLabel, TextField,
 } from '@mui/material';
-import { MusicNote, CheckCircle, SubjectOutlined, FiberManualRecord, ReceiptLongOutlined, FileDownloadOutlined, LockOutlined } from '@mui/icons-material';
+import { MusicNote, CheckCircle, SubjectOutlined, ReceiptLongOutlined, FileDownloadOutlined, LockOutlined, CompareArrows, DoneAll } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import AudioReviewPlayer from '@/components/universal/showcase/AudioReviewPlayer';
 import SignaturePad, { type SignatureHandle } from '@/components/universal/showcase/SignaturePad';
 import { parseSongSections, SECTION_COLORS } from '@/lib/lyric-sections';
 import { audioShowcaseEvents } from '@/utils/creatorhub-events';
 import WarmupPlayer from '@/components/universal/showcase/WarmupPlayer';
+import { analyzeAudioUrl, dbToLinearGain } from '@/lib/audioLoudness';
 
 const BG = '#0A0A0B', PANEL = '#131316', PANEL2 = '#0F0F11', BORDER = 'rgba(255,255,255,0.08)';
 const TEXT = '#F5F2EA', MUTED = 'rgba(245,242,234,0.55)', FAINT = 'rgba(245,242,234,0.38)', ACCENT = '#FF6B35';
@@ -33,6 +34,14 @@ export default function AudioReviewSharedPage() {
   const [sigName, setSigName] = React.useState(''); const [consent, setConsent] = React.useState(false); const [signing, setSigning] = React.useState(false);
   const [hp, setHp] = React.useState(''); // honeypot (skjult) — bot-beskyttelse
   const [sessions, setSessions] = React.useState<any[]>([]);
+  const [osData, setOsData] = React.useState<any>(null);
+  const [actionBusy, setActionBusy] = React.useState('');
+  const [decisionChoices, setDecisionChoices] = React.useState<Record<string, string>>({});
+  const [decisionNotes, setDecisionNotes] = React.useState<Record<string, string>>({});
+  const [candidateGains, setCandidateGains] = React.useState<Record<string, number>>({});
+  const [levelMatchState, setLevelMatchState] = React.useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
+  const loadOs = React.useCallback(() => apiRequest(`/api/audio-review-shared/${token}/os`).then((d: any) => setOsData(d)).catch(() => setOsData(null)), [token]);
+  React.useEffect(() => { if (token) loadOs(); }, [token, loadOs]);
   const loadSessions = React.useCallback(() => apiRequest(`/api/audio-review-shared/${token}/sessions`).then((d: any) => setSessions(d.sessions || [])).catch(() => setSessions([])), [token]);
   React.useEffect(() => { if (token) loadSessions(); }, [token, loadSessions]);
   const rsvp = async (sid: string, status: string) => { try { await apiRequest(`/api/audio-review-shared/${token}/sessions/${sid}/rsvp`, { method: 'POST', body: { status } }); loadSessions(); } catch { /* */ } };
@@ -78,12 +87,64 @@ export default function AudioReviewSharedPage() {
     setDetail((p) => ({ ...p, comments: [...p.comments, c] }));
   };
 
+  const reportListen = React.useCallback((listenedSeconds: number, durationSeconds: number) => {
+    if (!token || !currentVid) return;
+    void apiRequest(`/api/audio-review-shared/${token}/listens`, {
+      method: 'POST',
+      body: { versionId: currentVid, listenedSeconds, completionRatio: durationSeconds > 0 ? listenedSeconds / durationSeconds : 0 },
+    }).catch(() => {});
+  }, [currentVid, token]);
+
+  const vote = async (decisionId: string) => {
+    const versionId = decisionChoices[decisionId];
+    if (!versionId) return;
+    setActionBusy(`vote:${decisionId}`);
+    try {
+      await apiRequest(`/api/audio-review-shared/${token}/decisions/${decisionId}/vote`, {
+        method: 'POST', body: { versionId, rationale: decisionNotes[decisionId] || '' },
+      });
+      await loadOs();
+    } finally { setActionBusy(''); }
+  };
+
+  const respondSignoff = async (signoffId: string, status: 'approved' | 'changes_requested') => {
+    setActionBusy(`signoff:${signoffId}`);
+    try {
+      await apiRequest(`/api/audio-review-shared/${token}/signoffs/${signoffId}/respond`, { method: 'POST', body: { status } });
+      await loadOs();
+    } finally { setActionBusy(''); }
+  };
+
+  React.useEffect(() => {
+    const decision = osData?.decisions?.find((item: any) => item.status === 'open' && item.level_matched);
+    if (!decision || !data?.versions?.length) { setCandidateGains({}); setLevelMatchState('idle'); return; }
+    let cancelled = false;
+    setLevelMatchState('loading');
+    const sources = decision.candidates.map((candidate: any) => {
+      const version = data.versions.find((item: any) => item.id === candidate.version_id);
+      return { id: candidate.version_id, url: version?.file_url || candidate.file_url };
+    }).filter((item: any) => item.url);
+    Promise.all(sources.map(async (source: any) => ({ id: source.id, metrics: await analyzeAudioUrl(source.url, { credentials: 'omit' }) })))
+      .then((results) => {
+        if (cancelled) return;
+        const loudness = results.map((result) => result.metrics.integratedLufs).filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+        if (loudness.length !== results.length || results.length < 2) { setLevelMatchState('unavailable'); return; }
+        const target = Math.min(...loudness);
+        setCandidateGains(Object.fromEntries(results.map((result) => [result.id, dbToLinearGain(Math.min(0, target - Number(result.metrics.integratedLufs)))])));
+        setLevelMatchState('ready');
+      })
+      .catch(() => { if (!cancelled) setLevelMatchState('unavailable'); });
+    return () => { cancelled = true; };
+  }, [data?.versions, osData?.decisions]);
+
   if (loading) return <Box sx={{ bgcolor: BG, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CircularProgress sx={{ color: ACCENT }} /></Box>;
   if (!data) return <Box sx={{ bgcolor: BG, minHeight: '100vh', color: MUTED, display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3, textAlign: 'center' }}>Denne review-lenken er ugyldig eller utløpt.</Box>;
 
   const { project, versions, viewer, easeverseTrack } = data;
   const currentVersion = versions.find((v: any) => v.id === currentVid);
   const sections = parseSongSections(easeverseTrack?.lyrics || '');
+  const openBlindDecision = osData?.decisions?.find((decision: any) => decision.status === 'open' && decision.blind);
+  const candidateLabel = (version: any) => openBlindDecision?.candidates?.find((candidate: any) => candidate.version_id === version.id)?.version_label || version.version_label;
 
   return (
     <Box sx={{ bgcolor: BG, minHeight: '100vh', color: TEXT }}>
@@ -107,7 +168,7 @@ export default function AudioReviewSharedPage() {
             const active = v.id === currentVid;
             return (
               <Box key={v.id} onClick={() => setCurrentVid(v.id)} sx={{ flexShrink: 0, px: 1.5, py: 1, borderRadius: '10px', cursor: 'pointer', border: `1.5px solid ${active ? ACCENT : BORDER}`, bgcolor: active ? 'rgba(255,107,53,0.08)' : 'transparent' }}>
-                <Stack direction="row" alignItems="center" spacing={0.5}><Typography sx={{ fontWeight: 700, fontSize: '0.85rem' }}>{v.version_label}</Typography>{v.status === 'approved' && <CheckCircle sx={{ fontSize: 14, color: '#5fb88a' }} />}</Stack>
+                <Stack direction="row" alignItems="center" spacing={0.5}><Typography sx={{ fontWeight: 700, fontSize: '0.85rem' }}>{candidateLabel(v)}</Typography>{v.status === 'approved' && <CheckCircle sx={{ fontSize: 14, color: '#5fb88a' }} />}</Stack>
               </Box>
             );
           })}
@@ -116,7 +177,7 @@ export default function AudioReviewSharedPage() {
         {/* Spiller + kommentarer (AudioReviewPlayer) */}
         <Box sx={{ bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: '16px', p: 2.5, mb: 2 }}>
           <Stack direction="row" alignItems="center" sx={{ mb: 1.5 }}>
-            <Typography sx={{ fontWeight: 700, flex: 1 }}>{currentVersion ? currentVersion.version_label : 'Ingen versjon'}</Typography>
+            <Typography sx={{ fontWeight: 700, flex: 1 }}>{currentVersion ? candidateLabel(currentVersion) : 'Ingen versjon'}</Typography>
             {sections.length > 0 && <Button startIcon={<SubjectOutlined />} size="small" onClick={() => setLyricsOpen(true)} sx={{ color: ACCENT, textTransform: 'none' }}>Tekst</Button>}
           </Stack>
           {currentVersion ? (
@@ -124,10 +185,65 @@ export default function AudioReviewSharedPage() {
               src={currentVersion.file_url}
               comments={detail.comments.map((c) => ({ id: c.id, timecode: Number(c.timecode_seconds), comment: c.body, author: c.author, category: c.category }))}
               onAddComment={addComment}
+              onListenProgress={reportListen}
+              playbackGain={candidateGains[currentVid] || 1}
               accentColor={ACCENT}
             />
           ) : <Typography sx={{ color: MUTED }}>Ingen versjon å spille ennå.</Typography>}
         </Box>
+        {(osData?.decisions || []).length > 0 && (
+          <Stack spacing={2} sx={{ mb: 2 }}>
+            {osData.decisions.map((decision: any) => (
+              <Box key={decision.id} data-testid="shared-decision-room" sx={{ bgcolor: 'rgba(255,107,53,0.06)', border: `1px solid ${ACCENT}55`, borderRadius: '16px', p: 2.5 }}>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
+                  <CompareArrows sx={{ color: ACCENT }} />
+                  <Typography sx={{ fontWeight: 800, flex: 1 }}>Decision Room</Typography>
+                  {decision.blind && <Chip size="small" icon={<LockOutlined />} label="Blind lytting" sx={{ color: ACCENT }} />}
+                </Stack>
+                <Typography sx={{ fontWeight: 750 }}>{decision.title}</Typography>
+                {decision.prompt && <Typography variant="body2" sx={{ color: MUTED, mt: 0.5 }}>{decision.prompt}</Typography>}
+                <Typography variant="caption" sx={{ color: FAINT, display: 'block', mt: 0.5 }}>{decision.level_matched ? (levelMatchState === 'ready' ? 'Nivåmatching er aktiv for en mer rettferdig vurdering.' : levelMatchState === 'loading' ? 'Måler loudness og forbereder nivåmatching…' : 'Nivåmatching var ikke tilgjengelig; originalt avspillingsnivå brukes.') : 'Originalt avspillingsnivå brukes.'}</Typography>
+                <Stack spacing={1} sx={{ mt: 1.5 }}>
+                  {(decision.candidates || []).map((candidate: any) => {
+                    const selected = decisionChoices[decision.id] === candidate.version_id;
+                    return (
+                      <Box key={candidate.version_id} onClick={() => { setDecisionChoices((current) => ({ ...current, [decision.id]: candidate.version_id })); setCurrentVid(candidate.version_id); }} sx={{ cursor: 'pointer', p: 1.25, borderRadius: '10px', border: `1.5px solid ${selected ? ACCENT : BORDER}`, bgcolor: selected ? 'rgba(255,107,53,.08)' : 'rgba(255,255,255,.025)' }}>
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                          <Box sx={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${selected ? ACCENT : MUTED}`, boxShadow: selected ? `inset 0 0 0 3px ${BG}` : 'none', bgcolor: selected ? ACCENT : 'transparent' }} />
+                          <Typography sx={{ fontWeight: 750 }}>{candidate.version_label}</Typography>
+                          <Typography variant="caption" sx={{ color: MUTED, ml: 'auto' }}>{selected ? 'Valgt' : 'Trykk for å lytte'}</Typography>
+                        </Stack>
+                      </Box>
+                    );
+                  })}
+                </Stack>
+                <TextField fullWidth size="small" multiline minRows={2} placeholder="Hvorfor fungerer denne best? (valgfritt)" value={decisionNotes[decision.id] || ''} onChange={(event) => setDecisionNotes((current) => ({ ...current, [decision.id]: event.target.value }))} sx={{ mt: 1.5, '& .MuiInputBase-input': { color: TEXT }, '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER } }} />
+                <Button data-testid="submit-decision-vote" onClick={() => void vote(decision.id)} disabled={!decisionChoices[decision.id] || Boolean(actionBusy)} variant="contained" sx={{ mt: 1.25, bgcolor: ACCENT, color: '#150d05', fontWeight: 800, textTransform: 'none', borderRadius: 999 }}>Lagre mitt valg</Button>
+              </Box>
+            ))}
+          </Stack>
+        )}
+        {(osData?.signoffs || []).length > 0 && (
+          <Box data-testid="shared-signoff" sx={{ bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: '16px', p: 2.5, mb: 2 }}>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}><DoneAll sx={{ color: ACCENT }} /><Typography sx={{ fontWeight: 800 }}>Din sign-off</Typography></Stack>
+            <Stack spacing={1.5}>
+              {osData.signoffs.map((signoff: any) => (
+                <Box key={signoff.id} sx={{ p: 1.25, borderRadius: '10px', bgcolor: 'rgba(255,255,255,.035)' }}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <Box sx={{ flex: 1 }}><Typography sx={{ fontWeight: 750, textTransform: 'capitalize' }}>{signoff.stage}</Typography><Typography variant="caption" sx={{ color: MUTED }}>{signoff.status === 'requested' ? 'Produsenten venter på svaret ditt.' : signoff.status === 'approved' ? 'Du har godkjent dette steget.' : 'Du har bedt om endringer.'}</Typography></Box>
+                    {signoff.status === 'approved' && <CheckCircle sx={{ color: '#5fb88a' }} />}
+                  </Stack>
+                  {signoff.status === 'requested' && (
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1 }}>
+                      <Button onClick={() => void respondSignoff(signoff.id, 'changes_requested')} disabled={Boolean(actionBusy)} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none' }}>Be om endringer</Button>
+                      <Button onClick={() => void respondSignoff(signoff.id, 'approved')} disabled={Boolean(actionBusy)} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 800, textTransform: 'none' }}>Godkjenn {signoff.stage}</Button>
+                    </Stack>
+                  )}
+                </Box>
+              ))}
+            </Stack>
+          </Box>
+        )}
         {sessions.length > 0 && (
           <Box sx={{ bgcolor: 'rgba(63,167,214,0.07)', border: '1px solid rgba(63,167,214,0.3)', borderRadius: '16px', p: 2, mb: 2 }}>
             <Typography sx={{ fontWeight: 700, mb: 1 }}>Kommende økter</Typography>

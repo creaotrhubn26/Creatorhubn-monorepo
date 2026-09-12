@@ -247,6 +247,7 @@ const DemoAnimaticPage = React.lazy(() => import('@/components/role-room/demo/De
 const PostAgentLinkPage = React.lazy(() => import('@/components/role-room/PostAgentLinkPage'));
 const MockupVideoStudioPage = React.lazy(() => import('@/components/role-room/post-agent/mockup-video/MockupVideoStudio'));
 const AudioShowcasePage = React.lazy(() => import('@/pages/audio-showcase'));
+const SoundRoomCommandCenter = React.lazy(() => import('@/pages/sound-room-command-center'));
 const PartnerApplicationForm = React.lazy(() => import('@/components/universal/editing-marketplace/PartnerApplicationForm'));
 const PartnerPortalPage = React.lazy(() => import('@/components/universal/editing-marketplace/PartnerPortalPage'));
 const PartnerTerms = React.lazy(() => import('@/components/universal/editing-marketplace/PartnerTerms'));
@@ -526,6 +527,20 @@ const AudioShowcaseRouteWrapper = () => (
       }
     >
       <AudioShowcasePage />
+    </React.Suspense>
+  </AuthenticatedCreatorHubRoute>
+);
+
+const SoundRoomCommandCenterRouteWrapper = () => (
+  <AuthenticatedCreatorHubRoute>
+    <React.Suspense
+      fallback={
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#0a0b0f' }}>
+          <CircularProgress />
+        </Box>
+      }
+    >
+      <SoundRoomCommandCenter />
     </React.Suspense>
   </AuthenticatedCreatorHubRoute>
 );
@@ -1005,6 +1020,7 @@ function App() {
                   <Route path="/showcase/music_producer" component={MusicShowcaseRouteWrapper as React.ComponentType<any>} />
                   <Route path="/audio-review/invite/:token" component={AudioReviewInvitePage as React.ComponentType<any>} />
                   <Route path="/audio-review/shared/:token" component={AudioReviewSharedPage as React.ComponentType<any>} />
+                  <Route path="/sound-room" component={SoundRoomCommandCenterRouteWrapper} />
                   <Route path="/mockup-review/:token" component={MockupReviewPage as React.ComponentType<any>} />
                   <Route path="/participant-document/:documentId" component={ParticipantDocumentBootstrapHandoff} />
                   <Route path="/guide/oppvarming" component={WarmupGuidePage as React.ComponentType<any>} />

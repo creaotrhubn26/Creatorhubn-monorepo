@@ -560,6 +560,7 @@ import { setupShowcasePricingRoutes } from "./showcase-pricing-routes";
 import { setupPhotographerStripeConnectRoutes } from "./photographer-stripe-connect-routes";
 import { setupPhotographerReviewsRoutes } from "./photographer-reviews-routes";
 import { setupAudioShowcaseRoutes } from "./audio-showcase-routes";
+import { setupSoundRoomOperatingSystemRoutes } from "./sound-room-operating-system-routes";
 import { sendTransactionalEmail as sendAudioReviewEmail, sendTransactionalEmail } from "./transactional-email-service";
 import { setupShowcaseSmartAlbumsRoutes } from "./showcase-smart-albums-routes";
 import { setupShowcaseBatchOperationsRoutes } from "./showcase-batch-operations-routes";
@@ -73918,6 +73919,7 @@ setupAudioShowcaseRoutes({
   // Opplasting av eget Canvas-klipp (memoryStorage, 250 MB).
   uploadClip: showcaseMediaUpload,
 });
+setupSoundRoomOperatingSystemRoutes({ app, pool, requireUserSession });
 
 
 

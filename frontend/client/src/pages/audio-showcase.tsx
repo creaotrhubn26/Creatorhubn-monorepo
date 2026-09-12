@@ -44,6 +44,7 @@ import {
   type AudioLoudnessMetrics,
 } from '@/lib/audioLoudness';
 import { nextRecallStatus, recallPayloadFromComment } from '@/lib/soundRoomRecall';
+import SoundRoomOperatingPanel from '@/components/sound-room/SoundRoomOperatingPanel';
 
 /* ── Tema ──────────────────────────────────────────────────────────────── */
 const BG = '#0A0A0B', PANEL = '#131316', PANEL2 = '#0F0F11', BORDER = 'rgba(255,255,255,0.08)';
@@ -138,6 +139,7 @@ export default function AudioShowcasePage() {
   const [proTools, setProTools] = React.useState<any>(null);
   const [recallBusyId, setRecallBusyId] = React.useState<string | null>(null);
   const [showAllVersions, setShowAllVersions] = React.useState(false);
+  const [operatingPanelOpen, setOperatingPanelOpen] = React.useState(false);
 
   const saveCover = async (dataUrl: string) => {
     try { const p = await apiRequest(`/api/audio-showcases/${projectId}`, { method: 'PATCH', body: { coverUrl: dataUrl } }); setProject(p); } catch { /* */ }
@@ -637,6 +639,19 @@ export default function AudioShowcasePage() {
           </Stack>
         </Box>
         <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 260, justifyContent: 'flex-end' }}>
+          {canEdit && (
+            <Tooltip title="Revisjonsbrief, Decision Room, sign-off og levering">
+              <Button
+                data-testid="open-producer-tools"
+                onClick={() => setOperatingPanelOpen(true)}
+                startIcon={<TipsAndUpdatesOutlined />}
+                size="small"
+                sx={{ color: ACCENT, border: `1px solid ${ACCENT}66`, borderRadius: 999, textTransform: 'none', fontWeight: 750, whiteSpace: 'nowrap' }}
+              >
+                Produsentverktøy
+              </Button>
+            </Tooltip>
+          )}
           <Stack direction="row" alignItems="center" spacing={1} sx={{ bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: '999px', px: 1.5, py: 0.6 }}>
             <Search sx={{ fontSize: 17, color: FAINT }} /><InputBase placeholder="Søk i prosjektet" sx={{ color: TEXT, fontSize: '0.8rem', width: 130 }} />
             <Box sx={{ px: 0.6, py: 0.1, borderRadius: '5px', bgcolor: 'rgba(255,255,255,0.06)', color: FAINT, fontSize: '0.66rem' }}>⌘K</Box>
@@ -1031,6 +1046,16 @@ export default function AudioShowcasePage() {
       </Stack>
 
       {/* Dialoger */}
+      <SoundRoomOperatingPanel
+        open={operatingPanelOpen}
+        onClose={() => setOperatingPanelOpen(false)}
+        projectId={projectId}
+        projectTitle={project?.title || 'Sound Room'}
+        versions={versions}
+        members={members}
+        currentVersionId={currentVid}
+        onMembersChanged={loadProject}
+      />
       <InviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} onAdd={async (name, role, email) => { const m = await apiRequest(`/api/audio-showcases/${projectId}/members`, { method: 'POST', body: { name, role, email } }); audioShowcaseEvents.memberInvited({ method: email?.trim() ? 'email' : 'link' }); setMembers((p) => [...p, m]); return m; }} />
       <MemberProfileDialog member={memberDialog} externalTrackId={easeverseTrack?.id} onClose={() => setMemberDialog(null)} onSave={saveMemberProfile}
         onDelete={async (id) => { await apiRequest(`/api/audio-members/${id}`, { method: 'DELETE' }); setMembers((p) => p.filter((x) => x.id !== id)); setMemberDialog(null); }} />

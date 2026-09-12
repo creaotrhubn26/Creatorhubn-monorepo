@@ -14,6 +14,7 @@ export interface AppState {
   easeverse_project_id: string | null;
   suggested_project_name: string | null;
   watching: boolean;
+  auto_watch: boolean;
   pending_bounces: number;
   pending_session_info: boolean;
   last_queue_error: string | null;
@@ -118,6 +119,17 @@ export interface FeedbackInbox {
   comments: FeedbackComment[];
   approvals: FeedbackApproval[];
   tasks: FeedbackTask[];
+  brief: {
+    id: string;
+    title: string;
+    summary: string;
+    priorities: Array<{ title: string; detail: string }>;
+    conflicts: string[];
+    generation_mode: "ai" | "deterministic";
+    created_at: string;
+  } | null;
+  decisions: Array<{ id: string; title: string; status: "open" | "closed"; vote_count: number; winner_version_id: string | null }>;
+  signoffs: Array<{ id: string; stage: string; status: string; member_name: string | null; responded_at: string | null }>;
   generatedAt: string;
 }
 

@@ -21,6 +21,7 @@ import PDFDocument from "pdfkit";
 import { requireTeamAccess } from "./team-access";
 import { canAccessProject } from "./project-team-routes";
 import { broadcastSoundRoomUpdated, type SoundRoomUpdateReason } from "./sound-room-events";
+import { recordSoundRoomActivity } from "./sound-room-operating-system";
 import { enqueueApprovedReferenceSync } from "./music-integration-outbox.js";
 import { latestParentArtifactId, upsertMusicArtifact } from "./music-artifact-lineage.js";
 
@@ -630,6 +631,22 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     if (audioProjectId) await broadcastSoundRoomUpdated(pool, String(audioProjectId), reason);
   }
 
+  async function activityForVersion(
+    versionId: string,
+    eventType: string,
+    summary: string,
+    actorId?: string | null,
+    actorName?: string | null,
+    metadata?: Record<string, unknown>,
+  ): Promise<void> {
+    const result = await pool.query(
+      `SELECT project_id::text AS project_id FROM audio_review_versions WHERE id=$1::uuid LIMIT 1`,
+      [versionId],
+    ).catch(() => ({ rows: [] as any[] }));
+    const projectId = result.rows[0]?.project_id;
+    if (projectId) await recordSoundRoomActivity(pool, { projectId: String(projectId), eventType, summary, actorId, actorName, metadata });
+  }
+
   // ── Prosjekt ────────────────────────────────────────────────────────────
   app.post("/api/audio-showcases", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
@@ -743,6 +760,14 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       await pool.query(`UPDATE audio_review_projects SET status='under_review', updated_at=NOW() WHERE id=$1::uuid`, [projectId]);
       // Varsle bandet om at en ny versjon er klar å høre (best-effort).
       void notifyBandNewVersion(projectId, r.rows[0]).catch(() => {});
+      void recordSoundRoomActivity(pool, {
+        projectId,
+        eventType: "version_uploaded",
+        summary: `${r.rows[0].version_label} ble lastet opp`,
+        actorId: s.userId,
+        actorName: s.name,
+        metadata: { versionId: r.rows[0].id, versionNumber: vn },
+      });
       void broadcastSoundRoomUpdated(pool, projectId, "version");
       return res.status(201).json(r.rows[0]);
     } catch (e) {
@@ -799,6 +824,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
          str(req.body?.authorRole, 80) || null, num(req.body?.timecodeSeconds) ?? num(req.body?.timecode) ?? 0, body,
          str(req.body?.category, 40) || "general", Boolean(req.body?.isDecision), str(req.body?.sectionRef, 120) || null],
       );
+      void activityForVersion(versionId, "comment_added", "En ny tidskodet kommentar ble lagt til", s.userId, s.name, { commentId: r.rows[0].id });
       void notifySoundRoomForVersion(versionId, "comment");
       return res.status(201).json(r.rows[0]);
     } catch (e) {
@@ -826,6 +852,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       if (!(await ownsComment(id, s.userId))) return res.status(403).json({ error: "no_access" });
       const r = await pool.query(`UPDATE audio_review_comments SET ${sets.join(", ")} WHERE id = $1::uuid RETURNING *`, params);
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      void activityForVersion(r.rows[0].version_id, r.rows[0].status === "resolved" ? "comment_resolved" : "comment_added", r.rows[0].status === "resolved" ? "En kommentar ble løst" : "En kommentar ble oppdatert", s.userId, s.name, { commentId: id, status: r.rows[0].status });
       void notifySoundRoomForComment(id, "comment");
       return res.json(r.rows[0]);
     } catch (e) {
@@ -953,6 +980,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
           });
         }
       }
+      void activityForVersion(versionId, "approval_signed", approvalType === "changes_requested" ? "Produsenten ba om endringer" : `Versjonen fikk ${approvalType.replaceAll("_", " ")}`, s.userId, s.name, { approvalId: a.rows[0].id, approvalType });
       void notifySoundRoomForVersion(versionId, "approval");
       return res.status(201).json({ ...a.rows[0], ...(easeverseReferenceSync ? { easeverseReferenceSync } : {}) });
     } catch (e) {
@@ -990,6 +1018,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
         [projectId, str(req.body?.versionId, 64) || null, str(req.body?.type, 60) || null, str(req.body?.fileName, 300) || null,
          fileUrl, num(req.body?.fileSize), str(req.body?.format, 40) || null, Boolean(req.body?.downloadable)]);
+      void recordSoundRoomActivity(pool, { projectId, eventType: "delivery_created", summary: `Leveransen «${r.rows[0].file_name || r.rows[0].type || "fil"}» ble lagt til`, actorId: s.userId, actorName: s.name, metadata: { deliverableId: r.rows[0].id } });
       return res.status(201).json(r.rows[0]);
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
@@ -1242,6 +1271,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         if (raced.rows.length) return res.status(200).json(raced.rows[0]);
       }
       if (!r.rows.length) return res.status(409).json({ error: "task_conflict" });
+      void recordSoundRoomActivity(pool, { projectId, eventType: "task_changed", summary: `Oppgaven «${title}» ble opprettet`, actorId: s.userId, actorName: s.name, metadata: { taskId: r.rows[0].id, status } });
       void broadcastSoundRoomUpdated(pool, projectId, "task");
       return res.status(201).json(r.rows[0]);
     } catch (e) {
@@ -1281,6 +1311,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
            )`,
           [r.rows[0].comment_id, s.userId, commentStatus]);
       }
+      void recordSoundRoomActivity(pool, { projectId: String(r.rows[0].project_id), eventType: "task_changed", summary: `Oppgaven «${r.rows[0].title}» ble oppdatert`, actorId: s.userId, actorName: s.name, metadata: { taskId: id, status: r.rows[0].status } });
       void broadcastSoundRoomUpdated(pool, String(r.rows[0].project_id), "task");
       return res.json(r.rows[0]);
     } catch (e) {
@@ -2033,7 +2064,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     try {
       const ctx = await resolveSharedMember(token);
       if (!ctx) return res.status(404).json({ error: "not_found" });
-      const [v, members, tasks] = await Promise.all([
+      const [v, members, tasks, blindCandidates] = await Promise.all([
         pool.query(
           `SELECT v.*,b.id AS protools_bounce_id
              FROM audio_review_versions v
@@ -2047,6 +2078,14 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         ),
         pool.query(`SELECT id, name, role, instrument, avatar_color, avatar_url, is_owner, invite_status, contributions FROM audio_review_members WHERE project_id = $1::uuid ORDER BY is_owner DESC, order_index ASC`, [ctx.project_id]),
         pool.query(`SELECT * FROM audio_review_tasks WHERE project_id = $1::uuid ORDER BY order_index ASC`, [ctx.project_id]).catch(() => ({ rows: [] })),
+        pool.query(
+          `SELECT c.version_id,c.label
+             FROM audio_decision_candidates c
+             JOIN audio_decision_rooms d ON d.id=c.decision_id
+            WHERE d.project_id=$1::uuid AND d.status='open' AND d.blind=true
+            ORDER BY d.created_at DESC,c.order_index ASC`,
+          [ctx.project_id],
+        ).catch(() => ({ rows: [] as any[] })),
       ]);
       let easeverseTrack: any = null;
       if (ctx.easeverse_track_id) {
@@ -2054,7 +2093,17 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         easeverseTrack = t.rows[0] || null;
       }
       const project = { id: ctx.id, title: ctx.title, band_name: ctx.band_name, artist_name: ctx.artist_name, genre: ctx.genre, bpm: ctx.bpm, musical_key: ctx.musical_key, status: ctx.status, cover_url: ctx.cover_url, created_at: ctx.created_at, easeverse_track_id: ctx.easeverse_track_id };
-      return res.json({ project, versions: v.rows.map((row) => playableVersion(row, token)), members: members.rows, tasks: tasks.rows, easeverseTrack, viewer: { memberId: ctx.member_id, name: ctx.name, role: ctx.role }, readonly: true });
+      const blindLabels = new Map<string, string>();
+      for (const candidate of blindCandidates.rows) {
+        const versionId = String(candidate.version_id);
+        if (!blindLabels.has(versionId)) blindLabels.set(versionId, str(candidate.label, 80) || "Blindversjon");
+      }
+      const versions = v.rows.map((row) => {
+        const playable = playableVersion(row, token);
+        const blindLabel = blindLabels.get(String(row.id));
+        return blindLabel ? { ...playable, version_label: blindLabel, file_name: blindLabel } : playable;
+      });
+      return res.json({ project, versions, members: members.rows, tasks: tasks.rows, easeverseTrack, viewer: { memberId: ctx.member_id, name: ctx.name, role: ctx.role }, readonly: true });
     } catch (e) {
       if (isMissingTable(e)) return res.status(404).json({ error: "not_found" });
       return res.status(500).json({ error: "shared_get_failed" });
@@ -2078,11 +2127,22 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         [vid, ctx.project_id],
       );
       if (!v.rows.length) return res.status(404).json({ error: "version_not_found" });
-      const [comments, sections] = await Promise.all([
+      const [comments, sections, blindCandidate] = await Promise.all([
         pool.query(`SELECT * FROM audio_review_comments WHERE version_id = $1::uuid ORDER BY timecode_seconds ASC, created_at ASC`, [vid]),
         pool.query(`SELECT * FROM audio_review_sections WHERE version_id = $1::uuid ORDER BY order_index ASC`, [vid]),
+        pool.query(
+          `SELECT c.label
+             FROM audio_decision_candidates c
+             JOIN audio_decision_rooms d ON d.id=c.decision_id
+            WHERE c.version_id=$1::uuid AND d.project_id=$2::uuid AND d.status='open' AND d.blind=true
+            ORDER BY d.created_at DESC,c.order_index ASC LIMIT 1`,
+          [vid, ctx.project_id],
+        ).catch(() => ({ rows: [] as any[] })),
       ]);
-      return res.json({ version: playableVersion(v.rows[0], token), comments: comments.rows, sections: sections.rows });
+      const playable = playableVersion(v.rows[0], token);
+      const blindLabel = str(blindCandidate.rows[0]?.label, 80);
+      const version = blindLabel ? { ...playable, version_label: blindLabel, file_name: blindLabel } : playable;
+      return res.json({ version, comments: comments.rows, sections: sections.rows });
     } catch (e) {
       if (isMissingTable(e)) return res.status(404).json({ error: "not_found" });
       return res.status(500).json({ error: "shared_version_failed" });
@@ -2109,6 +2169,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
          str(req.body?.category, 40) || "general", str(req.body?.sectionRef, 120) || null]);
       // Varsle produsenten om band-tilbakemeldingen (best-effort).
       void notifyOwnerBandComment(ctx, body, num(req.body?.timecodeSeconds) ?? 0).catch(() => {});
+      void recordSoundRoomActivity(pool, { projectId: String(ctx.project_id), eventType: "comment_added", summary: `${ctx.name} la igjen en tidskodet kommentar`, actorId: `member:${ctx.member_id}`, actorName: ctx.name, metadata: { commentId: r.rows[0].id, versionId } });
       void broadcastSoundRoomUpdated(pool, String(ctx.project_id), "comment");
       return res.status(201).json(r.rows[0]);
     } catch (e) {
