@@ -743,6 +743,7 @@ final class CompositionRenderTests: XCTestCase {
 
     private func makeFrame(strokes: [PencilStroke], id: String = "test-frame",
                            durationSec: Double = 2, imageUrl: String? = nil,
+                           thumbnailDataURL: String? = nil,
                            description: String = "") -> FrameSummary {
         FrameSummary(
             id: id, shotNumber: "1A", detail: "",
@@ -750,7 +751,7 @@ final class CompositionRenderTests: XCTestCase {
             description: description, notes: nil, shotType: nil, lensMm: nil,
             movement: nil, durationSec: durationSec, transition: nil,
             focusDepth: nil, timeOfDay: nil, weather: nil, beatTag: nil,
-            tags: [], thumbnailDataURL: nil,
+            tags: [], thumbnailDataURL: thumbnailDataURL,
             drawingWidth: 1920, drawingHeight: 1080,
             frameStatus: nil, comments: [], updatedAt: nil,
             underlayDataURL: nil, underlayOpacity: nil,
@@ -759,6 +760,47 @@ final class CompositionRenderTests: XCTestCase {
             reviewPriority: nil, reviewDueAt: nil,
             reviewApprovedBy: nil, reviewApprovedAt: nil, reviewStarred: nil,
             reviewAssignee: nil, reviewColorLabel: nil, reviewSnoozedUntil: nil)
+    }
+
+    func testScenePreviewPrefersOriginalImageBeforeStoredThumbnail() {
+        let frame = makeFrame(
+            strokes: [], imageUrl: "/api/storage/original.png",
+            thumbnailDataURL: "data:image/jpeg;base64,stale-white-preview")
+
+        XCTAssertEqual(
+            StoryboardPreviewPolicy.sourceURLs(for: frame),
+            ["/api/storage/original.png", "data:image/jpeg;base64,stale-white-preview"])
+    }
+
+    func testScenePreviewSkipsEmptyFrameWhenLaterFrameHasArtwork() {
+        let empty = makeFrame(strokes: [], id: "empty")
+        let artwork = makeFrame(
+            strokes: [], id: "artwork", imageUrl: "/api/storage/artwork.png")
+
+        XCTAssertEqual(
+            StoryboardPreviewPolicy.representativeFrame(in: [empty, artwork])?.id,
+            "artwork")
+    }
+
+    func testScenePreviewUsesDrawnOnlyFrame() {
+        let empty = makeFrame(strokes: [], id: "empty")
+        let drawn = makeFrame(
+            strokes: [stroke(.pencil, size: 5, opacity: 0.9,
+                             line(100, 100, 500, 400))], id: "drawn")
+
+        XCTAssertEqual(
+            StoryboardPreviewPolicy.representativeFrame(in: [empty, drawn])?.id,
+            "drawn")
+    }
+
+    func testRemoteImageCacheKeyIsStableAcrossProcesses() {
+        let path = "/api/role-room/storage/files/ac743acd-8fd6-44f9-81bf-8721d7bce6ec/download"
+
+        XCTAssertEqual(
+            RoleRoomAPIClient.stableImageCacheKey(for: path),
+            "img-894a7dc12200c4c92334f705d11b0c5c236527feaf781f31f3057e9715e04286")
+        XCTAssertNotEqual(RoleRoomAPIClient.stableImageCacheKey(for: path),
+                          RoleRoomAPIClient.stableImageCacheKey(for: path + "-other"))
     }
 
     /// Tekst-annotasjoner skal med i eksport-render (CoreText-pass) —
@@ -1208,6 +1250,42 @@ final class CompositionRenderTests: XCTestCase {
         let channels = (0..<4).map { Double(pixels[offset + $0]) }
         XCTAssertLessThan(channels.min() ?? 255, 200,
                           "midtpikselet skal bære bildefargen, ikke papir")
+    }
+
+    /// Viskelær skal endre selve panelbildet, ikke bare tegnestrøk over det.
+    /// Kilden beholdes for undo, mens render/export flater redigeringen.
+    func testImageFrameEraserEditsOriginalPixelsInExport() throws {
+        let dataURL = solidImageDataURL(color: .systemBlue,
+                                        size: CGSize(width: 400, height: 225))
+        let eraserPoints = (0...20).map { step in
+            StrokePoint(x: 600 + Double(step) * 36, y: 540,
+                        pressure: 1, tiltX: 0, tiltY: 0,
+                        timestamp: Double(step) * 8)
+        }
+        let eraser = PencilStroke(
+            id: "erase-original", points: eraserPoints, inputType: "pencil",
+            color: "#ffffff", width: 480, opacity: 1,
+            brush: BrushSpec.preset(.eraser, size: 480,
+                                    color: "#ffffff", opacity: 1))
+        let frame = makeFrame(strokes: [eraser], id: "editable-image", imageUrl: dataURL)
+        let image = try XCTUnwrap(FrameRenderService.image(for: frame, maxWidth: 400))
+        let cg = try XCTUnwrap(image.cgImage)
+        let data = try XCTUnwrap(cg.dataProvider?.data)
+        let pixels = try XCTUnwrap(CFDataGetBytePtr(data))
+        let bytesPerPixel = cg.bitsPerPixel / 8
+
+        func channels(x: Int, y: Int) -> [UInt8] {
+            let offset = y * cg.bytesPerRow + x * bytesPerPixel
+            return (0..<min(4, bytesPerPixel)).map { pixels[offset + $0] }
+        }
+
+        let erased = channels(x: cg.width / 2, y: cg.height / 2)
+        let untouched = channels(x: 20, y: 20)
+        XCTAssertGreaterThan(erased.prefix(3).min() ?? 0, 225,
+                             "visket område skal avsløre lyst storyboardpapir")
+        XCTAssertLessThan(untouched.prefix(3).min() ?? 255, 220,
+                          "området utenfor viskelæret skal beholde originalbildet")
+        XCTAssertNotEqual(erased, untouched)
     }
 
     /// Post-it/boble skal endre eksport-bildet mot ren tekst.

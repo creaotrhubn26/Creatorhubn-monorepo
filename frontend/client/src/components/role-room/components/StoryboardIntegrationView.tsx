@@ -626,7 +626,7 @@ const renderStrokesToThumbnailDataUrl = (
       if (!Array.isArray(points) || points.length < 2) continue;
       const type = stroke.brush?.type;
       if (type === 'smudge') continue;
-      const isEraser = type === 'eraser';
+      const isEraser = type === 'eraser' || type === 'kneaded' || type === 'lightlift';
       const widthMultiplier =
         type === 'highlighter' ? 3
           : type === 'watercolor' ? 2.4

@@ -37,6 +37,7 @@ final class MetalStrokeRenderer {
     private let dabPipelineEraser: MTLRenderPipelineState
     private let smudgePipeline: MTLRenderPipelineState
     private let blitPipeline: MTLRenderPipelineState
+    private let editableBaseBlitPipeline: MTLRenderPipelineState
     private var smudgeRegionTexture: MTLTexture?
     private var dabTextures: [DabPreset: MTLTexture] = [:]
     // Egne penselspisser/stamps (PNG-dataURL bakt i strøket) — dekodes og
@@ -76,6 +77,10 @@ final class MetalStrokeRenderer {
     }
     private(set) var committedTexture: MTLTexture?
     private var canvasSize = SIMD2<Float>(0, 0)
+    // Panelbildet er et redigerbart rastergrunnlag, ikke et beskyttet
+    // skjerm-underlag. rebuild starter alltid her og spiller så strøkene i
+    // rekkefølge; viskelær kan derfor fjerne originalpiksler og angres.
+    private var editableBaseTexture: MTLTexture?
     var paperColor = SIMD3<Float>(0.961, 0.949, 0.918) // #f5f2ea
     // Referanse-underlag (kun skjerm — aldri i thumbnails/eksport)
     private let underlayBlitPipeline: MTLRenderPipelineState
@@ -127,6 +132,8 @@ final class MetalStrokeRenderer {
                                     format: .rgba8Unorm, blend: .premultiplied),
               let blit = pipeline(vertex: "blit_vertex", fragment: "blit_fragment",
                                   format: .bgra8Unorm, blend: .none),
+              let editableBaseBlit = pipeline(vertex: "blit_vertex", fragment: "blit_editable_base_fragment",
+                                              format: .rgba8Unorm, blend: .none),
               let underlayBlit = pipeline(vertex: "blit_vertex", fragment: "blit_underlay_fragment",
                                           format: .bgra8Unorm, blend: .none) else { return nil }
         dabPipelineAccumulator = dabAccumulator
@@ -134,6 +141,7 @@ final class MetalStrokeRenderer {
         dabPipelineEraser = dabEraser
         smudgePipeline = smudge
         blitPipeline = blit
+        editableBaseBlitPipeline = editableBaseBlit
         underlayBlitPipeline = underlayBlit
 
         for preset in [DabPreset.pencilGraphite, .charcoalTooth, .inkRound, .markerChisel,
@@ -174,6 +182,35 @@ final class MetalStrokeRenderer {
                       channel(pixel[2], paperColor.z))
     }
 
+    /// Gjør panelbildet til første, redigerbare rasterlag. Selve kilden
+    /// beholdes slik at undo/rebuild kan spille historikken på nytt uten
+    /// generasjonstap; eksporten flater resultatet til nye piksler.
+    func setEditableBase(cgImage: CGImage?) {
+        guard let cgImage else { editableBaseTexture = nil; return }
+        let width = cgImage.width, height = cgImage.height
+        guard width > 0, height > 0 else { editableBaseTexture = nil; return }
+        let bytesPerRow = width * 4
+        var pixels = [UInt8](repeating: 0, count: bytesPerRow * height)
+        guard let context = CGContext(
+            data: &pixels, width: width, height: height, bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+            editableBaseTexture = nil
+            return
+        }
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm, width: width, height: height, mipmapped: false)
+        descriptor.usage = [.shaderRead]
+        guard let texture = device.makeTexture(descriptor: descriptor) else {
+            editableBaseTexture = nil
+            return
+        }
+        texture.replace(region: MTLRegionMake2D(0, 0, width, height),
+                        mipmapLevel: 0, withBytes: pixels, bytesPerRow: bytesPerRow)
+        editableBaseTexture = texture
+    }
+
     /// Sett/fjern referanse-underlag. Bildet strekkes til canvas-flaten
     /// (samme aspekt som frame i praksis — underlaget velges for framen).
     func setUnderlay(cgImage: CGImage?, opacity: Double) {
@@ -209,6 +246,22 @@ final class MetalStrokeRenderer {
         pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
         pass.colorAttachments[0].storeAction = .store
         buffer.makeRenderCommandEncoder(descriptor: pass)?.endEncoding()
+        buffer.commit()
+        restoreEditableBase()
+    }
+
+    private func restoreEditableBase() {
+        guard let target = committedTexture, let base = editableBaseTexture,
+              let buffer = queue.makeCommandBuffer() else { return }
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = target
+        pass.colorAttachments[0].loadAction = .load
+        pass.colorAttachments[0].storeAction = .store
+        guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
+        encoder.setRenderPipelineState(editableBaseBlitPipeline)
+        encoder.setFragmentTexture(base, index: 0)
+        encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        encoder.endEncoding()
         buffer.commit()
     }
 
