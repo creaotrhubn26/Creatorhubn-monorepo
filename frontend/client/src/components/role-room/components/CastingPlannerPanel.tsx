@@ -263,6 +263,7 @@ const FirstAssistantDirectorWorkspace = lazyWithRetry(() => import('./assistant-
 const SecondAssistantDirectorWorkspace = lazyWithRetry(() => import('./assistant-director/SecondAssistantDirectorWorkspace').then(m => ({ default: m.SecondAssistantDirectorWorkspace })));
 const ProductionManagementWorkspace = lazyWithRetry(() => import('./production-management/ProductionManagementWorkspace').then(m => ({ default: m.ProductionManagementWorkspace })));
 const ProductionCoordinationWorkspace = lazyWithRetry(() => import('./production-coordination/ProductionCoordinationWorkspace').then(m => ({ default: m.ProductionCoordinationWorkspace })));
+const ContinuityWorkspace = lazyWithRetry(() => import('./continuity/ContinuityWorkspace').then(m => ({ default: m.ContinuityWorkspace })));
 const CallSheetGenerator = lazyWithRetry(() => import('./CallSheetGenerator').then(m => ({ default: m.CallSheetGenerator })));
 const SharingPanel = lazyWithRetry(() => import('./SharingPanel').then(m => ({ default: m.SharingPanel })));
 const LiveSetMode = lazyWithRetry(() => import('./LiveSetMode').then(m => ({ default: m.LiveSetMode })));
@@ -389,6 +390,7 @@ const getCrewRoleIcon = (role: string): ReactElement => {
     casting_director: <SupervisorAccountIcon {...iconProps} />,
     production_manager: <SupervisorAccountIcon {...iconProps} />,
     production_coordinator: <SupervisorAccountIcon {...iconProps} />,
+    script_supervisor: <FactCheckIcon {...iconProps} />,
     camera_operator: <CameraAltIcon {...iconProps} />,
     camera_assistant: <CameraAltIcon {...iconProps} />,
     cinematographer: <CameraAltIcon {...iconProps} />,
@@ -1496,6 +1498,7 @@ type RoleRoomProjectWorkspaceState = {
           'casting_director',
           'production_manager',
           'production_coordinator',
+          'script_supervisor',
           'camera_team',
           'writer',
           'script_editor',
@@ -1522,6 +1525,7 @@ type RoleRoomProjectWorkspaceState = {
         'casting_director',
         'production_manager',
         'production_coordinator',
+        'script_supervisor',
         'camera_team',
         'writer',
         'script_editor',
@@ -2238,6 +2242,11 @@ type RoleRoomProjectWorkspaceState = {
 
   const handleOpenProductionCoordinationWorkspace = useCallback(() => {
     setWorkspaceLensPreference('production-coordination');
+    navigateToTab(0);
+  }, [navigateToTab]);
+
+  const handleOpenContinuityWorkspace = useCallback(() => {
+    setWorkspaceLensPreference('continuity');
     navigateToTab(0);
   }, [navigateToTab]);
 
@@ -3012,6 +3021,7 @@ type RoleRoomProjectWorkspaceState = {
       casting_director: branding.tokens.labels.roleCastingDirectorLabel,
       production_manager: branding.tokens.labels.roleProductionManagerLabel,
       production_coordinator: 'Produksjonskoordinator',
+      script_supervisor: 'Script supervisor / kontinuitet',
       first_ad: 'Innspillingsleder / 1st AD',
       first_assistant_director: 'Innspillingsleder / 1st AD',
       '1st_ad': 'Innspillingsleder / 1st AD',
@@ -3058,6 +3068,7 @@ type RoleRoomProjectWorkspaceState = {
         'casting_director',
         'production_manager',
         'production_coordinator',
+        'script_supervisor',
         'first_ad',
         'second_ad',
         'camera_team',
@@ -3084,6 +3095,7 @@ type RoleRoomProjectWorkspaceState = {
     if (normalized === 'casting_director') return 'casting_director';
     if (normalized === 'production_manager') return 'production_manager';
     if (normalized === 'production_coordinator') return 'production_coordinator';
+    if (normalized === 'script_supervisor') return 'script_supervisor';
     if (['first_ad', 'first_assistant_director', '1st_ad'].includes(normalized)) return 'first_ad';
     if (['second_ad', 'second_assistant_director', '2nd_ad'].includes(normalized)) return 'second_ad';
     if (normalized === 'camera_team' || normalized === 'camera_operator') return 'camera_team';
@@ -3214,6 +3226,10 @@ type RoleRoomProjectWorkspaceState = {
     'production_coordinator',
     'production coordinator',
   ].includes(normalizedRequestedProjectRole);
+  const hasScriptSupervisorPersona = [
+    'script_supervisor',
+    'continuity',
+  ].includes(normalizedRequestedProjectRole);
   const accountRoleLabel = adminUser?.role ? getHeaderRoleLabel(adminUser.role) : '';
   const projectRoleLabel = currentUserRole?.role
     ? currentUserRole.role === 'camera_team' && hasCinematographerPersona
@@ -3259,6 +3275,8 @@ type RoleRoomProjectWorkspaceState = {
     && (!isRoleRoomAdminSession || hasProductionManagerPersona || mappedSessionProjectRole === 'production_manager');
   const isAssignedProductionCoordinatorProjectRole = normalizedCurrentProjectRole === 'production_coordinator'
     && (!isRoleRoomAdminSession || hasProductionCoordinatorPersona || mappedSessionProjectRole === 'production_coordinator');
+  const isAssignedScriptSupervisorProjectRole = normalizedCurrentProjectRole === 'script_supervisor'
+    && (!isRoleRoomAdminSession || hasScriptSupervisorPersona || mappedSessionProjectRole === 'script_supervisor');
   const canUseDirectorWorkspace = isAssignedDirectorProjectRole || isRoleRoomAdminSession;
   const canUseCinematographerWorkspace = isAssignedCinematographerProjectRole || isRoleRoomAdminSession;
   const canUseFirstAssistantDirectorWorkspace = isAssignedFirstAssistantDirectorProjectRole || isRoleRoomAdminSession;
@@ -3274,6 +3292,20 @@ type RoleRoomProjectWorkspaceState = {
     || isAssignedProductionManagerProjectRole
     || hasProductionCoordinationGrant
     || isRoleRoomAdminSession;
+  const continuityPermissions: NonNullable<UserRole['permissions']> = currentUserRole
+    ? {
+        ...castingAuthService.getDefaultPermissions(currentUserRole.role),
+        ...(currentUserRole.permissions ?? {}),
+      }
+    : {};
+  const canEditContinuityWorkspace = isAssignedScriptSupervisorProjectRole
+    || continuityPermissions.canManageContinuity === true
+    || isRoleRoomAdminSession;
+  const canCommentContinuityWorkspace = canEditContinuityWorkspace
+    || continuityPermissions.canComment === true;
+  const canUseContinuityWorkspace = canEditContinuityWorkspace
+    || canCommentContinuityWorkspace
+    || ['director', 'producer', 'first_ad', 'second_ad'].includes(normalizedCurrentProjectRole);
   const effectiveWorkspaceLens: RoleRoomWorkspaceLens = (
     canUseDirectorWorkspace
     && (workspaceLensPreference === 'director' || (workspaceLensPreference === null && isAssignedDirectorProjectRole))
@@ -3303,7 +3335,13 @@ type RoleRoomProjectWorkspaceState = {
               || (workspaceLensPreference === null && isAssignedProductionCoordinatorProjectRole)
             )
             ? 'production-coordination'
-            : 'full';
+            : canUseContinuityWorkspace
+              && (
+                workspaceLensPreference === 'continuity'
+                || (workspaceLensPreference === null && isAssignedScriptSupervisorProjectRole)
+              )
+              ? 'continuity'
+              : 'full';
   const getProjectRoleDetails = useCallback((project: CastingProject): {
     roleLabel: string;
     accessLabel: string;
@@ -11095,8 +11133,44 @@ type RoleRoomProjectWorkspaceState = {
                 setProjects((items) => items.map((project) => project.id === currentProject.id ? apply(project) : project));
               }}
             />
+          ) : currentProject && effectiveWorkspaceLens === 'continuity' ? (
+            <ContinuityWorkspace
+              key={`continuity-${currentProject.id}`}
+              project={currentProject}
+              readOnly={!canEditContinuityWorkspace}
+              canComment={canCommentContinuityWorkspace}
+              dataLoading={canonicalProductionDataProjectId !== currentProject.id}
+              onOpenFullWorkspace={handleOpenFullWorkspace}
+              onSaved={(updatedDay) => {
+                const apply = (project: CastingProject): CastingProject => ({
+                  ...project,
+                  productionDays: (project.productionDays ?? []).map((day) => day.id === updatedDay.id ? updatedDay : day),
+                });
+                setCurrentProject((project) => project ? apply(project) : project);
+                setProjects((items) => items.map((project) => project.id === currentProject.id ? apply(project) : project));
+              }}
+            />
           ) : (
             <>
+              {currentProject && canUseContinuityWorkspace ? (
+                <Box
+                  data-testid="continuity-workspace-launcher"
+                  sx={{
+                    mx: { xs: 1.5, sm: 2, lg: 3 }, mt: { xs: 1.5, sm: 2 }, px: { xs: 1.5, sm: 2 }, py: 1.25,
+                    display: 'flex', alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between',
+                    flexDirection: { xs: 'column', sm: 'row' }, gap: 1, borderRadius: 2,
+                    bgcolor: 'rgba(20,184,166,0.07)', border: '1px solid rgba(45,212,191,0.22)',
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ color: '#ccfbf1', fontWeight: 750, fontSize: '0.9rem' }}>Kontinuitet og take-logg</Typography>
+                    <Typography sx={{ color: 'rgba(204,251,241,0.7)', fontSize: '0.76rem' }}>Scene-status, sirklede takes, manusavvik, referanser og klipperrapport.</Typography>
+                  </Box>
+                  <Button variant="outlined" startIcon={<FactCheckIcon />} onClick={handleOpenContinuityWorkspace} sx={{ minHeight: isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE, color: '#99f6e4', borderColor: 'rgba(45,212,191,0.42)', flexShrink: 0 }}>
+                    Åpne kontinuitet
+                  </Button>
+                </Box>
+              ) : null}
               {currentProject && canUseProductionCoordinationWorkspace ? (
                 <Box
                   data-testid="production-coordination-workspace-launcher"

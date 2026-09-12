@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   userCanAccessCastingProject,
+  userCanCommentCastingContinuity,
   userCanCoordinateCastingProduction,
   userCanEditCastingProduction,
+  userCanManageCastingContinuity,
   userCanManageCastingProduction,
 } from "./casting-project-ownership.js";
 
@@ -165,5 +167,35 @@ describe("userCanManageCastingProduction", () => {
       "first-ad-1",
     )).resolves.toBe(false);
     expect(query).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("continuity ownership", () => {
+  it("limits the canonical continuity lane to script supervisors or an explicit grant", async () => {
+    const query = vi.fn(async (text: string, params?: unknown[]) => {
+      expect(text).toContain("'script_supervisor'");
+      expect(text).toContain("canManageContinuity");
+      expect(text).not.toContain("'production_manager'");
+      expect(params).toEqual(["project-1", "script-supervisor-1"]);
+      return { rows: [{ project_exists: true, can_manage_continuity: true }] };
+    });
+
+    await expect(userCanManageCastingContinuity(
+      { query }, "project-1", "script-supervisor-1",
+    )).resolves.toBe(true);
+  });
+
+  it("lets directors and ADs comment without granting continuity management", async () => {
+    const query = vi.fn(async (text: string) => {
+      expect(text).toContain("'director'");
+      expect(text).toContain("'first_ad'");
+      expect(text).toContain("canComment");
+      expect(text).toContain("AS can_comment_continuity");
+      return { rows: [{ project_exists: true, can_comment_continuity: true }] };
+    });
+
+    await expect(userCanCommentCastingContinuity(
+      { query }, "project-1", "director-1",
+    )).resolves.toBe(true);
   });
 });

@@ -1,0 +1,8 @@
+{
+  "TagSet": [
+    { "Key": "Product", "Value": "TheRoleRoom" },
+    { "Key": "DataClassification", "Value": "production-personal-data" },
+    { "Key": "Environment", "Value": "production" },
+    { "Key": "ManagedBy", "Value": "aws-cli" }
+  ]
+}

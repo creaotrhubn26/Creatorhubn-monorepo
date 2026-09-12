@@ -287,6 +287,13 @@ const CREATORHUB_RUNTIME_ENVIRONMENT = Object.freeze({
   CREATORHUB_S3_BUCKET: 'creatorhubn-prod-745600963362-eu-north-1',
   CREATORHUB_S3_REGION: 'eu-north-1',
 });
+const ROLE_ROOM_RUNTIME_ENVIRONMENT = Object.freeze({
+  AWS_ROLE_ARN:
+    'arn:aws:iam::745600963362:role/TheRoleRoomStorageRuntimeProd',
+  AWS_ROLE_ROOM_BUCKET_NAME:
+    'the-role-room-prod-745600963362-eu-north-1',
+  AWS_ROLE_ROOM_REGION: 'eu-north-1',
+});
 
 /**
  * Fail closed before a Render release when Leadgrid's private object storage
@@ -393,6 +400,39 @@ export async function assertCreatorHubStorageRuntimeEnvironment({
     );
   }
   console.log('Verified Render CreatorHub storage configuration.');
+}
+
+/** Fail closed when The Role Room's exact Render OIDC role is absent. */
+export async function assertRoleRoomStorageRuntimeEnvironment({
+  fetchImpl = fetch,
+  apiKey,
+  serviceId,
+}) {
+  const invalid = [];
+
+  for (const [key, expectedValue] of Object.entries(
+    ROLE_ROOM_RUNTIME_ENVIRONMENT,
+  )) {
+    try {
+      const value = await readRenderEnvironmentValue({
+        fetchImpl,
+        apiKey,
+        serviceId,
+        key,
+      });
+      if (value.trim() !== expectedValue) invalid.push(key);
+    } catch {
+      invalid.push(key);
+    }
+  }
+
+  if (invalid.length > 0) {
+    throw new Error(
+      'Render The Role Room storage configuration is missing or invalid: ' +
+        [...new Set(invalid)].join(', '),
+    );
+  }
+  console.log('Verified Render The Role Room storage configuration.');
 }
 
 function isLeastPrivilegeMigrationDatabaseUrl(value) {
@@ -1087,6 +1127,54 @@ async function runSelfTest() {
       return true;
     },
   );
+
+  const roleRoomEnvironment = new Map([
+    [
+      'AWS_ROLE_ARN',
+      'arn:aws:iam::745600963362:role/TheRoleRoomStorageRuntimeProd',
+    ],
+    [
+      'AWS_ROLE_ROOM_BUCKET_NAME',
+      'the-role-room-prod-745600963362-eu-north-1',
+    ],
+    ['AWS_ROLE_ROOM_REGION', 'eu-north-1'],
+  ]);
+  const requestedRoleRoomKeys = [];
+  const roleRoomFetch = async (url) => {
+    const key = decodeURIComponent(String(url).split('/').at(-1) || '');
+    requestedRoleRoomKeys.push(key);
+    return responseFor({ envVar: { key, value: roleRoomEnvironment.get(key) } });
+  };
+  await assert.doesNotReject(
+    assertRoleRoomStorageRuntimeEnvironment({
+      fetchImpl: roleRoomFetch,
+      apiKey: 'test-key',
+      serviceId: 'srv-' + 'a'.repeat(20),
+    }),
+  );
+  assert.deepEqual(requestedRoleRoomKeys, [
+    'AWS_ROLE_ARN',
+    'AWS_ROLE_ROOM_BUCKET_NAME',
+    'AWS_ROLE_ROOM_REGION',
+  ]);
+  await assert.rejects(
+    assertRoleRoomStorageRuntimeEnvironment({
+      fetchImpl: async (url) => {
+        const key = decodeURIComponent(String(url).split('/').at(-1) || '');
+        const value = key === 'AWS_ROLE_ROOM_BUCKET_NAME'
+          ? 'another-product-bucket'
+          : roleRoomEnvironment.get(key);
+        return responseFor({ envVar: { key, value } });
+      },
+      apiKey: 'test-key',
+      serviceId: 'srv-' + 'a'.repeat(20),
+    }),
+    (error) => {
+      assert.match(error.message, /AWS_ROLE_ROOM_BUCKET_NAME/);
+      assert.doesNotMatch(error.message, /another-product-bucket/);
+      return true;
+    },
+  );
   console.log('Render backend deploy self-test passed.');
 }
 
@@ -1126,6 +1214,10 @@ async function main() {
     await assertCreatorHubStorageRuntimeEnvironment({ apiKey, serviceId });
     return;
   }
+  if (command === 'assert-role-room-storage-runtime') {
+    await assertRoleRoomStorageRuntimeEnvironment({ apiKey, serviceId });
+    return;
+  }
   if (command === 'deploy-and-verify') {
     const commit = validateCommit(process.argv[3]);
     const backendUrl = validateBackendUrl(requiredEnv('BACKEND_URL'));
@@ -1138,7 +1230,7 @@ async function main() {
     return;
   }
   throw new Error(
-    'Usage: render-backend.mjs --self-test | assert-auto-deploy-off | assert-runtime-database-roles | assert-leadgrid-storage-runtime | assert-creatorhub-storage-runtime | disable-auto-deploy | deploy-and-verify <sha>',
+    'Usage: render-backend.mjs --self-test | assert-auto-deploy-off | assert-runtime-database-roles | assert-leadgrid-storage-runtime | assert-creatorhub-storage-runtime | assert-role-room-storage-runtime | disable-auto-deploy | deploy-and-verify <sha>',
   );
 }
 

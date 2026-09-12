@@ -228,6 +228,11 @@ jobs:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
         run: node scripts/deploy/render-backend.mjs assert-creatorhub-storage-runtime
 
+      - name: Verify Render The Role Room storage contract
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: node scripts/deploy/render-backend.mjs assert-role-room-storage-runtime
+
       - name: Revalidate current main before database mutation
         env:
           GH_TOKEN: ${{ github.token }}

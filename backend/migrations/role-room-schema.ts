@@ -9,10 +9,13 @@ import {
   text,
   boolean,
   integer,
+  bigint,
   numeric,
   jsonb,
   timestamp,
   index,
+  check,
+  unique,
   uniqueIndex,
   uuid,
   date,
@@ -176,6 +179,10 @@ export const castingProductionDays = pgTable('casting_production_days', {
   coordinationVersion: integer('coordination_version').default(0).notNull(),
   coordinationUpdatedBy: varchar('coordination_updated_by', { length: 255 }),
   coordinationUpdatedAt: timestamp('coordination_updated_at', { withTimezone: true, mode: 'string' }),
+  /** Independent concurrency lane for script-supervisor continuity data. */
+  continuityVersion: integer('continuity_version').default(0).notNull(),
+  continuityUpdatedBy: varchar('continuity_updated_by', { length: 255 }),
+  continuityUpdatedAt: timestamp('continuity_updated_at', { withTimezone: true, mode: 'string' }),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
@@ -186,6 +193,49 @@ export const castingProductionDays = pgTable('casting_production_days', {
   index('idx_casting_production_days_coordination_updated')
     .using('btree', table.projectId, table.coordinationUpdatedAt.desc())
     .where(sql`${table.coordinationUpdatedAt} IS NOT NULL`),
+  index('idx_casting_production_days_continuity_updated')
+    .using('btree', table.projectId, table.continuityUpdatedAt.desc())
+    .where(sql`${table.continuityUpdatedAt} IS NOT NULL`),
+]);
+
+/** Private AWS S3 objects attached to script-supervisor continuity records. */
+export const castingProductionContinuityMedia = pgTable('casting_production_continuity_media', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  projectId: varchar('project_id', { length: 255 }).notNull().references(() => castingProjects.id, { onDelete: 'cascade' }),
+  productionDayId: varchar('production_day_id', { length: 255 }).notNull().references(() => castingProductionDays.id, { onDelete: 'cascade' }),
+  sceneId: varchar('scene_id', { length: 255 }).notNull(),
+  uploadedBy: varchar('uploaded_by', { length: 255 }),
+  storageProvider: varchar('storage_provider', { length: 20 }).default('aws_s3').notNull(),
+  bucketName: text('bucket_name').notNull(),
+  objectKey: text('object_key').notNull(),
+  displayName: varchar('display_name', { length: 255 }).notNull(),
+  mediaKind: varchar('media_kind', { length: 16 }).notNull(),
+  sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
+  contentType: varchar('content_type', { length: 120 }).notNull(),
+  checksumSha256: varchar('checksum_sha256', { length: 64 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'string' }),
+}, (table) => [
+  unique('uq_casting_continuity_media_provider_key')
+    .on(table.storageProvider, table.objectKey),
+  check('chk_casting_continuity_media_provider', sql`${table.storageProvider} = 'aws_s3'`),
+  check('chk_casting_continuity_media_kind', sql`${table.mediaKind} IN ('photo', 'video')`),
+  check('chk_casting_continuity_media_size', sql`${table.sizeBytes} > 0 AND ${table.sizeBytes} <= 262144000`),
+  check('chk_casting_continuity_media_type', sql`${table.contentType} IN (
+    'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif',
+    'image/avif', 'video/mp4', 'video/quicktime', 'video/webm'
+  )`),
+  check('chk_casting_continuity_media_checksum', sql`${table.checksumSha256} ~ '^[0-9a-f]{64}$'`),
+  check('chk_casting_continuity_media_s3_contract', sql`
+    ${table.bucketName} = 'the-role-room-prod-745600963362-eu-north-1'
+    AND ${table.objectKey} LIKE 'organizations/%'
+  `),
+  index('idx_casting_continuity_media_day_active')
+    .using('btree', table.projectId, table.productionDayId, table.createdAt.desc())
+    .where(sql`${table.deletedAt} IS NULL`),
+  index('idx_casting_continuity_media_scene_active')
+    .using('btree', table.projectId, table.sceneId, table.createdAt.desc())
+    .where(sql`${table.deletedAt} IS NULL`),
 ]);
 
 export const castingShotLists = pgTable('casting_shot_lists', {

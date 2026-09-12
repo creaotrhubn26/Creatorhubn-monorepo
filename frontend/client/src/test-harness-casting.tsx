@@ -409,6 +409,35 @@ function buildProductionCoordinatorTrollSeedProject(): CastingProject {
   } as CastingProject;
 }
 
+function buildScriptSupervisorTrollSeedProject(): CastingProject {
+  const project = buildSecondAssistantDirectorTrollSeedProject();
+  return {
+    ...project,
+    description: 'Autentisert CI-prosjekt for script supervisor og kontinuitet',
+    crew: [{
+      id: 'troll-script-supervisor', projectId: project.id, name: 'Siri Kontinuitet',
+      role: 'script_supervisor', department: 'production', status: 'confirmed',
+      contactInfo: { email: 'siri@example.test' },
+    }],
+    productionDays: (project.productionDays ?? []).map((day) => ({
+      ...day,
+      crew: ['troll-script-supervisor'],
+      continuityVersion: 0,
+      productionContinuity: {
+        sceneRecords: [{ sceneId: 'troll-scene-1', status: 'in_progress', pagesPlanned: 1.25, pagesShot: .5, setup: 'Nora ved sørstien' }],
+        takes: [{ id: 'troll-take-1', sceneId: 'troll-scene-1', takeNumber: 1, slate: '1A', timecodeStart: '01:02:03:04', status: 'good', circled: true, continuityNotes: 'Nora holder lykten i venstre hånd.' }],
+        entries: [{ id: 'troll-continuity-1', sceneId: 'troll-scene-1', takeId: 'troll-take-1', category: 'props', subject: 'Lykten', description: 'Venstre hånd, tent før første replikk.', severity: 'warning', references: [] }],
+        deviations: [], comments: [], revisions: [], activity: [],
+        dailyNotes: 'Følg fuktighet i kostyme mellom oppsettene.',
+      },
+    })),
+    userRoles: [{
+      id: 'troll-script-supervisor-user-role', projectId: project.id,
+      userId: 'e2e-test-user', role: 'script_supervisor',
+    }],
+  } as CastingProject;
+}
+
 /**
  * Wrapper that pre-seeds a mock auth session before rendering CastingPlannerPanel.
  * This prevents the "no adminUser → redirect to /casting.html" path that fires
@@ -433,6 +462,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
       const isSecondAssistantDirectorSession = sessionMode === 'second-ad';
       const isProductionManagerSession = sessionMode === 'production-manager';
       const isProductionCoordinatorSession = sessionMode === 'production-coordinator';
+      const isScriptSupervisorSession = sessionMode === 'script-supervisor';
 
       // Pre-seed admin user so CastingPlannerPanel won't redirect when isStandalone=true
       await authSessionService.setAdminUser({
@@ -446,13 +476,15 @@ function SessionSeeder({ children }: { children: ReactNode }) {
             ? 'production_manager'
           : isProductionCoordinatorSession
             ? 'production_coordinator'
+          : isScriptSupervisorSession
+            ? 'script_supervisor'
           : isCinematographerSession
             ? 'cinematographer'
             : 'admin',
         display_name: 'E2E Tester',
         loginAs: isContentProducerSession
           ? 'content_producer'
-          : isCinematographerSession || isFirstAssistantDirectorSession || isSecondAssistantDirectorSession || isProductionManagerSession || isProductionCoordinatorSession
+          : isCinematographerSession || isFirstAssistantDirectorSession || isSecondAssistantDirectorSession || isProductionManagerSession || isProductionCoordinatorSession || isScriptSupervisorSession
             ? 'production_team'
             : undefined,
         requestedRole: isContentProducerSession
@@ -467,6 +499,8 @@ function SessionSeeder({ children }: { children: ReactNode }) {
                   ? 'production_manager'
                 : isProductionCoordinatorSession
                   ? 'production_coordinator'
+                : isScriptSupervisorSession
+                  ? 'script_supervisor'
               : null,
       });
       // Lokal backend (NODE_ENV≠production) godtar dette dev-token-et som
@@ -487,7 +521,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
       // 'photographer' ellers — vi setter begge for å være trygge.
       await settingsService.setSetting(
         'roleRoom_onboardingCompleted',
-        { photographer: true, producer: true, director: true, cinematographer: true, first_ad: true, second_ad: true, production_manager: true, production_coordinator: true, general: true },
+        { photographer: true, producer: true, director: true, cinematographer: true, first_ad: true, second_ad: true, production_manager: true, production_coordinator: true, script_supervisor: true, general: true },
         { userId: 'e2e-test-user' },
       );
 
@@ -496,7 +530,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
         ? 'roleRoom_workspaceState_content_producer'
         : 'roleRoom_workspaceState_production_team';
 
-      if (seedFlag === 'basic' || seedFlag === 'demo' || seedFlag === 'story-writer' || seedFlag === 'director' || seedFlag === 'cinematographer' || seedFlag === 'first-ad' || seedFlag === 'second-ad-troll' || seedFlag === 'production-manager-troll' || seedFlag === 'production-coordinator-troll') {
+      if (seedFlag === 'basic' || seedFlag === 'demo' || seedFlag === 'story-writer' || seedFlag === 'director' || seedFlag === 'cinematographer' || seedFlag === 'first-ad' || seedFlag === 'second-ad-troll' || seedFlag === 'production-manager-troll' || seedFlag === 'production-coordinator-troll' || seedFlag === 'script-supervisor-troll') {
         try {
           const seedProject = seedFlag === 'director'
             ? buildDirectorSeedProject()
@@ -510,6 +544,8 @@ function SessionSeeder({ children }: { children: ReactNode }) {
                 ? buildProductionManagerTrollSeedProject()
               : seedFlag === 'production-coordinator-troll'
                 ? buildProductionCoordinatorTrollSeedProject()
+              : seedFlag === 'script-supervisor-troll'
+                ? buildScriptSupervisorTrollSeedProject()
               : buildBasicSeedProject();
           await castingService.saveProject(seedProject);
 
@@ -527,6 +563,8 @@ function SessionSeeder({ children }: { children: ReactNode }) {
                   ? 'production-management'
                 : seedFlag === 'production-coordinator-troll'
                   ? 'production-coordination'
+                : seedFlag === 'script-supervisor-troll'
+                  ? 'continuity'
                   : undefined,
               firstAssistantDirectorSurface: seedFlag === 'second-ad-troll' ? 'today' : undefined,
               storyArcView: 'main',
