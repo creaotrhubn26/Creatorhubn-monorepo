@@ -276,11 +276,17 @@ struct LeadgridTabHeader<Extra: View>: View {
                     guard let projectId = state.activeLeadgridProjectId else {
                         throw AddLeadSaveError(message: "Velg et kundeprosjekt før du lagrer leaden")
                     }
-                    _ = try await api.createLeadAtPin(
-                        newLead.makeCreateRequest(projectID: projectId),
-                        organizationId: state.activeOrganizationId
+                    guard let organizationId = state.activeOrganizationId else {
+                        throw AddLeadSaveError(message: "Velg en organisasjon før du lagrer leaden")
+                    }
+                    let leadId = try await newLead.saveResiliently(
+                        api: api,
+                        organizationID: organizationId,
+                        projectID: projectId
                     )
-                    addLeadToast = "«\(newLead.companyName)» lagt til"
+                    addLeadToast = leadId == nil
+                        ? "Leaden er lagret offline og sendes automatisk når nettet er tilbake."
+                        : "«\(newLead.companyName)» lagt til"
                 }
             case .newFollowUp:
                 NewFollowUpSheet(

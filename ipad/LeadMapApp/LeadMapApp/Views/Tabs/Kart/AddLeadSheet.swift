@@ -341,11 +341,22 @@ struct AddLeadSheet: View {
         onCancel: @escaping @MainActor () -> Void = {},
         onSave: @escaping @MainActor (NewLeadData) async throws -> Void
     ) {
-        self.initialCoordinate = initialCoordinate
+        #if DEBUG
+        let environment = ProcessInfo.processInfo.environment
+        let qaCoordinate = environment["QA_LEAD_LATITUDE"].flatMap(Double.init).flatMap { latitude in
+            environment["QA_LEAD_LONGITUDE"].flatMap(Double.init).map { longitude in
+                CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+            }
+        }
+        let startingCoordinate = initialCoordinate ?? qaCoordinate
+        #else
+        let startingCoordinate = initialCoordinate
+        #endif
+        self.initialCoordinate = startingCoordinate
         self.onCancel = onCancel
         self.onSave = onSave
-        _pinCoord = State(initialValue: initialCoordinate)
-        _locationConfidence = State(initialValue: initialCoordinate == nil ? "unknown" : "exact")
+        _pinCoord = State(initialValue: startingCoordinate)
+        _locationConfidence = State(initialValue: startingCoordinate == nil ? "unknown" : "exact")
     }
 
     struct NewLeadData {
@@ -401,6 +412,77 @@ struct AddLeadSheet: View {
                 projectID: projectID,
                 idempotencyKey: idempotencyKey
             )
+        }
+
+        func makeLeadDraft(
+            organizationID: String,
+            projectID: String,
+            idempotencyKey: UUID = UUID()
+        ) -> LeadDraft {
+            LeadDraft(
+                creationId: idempotencyKey,
+                organizationId: organizationID,
+                name: companyName,
+                company: companyName,
+                organizationNumber: organizationNumber,
+                websiteUrl: websiteURL,
+                contactName: contactName,
+                contactRole: contactRole,
+                email: email,
+                phone: phone,
+                address: LeadDraft.optionalText(address),
+                postalCode: postalCode,
+                city: city,
+                country: "NO",
+                latitude: coord.latitude,
+                longitude: coord.longitude,
+                googlePlaceId: nil,
+                industryId: nil,
+                industry: industryLabel,
+                employeeCountEstimate: employeeCountEstimate,
+                annualRevenueNokEstimate: annualRevenueNokEstimate,
+                estimatedValue: nil,
+                notes: notes,
+                leadTemperature: leadTemperature.rawValue,
+                pipelineStage: "new",
+                leadStatus: leadStatus.rawValue,
+                nextFollowUpAt: nextFollowUpAt.map { ISO8601DateFormatter().string(from: $0) },
+                nextAction: nextAction,
+                locationConfidence: locationConfidence,
+                leadSource: leadSource,
+                projectId: projectID,
+                rawText: nil,
+                allowDuplicate: false
+            )
+        }
+
+        /// Én prosjektbundet lagringsvei for alle flater som bruker skjemaet.
+        /// Transport- og serverfeil køes med samme idempotensnøkkel, mens
+        /// validerings-, tilgangs- og duplikatfeil vises direkte i skjemaet.
+        func saveResiliently(
+            api: APIClient,
+            organizationID: String,
+            projectID: String,
+            idempotencyKey: UUID = UUID()
+        ) async throws -> String? {
+            let draft = makeLeadDraft(
+                organizationID: organizationID,
+                projectID: projectID,
+                idempotencyKey: idempotencyKey
+            )
+            switch await OfflineResilientActions.createLead(api: api, draft: draft) {
+            case .sent(let response):
+                return response.id
+            case .queued:
+                return nil
+            case .duplicate(let candidates):
+                let names = candidates.prefix(3).map(\.name).joined(separator: ", ")
+                throw AddLeadSaveError(message: names.isEmpty
+                    ? "En mulig duplikat finnes allerede i dette prosjektet."
+                    : "Mulig eksisterende lead: \(names).")
+            case .rejected(let message):
+                throw AddLeadSaveError(message: message)
+            }
         }
     }
 

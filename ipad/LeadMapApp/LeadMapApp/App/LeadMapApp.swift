@@ -434,6 +434,13 @@ struct RootView: View {
         #endif
         .task {
             await appState.bootstrap()
+            #if DEBUG
+            // Staging-UI-testene skal være hermetiske selv når samme simulator
+            // tidligere har blitt avbrutt med ventende eller feilede handlinger.
+            if ProcessInfo.processInfo.environment["QA_RESET_OFFLINE_QUEUE"] == "1" {
+                await OfflineActionQueue.shared.clearAll()
+            }
+            #endif
             // Start Leadgrid-polling så snart auth er på plass.
             if appState.api != nil {
                 appState.startLeadgridPolling()

@@ -154,6 +154,32 @@ describe("Pondus template concurrency", () => {
     expect(values).toEqual([access.organizationId, "dentum-oslo"]);
   });
 
+  it("normalizes legacy objections before returning native templates", async () => {
+    const query = vi.fn(async () => ({
+      rows: [{
+        id: "22222222-2222-4222-8222-222222222222",
+        name: "Legacy-mal",
+        category: "custom",
+        kind: "telephone",
+        score: 50,
+        steps: [],
+        objections: [{ objection: "Ikke nå", response: "Når passer det bedre?" }],
+        is_published: true,
+        version: 1,
+      }],
+    }));
+    const app = appWith(registerPondusTemplateRoutesV2, query);
+
+    const response = await request(app).get("/api/leadgrid/pondus/templates");
+
+    expect(response.status).toBe(200);
+    expect(response.body.templates[0].objections).toEqual([{
+      id: "legacy_objection_1",
+      prompt: "Ikke nå",
+      response: "Når passer det bedre?",
+    }]);
+  });
+
   it("uses explicit PostgreSQL types for reused create parameters", async () => {
     const query = vi.fn(async (sql: string) => ({
       rows: String(sql).includes("INSERT INTO pondus_templates")

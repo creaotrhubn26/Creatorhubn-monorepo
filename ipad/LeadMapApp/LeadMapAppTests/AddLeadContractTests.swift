@@ -90,6 +90,66 @@ final class AddLeadRequestContractTests: XCTestCase {
         XCTAssertEqual(body["project_id"] as? String, "project-1")
         XCTAssertEqual(request.idempotencyKey, idempotencyKey)
     }
+
+    @MainActor
+    func testSharedFormBuildsProjectBoundOfflineDraftWithoutLosingFields() throws {
+        let followUp = Date(timeIntervalSince1970: 1_788_336_600)
+        let data = AddLeadSheet.NewLeadData(
+            companyName: "Dentum Testklinikk AS",
+            organizationNumber: "937518684",
+            websiteURL: "https://dentum.example",
+            contactName: "Anne Lunde",
+            contactRole: "Klinikkleder",
+            phone: "+4799999999",
+            email: "post@dentum.example",
+            industryLabel: "Tannhelse",
+            employeeCountEstimate: 12,
+            annualRevenueNokEstimate: 8_500_000,
+            notes: "Prosjektbundet test",
+            leadTemperature: .warm,
+            leadStatus: .unvisited,
+            nextFollowUpAt: followUp,
+            nextAction: "Ring klinikken",
+            address: "Karl Johans gate 1",
+            postalCode: "0154",
+            city: "Oslo",
+            coord: CLLocationCoordinate2D(latitude: 59.9139, longitude: 10.7522),
+            locationConfidence: "geocoded",
+            leadSource: "manual"
+        )
+        let creationID = UUID(uuidString: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")!
+
+        let draft = data.makeLeadDraft(
+            organizationID: "org-dentum",
+            projectID: "dentum-oslo",
+            idempotencyKey: creationID
+        )
+        let queued = try OfflineResilientActions.makeLeadCreationAction(draft: draft)
+        let decoded = try JSONDecoder.leadgridSnakeCase.decode(
+            LeadDraft.self,
+            from: try XCTUnwrap(queued.bodyJson)
+        )
+
+        XCTAssertEqual(decoded, draft)
+        XCTAssertEqual(decoded.creationId, creationID)
+        XCTAssertEqual(decoded.organizationId, "org-dentum")
+        XCTAssertEqual(decoded.projectId, "dentum-oslo")
+        XCTAssertEqual(decoded.company, "Dentum Testklinikk AS")
+        XCTAssertEqual(decoded.organizationNumber, "937518684")
+        XCTAssertEqual(decoded.email, "post@dentum.example")
+        XCTAssertEqual(decoded.industry, "Tannhelse")
+        XCTAssertEqual(queued.endpoint, "/api/admin-room/lead-map/leads")
+        XCTAssertEqual(queued.httpMethod, "POST")
+        XCTAssertEqual(queued.id, creationID)
+    }
+}
+
+private extension JSONDecoder {
+    static var leadgridSnakeCase: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return decoder
+    }
 }
 
 final class LeadgridAssignmentScopeContractTests: XCTestCase {
