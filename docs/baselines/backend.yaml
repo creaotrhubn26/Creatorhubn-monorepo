@@ -51,7 +51,6 @@ components:
       - { name: "@tanstack/react-query", declared: "^5.90.7", resolved: "5.100.9" }
       - { name: "@techstark/opencv-js", declared: "^4.12.0-release.1", resolved: "4.12.0-release.1" }
       - { name: "@tensorflow-models/body-pix", declared: "^2.2.1", resolved: "2.2.1" }
-      - { name: "@tensorflow-models/deeplab", declared: "^0.2.2", resolved: "0.2.2" }
       - { name: "@tensorflow-models/face-landmarks-detection", declared: "^1.0.6", resolved: "1.0.6" }
       - { name: "@tensorflow-models/mobilenet", declared: "^2.1.1", resolved: "2.1.1" }
       - { name: "@tensorflow-models/pose-detection", declared: "^2.1.1", resolved: "2.1.3" }
@@ -71,7 +70,7 @@ components:
       - { name: "@types/ws", declared: "^8.18.1", resolved: "8.18.1" }
       - { name: "@xenova/transformers", declared: "^2.17.2", resolved: "2.17.2" }
       - { name: "@xmldom/xmldom", declared: "^0.9.8", resolved: "0.9.10" }
-      - { name: "adm-zip", declared: "^0.5.17", resolved: "0.5.17" }
+      - { name: "adm-zip", declared: "^0.6.0", resolved: "0.6.0" }
       - { name: "archiver", declared: "^7.0.1", resolved: "7.0.1" }
       - { name: "axios", declared: "^1.7.7", resolved: "1.16.0" }
       - { name: "bcrypt", declared: "^6.0.0", resolved: "6.0.0" }
@@ -93,6 +92,7 @@ components:
       - { name: "connect-pg-simple", declared: "^10.0.0", resolved: "10.0.0" }
       - { name: "cookie-parser", declared: "^1.4.7", resolved: "1.4.7" }
       - { name: "cors", declared: "^2.8.5", resolved: "2.8.6" }
+      - { name: "cron-parser", declared: "4.9.0", resolved: "4.9.0" }
       - { name: "csv-parser", declared: "^3.2.0", resolved: "3.2.0" }
       - { name: "csv-stringify", declared: "^6.6.0", resolved: "6.7.0" }
       - { name: "cubic-spline", declared: "^3.0.3", resolved: "3.0.3" }
@@ -122,7 +122,6 @@ components:
       - { name: "fluent-ffmpeg", declared: "^2.1.3", resolved: "2.1.3" }
       - { name: "form-data", declared: "^4.0.4", resolved: "4.0.5" }
       - { name: "formidable", declared: "^3.5.4", resolved: "3.5.4" }
-      - { name: "ghost-cursor", declared: "^1.4.1", resolved: "1.4.2" }
       - { name: "glob", declared: "^11.0.3", resolved: "11.1.0" }
       - { name: "glslify", declared: "^7.1.1", resolved: "7.1.1" }
       - { name: "google-auth-library", declared: "^10.5.0", resolved: "10.6.2" }
@@ -153,7 +152,7 @@ components:
       - { name: "node-fetch", declared: "^3.3.2", resolved: "3.3.2" }
       - { name: "node-html-parser", declared: "^7.0.1", resolved: "7.1.0" }
       - { name: "node-vibrant", declared: "^4.0.4", resolved: "4.0.4" }
-      - { name: "nodemailer", declared: "^8.0.5", resolved: "8.0.7" }
+      - { name: "nodemailer", declared: "^9.0.5", resolved: "9.0.5" }
       - { name: "npm-check-updates", declared: "^19.1.2", resolved: "19.6.6" }
       - { name: "onnxruntime-node", declared: "^1.19.2", resolved: "1.25.1" }
       - { name: "openai", declared: "^4.58.0", resolved: "4.104.0" }
@@ -168,10 +167,7 @@ components:
       - { name: "pg", declared: "^8.16.3", resolved: "8.20.0" }
       - { name: "playwright", declared: "^1.58.2", resolved: "1.59.1" }
       - { name: "prettier", declared: "^3.6.2", resolved: "3.8.3" }
-      - { name: "puppeteer", declared: "^24.31.0", resolved: "24.42.0" }
-      - { name: "puppeteer-extra", declared: "^3.3.6", resolved: "3.3.6" }
-      - { name: "puppeteer-extra-plugin-stealth", declared: "^2.11.2", resolved: "2.11.2" }
-      - { name: "puppeteer-real-browser", declared: "^1.4.4", resolved: "1.4.4" }
+      - { name: "puppeteer", declared: "^25.6.0", resolved: "25.7.0" }
       - { name: "qrcode", declared: "^1.5.4", resolved: "1.5.4" }
       - { name: "react", declared: "^19.2.0", resolved: "19.2.3" }
       - { name: "react-chartjs-2", declared: "^5.3.1", resolved: "5.3.1" }
@@ -183,7 +179,7 @@ components:
       - { name: "replicate", declared: "^1.4.0", resolved: "1.4.0" }
       - { name: "rss-parser", declared: "^3.13.0", resolved: "3.13.0" }
       - { name: "semver", declared: "^7.7.3", resolved: "7.7.4" }
-      - { name: "sharp", declared: "^0.34.5", resolved: "0.34.5" }
+      - { name: "sharp", declared: "^0.35.3", resolved: "0.35.3" }
       - { name: "socket.io", declared: "^4.8.1", resolved: "4.8.3" }
       - { name: "socket.io-client", declared: "^4.8.1", resolved: "4.8.3" }
       - { name: "speakeasy", declared: "^2.0.0", resolved: "2.0.0" }
@@ -203,8 +199,8 @@ components:
       - { name: "wavesurfer.js", declared: "^7.7.14", resolved: "7.12.6" }
       - { name: "web-push", declared: "^3.6.7", resolved: "3.6.7" }
       - { name: "winston", declared: "^3.17.0", resolved: "3.19.0" }
-      - { name: "ws", declared: "^8.18.3", resolved: "8.20.0" }
-      - { name: "xlsx", declared: "^0.18.5", resolved: "0.18.5" }
+      - { name: "ws", declared: "^8.18.3", resolved: "8.21.3" }
+      - { name: "xlsx", declared: "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz", resolved: "0.20.3" }
       - { name: "xml2js", declared: "^0.6.2", resolved: "0.6.2" }
       - { name: "yaml", declared: "^2.8.1", resolved: "2.8.4" }
       - { name: "yjs", declared: "^13.6.27", resolved: "13.6.30" }
