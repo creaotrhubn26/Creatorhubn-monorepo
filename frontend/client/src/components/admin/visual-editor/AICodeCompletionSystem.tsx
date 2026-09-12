@@ -56,6 +56,7 @@ import {
   Settings,
   Psychology,
 } from '@mui/icons-material';
+import { getStoredAuthToken } from '@/lib/queryClient';
 
 export interface AICompletionConfig {
   provider: 'openai' | 'anthropic' | 'local' | 'auto';
@@ -195,6 +196,12 @@ export class AICodeCompletionEngine {
   }
 
   private hydrateKvValue(path: string, onValue: (value: unknown) => void) {
+    // Komponenten ligger i en delt bundle og singleton-en konstrueres også på
+    // offentlige sider. Ikke kall et brukerbeskyttet endepunkt før en faktisk
+    // sesjon finnes; ellers lager f.eks. vilkårssiden en forventet 401 i console.
+    if (!getStoredAuthToken()) {
+      return;
+    }
     void fetch(path, { credentials: 'include' })
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {

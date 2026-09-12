@@ -64,6 +64,27 @@ function generateToken(): string {
   return crypto.randomBytes(32).toString("base64url");
 }
 
+export async function createPasswordResetToken(
+  pool: Pool,
+  input: {
+    email: string;
+    userId: string;
+    ipAddress?: string | null;
+    ttlMinutes?: number;
+  },
+): Promise<string> {
+  await ensureSchema(pool);
+  const token = generateToken();
+  const ttlMinutes = Math.max(1, Math.floor(input.ttlMinutes ?? TOKEN_TTL_MINUTES));
+  const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
+  await pool.query(
+    `INSERT INTO password_reset_tokens (token, email, user_id, expires_at, ip_address)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [token, input.email.trim().toLowerCase(), input.userId, expiresAt, input.ipAddress ?? null],
+  );
+  return token;
+}
+
 function buildResetUrl(token: string): string {
   const base = (process.env.PUBLIC_APP_URL ?? process.env.APP_URL ?? "").replace(/\/$/, "");
   const path = `/reset-passord/${token}`;
@@ -106,14 +127,13 @@ export async function requestPasswordReset(
   }
 
   // Mint token
-  const token = generateToken();
-  const expiresAt = new Date(Date.now() + TOKEN_TTL_MINUTES * 60 * 1000);
+  let token: string;
   try {
-    await pool.query(
-      `INSERT INTO password_reset_tokens (token, email, user_id, expires_at, ip_address)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [token, email, userId, expiresAt, input.ipAddress ?? null],
-    );
+    token = await createPasswordResetToken(pool, {
+      email,
+      userId,
+      ipAddress: input.ipAddress,
+    });
   } catch (error) {
     console.error("[password-reset] token persist failed", error);
     return { ok: true, debugReason: "email_send_failed" };

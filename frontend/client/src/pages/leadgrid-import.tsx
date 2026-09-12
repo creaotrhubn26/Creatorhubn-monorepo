@@ -13,7 +13,7 @@
  */
 import React, { useState, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getStoredAuthToken } from "@/lib/queryClient";
 import { OnboardingTour } from "@/components/leadgrid/OnboardingTour";
 import {
   Box, Container, Stack, Typography, Card, CardContent, Button, Tabs, Tab,
@@ -85,7 +85,7 @@ interface ProjectOption {
 // =====================================================================
 
 function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem("creatorhub_auth_token");
+  const token = getStoredAuthToken();
   const h: Record<string, string> = {};
   if (token) h["Authorization"] = `Bearer ${token}`;
   return h;
@@ -109,6 +109,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 // Page-shell
 // =====================================================================
 export default function LeadgridImportPage() {
+  const isAuthenticated = typeof window !== "undefined" && Boolean(getStoredAuthToken());
   const [tab, setTab] = useState<"csv" | "url">("csv");
   const [projectId, setProjectId] = useState<string | null>(() =>
     typeof window === "undefined"
@@ -120,6 +121,8 @@ export default function LeadgridImportPage() {
   }>({
     queryKey: ["leadgrid-projects-for-import"],
     queryFn: () => apiRequest("/api/admin-room/lead-map/projects"),
+    enabled: isAuthenticated,
+    retry: false,
   });
   const projects = projectData?.projects ?? [];
 
@@ -134,6 +137,31 @@ export default function LeadgridImportPage() {
   }, [projectData, projectId, projects]);
 
   const activeProject = projects.find((project) => project.id === projectId);
+
+  if (!isAuthenticated) {
+    return (
+      <Box sx={{ minHeight: "100vh", bgcolor: "#f7f5fb", display: "grid", placeItems: "center", p: 3 }}>
+        <Card sx={{ width: "100%", maxWidth: 560, borderRadius: 3 }}>
+          <CardContent sx={{ p: { xs: 3, md: 5 } }}>
+            <Stack spacing={2.5}>
+              <Typography variant="overline" sx={{ color: "#7c3aed", fontWeight: 700, letterSpacing: 1.5 }}>
+                Leadgrid · Import
+              </Typography>
+              <Typography component="h1" variant="h4" sx={{ fontWeight: 800 }}>
+                Logg inn for å importere leads
+              </Typography>
+              <Typography color="text.secondary">
+                Import knyttes alltid til organisasjonen og kundeprosjektet ditt. Derfor må vi vite hvem du er før en fil kan analyseres.
+              </Typography>
+              <Button variant="contained" size="large" href="/login" sx={{ alignSelf: "flex-start", bgcolor: "#7c3aed" }}>
+                Logg inn
+              </Button>
+            </Stack>
+          </CardContent>
+        </Card>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "#f7f5fb", py: 6 }}>
