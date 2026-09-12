@@ -24,6 +24,8 @@ import Stripe from "stripe";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
 import { notifyAdmins } from "./admin-notify.js";
 import { lookupCompanyForNewLead } from "./lead-brreg-service.js";
+import { leadgridPublicOrigin } from "./leadgrid-public-origin.js";
+import { createPasswordResetToken } from "./password-reset-service.js";
 
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -44,7 +46,7 @@ function getStripe(): Stripe | null {
   return key ? new Stripe(key) : null;
 }
 
-const PUBLIC_BASE = process.env.ROLE_ROOM_PUBLIC_URL ?? "https://theroleroom.com";
+const PUBLIC_BASE = leadgridPublicOrigin();
 
 export function registerOrgSelfOnboardRoutes({ app, pool }: Deps): void {
   app.post("/api/leadgrid/self-onboard", async (req, res) => {
@@ -177,29 +179,28 @@ export function registerOrgSelfOnboardRoutes({ app, pool }: Deps): void {
         [orgId, userId],
       );
 
-      // 6) Magic-link / sett-passord-token (kun ny bruker)
+      // 6) Ny bruker får en ekte, én-gangs sett-passord-token etter commit.
+      // Den samme token-tabellen og consume-ruten som passord-reset bruker
+      // gir utløp, én-gangsbruk og sesjonsinvalidering uten en parallell flyt.
       let magicToken: string | null = null;
-      if (isNewUser) {
-        magicToken = crypto.randomBytes(32).toString("hex");
-        await client.query(
-          `UPDATE users
-              SET meta = COALESCE(meta, '{}'::jsonb)
-                       || jsonb_build_object('magic_token', $1::text, 'magic_expires', $2::text)
-            WHERE id = $3`,
-          [
-            magicToken,
-            new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString(),
-            userId,
-          ],
-        );
-      }
-
       await client.query("COMMIT");
 
-      // 6.5) Opprett Stripe Customer + Checkout Session (mode='setup'
-      //      for Free, 'subscription' for paid). Returnerer URL til
-      //      Stripe-hosted checkout. Ved suksess kommer brukeren
-      //      tilbake til /leadgrid/welcome med magic-token.
+      if (isNewUser) {
+        try {
+          magicToken = await createPasswordResetToken(pool, {
+            email,
+            userId,
+            ttlMinutes: 14 * 24 * 60,
+            ipAddress: req.ip,
+          });
+        } catch (e) {
+          console.error("[self-onboard] set-password token failed", e);
+        }
+      }
+
+      // 6.5) Stripe Customer tilhører organisasjonen. Gratisplanen krever
+      //      aldri kort eller Checkout; en Checkout Session opprettes bare
+      //      når malen faktisk peker på en betalt Stripe-pris.
       let checkoutUrl: string | null = null;
       const stripe = getStripe();
       if (stripe) {
@@ -220,11 +221,11 @@ export function registerOrgSelfOnboardRoutes({ app, pool }: Deps): void {
 
           const successUrl =
             magicToken
-              ? `${PUBLIC_BASE}/leadgrid/welcome?token=${magicToken}&checkout=success`
-              : `${PUBLIC_BASE}/leadgrid?checkout=success`;
-          const cancelUrl = `${PUBLIC_BASE}/leadgrid?checkout=cancelled`;
+              ? `${PUBLIC_BASE}/reset-passord/${magicToken}?checkout=success`
+              : `${PUBLIC_BASE}/?checkout=success`;
+          const cancelUrl = `${PUBLIC_BASE}/?checkout=cancelled`;
 
-          // Sjekk om planen er Free (gratis = setup intent) eller paid (subscription)
+          // Bare planer med en konfigurert månedspris går til Checkout.
           const priceR = await pool.query<{ stripe_price_id_monthly: string | null }>(
             `SELECT pl.stripe_price_id_monthly
                FROM plan_limits pl WHERE pl.plan_key = $1`,
@@ -255,20 +256,6 @@ export function registerOrgSelfOnboardRoutes({ app, pool }: Deps): void {
               },
             });
             checkoutUrl = session.url;
-          } else {
-            // Free plan — kun lagre kort (Setup Intent) for senere oppgrade
-            const session = await stripe.checkout.sessions.create({
-              mode: "setup",
-              customer: customer.id,
-              success_url: successUrl,
-              cancel_url: cancelUrl,
-              metadata: {
-                organization_id: orgId,
-                plan_key: tmpl.default_plan,
-                product_family: "leadgrid",
-              },
-            });
-            checkoutUrl = session.url;
           }
         } catch (e) {
           console.error("[self-onboard] stripe checkout failed", e);
@@ -278,8 +265,8 @@ export function registerOrgSelfOnboardRoutes({ app, pool }: Deps): void {
       // 7) Velkomst-e-post (utenfor TX)
       {
         const url = magicToken
-          ? `https://theroleroom.com/leadgrid/welcome?token=${magicToken}`
-          : `https://theroleroom.com/leadgrid`;
+          ? `${PUBLIC_BASE}/reset-passord/${magicToken}`
+          : `${PUBLIC_BASE}/login`;
         try {
           await sendTransactionalEmail({
             to: email,
@@ -317,7 +304,7 @@ export function registerOrgSelfOnboardRoutes({ app, pool }: Deps): void {
           org_type: orgType, plan: tmpl.default_plan,
         },
         user_id: userId,
-        magic_link_sent: isNewUser,
+        magic_link_sent: Boolean(magicToken),
         checkout_url: checkoutUrl,
       });
     } catch (e) {

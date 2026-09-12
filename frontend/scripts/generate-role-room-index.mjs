@@ -171,3 +171,97 @@ if (/<(?:title|meta|link)\b[^>]*(?:CreatorHub Norge|creatorhubn\.com)/i.test(htm
 
 await writeFile(targetPath, html, 'utf8');
 console.log('generate-role-room-index: dist/role-room-index.html skrevet fra bygget index.html');
+
+// Leadgrid bruker samme kompilerte React-shell, men må aldri sende
+// CreatorHub-metadata i den rå HTML-responsen. Denne filen rutes på hostnivå
+// for vanlige nettlesere; de fullstendig prerendrerte bot-sidene beholdes.
+const leadgridTargetPath = resolve(distDir, 'leadgrid-index.html');
+const leadgridMetadata = {
+  title: 'Leadgrid — Gjør kartet om til kunder',
+  description:
+    'Kartbasert CRM for lokale muligheter. Leadgrid hjelper team med å finne, organisere, følge opp og vinne lokale leads — alt i ett visuelt system.',
+  canonical: 'https://leadgrid.no/',
+  image: 'https://leadgrid.no/leadgrid/og-image.png',
+};
+
+let leadgridHtml = await readFile(sourcePath, 'utf8');
+leadgridHtml = leadgridHtml.replace(/<title>[\s\S]*?<\/title>/i, `<title>${leadgridMetadata.title}</title>`);
+leadgridHtml = replaceMeta(leadgridHtml, 'name', 'description', leadgridMetadata.description);
+leadgridHtml = replaceMeta(leadgridHtml, 'name', 'theme-color', '#0B0518');
+leadgridHtml = replaceMeta(leadgridHtml, 'name', 'apple-mobile-web-app-title', 'Leadgrid');
+leadgridHtml = replaceMeta(leadgridHtml, 'property', 'og:site_name', 'Leadgrid');
+leadgridHtml = replaceMeta(leadgridHtml, 'property', 'og:title', leadgridMetadata.title);
+leadgridHtml = replaceMeta(leadgridHtml, 'property', 'og:description', leadgridMetadata.description);
+leadgridHtml = replaceMeta(leadgridHtml, 'property', 'og:url', leadgridMetadata.canonical);
+leadgridHtml = replaceMeta(leadgridHtml, 'property', 'og:image', leadgridMetadata.image);
+leadgridHtml = replaceMeta(leadgridHtml, 'property', 'og:locale', 'nb_NO');
+leadgridHtml = replaceMeta(leadgridHtml, 'name', 'twitter:title', leadgridMetadata.title);
+leadgridHtml = replaceMeta(leadgridHtml, 'name', 'twitter:description', leadgridMetadata.description);
+leadgridHtml = replaceMeta(leadgridHtml, 'name', 'twitter:image', leadgridMetadata.image);
+leadgridHtml = replaceLink(leadgridHtml, 'canonical', leadgridMetadata.canonical);
+leadgridHtml = replaceLink(leadgridHtml, 'icon', '/leadgrid/logo.webp', ' type="image/webp"');
+leadgridHtml = replaceLink(leadgridHtml, 'shortcut icon', '/leadgrid/logo.webp', ' type="image/webp"');
+leadgridHtml = replaceLink(leadgridHtml, 'apple-touch-icon', '/leadgrid/logo.webp');
+
+leadgridHtml = leadgridHtml.replace(
+  /<script\b[^>]*\bdata-seo-ld=["'][^"']+["'][^>]*>[\s\S]*?<\/script>/gi,
+  '',
+);
+const leadgridStructuredData = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    '@id': 'https://leadgrid.no/#organization',
+    name: 'Leadgrid',
+    legalName: 'Creatorhub AS',
+    url: leadgridMetadata.canonical,
+    logo: 'https://leadgrid.no/leadgrid/logo.webp',
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    '@id': 'https://leadgrid.no/#software',
+    name: 'Leadgrid',
+    applicationCategory: 'BusinessApplication',
+    applicationSubCategory: 'CRM',
+    operatingSystem: 'Web, iOS',
+    url: leadgridMetadata.canonical,
+    description: leadgridMetadata.description,
+    publisher: { '@id': 'https://leadgrid.no/#organization' },
+    offers: { '@type': 'Offer', name: 'Solo Free', price: '0', priceCurrency: 'NOK' },
+  },
+];
+const leadgridJsonLd = leadgridStructuredData
+  .map(
+    (value, index) =>
+      `<script type="application/ld+json" data-seo-ld="leadgrid-${index}">${JSON.stringify(value).replace(/</g, '\\u003c')}</script>`,
+  )
+  .join('\n');
+leadgridHtml = leadgridHtml.replace('</head>', `${leadgridJsonLd}\n</head>`);
+
+const requiredLeadgridMetadata = [
+  `<title>${leadgridMetadata.title}</title>`,
+  `<meta name="description" content="${escapeAttribute(leadgridMetadata.description)}" />`,
+  '<meta name="apple-mobile-web-app-title" content="Leadgrid" />',
+  '<meta property="og:site_name" content="Leadgrid" />',
+  `<meta property="og:url" content="${leadgridMetadata.canonical}" />`,
+  `<link rel="canonical" href="${leadgridMetadata.canonical}" />`,
+  '<link rel="icon" href="/leadgrid/logo.webp" type="image/webp" />',
+];
+for (const fragment of requiredLeadgridMetadata) {
+  if (!leadgridHtml.includes(fragment)) {
+    throw new Error(`generate-role-room-index: mangler forventet Leadgrid-metadata: ${fragment}`);
+  }
+}
+if (!/<script\b[^>]*\btype=["']module["'][^>]*\bsrc=["']\/(?:js|assets)\//i.test(leadgridHtml)) {
+  throw new Error('generate-role-room-index: Leadgrid-skallet mangler Vite-assets');
+}
+if (/<(?:title|meta|link)\b[^>]*(?:CreatorHub Norge|creatorhubn\.com)/i.test(leadgridHtml)) {
+  throw new Error('generate-role-room-index: CreatorHub-metadata lekket til Leadgrid-skallet');
+}
+if ((leadgridHtml.match(/data-seo-ld="leadgrid-/g)?.length ?? 0) !== leadgridStructuredData.length) {
+  throw new Error('generate-role-room-index: ufullstendig Leadgrid structured data');
+}
+
+await writeFile(leadgridTargetPath, leadgridHtml, 'utf8');
+console.log('generate-role-room-index: dist/leadgrid-index.html skrevet fra bygget index.html');
