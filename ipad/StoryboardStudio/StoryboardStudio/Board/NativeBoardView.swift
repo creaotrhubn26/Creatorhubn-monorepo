@@ -353,6 +353,13 @@ struct NativeBoardView: View {
     }
 
     var body: some View {
+        boardLifecycle
+    }
+
+    /// Keep the large board view split into smaller opaque view types. Xcode
+    /// 26.3 otherwise times out while type-checking the full modifier chain on
+    /// CI, even though newer local toolchains compile the same expression.
+    private var boardLayout: some View {
         VStack(spacing: 0) {
             topbar
             Divider().overlay(BoardBrand.border)
@@ -368,6 +375,10 @@ struct NativeBoardView: View {
         }
         .background(BoardBrand.chrome)
         .navigationBarHidden(true)
+    }
+
+    private var boardPresentations: some View {
+        boardLayout
         .fullScreenCover(isPresented: $showAnimatic) {
             AnimaticView(sceneHeading: board.scene?.heading ?? "",
                          frames: board.scene?.frames ?? [],
@@ -383,10 +394,18 @@ struct NativeBoardView: View {
                                    background: composedCanvasBackground())
             }
         }
+    }
+
+    private var boardDataTasks: some View {
+        boardPresentations
         .task { await board.reload() }
         .task(id: scenePreviewTaskKey) { await rebuildSceneThumbnails() }
         .task(id: shotPreviewTaskKey) { await rebuildShotPreviews() }
         .task(id: activeRasterTaskKey) { await loadActiveRaster() }
+    }
+
+    private var boardChangeObservers: some View {
+        boardDataTasks
         .onChange(of: board.activeFrameIndex) { loadActiveFrameIntoCanvas() }
         .onChange(of: board.selectedSceneIndex) { board.activeFrameIndex = 0; loadActiveFrameIntoCanvas() }
         .onChange(of: board.scenes.count) { loadActiveFrameIntoCanvas() }
@@ -397,6 +416,10 @@ struct NativeBoardView: View {
         .onChange(of: board.frame?.underlayOpacity) { applyUnderlay(to: renderer) }
         .onChange(of: perspectiveMode) { persistPerspective(); updateSnapState() }
         .onChange(of: perspectiveSnap) { updateSnapState() }
+    }
+
+    private var boardLifecycle: some View {
+        boardChangeObservers
         .task {
             // Retry-løkke for usynkede frames (nett tilbake / feilet synk).
             while !Task.isCancelled {
@@ -4367,13 +4390,18 @@ enum BoardPDFExporter {
         var rows = ["Scene;Shot;Beskrivelse;Type;Lens;Bevegelse;Varighet (s);Beat;Status;Tags"]
         for scene in scenes {
             for frame in scene.frames {
-                let cells = [
+                let lens = frame.lensMm.map { String($0) + "mm" } ?? ""
+                let duration = String(format: "%.1f", frame.durationSec)
+                let rawCells: [String] = [
                     scene.heading, frame.shotNumber, frame.description,
-                    frame.shotType ?? "", frame.lensMm.map { "\($0)mm" } ?? "",
-                    frame.movement ?? "", String(format: "%.1f", frame.durationSec),
+                    frame.shotType ?? "", lens,
+                    frame.movement ?? "", duration,
                     frame.beatTag ?? "", frame.frameStatus ?? "",
                     frame.tags.joined(separator: ", "),
-                ].map { $0.replacingOccurrences(of: ";", with: ",") }
+                ]
+                let cells = rawCells.map {
+                    $0.replacingOccurrences(of: ";", with: ",")
+                }
                 rows.append(cells.joined(separator: ";"))
             }
         }
