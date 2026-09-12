@@ -774,11 +774,11 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
     const sess = await ownedSession(d.userId, req.params.id);
     if (!sess) return res.status(404).json({ error: "session_not_found" });
     if (!sess.audio_review_project_id) {
-      return res.json({ project: null, version: null, comments: [], approvals: [], tasks: [], generatedAt: new Date().toISOString() });
+      return res.json({ project: null, version: null, comments: [], approvals: [], tasks: [], brief: null, decisions: [], signoffs: [], generatedAt: new Date().toISOString() });
     }
     try {
       const projectId = String(sess.audio_review_project_id);
-      const [project, version, comments, approvals, tasks] = await Promise.all([
+      const [project, version, comments, approvals, tasks, brief, decisions, signoffs] = await Promise.all([
         pool.query(`SELECT id,title,status,updated_at FROM audio_review_projects WHERE id=$1::uuid LIMIT 1`, [projectId]),
         pool.query(
           `SELECT id,version_label,version_number,status,created_at
@@ -810,6 +810,23 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
             ORDER BY (status='done') ASC,order_index ASC,created_at DESC LIMIT 100`,
           [projectId],
         ),
+        pool.query(
+          `SELECT id,title,summary,priorities,conflicts,generation_mode,created_at
+             FROM audio_revision_briefs WHERE project_id=$1::uuid ORDER BY created_at DESC LIMIT 1`,
+          [projectId],
+        ),
+        pool.query(
+          `SELECT d.id,d.title,d.status,d.blind,d.level_matched,d.winner_version_id,d.created_at,d.closed_at,
+                  COALESCE((SELECT COUNT(*)::int FROM audio_decision_votes dv WHERE dv.decision_id=d.id),0) AS vote_count
+             FROM audio_decision_rooms d WHERE d.project_id=$1::uuid ORDER BY d.created_at DESC LIMIT 10`,
+          [projectId],
+        ),
+        pool.query(
+          `SELECT s.id,s.stage,s.status,s.version_id,s.responded_at,m.name AS member_name
+             FROM audio_review_signoffs s LEFT JOIN audio_review_members m ON m.id=s.member_id
+            WHERE s.project_id=$1::uuid ORDER BY s.created_at DESC LIMIT 30`,
+          [projectId],
+        ),
       ]);
       res.json({
         project: project.rows[0] || null,
@@ -817,6 +834,9 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
         comments: comments.rows,
         approvals: approvals.rows,
         tasks: tasks.rows,
+        brief: brief.rows[0] || null,
+        decisions: decisions.rows,
+        signoffs: signoffs.rows,
         generatedAt: new Date().toISOString(),
       });
     } catch (error) {

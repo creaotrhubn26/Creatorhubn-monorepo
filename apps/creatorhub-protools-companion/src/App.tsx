@@ -272,6 +272,7 @@ export default function App() {
             <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
               <Chip size="small" label={state.audio_room_id ? "Koblet til Sound Room" : "Ikke koblet til låt"} sx={{ bgcolor: state.audio_room_id ? "rgba(95,184,138,0.16)" : "rgba(255,255,255,0.06)", color: state.audio_room_id ? "#5fb88a" : "text.secondary" }} />
               <Chip size="small" label={state.watching ? "Overvåker" : "Pauset"} sx={{ bgcolor: state.watching ? "rgba(255,140,0,0.16)" : "rgba(255,255,255,0.06)", color: state.watching ? ORANGE : "text.secondary" }} />
+              {state.auto_watch && <Chip size="small" label="Gjenopptas etter omstart" sx={{ bgcolor: "rgba(95,184,138,0.14)", color: "#5fb88a" }} />}
               <Chip size="small" label={state.ptsl.state === "connected" ? "PTSL direkte" : state.ptsl.server_detected ? "PTSL-bro mangler" : "Filmodus"}
                 sx={{ bgcolor: state.ptsl.state === "connected" ? "rgba(95,184,138,0.16)" : "rgba(255,255,255,0.06)", color: state.ptsl.state === "connected" ? "#5fb88a" : "text.secondary" }} />
               {state.protools_tier === "intro" && state.intro_preflight && (
@@ -285,6 +286,7 @@ export default function App() {
             <Row label="Session Info" value={state.session_info_path} />
             <Row label="Bounced Files" value={state.bounce_dir} />
             <Typography sx={{ fontSize: 11.5, color: "text.secondary" }}>{state.ptsl.message}</Typography>
+            {state.watching && <Typography sx={{ fontSize: 11.5, color: "#5fb88a" }}>Du kan la Companion stå i bakgrunnen. Nye bounces, markører og kommandoer synkroniseres automatisk, og den varige køen fortsetter etter neste oppstart.</Typography>}
             {state.protools_tier === "intro" && state.intro_preflight && !state.intro_preflight.compatible && (
               <Stack spacing={0.5} sx={{ p: 1.25, borderRadius: 1.5, bgcolor: "rgba(224,96,106,0.08)" }}>
                 {state.intro_preflight.violations.map((violation) => (
@@ -335,6 +337,21 @@ export default function App() {
               ))}
             </Stack>
           )}
+          {feedback?.brief && (
+            <Box sx={{ mt: 1.5, p: 1.5, borderRadius: 1.5, bgcolor: "rgba(255,140,0,0.07)", border: "1px solid rgba(255,140,0,0.22)" }}>
+              <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: ORANGE }}>{feedback.brief.title}</Typography>
+              <Typography sx={{ fontSize: 11.5, color: "text.secondary", my: 0.5 }}>{feedback.brief.summary}</Typography>
+              {feedback.brief.priorities.slice(0, 5).map((priority, index) => (
+                <Typography key={`${priority.title}-${index}`} sx={{ fontSize: 11.5, mt: 0.4 }}><strong>{index + 1}. {priority.title}</strong> · {priority.detail}</Typography>
+              ))}
+            </Box>
+          )}
+          {(feedback?.decisions?.length || feedback?.signoffs?.length) ? (
+            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1.5 }}>
+              {feedback.decisions.map((decision) => <Chip key={decision.id} size="small" label={`${decision.status === "open" ? "Avstemning åpen" : "Avstemning lukket"} · ${decision.vote_count || 0} stemmer`} sx={{ color: decision.status === "open" ? ORANGE : "#5fb88a" }} />)}
+              {feedback.signoffs.map((signoff) => <Chip key={signoff.id} size="small" label={`${signoff.member_name || "Reviewer"}: ${signoff.stage} ${signoff.status}`} sx={{ color: signoff.status === "approved" ? "#5fb88a" : "text.secondary" }} />)}
+            </Stack>
+          ) : null}
         </Panel>
       )}
 

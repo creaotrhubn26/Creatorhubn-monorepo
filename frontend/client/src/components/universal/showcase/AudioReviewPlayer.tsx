@@ -47,6 +47,11 @@ interface Props {
   /** Kompakt: behold waveform + markører + transport + skrivefelt, men skjul
    *  intern filter-rad + kommentarliste (når en ekstern tråd eier kommentarene). */
   compact?: boolean;
+  /** Best-effort listening receipt. Emitted at most every five seconds and on
+   * pause/finish so review owners can see that a version was actually heard. */
+  onListenProgress?: (listenedSeconds: number, durationSeconds: number) => void;
+  /** Linear playback gain used for loudness-matched comparisons. */
+  playbackGain?: number;
 }
 
 const fmt = (s: number): string => {
@@ -63,6 +68,8 @@ export default function AudioReviewPlayer({
   accentColor = '#FF6B35',
   readOnly = false,
   compact = false,
+  onListenProgress,
+  playbackGain = 1,
 }: Props) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const wsRef = React.useRef<WaveSurfer | null>(null);
@@ -74,6 +81,9 @@ export default function AudioReviewPlayer({
   const [draftCat, setDraftCat] = React.useState('balance');
   const [filterCat, setFilterCat] = React.useState<string | null>(null); // null = alle
   const [hoverId, setHoverId] = React.useState<string | null>(null);
+  const listenedSecondsRef = React.useRef(0);
+  const previousPlaybackTimeRef = React.useRef<number | null>(null);
+  const lastReportedListenedRef = React.useRef(0);
 
   React.useEffect(() => {
     if (!containerRef.current || !src) return;
@@ -92,19 +102,44 @@ export default function AudioReviewPlayer({
       normalize: true,
     });
     wsRef.current = ws;
+    listenedSecondsRef.current = 0;
+    previousPlaybackTimeRef.current = null;
+    lastReportedListenedRef.current = 0;
 
     ws.on('ready', () => { if (!cancelled) { setReady(true); setDuration(ws.getDuration()); } });
-    ws.on('timeupdate', (t: number) => { if (!cancelled) setCurrent(t); });
-    ws.on('play', () => !cancelled && setPlaying(true));
-    ws.on('pause', () => !cancelled && setPlaying(false));
-    ws.on('finish', () => !cancelled && setPlaying(false));
+    const report = (force = false) => {
+      const listened = listenedSecondsRef.current;
+      const total = ws.getDuration();
+      if (!onListenProgress || (!force && listened - lastReportedListenedRef.current < 5)) return;
+      lastReportedListenedRef.current = listened;
+      onListenProgress(Math.min(listened, total), total);
+    };
+    ws.on('timeupdate', (t: number) => {
+      if (cancelled) return;
+      setCurrent(t);
+      const previous = previousPlaybackTimeRef.current;
+      const delta = previous == null ? 0 : t - previous;
+      // Seeking must never count as listening. Normal playback updates are
+      // frequent; accept only small positive movement on an active transport.
+      if (ws.isPlaying() && delta > 0 && delta <= 2.5) listenedSecondsRef.current += delta;
+      previousPlaybackTimeRef.current = t;
+      report();
+    });
+    ws.on('play', () => { if (!cancelled) { previousPlaybackTimeRef.current = ws.getCurrentTime(); setPlaying(true); } });
+    ws.on('pause', () => { if (!cancelled) { setPlaying(false); previousPlaybackTimeRef.current = null; report(true); } });
+    ws.on('interaction', () => { previousPlaybackTimeRef.current = ws.getCurrentTime(); });
+    ws.on('finish', () => { if (!cancelled) { setPlaying(false); previousPlaybackTimeRef.current = null; report(true); } });
 
     return () => {
       cancelled = true;
       try { ws.destroy(); } catch { /* ignore */ }
       wsRef.current = null;
     };
-  }, [src, accentColor]);
+  }, [src, accentColor, onListenProgress]);
+
+  React.useEffect(() => {
+    wsRef.current?.setVolume(Math.max(0, Math.min(1, Number.isFinite(playbackGain) ? playbackGain : 1)));
+  }, [playbackGain, ready]);
 
   const seekTo = React.useCallback((sec: number) => {
     const ws = wsRef.current;
