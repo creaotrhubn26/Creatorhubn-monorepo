@@ -41,6 +41,36 @@ curl -s https://rest.runpod.io/v1/pods -H "Authorization: Bearer $RUNPOD_KEY" -H
 ```
 Image build can't run from the dev sandbox (multi-GB cross-arch + registry creds) — build in CI / locally with Docker, or connect the GitHub repo in the RunPod console's build feature.
 
+## ✅ VERIFIED on RunPod GPU (2026-06-24)
+End-to-end proven once: GHCR image → RunPod Pod (A4000) → `/enhance` → `modelUsed=gfpgan`.
+- **Image:** `ghcr.io/creaotrhubn26/gfpgan-runner:latest`, built by GitHub Actions workflow `Build GFPGAN GPU image` (`.github/workflows/build-gfpgan-gpu-image.yml`, `workflow_dispatch`). RunPod pulled it fine.
+- **GPU pick that had capacity:** `cloudType:"SECURE"`, `gpuTypeIds:["NVIDIA RTX A4000"]`, `costPerHr 0.25`, `containerDiskInGb 30`, `ports:["10000/http"]`. (COMMUNITY A4000 returned "no instances currently available".)
+- **Weights:** already in B2 (`weightBootstrap.state=done`, all 4 skipped). No re-seed needed — they persist across pods.
+- **Timings:** cold (incl. model load from B2 + CUDA) ≈ 21.7 s; **warm ≈ 2.9 s processing / ~4 s wall** vs **~55 s CPU** → **~14×**. `lastModelLoadMs ≈ 5148`.
+- **End state:** pod **terminated** after verification (`DELETE /v1/pods/{id}` → 204) so it burns $0. A *stopped* (EXITED) pod still bills ~$3/mo for the 30 GB disk — terminate, don't just stop, when parking. Recreate is fully scripted below; weights (B2) + image (GHCR) persist, so a fresh pod is ready in ~3–5 min (image re-pull).
+
+### Burst toggle (the only backend lever)
+The backend resolves the runner URL as: `PHOTO_ENHANCER_GFPGAN_URL` → `GFPGAN_SERVICE_URL` → hardcoded default `https://creatorhub-gfpgan-runner.onrender.com/enhance` (CPU, when `RENDER=true`). Both env vars are currently **unset**, so prod runs on the CPU default. To cut a burst over to GPU and back:
+- **GPU on:** `PUT` Render env `PHOTO_ENHANCER_GFPGAN_URL = https://<podId>-10000.proxy.runpod.net/enhance` on backend `srv-d76ob60ule4c73dv2p60` (auto-redeploys ~2–3 min).
+- **GPU off:** delete that env var → falls back to the CPU runner. (Same lever for `REALESRGAN_SERVICE_URL` / `CODEFORMER_SERVICE_URL` if those get their own GPU runners.)
+
+### Scripted recreate (Pod)
+```
+# 1. create pod (copies B2 creds from backend env; SECURE A4000):
+#    POST https://rest.runpod.io/v1/pods  (Authorization: Bearer $RUNPOD_KEY)
+#    body: {name,imageName:"ghcr.io/creaotrhubn26/gfpgan-runner:latest",
+#           gpuTypeIds:["NVIDIA RTX A4000"],cloudType:"SECURE",gpuCount:1,
+#           containerDiskInGb:30,ports:["10000/http"],
+#           env:{B2_ROLE_ROOM_APPLICATION_KEY_ID,B2_ROLE_ROOM_APPLICATION_KEY,
+#                B2_ROLE_ROOM_BUCKET_NAME,B2_ROLE_ROOM_BUCKET_ID,B2_REGION,CLOUDFLARE_R2_MODELS_BUCKETS}}
+# 2. poll GET /v1/pods/{id} + hit https://{id}-10000.proxy.runpod.net/health until gfpganImport:true
+#    (model loads lazily on first /enhance; "status":"unavailable" pre-first-request is normal)
+# 3. set PHOTO_ENHANCER_GFPGAN_URL = https://{id}-10000.proxy.runpod.net/enhance  (backend env)
+# 4. run the batch
+# 5. delete the env var (back to CPU) + DELETE /v1/pods/{id}  (terminate, $0 idle)
+```
+For true scale-to-zero (no manual start/stop), the right answer is still **RunPod Serverless** (needs a `handler()` wrapper + `runsync` adapter) or **Modal** (`modal_app.py` is ready) — see the recommendation above. The Pod path is the proven manual-burst tool.
+
 ## Migration & rollback
 - Keep the CPU Render runner (`creatorhub-gfpgan-runner`) deployed as fallback — identical `/enhance` + `/health` API.
 - Cutover = change one env var; rollback = change it back. Zero client/app change (the iPad async client (#892) is provider-agnostic — it talks to the backend, not the runner).
