@@ -8,9 +8,9 @@ final class BoardSmokeUITests: XCTestCase {
     @MainActor
     func testFreeCanvasDrawIncrementsStrokeCount() throws {
         let app = XCUIApplication()
+        app.launchEnvironment["SB_FREE_CANVAS_DEMO"] = "1"
         app.launch()
 
-        app.staticTexts["Frikanvas"].tap()
         XCTAssertTrue(app.staticTexts["0 strøk"].waitForExistence(timeout: 5))
 
         // Tegn ett strøk midt på tegneflaten.

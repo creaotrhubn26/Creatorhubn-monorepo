@@ -99,6 +99,12 @@ describe('Storyboard video provider gate', () => {
     expect(config.models.map((model) => model.id)).toEqual([
       'seedance-2-i2v', 'higgsfield-dop-i2v',
     ]);
+    expect(config).toMatchObject({
+      billingMultiplier: 0,
+      imageConfigured: false,
+      imageEstimatedChargeUsd: { standard: 0, hd: 0 },
+      defaultModel: 'seedance-2-i2v',
+    });
     expect(JSON.stringify(config)).not.toMatch(/API_KEY|secret/i);
   });
 

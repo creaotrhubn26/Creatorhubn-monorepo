@@ -804,6 +804,8 @@ import { setupCastingProjectsRoutes } from "./casting-projects-routes";
 import { createCastingManuscriptRevisionsService } from "./casting-manuscript-revisions-service.js";
 import { createAISuggestionService } from "./ai-suggestion-service.js";
 import { setupAISuggestionRoutes } from "./ai-suggestion-routes.js";
+import { createStoryboardSkillAgents } from "./storyboard-skills/storyboard-skills.js";
+import { setupStoryboardSkillRoutes } from "./storyboard-skills/storyboard-skill-routes.js";
 import {
   breakdownAgent,
   breakdownPropApplier,
@@ -15493,6 +15495,9 @@ aiSuggestionService.registerAgent(createDialogPacingAgent(pool));
 aiSuggestionService.registerAgent(createMusicBedAgent(pool));
 aiSuggestionService.registerAgent(createSfxSuggestionAgent(pool));
 aiSuggestionService.registerAgent(createSceneReadinessAgent(pool));
+for (const storyboardSkillAgent of createStoryboardSkillAgents()) {
+  aiSuggestionService.registerAgent(storyboardSkillAgent);
+}
 aiSuggestionService.registerApplier(breakdownPropApplier);
 aiSuggestionService.registerApplier(breakdownRiskFlagApplier);
 aiSuggestionService.registerApplier(breakdownLocationApplier);
@@ -32682,6 +32687,13 @@ setupRoleRoomCallSheetRoutes({ app, pool, requireUserSession });
 //   registrerte agenter. 4 endpoints: list / generate / accept / reject.
 setupAISuggestionRoutes({
   app,
+  pool,
+  requireUserSession,
+  aiSuggestionService,
+});
+setupStoryboardSkillRoutes({
+  app,
+  pool,
   requireUserSession,
   aiSuggestionService,
 });

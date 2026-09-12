@@ -16,6 +16,7 @@ import {
 } from './generative-media.js';
 import { creditMove, getUserCredits } from './ai-credits.js';
 import { archiveToRoleRoomB2, presignRoleRoomB2Download } from './b2-archive-helper.js';
+import { storyboardImageEstimatedCostUsd } from './storyboard-ai-context.js';
 import type { Storyboard } from './storyboard-service.js';
 
 export class StoryboardVideoError extends Error {
@@ -70,6 +71,15 @@ export async function getStoryboardVideoConfig(
     enabled: settings.enabled,
     allowed: aiAllowed(settings, input.userEmail, input.userRole),
     billingMode: settings.billingMode,
+    billingMultiplier: settings.billingMode === 'free_whitelist'
+      ? 0 : settings.markupMultiplier,
+    imageConfigured: Boolean(process.env.OPENAI_API_KEY),
+    imageEstimatedChargeUsd: {
+      standard: settings.billingMode === 'free_whitelist'
+        ? 0 : storyboardImageEstimatedCostUsd('standard') * settings.markupMultiplier,
+      hd: settings.billingMode === 'free_whitelist'
+        ? 0 : storyboardImageEstimatedCostUsd('hd') * settings.markupMultiplier,
+    },
     consent: consent.rows[0]
       ? { consented: Boolean(consent.rows[0].consented), by: consent.rows[0].consented_by,
         at: consent.rows[0].consented_at }
@@ -79,6 +89,9 @@ export async function getStoryboardVideoConfig(
       configured: model.provider === 'higgsfield' ? higgsfieldConfigured() : falConfigured(),
       estimatedCostUsd5s: 5 * (model.costPerSecondUsd ?? model.estCostUsd / 5),
     })),
+    defaultModel: [providerFor('seedance-2-i2v'), providerFor('higgsfield-dop-i2v')]
+      .find((model) => model.provider === 'higgsfield' ? higgsfieldConfigured() : falConfigured())
+      ?.key ?? null,
   };
 }
 
