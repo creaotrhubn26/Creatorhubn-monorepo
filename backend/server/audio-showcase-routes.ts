@@ -327,6 +327,7 @@ const isMissingTable = (e: unknown) =>
   typeof e === "object" && e !== null && (e as { code?: string }).code === "42P01";
 const str = (v: unknown, max = 2000) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 const num = (v: unknown): number | null => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+const isUuid = (value: string): boolean => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
 // ── Ekstern EaseVerse-bro (stabil toveis tekst-synk) ───────────────────────
 const EV_URL = (process.env.EASEVERSE_API_URL || "").trim().replace(/\/+$/, "");
@@ -706,7 +707,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         ).catch(() => ({ rows: [] as any[] }));
         easeverseTrack = t.rows[0] || null;
       }
-      return res.json({ project: p.rows[0], versions: v.rows.map((row) => playableVersion(row)), members: members.rows, tasks: tasks.rows, easeverseTrack });
+      return res.json({ project: p.rows[0], versions: v.rows.map((row) => playableVersion(row)), members: members.rows, tasks: tasks.rows, easeverseTrack, access: { canEdit: isOwner } });
     } catch (e) {
       if (isMissingTable(e)) return res.status(404).json({ error: "not_found" });
       return res.status(500).json({ error: "get_failed" });
@@ -1190,18 +1191,58 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   app.post("/api/audio-tasks", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
     const projectId = str(req.body?.projectId, 64);
+    const versionId = str(req.body?.versionId, 64);
+    const commentId = str(req.body?.commentId, 64);
     const title = str(req.body?.title, 400);
     if (!projectId || !title) return res.status(400).json({ error: "projectId_and_title_required" });
+    if (!isUuid(projectId) || (versionId && !isUuid(versionId)) || (commentId && !isUuid(commentId))) {
+      return res.status(400).json({ error: "invalid_reference" });
+    }
+    const status = str(req.body?.status, 20) || "todo";
+    if (!["todo", "in_progress", "done"].includes(status)) return res.status(400).json({ error: "invalid_status" });
     try {
       const owns = await pool.query(`SELECT 1 FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [projectId, s.userId]);
       if (!owns.rows.length) return res.status(404).json({ error: "project_not_found" });
+      if (versionId) {
+        const version = await pool.query(`SELECT 1 FROM audio_review_versions WHERE id=$1::uuid AND project_id=$2::uuid LIMIT 1`, [versionId, projectId]);
+        if (!version.rows.length) return res.status(400).json({ error: "version_not_in_project" });
+      }
+      if (commentId) {
+        const comment = await pool.query(
+          `SELECT c.id FROM audio_review_comments c
+           JOIN audio_review_versions v ON v.id=c.version_id
+           WHERE c.id=$1::uuid AND v.project_id=$2::uuid
+             AND ($3::uuid IS NULL OR c.version_id=$3::uuid) LIMIT 1`,
+          [commentId, projectId, versionId || null]);
+        if (!comment.rows.length) return res.status(400).json({ error: "comment_not_in_project" });
+        const existing = await pool.query(
+          `SELECT * FROM audio_review_tasks WHERE project_id=$1::uuid AND comment_id=$2::uuid LIMIT 1`,
+          [projectId, commentId]);
+        if (existing.rows.length) return res.status(200).json(existing.rows[0]);
+      }
       const cnt = await pool.query(`SELECT COUNT(*)::int AS n FROM audio_review_tasks WHERE project_id=$1::uuid`, [projectId]);
       const r = await pool.query(
-        `INSERT INTO audio_review_tasks (project_id, version_id, comment_id, title, status, assignee, created_by, order_index)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-        [projectId, str(req.body?.versionId, 64) || null, str(req.body?.commentId, 64) || null, title,
-         str(req.body?.status, 20) || "todo", str(req.body?.assignee, 200) || str(req.body?.category, 80) || null,
+        `WITH inserted AS (
+           INSERT INTO audio_review_tasks (project_id, version_id, comment_id, title, status, assignee, created_by, order_index)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+           ON CONFLICT (project_id, comment_id) WHERE comment_id IS NOT NULL DO NOTHING
+           RETURNING *
+         ), source_comment AS (
+           UPDATE audio_review_comments SET status='in_progress', updated_at=NOW()
+           WHERE id=$3::uuid AND status='unresolved' AND EXISTS (SELECT 1 FROM inserted)
+         )
+         SELECT * FROM inserted`,
+        [projectId, versionId || null, commentId || null, title,
+         status, str(req.body?.assignee, 200) || str(req.body?.category, 80) || null,
          s.name || s.userId, cnt.rows[0].n]);
+      if (!r.rows.length && commentId) {
+        const raced = await pool.query(
+          `SELECT * FROM audio_review_tasks WHERE project_id=$1::uuid AND comment_id=$2::uuid LIMIT 1`,
+          [projectId, commentId]);
+        if (raced.rows.length) return res.status(200).json(raced.rows[0]);
+      }
+      if (!r.rows.length) return res.status(409).json({ error: "task_conflict" });
+      void broadcastSoundRoomUpdated(pool, projectId, "task");
       return res.status(201).json(r.rows[0]);
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
@@ -1212,10 +1253,13 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   app.patch("/api/audio-tasks/:id", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
     const id = str(req.params.id, 64);
+    if (!isUuid(id)) return res.status(400).json({ error: "invalid_task_id" });
     const sets: string[] = ["updated_at = NOW()"]; const params: unknown[] = [id];
+    let requestedStatus: string | null = null;
     if (typeof req.body?.status === "string") {
       const st = str(req.body.status, 20);
       if (!["todo", "in_progress", "done"].includes(st)) return res.status(400).json({ error: "invalid_status" });
+      requestedStatus = st;
       params.push(st); sets.push(`status = $${params.length}`);
     }
     if (typeof req.body?.title === "string") { params.push(str(req.body.title, 400)); sets.push(`title = $${params.length}`); }
@@ -1226,6 +1270,18 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         `UPDATE audio_review_tasks SET ${sets.join(", ")} WHERE id = $1::uuid AND project_id IN
            (SELECT id FROM audio_review_projects WHERE owner_user_id = $${params.push(s.userId)}) RETURNING *`, params);
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      if (requestedStatus && r.rows[0].comment_id) {
+        const commentStatus = requestedStatus === "done" ? "resolved" : requestedStatus === "in_progress" ? "in_progress" : "unresolved";
+        await pool.query(
+          `UPDATE audio_review_comments SET status=$3
+           WHERE id=$1::uuid AND version_id IN (
+             SELECT v.id FROM audio_review_versions v
+             JOIN audio_review_projects p ON p.id=v.project_id
+             WHERE p.owner_user_id=$2
+           )`,
+          [r.rows[0].comment_id, s.userId, commentStatus]);
+      }
+      void broadcastSoundRoomUpdated(pool, String(r.rows[0].project_id), "task");
       return res.json(r.rows[0]);
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
