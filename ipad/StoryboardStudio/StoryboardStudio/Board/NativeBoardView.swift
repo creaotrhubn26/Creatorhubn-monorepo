@@ -404,16 +404,24 @@ struct NativeBoardView: View {
         .task(id: activeRasterTaskKey) { await loadActiveRaster() }
     }
 
-    private var boardChangeObservers: some View {
+    private var boardFrameObservers: some View {
         boardDataTasks
         .onChange(of: board.activeFrameIndex) { loadActiveFrameIntoCanvas() }
         .onChange(of: board.selectedSceneIndex) { board.activeFrameIndex = 0; loadActiveFrameIntoCanvas() }
         .onChange(of: board.scenes.count) { loadActiveFrameIntoCanvas() }
         .onChange(of: canvasState.revision) { scheduleAutosync() }
         .onChange(of: board.frame?.imageUrl) { loadActiveFrameIntoCanvas() }
+    }
+
+    private var boardBackgroundObservers: some View {
+        boardFrameObservers
         .onChange(of: onionMode) { applyUnderlay(to: renderer) }
         .onChange(of: board.frame?.underlayDataURL) { applyUnderlay(to: renderer) }
         .onChange(of: board.frame?.underlayOpacity) { applyUnderlay(to: renderer) }
+    }
+
+    private var boardChangeObservers: some View {
+        boardBackgroundObservers
         .onChange(of: perspectiveMode) { persistPerspective(); updateSnapState() }
         .onChange(of: perspectiveSnap) { updateSnapState() }
     }
