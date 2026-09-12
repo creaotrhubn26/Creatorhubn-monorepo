@@ -218,6 +218,7 @@ function Linje({
 /// rettet av henne selv der lesningen bommet.
 export function Panel({
   forståelse,
+  framdrift,
   sti,
   onVelg,
   onRett,
@@ -225,6 +226,10 @@ export function Panel({
   onÅpne,
 }: {
   forståelse: Understanding | null;
+  /** Hvor langt en lang lesning er kommet, eller `null` når det ikke er noe
+   *  på gang. En importert samtale tar minutter; hun skal se at det går
+   *  framover, ikke om det er ferdig. */
+  framdrift: { lest: number; totalt: number } | null;
   sti: string;
   onVelg: Velg;
   onRett: Rett;
@@ -335,6 +340,12 @@ export function Panel({
       )}
 
       {tidligere.length > 0 && <Tidligere_ linjer={tidligere} onÅpne={onÅpne} />}
+
+      {framdrift && (
+        <p className="framdrift">
+          Leser avsnitt {framdrift.lest} av {framdrift.totalt}.
+        </p>
+      )}
 
       <h2>Hva vi har forstått</h2>
       {forstått.length === 0 && uavklarte.length === 0 ? (

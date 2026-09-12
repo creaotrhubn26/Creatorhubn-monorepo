@@ -174,13 +174,19 @@ type Props = {
   /** Avsnittet panelet peker på. `n` teller opp for hvert klikk, slik at det
    *  å klikke samme linje to ganger fører deg dit begge gangene. */
   peker: { from: number; to: number; n: number } | null;
+  /** Området som er på skjermen. Brukes bare til å avgjøre hva som leses
+   *  først i en lang kilde, så CodeMirrors viewport — som er litt større enn
+   *  det øyet ser — er presist nok. */
+  onSynlig?: (fra: number, til: number) => void;
 };
 
-export function Editor({ path, doc, onChange, selectTitle, peker }: Props) {
+export function Editor({ path, doc, onChange, selectTitle, peker, onSynlig }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const change = useRef(onChange);
   change.current = onChange;
+  const synlig = useRef(onSynlig);
+  synlig.current = onSynlig;
   // Dokumentet må også være tilgjengelig når visningen bygges på nytt (React
   // i StrictMode monterer effekter to ganger), ellers står editoren tom.
   const tekst = useRef(doc);
@@ -205,6 +211,9 @@ export function Editor({ path, doc, onChange, selectTitle, peker }: Props) {
           EditorView.lineWrapping,
           EditorView.updateListener.of((u) => {
             if (u.docChanged && !bytter.current) change.current(u.state.doc.toString());
+            if (u.viewportChanged || u.docChanged) {
+              synlig.current?.(u.view.viewport.from, u.view.viewport.to);
+            }
           }),
         ],
       }),
@@ -231,6 +240,7 @@ export function Editor({ path, doc, onChange, selectTitle, peker }: Props) {
     });
     bytter.current = false;
     v.focus();
+    synlig.current?.(v.viewport.from, v.viewport.to);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);
 

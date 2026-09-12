@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 export type Note = { path: string; title: string; modified: number };
 export type SearchHit = {
@@ -58,16 +59,40 @@ export type Tidligere = {
 };
 
 /** `on: false` betyr at lesningen ikke er tilgjengelig nå. `reread` er
- *  rettelser som gjaldt avsnitt brukeren siden har skrevet om. */
+ *  rettelser som gjaldt avsnitt brukeren siden har skrevet om. `lesning` er
+ *  løpenummeret for lesningen, som skiller delresultater fra hverandre. */
 export type Understanding = {
   on: boolean;
   paragraphs: Paragraph[];
   reread: string[];
   earlier: Tidligere[];
+  lesning: number;
 };
 
-export const understandNote = (path: string, content: string) =>
-  invoke<Understanding>("understand_note", { path, content });
+/** `synlig` er `[fra, til]` i teksten — området editoren viser. Det som står
+ *  der leses først, slik at en lang kilde fyller panelet ovenfra og nedover i
+ *  stedet for å begynne et sted brukeren ikke ser. */
+export const understandNote = (
+  path: string,
+  content: string,
+  synlig?: [number, number] | null,
+) => invoke<Understanding>("understand_note", { path, content, synlig: synlig ?? null });
+
+/** Én pakke er lest: avsnittene som fikk et merke akkurat nå, og hvor langt
+ *  lesningen er kommet. */
+export type Framdrift = {
+  lesning: number;
+  lest: number;
+  totalt: number;
+  paragraphs: Paragraph[];
+};
+
+export const påLesning = (f: (d: Framdrift) => void) =>
+  listen<Framdrift>("forstår", (e) => f(e.payload));
+
+/** Brukeren har gått videre. Lesningen som kjører forlates ved neste
+ *  pakkeslutt; det den rakk å lese står. */
+export const avbrytLesning = () => invoke<void>("avbryt_lesning");
 
 /** `plass: null` tar rettelsen bort igjen — det angre gjør når det ikke var
  *  noen rettelse fra før. */

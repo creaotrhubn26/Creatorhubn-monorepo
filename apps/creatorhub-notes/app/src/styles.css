@@ -620,11 +620,19 @@ kbd {
 }
 
 .panel .av,
-.panel .ingenting {
+.panel .ingenting,
+.panel .framdrift {
   margin: 6px 20px 0;
   font-size: 15px;
   line-height: 1.6;
   color: var(--ink-soft);
+}
+
+/* En lang kilde tar minutter. Linja sier hvor langt det er kommet, og
+   forsvinner når den er ferdig. Ingenting som krever oppmerksomhet. */
+.panel .framdrift {
+  font-size: 14px;
+  color: var(--ink-faint);
 }
 
 

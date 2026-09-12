@@ -2,8 +2,10 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Editor } from "./Editor";
 import { Panel } from "./Panel";
 import {
+  avbrytLesning,
   createNote,
   finnAvsnitt,
+  påLesning,
   listNotes,
   readNote,
   reindex,
@@ -12,6 +14,7 @@ import {
   sporNotater,
   understandNote,
   writeNote,
+  type Framdrift,
   type Note,
   type Paragraph,
   type Retting,
@@ -105,6 +108,9 @@ export default function App() {
   const [feil, setFeil] = useState<string | null>(null);
   const [panel, setPanel] = useState(() => localStorage.getItem("forstaelse") !== "skjult");
   const [forståelse, setForståelse] = useState<Understanding | null>(null);
+  /** Hvor langt en lang lesning er kommet. `null` når det ikke er noe på gang
+   *  — da står det ingenting i panelet. */
+  const [framdrift, setFramdrift] = useState<{ lest: number; totalt: number } | null>(null);
   const [peker, setPeker] = useState<{ from: number; to: number; n: number } | null>(null);
   const [tema, setTema] = useState<Tema>(() => lesTema());
 
@@ -122,6 +128,15 @@ export default function App() {
    *  panelet viser noe som var sant for et halvt minutt siden. */
   const leser = useRef(false);
   const køet = useRef<{ sti: string; tekst: string } | null>(null);
+  /** Løpenummeret til den ferskeste lesningen vi har hørt fra. Et delresultat
+   *  fra en eldre lesning skal ikke skrive over den som gjelder nå. */
+  const lesningNå = useRef(0);
+  /** Notatet som står åpent, uten å binde lesningen til det. */
+  const stiNå = useRef<string | null>(null);
+  stiNå.current = path;
+  /** Området editoren viser, som CodeMirror teller det — samme telling som
+   *  avsnittsposisjonene. Det avgjør bare hva som leses først. */
+  const synlig = useRef<[number, number] | null>(null);
 
   /** Les notatet på nytt. Ingen venter på dette: teksten er allerede på disk,
    *  og panelet fyller seg ut når svaret kommer. */
@@ -130,11 +145,21 @@ export default function App() {
       if (!panelPå.current) return;
       if (leser.current) {
         køet.current = { sti, tekst };
+        // En lang kilde tar minutter. Den som kjører skal forlates, ikke stå
+        // og lese ferdig noe brukeren har gått bort fra — det den rakk står.
+        void avbrytLesning().catch(() => undefined);
         return;
       }
       leser.current = true;
       try {
-        setForståelse(await understandNote(sti, tekst));
+        const svar = await understandNote(sti, tekst, synlig.current);
+        // Delresultater kan ha kommet fra en nyere lesning mens denne holdt
+        // på, og notatet kan være byttet. Da er dette svaret gammelt.
+        if (svar.lesning >= lesningNå.current && sti === stiNå.current) {
+          lesningNå.current = svar.lesning;
+          setForståelse(svar);
+          setFramdrift(null);
+        }
       } catch {
         // Panelet blir stående som det var. Notatet er lagret uansett.
       } finally {
@@ -146,6 +171,30 @@ export default function App() {
     },
     [],
   );
+
+  /** Delresultatene fra en lang lesning. Panelet fylles ut ovenfra og nedover
+   *  mens den står på, i stedet for å stå tomt til alt er ferdig. */
+  useEffect(() => {
+    const av = påLesning((d: Framdrift) => {
+      if (d.lesning < lesningNå.current) return; // en forlatt lesning
+      const fersk = d.lesning > lesningNå.current;
+      lesningNå.current = d.lesning;
+      setForståelse((f) => {
+        const før = fersk || !f ? [] : f.paragraphs;
+        return {
+          on: true,
+          lesning: d.lesning,
+          paragraphs: [...før, ...d.paragraphs].sort((a, b) => a.start - b.start),
+          reread: fersk || !f ? [] : f.reread,
+          earlier: fersk || !f ? [] : f.earlier,
+        };
+      });
+      setFramdrift(d.lest < d.totalt ? { lest: d.lest, totalt: d.totalt } : null);
+    });
+    return () => {
+      void av.then((stopp) => stopp()).catch(() => undefined);
+    };
+  }, []);
 
   /** Skriv til disk, indekser, oppdater lista. Kalles på pause, før bytte av
    *  notat og før søk — det siste er det som gjør at et notat fra ett minutt
@@ -194,6 +243,7 @@ export default function App() {
         setDetaljer(false);
         setPeker(null);
         setForståelse(null);
+        setFramdrift(null);
         void les(p, tekst);
         // Kom man hit fra en linje om noe som ble skrevet før, skal avsnittet
         // markeres. Er det skrevet om siden, står notatet åpent uten merke.
@@ -462,7 +512,16 @@ export default function App() {
                   </dl>
                 )}
               </div>
-              <Editor path={path} doc={doc} onChange={skriv} selectTitle={nytt} peker={peker} />
+              <Editor
+                path={path}
+                doc={doc}
+                onChange={skriv}
+                selectTitle={nytt}
+                peker={peker}
+                onSynlig={(fra, til) => {
+                  synlig.current = [fra, til];
+                }}
+              />
             </>
           ) : (
             <div className="velkomst">
@@ -484,6 +543,7 @@ export default function App() {
             <Panel
               key={path}
               forståelse={forståelse}
+              framdrift={framdrift}
               sti={path}
               onVelg={(p: Paragraph) =>
                 setPeker((forrige) => ({ from: p.start, to: p.end, n: (forrige?.n ?? 0) + 1 }))
