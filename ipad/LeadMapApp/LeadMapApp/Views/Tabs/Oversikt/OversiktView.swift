@@ -1879,11 +1879,17 @@ private struct LeadsInAreaCard: View {
                 guard let projectId = appState.activeLeadgridProjectId else {
                     throw AddLeadSaveError(message: "Velg et kundeprosjekt før du lagrer leaden")
                 }
-                _ = try await api.createLeadAtPin(
-                    newLead.makeCreateRequest(projectID: projectId),
-                    organizationId: appState.activeOrganizationId
+                guard let organizationId = appState.activeOrganizationId else {
+                    throw AddLeadSaveError(message: "Velg en organisasjon før du lagrer leaden")
+                }
+                let leadId = try await newLead.saveResiliently(
+                    api: api,
+                    organizationID: organizationId,
+                    projectID: projectId
                 )
-                miniShowToast("«\(newLead.companyName)» lagt til")
+                miniShowToast(leadId == nil
+                    ? "Leaden er lagret offline og sendes automatisk når nettet er tilbake."
+                    : "«\(newLead.companyName)» lagt til")
             }
         }
         // MeMapPin tap-actions (2026-07-02) — inline HUD-overlay på selve

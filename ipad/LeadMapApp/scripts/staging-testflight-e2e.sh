@@ -5,6 +5,7 @@ production_url="https://creatorhub-backend-rtbl.onrender.com"
 staging_url="${LEADGRID_STAGING_BASE_URL:-}"
 staging_email="${LEADGRID_STAGING_EMAIL:-}"
 staging_password="${LEADGRID_STAGING_PASSWORD:-}"
+staging_bearer_token="${LEADGRID_STAGING_BEARER_TOKEN:-}"
 requested_org_id="${LEADGRID_STAGING_ORG_ID:-}"
 requested_project_id="${LEADGRID_STAGING_PROJECT_ID:-}"
 brreg_org_number="${LEADGRID_STAGING_BRREG_ORG_NUMBER:-937518684}"
@@ -13,8 +14,8 @@ run_role_room_e2e="${LEADGRID_RUN_ROLE_ROOM_E2E:-0}"
 run_role_room_campaign_e2e="${LEADGRID_RUN_ROLE_ROOM_CAMPAIGN_E2E:-0}"
 simulator_destination="${LEADGRID_STAGING_SIMULATOR_DESTINATION:-platform=iOS Simulator,name=iPad Pro 13-inch (M5),OS=26.5}"
 
-if [[ -z "$staging_url" || -z "$staging_email" || -z "$staging_password" ]]; then
-  echo "Mangler LEADGRID_STAGING_BASE_URL, LEADGRID_STAGING_EMAIL eller LEADGRID_STAGING_PASSWORD." >&2
+if [[ -z "$staging_url" || ( -z "$staging_bearer_token" && ( -z "$staging_email" || -z "$staging_password" ) ) ]]; then
+  echo "Mangler staging-URL og enten bearer-token eller e-post/passord." >&2
   exit 2
 fi
 if [[ "$staging_url" != https://* || "$staging_url" == "$production_url" ]]; then
@@ -34,14 +35,23 @@ for required_command in curl jq uuidgen; do
   fi
 done
 
-login_payload="$(jq -n --arg email "$staging_email" --arg password "$staging_password"   '{email: $email, password: $password, type: "general"}')"
-login_response="$(curl --fail-with-body --silent --show-error   -H "Content-Type: application/json"   --data-binary "$login_payload"   "$staging_url/api/auth/login")"
+if [[ -n "$staging_bearer_token" ]]; then
+  token="$staging_bearer_token"
+  curl --fail-with-body --silent --show-error \
+    -H "Authorization: Bearer $token" \
+    "$staging_url/api/auth/user" >/dev/null
+  echo "STAGING_E2E_AUTH=durable_session"
+else
+  login_payload="$(jq -n --arg email "$staging_email" --arg password "$staging_password"   '{email: $email, password: $password, type: "general"}')"
+  login_response="$(curl --fail-with-body --silent --show-error   -H "Content-Type: application/json"   --data-binary "$login_payload"   "$staging_url/api/auth/login")"
 
-if [[ "$(jq -r '.needs_2fa // false' <<<"$login_response")" == "true" ]]; then
-  echo "Staging-testbrukeren krever 2FA. Bruk en dedikert testbruker uten interaktiv 2FA." >&2
-  exit 3
+  if [[ "$(jq -r '.needs_2fa // false' <<<"$login_response")" == "true" ]]; then
+    echo "Staging-testbrukeren krever 2FA. Bruk en dedikert testbruker uten interaktiv 2FA." >&2
+    exit 3
+  fi
+  token="$(jq -er '.token' <<<"$login_response")"
+  echo "STAGING_E2E_AUTH=password_login"
 fi
-token="$(jq -er '.token' <<<"$login_response")"
 echo "STAGING_E2E_STAGE=authenticated"
 
 organizations="$(curl --fail-with-body --silent --show-error   -H "Authorization: Bearer $token"   "$staging_url/api/admin-room/lead-map/organizations")"
@@ -280,7 +290,7 @@ if [[ "$enrichment_ready" != "true" ]]; then
 fi
 
 if [[ "$run_simulator_e2e" == "1" ]]; then
-  for required_command in xcodegen xcodebuild; do
+  for required_command in xcodegen xcodebuild xcrun plutil; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
       echo "Mangler påkrevd kommando for simulator-E2E: $required_command" >&2
       exit 2
@@ -289,6 +299,7 @@ if [[ "$run_simulator_e2e" == "1" ]]; then
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   app_dir="$(cd "$script_dir/.." && pwd)"
   derived_data="${LEADGRID_STAGING_DERIVED_DATA:-/private/tmp/leadgrid-staging-e2e}"
+  result_bundle="${LEADGRID_STAGING_RESULT_BUNDLE:-$derived_data/Logs/Test/Leadgrid-Staging-$(date -u +%Y%m%d%H%M%S).xcresult}"
   simulator_tests=(
     "-only-testing:LeadMapAppUITests/QASweepTests/testStagingLeadCreationOfflineReconnect"
     "-only-testing:LeadMapAppUITests/QASweepTests/testStagingPondusUsageOfflineReconnect"
@@ -301,17 +312,62 @@ if [[ "$run_simulator_e2e" == "1" ]]; then
   (
     cd "$app_dir"
     xcodegen generate
-    LEADGRID_STAGING_BASE_URL="$staging_url" \
-    LEADGRID_STAGING_BEARER_TOKEN="$token" \
-    LEADGRID_STAGING_ORG_ID="$org_id" \
-    LEADGRID_STAGING_ROLE_ROOM_PROJECT_ID="$role_room_project_id" \
-      xcodebuild test -quiet \
-        -project LeadMapApp.xcodeproj \
-        -scheme LeadMapApp \
-        -destination "$simulator_destination" \
-        -derivedDataPath "$derived_data" \
-        "${simulator_tests[@]}" \
-        CODE_SIGNING_ALLOWED=NO
+    xcodebuild build-for-testing -quiet \
+      -project LeadMapApp.xcodeproj \
+      -scheme LeadMapApp \
+      -destination "$simulator_destination" \
+      -derivedDataPath "$derived_data" \
+      CODE_SIGNING_ALLOWED=NO
+
+    products_dir="$derived_data/Build/Products"
+    source_xctestrun="$(find "$products_dir" -maxdepth 1 -name '*.xctestrun' -print -quit)"
+    if [[ -z "$source_xctestrun" ]]; then
+      echo "Fant ingen .xctestrun etter build-for-testing." >&2
+      exit 9
+    fi
+    test_xctestrun="$source_xctestrun"
+    cleanup_xctestrun() {
+      [[ -n "${test_xctestrun:-}" && -f "$test_xctestrun" ]] || return 0
+      for key in \
+        LEADGRID_STAGING_BASE_URL \
+        LEADGRID_STAGING_BEARER_TOKEN \
+        LEADGRID_STAGING_ORG_ID \
+        LEADGRID_STAGING_PROJECT_ID \
+        LEADGRID_STAGING_ROLE_ROOM_PROJECT_ID
+      do
+        plutil -remove "LeadMapAppUITests.EnvironmentVariables.$key" "$test_xctestrun" >/dev/null 2>&1 || true
+      done
+    }
+    trap cleanup_xctestrun EXIT
+
+    plutil -insert "LeadMapAppUITests.EnvironmentVariables.LEADGRID_STAGING_BASE_URL" -string "$staging_url" "$test_xctestrun"
+    plutil -insert "LeadMapAppUITests.EnvironmentVariables.LEADGRID_STAGING_BEARER_TOKEN" -string "$token" "$test_xctestrun"
+    plutil -insert "LeadMapAppUITests.EnvironmentVariables.LEADGRID_STAGING_ORG_ID" -string "$org_id" "$test_xctestrun"
+    plutil -insert "LeadMapAppUITests.EnvironmentVariables.LEADGRID_STAGING_PROJECT_ID" -string "$lead_project_id" "$test_xctestrun"
+    plutil -insert "LeadMapAppUITests.EnvironmentVariables.LEADGRID_STAGING_ROLE_ROOM_PROJECT_ID" -string "$role_room_project_id" "$test_xctestrun"
+
+    mkdir -p "$(dirname "$result_bundle")"
+    if [[ -e "$result_bundle" ]]; then
+      echo "Resultatpakken finnes allerede: $result_bundle" >&2
+      exit 9
+    fi
+    xcodebuild test-without-building -quiet \
+      -xctestrun "$test_xctestrun" \
+      -destination "$simulator_destination" \
+      -resultBundlePath "$result_bundle" \
+      "${simulator_tests[@]}"
+
+    test_summary="$(xcrun xcresulttool get test-results summary --path "$result_bundle")"
+    expected_tests="${#simulator_tests[@]}"
+    jq -e --argjson expected "$expected_tests" '
+      .result == "Passed" and
+      .passedTests == $expected and
+      .failedTests == 0 and
+      .skippedTests == 0 and
+      .totalTestCount == $expected
+    ' <<<"$test_summary" >/dev/null
+    cleanup_xctestrun
+    trap - EXIT
   )
   echo "STAGING_E2E_SIMULATOR=PASS"
 fi

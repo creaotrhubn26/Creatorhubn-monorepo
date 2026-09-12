@@ -1471,13 +1471,19 @@ struct KartView: View {
                     guard let projectId = appState.activeLeadgridProjectId else {
                         throw AddLeadSaveError(message: "Velg et kundeprosjekt før du lagrer leaden")
                     }
-                    let newId = try await api.createLeadAtPin(
-                        newLead.makeCreateRequest(
-                            projectID: projectId,
-                            idempotencyKey: session.idempotencyKey
-                        ),
-                        organizationId: appState.activeOrganizationId
+                    guard let organizationId = appState.activeOrganizationId else {
+                        throw AddLeadSaveError(message: "Velg en organisasjon før du lagrer leaden")
+                    }
+                    let newId = try await newLead.saveResiliently(
+                        api: api,
+                        organizationID: organizationId,
+                        projectID: projectId,
+                        idempotencyKey: session.idempotencyKey
                     )
+                    guard let newId else {
+                        showToast("Leaden er lagret offline og sendes automatisk når nettet er tilbake.")
+                        return
+                    }
                     showToast("«\(newLead.companyName)» lagt til")
                     // Først etter bekreftet backend-lagring blir utkastet til
                     // en ekte CRM-pin og kartet fokuserer den nye leaden.
