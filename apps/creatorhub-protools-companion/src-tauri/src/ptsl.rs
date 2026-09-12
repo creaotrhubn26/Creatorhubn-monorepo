@@ -148,14 +148,19 @@ pub fn probe() -> PtslStatus {
 }
 
 fn completed_response<'a>(responses: &'a [Value], command: &str) -> Option<&'a Value> {
-    responses.iter().rev().find(|response| {
-        response.pointer("/header/status").and_then(Value::as_str) == Some("Completed")
-            && response
-                .pointer("/header/command")
-                .and_then(Value::as_str)
-                .map(|value| value == command || value.trim_start_matches("CId_") == command)
-                .unwrap_or(false)
-    })
+    responses
+        .iter()
+        .rev()
+        .find(|response| is_completed_response(response, command))
+}
+
+fn is_completed_response(response: &Value, command: &str) -> bool {
+    response.pointer("/header/status").and_then(Value::as_str) == Some("Completed")
+        && response
+            .pointer("/header/command")
+            .and_then(Value::as_str)
+            .map(|value| value == command || value.trim_start_matches("CId_") == command)
+            .unwrap_or(false)
 }
 
 fn response_errors(response: &Value) -> Vec<String> {
@@ -171,6 +176,20 @@ fn response_errors(response: &Value) -> Vec<String> {
                 .map(str::to_string)
         })
         .collect()
+}
+
+fn completed_response_without_errors<'a>(
+    responses: &'a [Value],
+    command: &str,
+) -> Result<&'a Value, String> {
+    let completed = completed_response(responses, command)
+        .ok_or_else(|| format!("Pro Tools did not confirm {}", command))?;
+    let errors = response_errors(completed);
+    if errors.is_empty() {
+        Ok(completed)
+    } else {
+        Err(errors.join("; "))
+    }
 }
 
 fn json_results(output: &str) -> Vec<Value> {
@@ -305,6 +324,18 @@ fn sample_rate_from(responses: &[Value]) -> Result<(u64, String), String> {
         .parse::<u64>()
         .map_err(|_| "Pro Tools returned an invalid session sample rate".to_string())?;
     Ok((numeric, label.to_string()))
+}
+
+fn bit_depth_number(label: &str) -> Option<u16> {
+    let numeric = label
+        .strip_prefix("BDepth_")
+        .unwrap_or(label)
+        .chars()
+        .take_while(|character| character.is_ascii_digit())
+        .collect::<String>();
+    (!numeric.is_empty())
+        .then(|| numeric.parse().ok())
+        .flatten()
 }
 
 fn response_body<'a>(responses: &'a [Value], command: &str) -> Option<&'a Value> {
@@ -652,8 +683,8 @@ fn execute_avid_cli(
                     }),
                 )],
             )?;
-            completed_response(&responses, "Import")
-                .ok_or("Pro Tools did not confirm the audio import")?;
+            completed_response_without_errors(&responses, "Import")
+                .map_err(|error| format!("Pro Tools kunne ikke fullføre lydimporten: {}", error))?;
             Ok(json!({ "execution": "ptsl", "localPath": local_path, "imported": true }))
         }
         "export_review" => {
@@ -770,13 +801,7 @@ fn execute_avid_cli(
             let bit_depth = response_body(&responses, "GetSessionBitDepth")
                 .and_then(|body| body.get("current_setting"))
                 .and_then(Value::as_str);
-            let bit_depth_number = bit_depth.and_then(|value| {
-                value
-                    .strip_prefix("BDepth_")
-                    .unwrap_or(value)
-                    .parse::<u16>()
-                    .ok()
-            });
+            let bit_depth_number = bit_depth.and_then(bit_depth_number);
             let (sample_rate_number, sample_rate) = sample_rate_from(&responses)?;
             let detailed_commands: Vec<Value> = tracks.iter().flat_map(|track| {
                 let id = track.get("id").and_then(Value::as_str).unwrap_or("");
@@ -792,14 +817,7 @@ fn execute_avid_cli(
             };
             let playlists: Vec<Value> = detailed
                 .iter()
-                .filter(|response| {
-                    response
-                        .pointer("/header/command")
-                        .and_then(Value::as_str)
-                        .is_some_and(|value| {
-                            value.trim_start_matches("CId_") == "GetTrackPlaylists"
-                        })
-                })
+                .filter(|response| is_completed_response(response, "GetTrackPlaylists"))
                 .enumerate()
                 .map(|(index, response)| {
                     let track = tracks.get(index);
@@ -814,12 +832,7 @@ fn execute_avid_cli(
             let routing: Vec<Value> = detailed
                 .iter()
                 .filter(|response| {
-                    response
-                        .pointer("/header/command")
-                        .and_then(Value::as_str)
-                        .is_some_and(|value| {
-                            value.trim_start_matches("CId_") == "GetTrackMainOutputAssignments"
-                        })
+                    is_completed_response(response, "GetTrackMainOutputAssignments")
                 })
                 .enumerate()
                 .map(|(index, response)| {
@@ -1229,9 +1242,55 @@ mod tests {
     }
 
     #[test]
+    fn completed_response_ignores_queued_and_in_progress_frames() {
+        let responses = [
+            json!({ "header": { "command": "CId_GetTrackPlaylists", "status": "Queued" } }),
+            json!({ "header": { "command": "CId_GetTrackPlaylists", "status": "InProgress" } }),
+            json!({
+                "header": { "command": "CId_GetTrackPlaylists", "status": "Completed" },
+                "responseBodyJson": { "playlists": [{ "playlist_name": "Lead Vocal" }] }
+            }),
+        ];
+        let completed: Vec<&Value> = responses
+            .iter()
+            .filter(|response| is_completed_response(response, "GetTrackPlaylists"))
+            .collect();
+        assert_eq!(completed.len(), 1);
+        assert_eq!(
+            completed[0].pointer("/responseBodyJson/playlists/0/playlist_name"),
+            Some(&json!("Lead Vocal"))
+        );
+    }
+
+    #[test]
+    fn completed_import_warnings_remain_visible_to_the_caller() {
+        let responses = [json!({
+            "header": { "command": "Import", "status": "Completed" },
+            "responseBodyJson": {},
+            "responseErrorJson": {
+                "errors": [{
+                    "command_error_message": "maximum number of audio tracks reached",
+                    "is_warning": true
+                }]
+            }
+        })];
+        assert_eq!(
+            completed_response_without_errors(&responses, "Import").unwrap_err(),
+            "maximum number of audio tracks reached"
+        );
+    }
+
+    #[test]
     fn marker_numbers_stay_in_the_supported_integer_range() {
         let number = marker_number();
         assert!((1_000..=2_000_001_000).contains(&number));
+    }
+
+    #[test]
+    fn parses_integer_and_float_session_bit_depth_labels() {
+        assert_eq!(bit_depth_number("BDepth_24"), Some(24));
+        assert_eq!(bit_depth_number("BDepth_32Float"), Some(32));
+        assert_eq!(bit_depth_number("unknown"), None);
     }
 
     #[test]
@@ -1340,7 +1399,25 @@ mod tests {
             .get("sessionName")
             .and_then(Value::as_str)
             .is_some_and(|name| !name.trim().is_empty()));
-        assert!(snapshot.get("tracks").and_then(Value::as_array).is_some());
+        let live_tracks = snapshot
+            .get("tracks")
+            .and_then(Value::as_array)
+            .expect("snapshot tracks");
+        assert_eq!(
+            snapshot
+                .get("playlists")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(live_tracks.len())
+        );
+        assert_eq!(
+            snapshot
+                .get("routing")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(live_tracks.len())
+        );
+        assert!(snapshot.get("bitDepth").and_then(Value::as_u64).is_some());
         if let Some((track_id, was_muted)) = snapshot
             .get("tracks")
             .and_then(Value::as_array)
