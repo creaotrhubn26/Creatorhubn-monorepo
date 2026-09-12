@@ -45,14 +45,18 @@ jobs:
             echo "::error::Expected commit is not a full Git SHA"
             exit 1
           fi
-          if [[ "$STAGING_URL" != https://* ]] || +             [[ "$STAGING_URL" == "https://creatorhub-backend-rtbl.onrender.com" ]]; then
+          if [[ "$STAGING_URL" != https://* ]] || \
+             [[ "$STAGING_URL" == "https://creatorhub-backend-rtbl.onrender.com" ]]; then
             echo "::error::Staging URL is missing, invalid, or points to production"
             exit 1
           fi
           staging_base="${STAGING_URL%/}"
           observed=""
           for attempt in $(seq 1 120); do
-            version_json="$(curl -fsS --connect-timeout 3 --max-time 15 +              -H "Accept: application/json" -H "Cache-Control: no-cache" +              "$staging_base/api/version?expected=$EXPECTED_COMMIT&attempt=$attempt" 2>/dev/null || true)"
+            version_json="$(curl -fsS --connect-timeout 3 --max-time 15 \
+              -H "Accept: application/json" \
+              -H "Cache-Control: no-cache" \
+              "$staging_base/api/version?expected=$EXPECTED_COMMIT&attempt=$attempt" 2>/dev/null || true)"
             observed="$(jq -r '.commit // ""' <<<"$version_json" 2>/dev/null || true)"
             if [[ "$observed" == "$EXPECTED_COMMIT" ]]; then
               echo "Staging runs the exact selected commit."
