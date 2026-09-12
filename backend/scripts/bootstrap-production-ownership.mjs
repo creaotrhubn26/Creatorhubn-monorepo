@@ -5,6 +5,9 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import {
+  withExplicitPostgresVerifyFull,
+} from "../server/postgres-connection-url.mjs";
 
 const OWNER_LOGIN_ROLE = "neondb_owner";
 const MIGRATOR_LOGIN_ROLE = "creatorhub_migrator";
@@ -922,6 +925,7 @@ function parseDatabaseUrl(
 
   return Object.freeze({
     raw,
+    connectionString: withExplicitPostgresVerifyFull(raw),
     variableName,
     username,
     encodedPassword,
@@ -2139,7 +2143,7 @@ function logDryRun(audit, log) {
 
 async function verifyRuntimePool(Client, runtimeConfig, log) {
   const client = new Client({
-    connectionString: runtimeConfig.raw,
+    connectionString: runtimeConfig.connectionString,
     enableChannelBinding: true,
     application_name: "creatorhub-ownership-runtime-canary",
     connectionTimeoutMillis: 15_000,
@@ -2246,7 +2250,7 @@ async function loadPgClient() {
 
 function createDirectClient(Client, databaseConfig, applicationName) {
   return new Client({
-    connectionString: databaseConfig.raw,
+    connectionString: databaseConfig.connectionString,
     enableChannelBinding: true,
     application_name: applicationName,
     connectionTimeoutMillis: 15_000,
@@ -2327,7 +2331,9 @@ async function verifyRuntimeLogin(
   // installed. A direct auth canary proves the credential and SET membership;
   // the final canary is the first pooled connection for this new login.
   const client = new Client({
-    connectionString: directNeonConnectionString(runtimeConfig.raw),
+    connectionString: withExplicitPostgresVerifyFull(
+      directNeonConnectionString(runtimeConfig.raw),
+    ),
     enableChannelBinding: true,
     application_name: "creatorhub-ownership-new-runtime-auth-canary",
     connectionTimeoutMillis: 15_000,

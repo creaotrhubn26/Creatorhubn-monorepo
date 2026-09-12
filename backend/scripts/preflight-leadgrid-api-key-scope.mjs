@@ -1,5 +1,8 @@
 import process from "node:process";
 import { pathToFileURL } from "node:url";
+import {
+  withExplicitPostgresVerifyFull,
+} from "../server/postgres-connection-url.mjs";
 
 const ACTIVE_KEY_SUMMARY_SQL = `WITH eligible_projects AS (
   SELECT organization_id,
@@ -72,7 +75,7 @@ function requireDirectDatabaseUrl(value) {
   if (url.hostname.includes("-pooler.")) {
     throw new Error("DATABASE_URL must use the direct production endpoint");
   }
-  return value;
+  return withExplicitPostgresVerifyFull(value);
 }
 
 function requireOwnerRole(value) {
@@ -147,6 +150,14 @@ async function selfTest() {
     rejectedPooler = true;
   }
   if (!rejectedPooler) throw new Error("Pooler rejection self-test failed");
+  const strictUrl = requireDirectDatabaseUrl(
+    "postgresql://user@example.test/app?sslmode=require&channel_binding=require",
+  );
+  if (
+    new URL(strictUrl).searchParams.get("sslmode") !== "verify-full"
+  ) {
+    throw new Error("Explicit verify-full normalization self-test failed");
+  }
   if (requireOwnerRole("creatorhub_schema_owner") !== "creatorhub_schema_owner") {
     throw new Error("Owner-role validation self-test failed");
   }
