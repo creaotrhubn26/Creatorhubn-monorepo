@@ -39,6 +39,7 @@ import {
   revokeStoryboardReviewShareLink,
   updateStoryboardReviewComment,
 } from '../services/storyboardReviewService';
+import { StoryboardReviewMarkupCanvas } from './StoryboardReviewMarkupCanvas';
 
 type RevisionBaseline = NonNullable<StoryboardSkillContext['revisionBaseline']>;
 
@@ -321,6 +322,10 @@ export const StoryboardReviewRoundsDialog: React.FC<{
         return (left.dueAt || '9999').localeCompare(right.dueAt || '9999');
       });
   }, [detail?.comments, showOpenCommentsOnly]);
+  const detailFrames = useMemo(() => new Map(
+    (detail?.snapshot?.scenes ?? []).flatMap((scene) => scene.storyboardFrames)
+      .map((frame) => [frame.id, frame] as const),
+  ), [detail?.snapshot?.scenes]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth data-testid="storyboard-review-rounds-dialog">
@@ -467,6 +472,10 @@ export const StoryboardReviewRoundsDialog: React.FC<{
                           <Stack spacing={1.25}>
                             {visibleComments.map((comment) => {
                               const draft = commentDrafts[comment.id] ?? draftFor(comment);
+                              const frame = comment.frameId ? detailFrames.get(comment.frameId) : undefined;
+                              const hasVisualMarkup = comment.anchorX != null
+                                || comment.anchorY != null
+                                || (comment.annotations?.length ?? 0) > 0;
                               return (
                                 <Box
                                   key={comment.id}
@@ -480,6 +489,16 @@ export const StoryboardReviewRoundsDialog: React.FC<{
                                     <Typography variant="caption" color="text.secondary">{comment.authorDisplayName}</Typography>
                                   </Stack>
                                   <Typography variant="body2" sx={{ my: 1 }}>{comment.body}</Typography>
+                                  {frame && hasVisualMarkup && (
+                                    <Box sx={{ maxWidth: 420, mb: 1.25 }} data-testid={`storyboard-review-manager-markup-${comment.id}`}>
+                                      <StoryboardReviewMarkupCanvas
+                                        frame={frame}
+                                        comments={[comment]}
+                                        activeCommentId={comment.id}
+                                        showMarkup
+                                      />
+                                    </Box>
+                                  )}
                                   <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
                                     <TextField
                                       size="small"

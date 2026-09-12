@@ -1,5 +1,6 @@
 import type {
   StoryboardReviewAccessMode,
+  StoryboardReviewAnnotation,
   StoryboardReviewComment,
   StoryboardReviewDecision,
   StoryboardReviewDiff,
@@ -186,7 +187,13 @@ export async function createStoryboardReviewerSession(
 export async function addSharedStoryboardComment(
   token: string,
   reviewerToken: string,
-  input: { frameId?: string | null; body: string; anchorX?: number | null; anchorY?: number | null },
+  input: {
+    frameId?: string | null;
+    body: string;
+    anchorX?: number | null;
+    anchorY?: number | null;
+    annotations?: StoryboardReviewAnnotation[];
+  },
 ) {
   const response = await fetch(`${publicBase(token)}/comments`, {
     method: 'POST', headers: reviewerHeaders(reviewerToken), body: JSON.stringify(input),

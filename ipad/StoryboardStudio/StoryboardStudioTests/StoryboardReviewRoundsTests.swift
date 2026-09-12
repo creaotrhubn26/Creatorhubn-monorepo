@@ -68,6 +68,11 @@ final class StoryboardReviewRoundsTests: XCTestCase {
         {
           "id":"comment-2","reviewRoundId":"round-2","frameId":"frame-a",
           "authorDisplayName":"Kari","body":"Hold bildet lenger.","status":"resolved",
+          "anchorX":0.72,"anchorY":0.38,
+          "annotations":[{
+            "id":"mark-1","tool":"arrow","color":"#fbbf24","strokeWidth":3,
+            "points":[{"x":0.24,"y":0.68},{"x":0.72,"y":0.38}]
+          }],
           "assignedTo":"Mina","dueAt":"2026-09-14T10:00:00Z",
           "resolutionNote":"Forlenget to frames","resolvedBy":"owner-1",
           "resolvedAt":"2026-09-12T12:05:00Z","resolvedInRoundId":"round-3",
@@ -78,6 +83,9 @@ final class StoryboardReviewRoundsTests: XCTestCase {
         let comment = try JSONDecoder().decode(StoryboardReviewCommentDTO.self, from: data)
         XCTAssertEqual(comment.status, "resolved")
         XCTAssertEqual(comment.assignedTo, "Mina")
+        XCTAssertEqual(comment.anchorX, 0.72)
+        XCTAssertEqual(comment.annotations?.first?.tool, "arrow")
+        XCTAssertEqual(comment.annotations?.first?.points.count, 2)
         XCTAssertEqual(comment.resolvedInRoundId, "round-3")
         XCTAssertEqual(comment.carriedFromCommentId, "comment-1")
     }
