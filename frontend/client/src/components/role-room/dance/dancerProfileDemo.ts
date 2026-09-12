@@ -36,6 +36,7 @@ export const DEMO_DANCER_PROFILES: readonly DancerProfile[] = [
     projectId: null,
     createdAt: NOW,
     updatedAt: NOW,
+    availabilityConfirmedAt: NOW,
   },
   {
     ownerUserId: 'demo-owner',
@@ -64,6 +65,7 @@ export const DEMO_DANCER_PROFILES: readonly DancerProfile[] = [
     projectId: null,
     createdAt: NOW,
     updatedAt: NOW,
+    availabilityConfirmedAt: NOW,
   },
   {
     ownerUserId: 'demo-owner',
@@ -90,6 +92,7 @@ export const DEMO_DANCER_PROFILES: readonly DancerProfile[] = [
     projectId: null,
     createdAt: NOW,
     updatedAt: NOW,
+    availabilityConfirmedAt: null,
   },
   {
     ownerUserId: 'demo-owner',
@@ -116,5 +119,6 @@ export const DEMO_DANCER_PROFILES: readonly DancerProfile[] = [
     projectId: null,
     createdAt: NOW,
     updatedAt: NOW,
+    availabilityConfirmedAt: null,
   },
 ] as const;

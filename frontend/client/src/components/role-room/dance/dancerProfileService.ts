@@ -70,6 +70,12 @@ export interface DancerProfile extends DancerProfileExtras {
   dancerId: string;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Når danseren sist bekreftet tilgjengeligheten. Bumpes automatisk når
+   * vinduer lagres, og via {@link confirmDancerAvailability}. null = aldri
+   * bekreftet (vises som utdatert).
+   */
+  availabilityConfirmedAt: string | null;
 }
 
 // ─── HTTP-helpers ───────────────────────────────────────────────────────
@@ -112,6 +118,20 @@ export async function upsertDancerProfile(
     headers: danceAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify(extras),
+  });
+  const body = await readJson<{ success: boolean; data: DancerProfile }>(res);
+  return body.data;
+}
+
+/**
+ * Bekreft at tilgjengeligheten fortsatt stemmer — bumper ferskhets-stemplet
+ * uten å endre vinduene. Returnerer den oppdaterte profilen.
+ */
+export async function confirmDancerAvailability(dancerId: string): Promise<DancerProfile> {
+  const res = await fetch(`${BASE}/${encodeURIComponent(dancerId)}/availability/confirm`, {
+    method: 'POST',
+    headers: danceAuthHeaders(),
+    credentials: 'include',
   });
   const body = await readJson<{ success: boolean; data: DancerProfile }>(res);
   return body.data;

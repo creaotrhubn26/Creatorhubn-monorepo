@@ -25,6 +25,7 @@ import { Add as AddIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import { DancerProfileCard } from './DancerProfileCard';
 import { DancerProfileEditor } from './DancerProfileEditor';
 import {
+  confirmDancerAvailability,
   listDancerProfiles,
   type DancerProfile,
 } from './dancerProfileService';
@@ -144,6 +145,19 @@ export const DancerProfileGrid: React.FC<DancerProfileGridProps> = ({
       next.set(updated.dancerId, updated);
       return next;
     });
+  }, []);
+
+  const handleConfirmAvailability = useCallback(async (dancerId: string) => {
+    try {
+      const updated = await confirmDancerAvailability(dancerId);
+      setProfiles((prev) => {
+        const next = new Map(prev);
+        next.set(updated.dancerId, updated);
+        return next;
+      });
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Kunne ikke bekrefte tilgjengelighet');
+    }
   }, []);
 
   const editorDancer = useMemo(
@@ -298,6 +312,7 @@ export const DancerProfileGrid: React.FC<DancerProfileGridProps> = ({
               profile={profiles.get(d.id) ?? null}
               stats={statsByDancerId?.get(d.id)}
               onEdit={() => openEditorFor(d.id)}
+              onConfirmAvailability={handleConfirmAvailability}
             />
           ))}
         </Box>
