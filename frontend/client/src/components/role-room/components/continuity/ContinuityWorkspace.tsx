@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -181,6 +181,7 @@ export function ContinuityWorkspace({
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [deviationDraft, setDeviationDraft] = useState({ type: 'improvised_dialogue' as ProductionContinuityDeviation['type'], character: '', originalText: '', performedText: '', note: '', timecode: '', accepted: false });
   const [commentDraft, setCommentDraft] = useState('');
+  const hydratedSelectionRef = useRef<string | null>(null);
   const { confirmIfDirty } = useBeforeUnloadIfDirty({ isDirty: dirty, message: 'Kontinuitetsflaten har ulagrede endringer. Vil du forlate den?' });
 
   useEffect(() => {
@@ -191,9 +192,13 @@ export function ContinuityWorkspace({
 
   useEffect(() => {
     if (!selectedDay) {
+      hydratedSelectionRef.current = null;
       setOperations(null);
       return;
     }
+    const selectionKey = `${project.id}:${selectedDay.id}`;
+    const selectionChanged = hydratedSelectionRef.current !== selectionKey;
+    hydratedSelectionRef.current = selectionKey;
     const serverOperations = buildContinuityOperations(selectedDay);
     const draft = loadContinuityDraft(project.id, selectedDay.id);
     setSceneId((current) => selectedDay.scenes.includes(current) ? current : selectedDay.scenes[0] ?? '');
@@ -210,7 +215,13 @@ export function ContinuityWorkspace({
       setDirty(false);
       setDraftSavedAt(null);
       setStaleDraft(draft);
-      setFeedback(draft && !readOnly ? { type: 'warning', text: 'Det finnes et lokalt utkast fra en eldre serverversjon. Velg om det skal gjenopprettes.' } : null);
+      if (draft && !readOnly) {
+        setFeedback({ type: 'warning', text: 'Det finnes et lokalt utkast fra en eldre serverversjon. Velg om det skal gjenopprettes.' });
+      } else if (selectionChanged) {
+        setFeedback(null);
+      } else {
+        setFeedback((current) => current?.type === 'success' ? current : null);
+      }
     }
   }, [project.id, readOnly, selectedDay]);
 
