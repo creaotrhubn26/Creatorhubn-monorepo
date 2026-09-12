@@ -606,6 +606,16 @@ kbd {
   line-height: 1.5;
 }
 
+/* Hvem som sa det, i en importert samtale. Navnet skal leses først og så tre
+   til side — det er kortformen som bærer linja. */
+.avsender {
+  margin-right: 6px;
+  font-family: var(--sans);
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
 /* Det oppgaven venter på hører til oppgaven, og står i samme linje som den. */
 .venter {
   color: var(--ink-soft);

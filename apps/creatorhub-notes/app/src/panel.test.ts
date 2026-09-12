@@ -6,7 +6,7 @@ import { _test } from "./Panel";
 import { lesTema, settTema, type Tema } from "./tema";
 import type { Paragraph, Rettelse, Tidligere } from "./api";
 
-const { lest, plassen, kortformen, tidligereLinjer, SETNINGER } = _test;
+const { lest, plassen, kortformen, linjetekst, tidligereLinjer, SETNINGER } = _test;
 
 function avsnitt(kind: string, action: string, ekstra: Partial<Paragraph> = {}): Paragraph {
   return {
@@ -18,6 +18,7 @@ function avsnitt(kind: string, action: string, ekstra: Partial<Paragraph> = {}):
     summary: "Systemets kortform",
     kind,
     action,
+    avsender: null,
     dependency: null,
     correction: null,
     ...ekstra,
@@ -126,4 +127,18 @@ test("uten enighet om retningen sier linja ingenting om retning", () => {
   for (const antydning of ["forkastet", "bestemte", "svarer", "igjen", "før", "også"]) {
     expect(linje).not.toContain(antydning);
   }
+});
+
+test("avsenderen står foran linja i en samtale, og bare der", () => {
+  // Forskjellen på en beslutningslogg og en haug med løsrevne påstander.
+  const marius = avsnitt("beslutning", "bygg", { avsender: "Marius", summary: "bruke Stripe" });
+  expect(linjetekst(marius.avsender, kortformen(marius))).toBe("Marius: bruke Stripe");
+
+  // Rettelsen hennes vinner over kortformen, men avsenderen står fortsatt.
+  const rettet = { ...marius, correction: { plass: "forstått", summary: "Stripe" } as Rettelse };
+  expect(linjetekst(rettet.avsender, kortformen(rettet))).toBe("Marius: Stripe");
+
+  // I et vanlig notat er avsenderen brukeren selv, og navnet er støy.
+  const eget = avsnitt("beslutning", "bygg", { summary: "bruke Stripe" });
+  expect(linjetekst(eget.avsender, kortformen(eget))).toBe("bruke Stripe");
 });

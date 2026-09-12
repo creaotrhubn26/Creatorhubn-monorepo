@@ -46,6 +46,13 @@ function plassen(p: Paragraph): Plass | typeof FJERNET | null {
 
 const kortformen = (p: Paragraph) => p.correction?.summary?.trim() || p.summary;
 
+/// Linja slik den leses: «Marius: bruke Stripe» i en samtale, «bruke Stripe» i
+/// et vanlig notat. Forskjellen på en beslutningslogg og en haug med løsrevne
+/// påstander er hvem som sa det.
+export function linjetekst(avsender: string | null, kortform: string): string {
+  return avsender ? `${avsender}: ${kortform}` : kortform;
+}
+
 type Velg = (p: Paragraph) => void;
 type Rett = (r: Retting) => void;
 type Åpne = (sti: string, hash: string) => void;
@@ -199,6 +206,7 @@ function Linje({
           {tegnet(plass)}
         </span>
         <span className="kort">
+          {p.avsender && <span className="avsender">{p.avsender}:</span>}
           {kortformen(p)}
           {plass === "oppgave" && p.dependency && (
             <span className="venter"> — venter på {p.dependency}</span>
@@ -375,4 +383,13 @@ export function Panel({
 }
 
 /** Eksportert for testing: plasseringen er produktlogikk, ikke pynt. */
-export const _test = { lest, plassen, kortformen, tidligereLinjer, SETNINGER, PLASSER, FJERNET };
+export const _test = {
+  lest,
+  plassen,
+  kortformen,
+  linjetekst,
+  tidligereLinjer,
+  SETNINGER,
+  PLASSER,
+  FJERNET,
+};

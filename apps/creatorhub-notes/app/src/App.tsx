@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Editor } from "./Editor";
-import { Panel } from "./Panel";
+import { linjetekst, Panel } from "./Panel";
 import {
   avbrytLesning,
   createNote,
@@ -10,7 +10,9 @@ import {
   readNote,
   reindex,
   rettAvsnitt,
+  samtaleform,
   searchNotes,
+  settSamtale,
   sporNotater,
   understandNote,
   writeNote,
@@ -18,6 +20,7 @@ import {
   type Note,
   type Paragraph,
   type Retting,
+  type Samtaleform,
   type SearchHit,
   type Sporsmal,
   type Understanding,
@@ -112,6 +115,9 @@ export default function App() {
    *  — da står det ingenting i panelet. */
   const [framdrift, setFramdrift] = useState<{ lest: number; totalt: number } | null>(null);
   const [peker, setPeker] = useState<{ from: number; to: number; n: number } | null>(null);
+  /** Leses notatet som en samtale, og hvem er i så fall med? `null` før vi har
+   *  spurt. Valget er synlig i notatlinja, ikke gjemt i en meny. */
+  const [samtale, setSamtale] = useState<Samtaleform | null>(null);
   const [tema, setTema] = useState<Tema>(() => lesTema());
 
   const søkefelt = useRef<HTMLInputElement>(null);
@@ -208,6 +214,9 @@ export default function App() {
       await writeNote(p.path, p.content);
       setStatus(`Lagret ${klokke.format(new Date())}`);
       void les(p.path, p.content);
+      // Ble en samtale limt inn, er notatet en samtale nå. Formen leses av
+      // teksten som faktisk står på disk, ikke av det appen trodde.
+      void samtaleform(p.content).then(setSamtale).catch(() => undefined);
     } catch (e) {
       setFeil(String(e));
       return;
@@ -244,6 +253,8 @@ export default function App() {
         setPeker(null);
         setForståelse(null);
         setFramdrift(null);
+        setSamtale(null);
+        void samtaleform(tekst).then(setSamtale).catch(() => undefined);
         void les(p, tekst);
         // Kom man hit fra en linje om noe som ble skrevet før, skal avsnittet
         // markeres. Er det skrevet om siden, står notatet åpent uten merke.
@@ -280,6 +291,20 @@ export default function App() {
     },
     [path, doc, les],
   );
+
+  /** «Dette er en samtale» / «dette er det ikke». Valget skrives i toppfeltet,
+   *  så det står i fila og gjelder neste gang også. */
+  const byttSamtale = useCallback(async () => {
+    if (!path) return;
+    try {
+      const ny = await settSamtale(uskrevet.current?.content ?? doc, !samtale?.er);
+      setDoc(ny);
+      uskrevet.current = { path, content: ny };
+      await lagre();
+    } catch (e) {
+      setFeil(String(e));
+    }
+  }, [path, doc, samtale, lagre]);
 
   const nyttNotat = useCallback(async () => {
     await lagre();
@@ -426,7 +451,7 @@ export default function App() {
                   className="rad"
                   onClick={() => void åpne(t.sti, false, t.hash)}
                 >
-                  <span className="tittel">{t.kortform}</span>
+                  <span className="tittel">{linjetekst(t.avsender, t.kortform)}</span>
                   <span className="fra">
                     {t.venter ? `venter på ${t.venter} · ` : ""}
                     {t.tittel}
@@ -491,10 +516,19 @@ export default function App() {
                   finner gjør ingen trygge. */}
               <div className="notatinfo">
                 <div className="notatlinje">
-                  <span>{topp?.etikett ?? "Notat"}</span>
+                  <span>
+                    {topp?.etikett ?? "Notat"}
+                    {samtale?.er &&
+                      ` · Samtale${
+                        samtale.deltakere.length ? ` med ${samtale.deltakere.join(", ")}` : ""
+                      }`}
+                  </span>
                   <span className="status" aria-live="polite">
                     {status}
                   </span>
+                  <button onClick={() => void byttSamtale()}>
+                    {samtale?.er ? "Ikke en samtale" : "Dette er en samtale"}
+                  </button>
                   {topp && (
                     <button onClick={() => setDetaljer(!detaljer)}>
                       {detaljer ? "Skjul detaljer" : "Vis detaljer"}
@@ -518,6 +552,7 @@ export default function App() {
                 onChange={skriv}
                 selectTitle={nytt}
                 peker={peker}
+                onSamtale={() => setSamtale((f) => ({ er: true, tvunget: "samtale", deltakere: f?.deltakere ?? [] }))}
                 onSynlig={(fra, til) => {
                   synlig.current = [fra, til];
                 }}

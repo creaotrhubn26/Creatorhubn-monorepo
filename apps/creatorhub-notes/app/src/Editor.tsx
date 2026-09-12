@@ -5,6 +5,7 @@ import { EditorState, RangeSetBuilder, StateEffect, StateField } from "@codemirr
 import { markdown } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
+import { importerSamtale } from "./api";
 
 /// Skriveflaten. Alt som angår hvordan teksten ser ut bor her, ikke i
 /// styles.css: CodeMirror injiserer sine egne regler med høyere spesifisitet,
@@ -164,6 +165,53 @@ const skjulMerker = ViewPlugin.fromClass(
   },
 );
 
+/// Der `kilde: samtale` skal skrives inn i toppfeltet, eller `null` når
+/// notatet ikke har en toppfeltblokk eller allerede sier hva kilden er.
+/// Posisjonen er starten på den avsluttende `---`-linja.
+function kildeplass(doc: EditorState["doc"]): number | null {
+  if (doc.lines < 2 || doc.line(1).text.trim() !== "---") return null;
+  for (let n = 2; n <= doc.lines; n++) {
+    const linje = doc.line(n);
+    if (linje.text.trim() === "---") return linje.from;
+    if (linje.text.split(":")[0]?.trim() === "kilde") return null;
+  }
+  return null; // uavsluttet blokk: rør den ikke
+}
+
+/// Innliming. Er det en samtale som limes inn, settes den inn som innlegg med
+/// avsender, og toppfeltet sier at kilden er en samtale — da står valget i
+/// fila, og appen trenger ikke gjette på nytt neste gang.
+///
+/// Gjenkjenningen er regelbasert og tar under et millisekund, men kallet er
+/// asynkront. Derfor settes teksten inn i en egen transaksjon rett etterpå;
+/// feiler kallet, limes teksten inn som den er. Ingenting går tapt.
+function innliming(påSamtale: () => void) {
+  return EditorView.domEventHandlers({
+    paste(hendelse, view) {
+      const tekst = hendelse.clipboardData?.getData("text/plain");
+      // Én linje er aldri en samtale, og det vanligste limet er én linje.
+      if (!tekst || !tekst.includes("\n")) return false;
+      hendelse.preventDefault();
+      const { from, to } = view.state.selection.main;
+      const sett = (inn: string, samtale: boolean) => {
+        const plass = samtale ? kildeplass(view.state.doc) : null;
+        const felt = "kilde: samtale\n";
+        const endringer = [{ from, to, insert: inn }];
+        if (plass !== null) endringer.unshift({ from: plass, to: plass, insert: felt });
+        view.dispatch({
+          changes: endringer,
+          selection: { anchor: from + inn.length + (plass !== null ? felt.length : 0) },
+        });
+        if (samtale) påSamtale();
+      };
+      importerSamtale(tekst)
+        .then((samtale) => sett(samtale ?? tekst, samtale !== null))
+        .catch(() => sett(tekst, false));
+      return true;
+    },
+  });
+}
+
 type Props = {
   /** Byttes stien, byttes hele dokumentet. */
   path: string;
@@ -174,19 +222,24 @@ type Props = {
   /** Avsnittet panelet peker på. `n` teller opp for hvert klikk, slik at det
    *  å klikke samme linje to ganger fører deg dit begge gangene. */
   peker: { from: number; to: number; n: number } | null;
+  /** En limt samtale ble kjent igjen og satt inn. Notatet er en samtale fra
+   *  nå av, og grensesnittet skal si det. */
+  onSamtale?: () => void;
   /** Området som er på skjermen. Brukes bare til å avgjøre hva som leses
    *  først i en lang kilde, så CodeMirrors viewport — som er litt større enn
    *  det øyet ser — er presist nok. */
   onSynlig?: (fra: number, til: number) => void;
 };
 
-export function Editor({ path, doc, onChange, selectTitle, peker, onSynlig }: Props) {
+export function Editor({ path, doc, onChange, selectTitle, peker, onSamtale, onSynlig }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const change = useRef(onChange);
   change.current = onChange;
   const synlig = useRef(onSynlig);
   synlig.current = onSynlig;
+  const samtale = useRef(onSamtale);
+  samtale.current = onSamtale;
   // Dokumentet må også være tilgjengelig når visningen bygges på nytt (React
   // i StrictMode monterer effekter to ganger), ellers står editoren tom.
   const tekst = useRef(doc);
@@ -207,6 +260,7 @@ export function Editor({ path, doc, onChange, selectTitle, peker, onSynlig }: Pr
           skjulToppfelt,
           skjulMerker,
           vistAvsnitt,
+          innliming(() => samtale.current?.()),
           skriveflate,
           EditorView.lineWrapping,
           EditorView.updateListener.of((u) => {
@@ -243,6 +297,17 @@ export function Editor({ path, doc, onChange, selectTitle, peker, onSynlig }: Pr
     synlig.current?.(v.viewport.from, v.viewport.to);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);
+
+  /** Dokumentet byttet uten at notatet gjorde det — brukeren sa «dette er en
+   *  samtale», og toppfeltet er skrevet om. Det er ikke en redigering hun har
+   *  gjort i editoren, så lagringen eies av den som byttet teksten. */
+  useEffect(() => {
+    const v = view.current;
+    if (!v || doc === v.state.doc.toString()) return;
+    bytter.current = true;
+    v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: doc } });
+    bytter.current = false;
+  }, [doc]);
 
   useEffect(() => {
     const v = view.current;

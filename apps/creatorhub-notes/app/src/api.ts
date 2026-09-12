@@ -38,6 +38,9 @@ export type Paragraph = {
   summary: string;
   kind: string;
   action: string;
+  /** Hvem som sa det, når notatet er en importert samtale. `null` i et vanlig
+   *  notat — der er avsenderen brukeren selv. */
+  avsender: string | null;
   /** Bare oppgaver: hva oppgaven venter på. */
   dependency: string | null;
   correction: Rettelse | null;
@@ -112,6 +115,8 @@ export const rettAvsnitt = (retting: Retting) => invoke<void>("rett_avsnitt", { 
 /** Ett strukturert treff: en linje appen har lest ut av et notat. */
 export type Strukturert = {
   kortform: string;
+  /** Hvem som sa det, når treffet står i en importert samtale. */
+  avsender: string | null;
   sti: string;
   tittel: string;
   hash: string;
@@ -131,3 +136,23 @@ export const sporNotater = (query: string) =>
  *  skrevet om siden sist. */
 export const finnAvsnitt = (path: string, hash: string) =>
   invoke<[number, number] | null>("finn_avsnitt", { path, hash });
+
+/** Er den limte teksten en samtale? Svaret er innleggene som markdown — ett
+ *  avsnitt per innlegg, avsenderen først — eller `null` når den ikke er
+ *  gjenkjent. Da limes teksten inn som den er.
+ *
+ *  Regelbasert, ingen modell: dette skjer mellom ⌘V og at teksten står der. */
+export const importerSamtale = (tekst: string) =>
+  invoke<string | null>("importer_samtale", { tekst });
+
+/** Hvordan notatet leses nå. `tvunget` er satt når brukeren har bestemt det
+ *  selv — da er det hennes valg som gjelder, ikke gjenkjenningen. */
+export type Samtaleform = { er: boolean; tvunget: string | null; deltakere: string[] };
+
+export const samtaleform = (innhold: string) =>
+  invoke<Samtaleform>("samtaleform", { innhold });
+
+/** Brukerens overstyring, begge veier. Svaret er hele notatet med valget satt
+ *  i toppfeltet, slik at det står i fila og gjelder neste gang også. */
+export const settSamtale = (innhold: string, erSamtale: boolean) =>
+  invoke<string>("sett_samtale", { innhold, erSamtale });
