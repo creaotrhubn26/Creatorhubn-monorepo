@@ -1,0 +1,62 @@
+claim: >
+  Tracked upstream stripe-node latest release moved v22.4.0 → v22.6.0
+  (v22.5.0 2026-08-10, v22.6.0 2026-08-26; API versions 2025-12-15.clover then
+  2026-08-26.dahlia). Repo's actual dependency (backend/package.json) is
+  pinned "stripe": "^19.3.0", with three different hardcoded API-version
+  strings in use across call sites (2024-06-20, 2024-12-18.acacia,
+  2025-01-27.acacia) — a three-major-version, multi-API-version gap from the
+  tracked upstream latest, predating this run.
+source_type: changelog
+source: >
+  https://raw.githubusercontent.com/stripe/stripe-node/master/CHANGELOG.md
+  (Tier 2 — vendor-maintained repository changelog; official
+  docs.stripe.com/changelog listed as Tier 1 in sources/vendors.yaml was not
+  independently cross-checked this run).
+authority_tier: 2
+vendor: Stripe
+product: stripe-node SDK
+version_scope: "19.3.0 (installed) / 22.4.0 → 22.6.0 (tracked upstream)"
+publication_date: "2026-08-31"
+evidence_summary: >
+  repo-intelligence (grep-symbols.sh stripe) shows stripe touched in 25+
+  backend files (billing, academy/Pondus, role-room seats, lead-map pricing,
+  storage quota, marketplace, photographer/Post Agent Connect payouts).
+  v22.5.0 adds constructEventWithoutVerification()/parseEventNotification-
+  WithoutVerification() + native AWS EventBridge/Azure EventGrid webhook
+  sources; v22.6.0 adds an EventNotificationHandler class for webhook
+  destination management, Billing.FeedbackOption (cancellation-feedback
+  resource), touch_n_go payment method type, extended igic tax support, and
+  makes allowed_payment_method_types required on PaymentIntent/SetupIntent
+  (a breaking behavior change relative to older API versions). None of this
+  is reachable without first crossing 19→20→21→22 major upgrades, each with
+  its own breaking changes not assessed in this run.
+interpretation: >
+  Probable, not Verified/Strong — this run diffed the tracked-latest number
+  and read the v22.x changelog, but did not enumerate v20/v21/v22 breaking
+  changes against our 25+ call sites (out of scope for a single weekly diff;
+  would need version-intelligence + api-validator passes per major).
+project_impact: >
+  No immediate action forced — v22.4.0→22.6.0 is upstream churn we are not
+  exposed to at 19.3.0. The pre-existing 3-major gap is the real finding:
+  it is getting more expensive to close every week new majors ship, and the
+  three inconsistent hardcoded API-version strings (six-figure date mismatch
+  from 2024-06-20 to 2025-01-27.acacia) suggest the pin was never revisited
+  centrally.
+confidence: probable
+decision: >
+  HOLD on jumping to v22.x directly. Recommend a scoped migration-engine pass
+  (19→20→21→22, one major at a time, per official Stripe upgrade guides at
+  docs.stripe.com/upgrades) as separate work, not a drive-by dependency bump;
+  flag the three divergent apiVersion pins for consolidation in the same
+  pass. Do not silently raise this to GO next week without that pass — the
+  gap only grows.
+affected:
+  - backend/server (billing, webhooks, Connect payouts — 25+ files)
+  - backend/scripts (go-live-provision-stripe.mjs, seed-post-agent-stripe-product.ts, sync-role-room-stripe-tax-behavior.mjs)
+lesson: >
+  A vendor tracked purely by "latest GitHub release" can silently accumulate
+  a multi-major gap against the repo's actual pin if no run ever diffs
+  installed-vs-tracked, only tracked-vs-last-tracked. Worth a future
+  drift_watch entry in sources/vendors.yaml for stripe-node: compare tracked
+  latest against backend/package.json's resolved version, not just week-
+  over-week upstream movement.
