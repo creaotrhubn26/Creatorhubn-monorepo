@@ -4056,6 +4056,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                           renderStoryboard={({ scene, onUpdate, activeFrameIndex, onFrameSelect }) => (
                             <StoryboardIntegrationView
                               scene={scene}
+                              projectId={selectedManuscript.projectId}
+                              manuscriptId={selectedManuscript.id}
                               onUpdate={onUpdate}
                               projectCinemaFormat={projectCinemaFormat}
                               storyboardOnly={true}
@@ -4081,6 +4083,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                       ) : (
                         <StoryboardIntegrationView
                           scene={selectedScene}
+                          projectId={selectedManuscript.projectId}
+                          manuscriptId={selectedManuscript.id}
                           onUpdate={handleSceneUpdateFromStoryboard}
                           projectCinemaFormat={projectCinemaFormat}
                           storyboardOnly={true}

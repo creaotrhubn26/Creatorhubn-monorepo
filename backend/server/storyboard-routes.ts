@@ -78,7 +78,7 @@ async function resolveUser(
   return null;
 }
 
-function requireAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
+export function requireStoryboardAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
   return async (
     req: Request,
     res: Response,
@@ -106,7 +106,7 @@ function requireAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
  * møte fane-nivået 'storyboard' (Se for lesing, Administrere for skriving).
  * Kjøres ETTER `requireAuth`, så `req.userId` er satt.
  */
-function requireStoryboardAccess(pool: Pool, need: "view" | "manage") {
+export function requireStoryboardAccess(pool: Pool, need: "view" | "manage") {
   return async (
     req: Request,
     res: Response,
@@ -176,7 +176,7 @@ export function createStoryboardRouter(
   deps: CreateStoryboardRouterDeps = {},
 ): ExpressRouter {
   const router = Router();
-  const auth = requireAuth(pool, deps.activeSessions);
+  const auth = requireStoryboardAuth(pool, deps.activeSessions);
   const canView = requireStoryboardAccess(pool, "view");
   const canManage = requireStoryboardAccess(pool, "manage");
 
