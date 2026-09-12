@@ -136,6 +136,16 @@ Svar med nøyaktig én linje per avsnitt, og ingenting annet:
 /// under «Idéer og alternativer», og «hva ble bestemt i tråden» ville ikke
 /// funnet noe. `gjengivelse` er for innlegg som refererer en *tredjepart*.
 /// Hvem som sa det bærer `avsender`, ikke typen.
+///
+/// **Målt 13. september 2026** med `måling_av_samtalekontekst` nedenfor, to
+/// kjøringer hver vei over den samme tråden på fem innlegg: ingen forskjell i
+/// type. Modellen leser innleggene riktig uten hjelp — «Marius: vi går for
+/// Stripe» ble `beslutning` begge veier, «Kari: kunden ønsker Vipps» ble
+/// `gjengivelse` begge veier, og navnet havnet aldri i kortformen. Blokka står
+/// altså som forsikring, ikke som en fiks: den låser oppførselen vi bygger
+/// beslutningsloggen på i stedet for å la den være en tilfeldighet som kan
+/// endre seg stille med modellen. Koster ett avsnitt i prompten, og bare når
+/// kilden faktisk er en samtale.
 const SAMTALE: &str = "
 
 Dette er en samtale, ikke et notat. Hvert avsnitt er ett innlegg, skrevet som \
@@ -1187,6 +1197,59 @@ mod tests {
         assert!(steg.iter().all(|(_, t)| *t == AVSNITT_PER_PAKKE * 2 + 7));
         assert_eq!(steg.last().unwrap().0, AVSNITT_PER_PAKKE * 2 + 7);
         assert!(steg.windows(2).all(|w| w[0].0 < w[1].0), "den skal bare gå framover");
+    }
+
+    /// Måling: hjelper det at prompten vet at kilden er en samtale?
+    ///
+    /// Ikke en test — den påstår ingenting, den skriver to lesninger av den
+    /// samme tråden ved siden av hverandre, én med samtalekonteksten og én
+    /// uten, slik at forskjellen kan leses av et menneske:
+    ///
+    ///     cargo test -- --ignored --nocapture måling_av_samtalekontekst
+    ///
+    /// Det som skal leses ut av den: lander innleggene som det de er for den
+    /// som sa dem (en beslutning er en beslutning), havner kortformen uten
+    /// navnet i seg, og blir `gjengivelse` stående til innlegg som faktisk
+    /// refererer en tredjepart?
+    #[test]
+    #[ignore = "kaller claude-kommandolinja"]
+    fn måling_av_samtalekontekst() {
+        let tråd = crate::samtale::del(
+            "Marius: Vi går for Stripe, det er billigst i oppsett.\n\
+             Kari: Kunden ønsker Vipps, sier hun.\n\
+             Marius: Jeg sender faktura når avtalen er signert.\n\
+             Kari: Trenger vi begge deler?\n\
+             Marius: Kanskje, men jeg er usikker på hva det koster.",
+        )
+        .expect("dette er en samtale");
+        let tekster: Vec<String> = crate::understand::split(&crate::samtale::skriv(&tråd))
+            .into_iter()
+            .map(|c| c.text)
+            .collect();
+
+        for (hva, cli) in [
+            ("uten kontekst", Cli::new(Vec::new())),
+            ("med kontekst", Cli::over_samtale(Vec::new())),
+        ] {
+            eprintln!("\n--- {hva} ---");
+            match cli.ask(&tekster) {
+                Ok(svar) => {
+                    for (t, l) in tekster.iter().zip(parse(&svar, tekster.len())) {
+                        match l {
+                            Some(l) => eprintln!(
+                                "{:<28}  {:<12} {:<13} {}",
+                                t.chars().take(28).collect::<String>(),
+                                l.kind,
+                                l.action,
+                                l.summary
+                            ),
+                            None => eprintln!("{t}  — uten merke"),
+                        }
+                    }
+                }
+                Err(e) => eprintln!("feilet: {e}"),
+            }
+        }
     }
 
     /// Måling av pakkestørrelse mot ekte kommandolinje. Ikke en test — den
