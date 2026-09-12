@@ -27,6 +27,7 @@ import helmet from "helmet";
 import cors from "cors";
 import { isTrustedNetlifyProductionOrigin } from "./web-origin-allowlist.js";
 import multer from "multer";
+import { setupUxpPluginCors } from "./uxp-plugin-cors.js";
 import { createRequire } from "module";
 const _require = createRequire(import.meta.url);
 const archiverFactory = _require('archiver') as (
@@ -2196,6 +2197,10 @@ app.use((_req, res, next) => {
   );
   next();
 });
+// UXP fetch is CORS-subject, but its runtime origin is not one of the web-app
+// origins below. These narrowly scoped endpoints use bearer auth (or a
+// rate-limited pairing code) and do not grant cross-origin cookie credentials.
+setupUxpPluginCors(app);
 app.use(cors({
   origin: (origin, callback) => {
     // Ingen origin (samme-origin eller server-til-server) — tillat
