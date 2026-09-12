@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Badge,
   Box,
   Button,
   Chip,
@@ -21,14 +22,18 @@ import type { StoryboardSkillContext } from '@shared/storyboard-skills';
 import type {
   StoryboardReviewAccessMode,
   StoryboardReviewDiff,
+  StoryboardReviewInboxItem,
   StoryboardReviewRound,
 } from '@shared/storyboard-review';
 import {
   createStoryboardReviewRound,
   createStoryboardReviewShareLink,
   getStoryboardReviewDiff,
+  getStoryboardReviewInbox,
   getStoryboardReviewRound,
   listStoryboardReviewRounds,
+  markAllStoryboardReviewNotificationsRead,
+  markStoryboardReviewNotificationRead,
   restoreStoryboardReviewRound,
   revokeStoryboardReviewShareLink,
 } from '../services/storyboardReviewService';
@@ -51,6 +56,8 @@ export const StoryboardReviewRoundsDialog: React.FC<{
   onBaselineChange?: (baseline: RevisionBaseline | undefined) => void;
 }> = ({ open, projectId, manuscriptId, sceneId, onClose, onBaselineChange }) => {
   const [rounds, setRounds] = useState<StoryboardReviewRound[]>([]);
+  const [inbox, setInbox] = useState<StoryboardReviewInboxItem[]>([]);
+  const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   const [selectedId, setSelectedId] = useState<string>('');
   const [detail, setDetail] = useState<StoryboardReviewRound | null>(null);
   const [diff, setDiff] = useState<StoryboardReviewDiff | null>(null);
@@ -71,13 +78,27 @@ export const StoryboardReviewRoundsDialog: React.FC<{
     setSelectedId(preferId || data[0]?.id || '');
   }, [manuscriptId, projectId]);
 
+  const refreshInbox = useCallback(async () => {
+    const data = await getStoryboardReviewInbox(projectId, manuscriptId);
+    setInbox(data.items);
+  }, [manuscriptId, projectId]);
+
   useEffect(() => {
     if (!open || !projectId || !manuscriptId) return;
     setError(null);
-    void refreshList().catch((loadError) => {
+    void Promise.all([refreshList(), refreshInbox()]).catch((loadError) => {
       setError(loadError instanceof Error ? loadError.message : 'Kunne ikke hente review-runder.');
     });
-  }, [manuscriptId, open, projectId, refreshList]);
+  }, [manuscriptId, open, projectId, refreshInbox, refreshList]);
+
+  useEffect(() => {
+    if (!open || !projectId || !manuscriptId) return;
+    const interval = window.setInterval(() => {
+      if (navigator.onLine === false) return;
+      void refreshInbox().catch(() => undefined);
+    }, 20_000);
+    return () => window.clearInterval(interval);
+  }, [manuscriptId, open, projectId, refreshInbox]);
 
   useEffect(() => {
     if (!open) return;
@@ -137,12 +158,42 @@ export const StoryboardReviewRoundsDialog: React.FC<{
     setBusy(true); setError(null); setMessage(null); setCreatedUrl('');
     try {
       const created = await createStoryboardReviewRound(projectId, manuscriptId, { label, summary: summary || undefined });
-      await refreshList(created.id);
+      await Promise.all([refreshList(created.id), refreshInbox()]);
       setMessage(`Review-runde v${created.version} er låst til hash ${created.snapshotHash.slice(0, 10)}…`);
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : 'Kunne ikke opprette review-runden.');
     } finally { setBusy(false); }
   };
+
+  const openInboxItem = async (item: StoryboardReviewInboxItem) => {
+    setSelectedId(item.reviewRoundId);
+    if (item.read) return;
+    setInbox((current) => current.map((entry) => entry.id === item.id
+      ? { ...entry, read: true, readAt: new Date().toISOString() }
+      : entry));
+    try {
+      await markStoryboardReviewNotificationRead(projectId, manuscriptId, item.id);
+    } catch (readError) {
+      setInbox((current) => current.map((entry) => entry.id === item.id
+        ? { ...entry, read: false, readAt: null }
+        : entry));
+      setError(readError instanceof Error ? readError.message : 'Kunne ikke markere varselet som lest.');
+    }
+  };
+
+  const markAllInboxRead = async () => {
+    setBusy(true); setError(null);
+    try {
+      await markAllStoryboardReviewNotificationsRead(projectId, manuscriptId);
+      const readAt = new Date().toISOString();
+      setInbox((current) => current.map((entry) => ({ ...entry, read: true, readAt })));
+    } catch (readError) {
+      setError(readError instanceof Error ? readError.message : 'Kunne ikke markere alle som lest.');
+    } finally { setBusy(false); }
+  };
+
+  const unreadCount = inbox.filter((item) => !item.read).length;
+  const visibleInbox = showUnreadOnly ? inbox.filter((item) => !item.read) : inbox;
 
   const createShare = async () => {
     if (!detail) return;
@@ -196,7 +247,20 @@ export const StoryboardReviewRoundsDialog: React.FC<{
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth data-testid="storyboard-review-rounds-dialog">
-      <DialogTitle>Review-runder og revisjonsvakt</DialogTitle>
+      <DialogTitle>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+          <span>Review-runder og revisjonsvakt</span>
+          <Badge color="error" badgeContent={unreadCount} max={99}>
+            <Chip
+              size="small"
+              label={unreadCount ? `${unreadCount} ulest` : 'Alt lest'}
+              color={unreadCount ? 'warning' : 'success'}
+              variant="outlined"
+              data-testid="storyboard-review-inbox-count"
+            />
+          </Badge>
+        </Stack>
+      </DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2}>
           {error && <Alert severity="error">{error.replaceAll('_', ' ')}</Alert>}
@@ -205,6 +269,56 @@ export const StoryboardReviewRoundsDialog: React.FC<{
             <Alert severity="warning">Prosjekt- og manuskript-ID mangler. Åpne storyboardet fra et lagret manuskript.</Alert>
           ) : (
             <>
+              <Box
+                sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1.5 }}
+                data-testid="storyboard-review-inbox"
+              >
+                <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'center' }} justifyContent="space-between" spacing={1} mb={1}>
+                  <Box>
+                    <Typography variant="subtitle1" fontWeight={700}>Review-innboks</Typography>
+                    <Typography variant="caption" color="text.secondary">Kommentarer, godkjenninger og nye låste revisjoner.</Typography>
+                  </Box>
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      size="small"
+                      variant={showUnreadOnly ? 'contained' : 'outlined'}
+                      onClick={() => setShowUnreadOnly((current) => !current)}
+                      data-testid="storyboard-review-inbox-unread-filter"
+                    >
+                      {showUnreadOnly ? 'Vis alle' : 'Bare uleste'}
+                    </Button>
+                    <Button size="small" onClick={markAllInboxRead} disabled={busy || unreadCount === 0} data-testid="storyboard-review-inbox-read-all">
+                      Merk alle lest
+                    </Button>
+                  </Stack>
+                </Stack>
+                <Stack spacing={0.75} sx={{ maxHeight: 230, overflowY: 'auto' }}>
+                  {visibleInbox.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary" data-testid="storyboard-review-inbox-empty">
+                      {showUnreadOnly ? 'Ingen uleste review-hendelser.' : 'Ingen review-hendelser ennå.'}
+                    </Typography>
+                  ) : visibleInbox.map((item) => (
+                    <Button
+                      key={item.id}
+                      variant={item.read ? 'text' : 'outlined'}
+                      color={item.decision === 'approved' ? 'success' : item.decision === 'changes_requested' ? 'warning' : 'inherit'}
+                      onClick={() => void openInboxItem(item)}
+                      data-testid={`storyboard-review-inbox-item-${item.eventType}`}
+                      sx={{ justifyContent: 'flex-start', textAlign: 'left', textTransform: 'none', py: 1 }}
+                    >
+                      <Stack direction="row" spacing={1} alignItems="flex-start" width="100%">
+                        {!item.read && <Box aria-label="Ulest" sx={{ width: 8, height: 8, mt: 0.75, borderRadius: '50%', bgcolor: 'warning.main', flexShrink: 0 }} />}
+                        <Box flex={1} minWidth={0}>
+                          <Typography variant="body2" fontWeight={item.read ? 500 : 800}>{item.title}</Typography>
+                          {item.message && <Typography variant="caption" color="text.secondary" display="block" noWrap>{item.message}</Typography>}
+                        </Box>
+                        <Typography variant="caption" color="text.secondary" whiteSpace="nowrap">v{item.roundVersion}</Typography>
+                      </Stack>
+                    </Button>
+                  ))}
+                </Stack>
+              </Box>
+
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
                 <TextField label="Navn på runden" value={label} onChange={(event) => setLabel(event.target.value)} fullWidth />
                 <TextField label="Kort beskjed" value={summary} onChange={(event) => setSummary(event.target.value)} fullWidth />

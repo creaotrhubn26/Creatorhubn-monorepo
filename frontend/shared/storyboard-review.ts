@@ -98,6 +98,30 @@ export interface StoryboardReviewDecision {
   createdAt: string;
 }
 
+export interface StoryboardReviewInboxItem {
+  id: string;
+  eventType:
+    | 'storyboard_review_round_created'
+    | 'storyboard_review_comment_added'
+    | 'storyboard_review_approved'
+    | 'storyboard_review_changes_requested';
+  title: string;
+  message?: string | null;
+  reviewRoundId: string;
+  roundVersion: number;
+  frameId?: string | null;
+  actorDisplayName?: string | null;
+  decision?: 'approved' | 'changes_requested' | null;
+  createdAt: string;
+  read: boolean;
+  readAt?: string | null;
+}
+
+export interface StoryboardReviewInbox {
+  items: StoryboardReviewInboxItem[];
+  unreadCount: number;
+}
+
 export interface StoryboardReviewDiff {
   currentHash: string;
   baselineHash: string;

@@ -3,6 +3,7 @@ import type {
   StoryboardReviewComment,
   StoryboardReviewDecision,
   StoryboardReviewDiff,
+  StoryboardReviewInbox,
   StoryboardReviewRound,
   StoryboardReviewShareLink,
   StoryboardSharedReview,
@@ -37,6 +38,32 @@ async function readJson<T>(response: Response): Promise<T> {
 
 function reviewBase(projectId: string, manuscriptId: string) {
   return `${BASE}/projects/${encodeURIComponent(projectId)}/manuscripts/${encodeURIComponent(manuscriptId)}/storyboard-review-rounds`;
+}
+
+function inboxBase(projectId: string, manuscriptId: string) {
+  return `${BASE}/projects/${encodeURIComponent(projectId)}/manuscripts/${encodeURIComponent(manuscriptId)}/storyboard-review-inbox`;
+}
+
+export async function getStoryboardReviewInbox(projectId: string, manuscriptId: string) {
+  const response = await fetch(inboxBase(projectId, manuscriptId), { headers: authHeaders() });
+  return (await readJson<{ data: StoryboardReviewInbox }>(response)).data;
+}
+
+export async function markStoryboardReviewNotificationRead(
+  projectId: string, manuscriptId: string, notificationId: string,
+) {
+  const response = await fetch(
+    `${inboxBase(projectId, manuscriptId)}/${encodeURIComponent(notificationId)}/read`,
+    { method: 'POST', headers: authHeaders() },
+  );
+  await readJson(response);
+}
+
+export async function markAllStoryboardReviewNotificationsRead(projectId: string, manuscriptId: string) {
+  const response = await fetch(`${inboxBase(projectId, manuscriptId)}/read-all`, {
+    method: 'POST', headers: authHeaders(),
+  });
+  await readJson(response);
 }
 
 export async function listStoryboardReviewRounds(projectId: string, manuscriptId: string) {

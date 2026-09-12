@@ -29,6 +29,32 @@ const diff = {
 
 async function managerApi(page: Page) {
   let created = false;
+  let inboxRead = false;
+  await page.route('**/api/role-room/projects/project-e2e/manuscripts/manuscript-e2e/storyboard-review-inbox**', async (route: Route) => {
+    const url = route.request().url();
+    const method = route.request().method();
+    if (url.endsWith('/notification-e2e/read') && method === 'POST') {
+      inboxRead = true;
+      await route.fulfill({ json: { success: true } }); return;
+    }
+    if (url.endsWith('/read-all') && method === 'POST') {
+      inboxRead = true;
+      await route.fulfill({ json: { success: true } }); return;
+    }
+    if (method === 'GET') {
+      const items = created ? [{
+        id: 'notification-e2e', eventType: 'storyboard_review_comment_added',
+        title: 'Kari Klient kommenterte storyboard v1', message: 'Hold to bilder lenger.',
+        reviewRoundId: round.id, roundVersion: 1, frameId: 'frame-e2e',
+        actorDisplayName: 'Kari Klient', decision: null, createdAt: '2026-09-12T12:02:00Z',
+        read: inboxRead, readAt: inboxRead ? '2026-09-12T12:04:00Z' : null,
+      }] : [];
+      await route.fulfill({ json: { success: true, data: {
+        items, unreadCount: items.filter((item) => !item.read).length,
+      } } }); return;
+    }
+    await route.fulfill({ status: 404, json: { error: 'not_found' } });
+  });
   await page.route('**/api/role-room/projects/project-e2e/manuscripts/manuscript-e2e/storyboard-review-rounds**', async (route: Route) => {
     const url = route.request().url();
     const method = route.request().method();
@@ -67,6 +93,10 @@ test('manager locks a revision, receives a one-time guest URL and sees stale res
   await expect(page.getByTestId('storyboard-review-round-1')).toBeVisible();
   await expect(page.getByTestId('storyboard-review-diff')).toContainText('2 storyboardendringer');
   await expect(page.getByTestId('storyboard-review-baseline')).toContainText('frame-e2e');
+  await expect(page.getByTestId('storyboard-review-inbox-count')).toContainText('1 ulest');
+  await expect(page.getByTestId('storyboard-review-inbox-item-storyboard_review_comment_added')).toContainText('Kari Klient');
+  await page.getByTestId('storyboard-review-inbox-item-storyboard_review_comment_added').click();
+  await expect(page.getByTestId('storyboard-review-inbox-count')).toContainText('Alt lest');
 
   await page.getByTestId('create-storyboard-review-link').click();
   await expect(page.getByTestId('storyboard-review-created-url').locator('input')).toHaveValue(/\/storyboard-review\/review-token-e2e$/);

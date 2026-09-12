@@ -37,6 +37,8 @@ export interface UpsertProducerNotificationInput {
   /** Bruker-IDer som er @nevnt — lagres på raden så UI kan markere den for dem. */
   mentionUserIds?: string[];
   mentionEmails?: string[];
+  /** Marker varselet lest for aktøren som selv utløste hendelsen. */
+  initiallyReadByUserId?: string | null;
 }
 
 /** Avled inbox-kategori fra event/entity — speiler logikken i role-room-routes.ts. */
@@ -93,7 +95,7 @@ export async function upsertProducerProjectNotification(
       projectId, audience, eventType, title, message,
       linkedEntityType, linkedEntityId, metadata,
       createdByUserId, createdByRole, assignedToUserId,
-      mentionUserIds, mentionEmails,
+      mentionUserIds, mentionEmails, initiallyReadByUserId,
     } = input;
     const meta = metadata ?? {};
     const inboxType = inferInboxType(eventType, linkedEntityType, meta);
@@ -153,6 +155,15 @@ export async function upsertProducerProjectNotification(
         `DELETE FROM role_room_project_notification_reads WHERE notification_id = $1`,
         [persistedId],
       );
+      if (initiallyReadByUserId) {
+        await pool.query(
+          `INSERT INTO role_room_project_notification_reads (notification_id, user_id, read_at)
+           VALUES ($1, $2, NOW())
+           ON CONFLICT (notification_id, user_id)
+           DO UPDATE SET read_at = EXCLUDED.read_at`,
+          [persistedId, initiallyReadByUserId],
+        );
+      }
     }
   } catch (error) {
     console.warn('[producer-notifications] upsert skipped:', error);

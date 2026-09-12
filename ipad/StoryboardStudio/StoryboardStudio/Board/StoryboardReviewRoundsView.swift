@@ -40,12 +40,33 @@ struct StoryboardReviewShareDTO: Decodable, Sendable {
     let token: String
 }
 
+struct StoryboardReviewInboxItemDTO: Decodable, Identifiable, Sendable {
+    let id: String
+    let eventType: String
+    let title: String
+    let message: String?
+    let reviewRoundId: String
+    let roundVersion: Int
+    let frameId: String?
+    let actorDisplayName: String?
+    let decision: String?
+    let createdAt: String
+    let read: Bool
+    let readAt: String?
+}
+
+struct StoryboardReviewInboxDTO: Decodable, Sendable {
+    let items: [StoryboardReviewInboxItemDTO]
+    let unreadCount: Int
+}
+
 struct StoryboardReviewRoundsView: View {
     let projectId: String
     let manuscriptId: String
     let onRestored: () async -> Void
 
     @State private var rounds: [StoryboardReviewRoundDTO] = []
+    @State private var inbox: [StoryboardReviewInboxItemDTO] = []
     @State private var selectedID: String?
     @State private var diff: StoryboardReviewDiffDTO?
     @State private var label = "Storyboard review"
@@ -63,9 +84,55 @@ struct StoryboardReviewRoundsView: View {
         rounds.first { $0.id == selectedID }
     }
 
+    private var unreadCount: Int { inbox.filter { !$0.read }.count }
+
     var body: some View {
         NavigationSplitView {
             List(selection: $selectedID) {
+                Section {
+                    if inbox.isEmpty && !busy {
+                        Text("Ingen review-hendelser ennå.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    ForEach(inbox.prefix(20)) { item in
+                        Button {
+                            openInboxItem(item)
+                        } label: {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: item.read ? inboxIcon(item) : "circle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(item.read ? .secondary : BoardBrand.accent)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(item.title).font(.subheadline.weight(item.read ? .regular : .bold))
+                                    if let message = item.message, !message.isEmpty {
+                                        Text(message).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                    }
+                                }
+                                Spacer()
+                                Text("v\(item.roundVersion)").font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("storyboard.review.inbox.\(item.eventType)")
+                    }
+                    if unreadCount > 0 {
+                        Button("Merk alle som lest") { markAllInboxRead() }
+                            .font(.caption.bold())
+                            .accessibilityIdentifier("storyboard.review.inbox.readAll")
+                    }
+                } header: {
+                    HStack {
+                        Text("Review-innboks")
+                        Spacer()
+                        if unreadCount > 0 {
+                            Text("\(unreadCount) ulest").foregroundStyle(BoardBrand.accent)
+                                .accessibilityIdentifier("storyboard.review.inbox.count")
+                        }
+                    }
+                }
+
                 Section("Review-revisjoner") {
                     if rounds.isEmpty && !busy {
                         ContentUnavailableView("Ingen review-runder",
@@ -89,6 +156,7 @@ struct StoryboardReviewRoundsView: View {
                 }
             }
             .navigationTitle("Review-runder")
+            .refreshable { await reload() }
         } detail: {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
@@ -202,6 +270,20 @@ struct StoryboardReviewRoundsView: View {
                     status: "in_review", frameCount: 24, totalDurationSeconds: 62.5,
                     createdAt: "2026-09-12T12:00:00Z")
                 rounds = [demo]
+                inbox = [
+                    StoryboardReviewInboxItemDTO(
+                        id: "notification-comment", eventType: "storyboard_review_comment_added",
+                        title: "Kari kommenterte storyboard v3", message: "Hold totalbildet litt lenger.",
+                        reviewRoundId: demo.id, roundVersion: 3, frameId: "frame-3",
+                        actorDisplayName: "Kari", decision: nil, createdAt: "2026-09-12T12:03:00Z",
+                        read: false, readAt: nil),
+                    StoryboardReviewInboxItemDTO(
+                        id: "notification-round", eventType: "storyboard_review_round_created",
+                        title: "Storyboard v3 er sendt til review", message: "Regissørens sign-off",
+                        reviewRoundId: demo.id, roundVersion: 3, frameId: nil,
+                        actorDisplayName: nil, decision: nil, createdAt: "2026-09-12T12:00:00Z",
+                        read: true, readAt: "2026-09-12T12:00:00Z")
+                ]
                 selectedID = demo.id
                 diff = StoryboardReviewDiffDTO(
                     currentHash: String(repeating: "c", count: 64),
@@ -237,15 +319,65 @@ struct StoryboardReviewRoundsView: View {
         status == "approved" ? .green : status == "changes_requested" ? .orange : .secondary
     }
 
+    private func inboxIcon(_ item: StoryboardReviewInboxItemDTO) -> String {
+        switch item.eventType {
+        case "storyboard_review_approved": return "checkmark.seal.fill"
+        case "storyboard_review_changes_requested": return "arrow.triangle.2.circlepath"
+        case "storyboard_review_comment_added": return "text.bubble.fill"
+        default: return "paperplane.fill"
+        }
+    }
+
     @MainActor private func reload(prefer id: String? = nil) async {
         busy = true
         defer { busy = false }
         do {
-            rounds = try await RoleRoomAPIClient.shared.fetchStoryboardReviewRounds(
+            async let nextRounds = RoleRoomAPIClient.shared.fetchStoryboardReviewRounds(
                 projectId: projectId, manuscriptId: manuscriptId)
+            async let nextInbox = RoleRoomAPIClient.shared.fetchStoryboardReviewInbox(
+                projectId: projectId, manuscriptId: manuscriptId)
+            let loaded = try await (nextRounds, nextInbox)
+            rounds = loaded.0
+            inbox = loaded.1.items
             selectedID = id ?? selectedID ?? rounds.first?.id
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor private func openInboxItem(_ item: StoryboardReviewInboxItemDTO) {
+        selectedID = item.reviewRoundId
+        guard !item.read else { return }
+        if let index = inbox.firstIndex(where: { $0.id == item.id }) {
+            inbox[index] = StoryboardReviewInboxItemDTO(
+                id: item.id, eventType: item.eventType, title: item.title, message: item.message,
+                reviewRoundId: item.reviewRoundId, roundVersion: item.roundVersion,
+                frameId: item.frameId, actorDisplayName: item.actorDisplayName, decision: item.decision,
+                createdAt: item.createdAt, read: true,
+                readAt: ISO8601DateFormatter().string(from: Date()))
+        }
+        Task {
+            do {
+                try await RoleRoomAPIClient.shared.markStoryboardReviewNotificationRead(
+                    projectId: projectId, manuscriptId: manuscriptId, notificationId: item.id)
+            } catch {
+                errorMessage = error.localizedDescription
+                await reload(prefer: item.reviewRoundId)
+            }
+        }
+    }
+
+    private func markAllInboxRead() {
+        busy = true; errorMessage = nil
+        Task {
+            do {
+                try await RoleRoomAPIClient.shared.markAllStoryboardReviewNotificationsRead(
+                    projectId: projectId, manuscriptId: manuscriptId)
+                await reload(prefer: selectedID)
+            } catch {
+                errorMessage = error.localizedDescription
+                busy = false
+            }
         }
     }
 
