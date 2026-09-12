@@ -65,6 +65,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool, type PoolConfig } from "pg";
 import * as schema from "../migrations/schema.js";
 import { verifyDatabaseOwnerSession } from "./database-owner-role.js";
+import { withExplicitPostgresVerifyFull } from "./postgres-connection-url.mjs";
 import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { createRoleRoomRouter } from "./role-room-routes.js";
 import { registerRoleRoomProfileRoutes } from "./role-room-profile-routes.js";
@@ -1215,7 +1216,9 @@ validateEnvOrExit();
 // PERF (skalering nivå 2): tunet pool for å håndtere cron-batches (100 leads
 // samtidig) + concurrent web requests. Default pg.Pool max=10 var for lavt.
 const databasePoolConfig: PoolConfig & { enableChannelBinding: boolean } = {
-  connectionString: process.env.DATABASE_URL,
+  connectionString: withExplicitPostgresVerifyFull(
+    process.env.DATABASE_URL ?? "",
+  ),
   // node-postgres does not map channel_binding from a connection URI.
   // Enable SCRAM-SHA-256-PLUS explicitly for every production connection.
   enableChannelBinding: true,
