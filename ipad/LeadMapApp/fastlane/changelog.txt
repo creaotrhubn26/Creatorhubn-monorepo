@@ -1,5 +1,7 @@
 Leadgrid 2.2
 
+• Ny prosjekt- og rolleavgrenset produktguide viser veien fra prosjektvalg og Discovery til godkjente leads og oppfølging.
+• De 13 hovedområdene er samlet i tydelige grupper, Agent er synlig uten scrolling, og skjermtittelen beholdes på iPad mini og i Split View.
 • Ny enkel Discovery-flyt med tre tydelige steg, og avansertmodus for alle detaljer.
 • Opprett eller gjenbruk et kundeprosjekt ved å skrive inn domenet, med forslag til komplett Discovery-profil.
 • Dentum har fått sju e-postmaler for tannklinikker, automatisk tilpasset valgt lead, kontaktperson, område og status.
