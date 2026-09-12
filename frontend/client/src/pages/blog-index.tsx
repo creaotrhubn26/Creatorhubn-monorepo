@@ -13,6 +13,7 @@ import {
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useEffect, useState } from 'react';
 import { trackPageView, trackEvent } from '@/utils/ga4-client-tracking';
+import { isLeadgridDedicatedHost } from '@/components/role-room/utils/runtime';
 
 const palette = {
   bgRoot: '#0a0118',
@@ -60,6 +61,7 @@ const PILLAR_LABELS: Record<string, string> = {
   ai: 'AI-Agent',
   survey: 'Bransje-innsikt',
   cases: 'Case studies',
+  product: 'Produktnytt',
 };
 
 const PILLAR_COLORS: Record<string, string> = {
@@ -76,9 +78,22 @@ const PILLAR_COLORS: Record<string, string> = {
   ai: '#c084fc',
   survey: '#f87171',
   cases: '#e879f9',
+  product: '#a78bfa',
 };
 
-export default function BlogIndexPage() {
+export type BlogSurface = 'role-room' | 'leadgrid';
+
+interface BlogIndexPageProps {
+  surface?: BlogSurface;
+}
+
+export default function BlogIndexPage({ surface = 'role-room' }: BlogIndexPageProps) {
+  const isLeadgrid = surface === 'leadgrid';
+  const blogBasePath = isLeadgrid
+    && typeof window !== 'undefined'
+    && !isLeadgridDedicatedHost(window.location.hostname)
+    ? '/leadgrid/blog'
+    : '/blog';
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -86,9 +101,12 @@ export default function BlogIndexPage() {
 
   // GA4 page-view ved mount.
   useEffect(() => {
-    trackPageView('/blog', 'Blog — The Role Room');
-    trackEvent('landing_view', { landing: 'blog_index', surface: 'theroleroom.com' });
-  }, []);
+    trackPageView(blogBasePath, isLeadgrid ? 'Blog — Leadgrid' : 'Blog — The Role Room');
+    trackEvent('landing_view', {
+      landing: isLeadgrid ? 'leadgrid_blog_index' : 'blog_index',
+      surface: isLeadgrid ? 'leadgrid.no' : 'theroleroom.com',
+    });
+  }, [blogBasePath, isLeadgrid]);
 
   // GA4 tracker pillar-filter-bytte.
   useEffect(() => {
@@ -99,22 +117,27 @@ export default function BlogIndexPage() {
   // SEO: title + description + JSON-LD CollectionPage
   useEffect(() => {
     const previousTitle = document.title;
-    document.title = 'Blog — The Role Room | Operativsystem for film- og innholdsproduksjon';
+    document.title = isLeadgrid
+      ? 'Blog — Leadgrid | Innsikt for moderne feltsalg'
+      : 'Blog — The Role Room | Operativsystem for film- og innholdsproduksjon';
     const meta = document.querySelector('meta[name="description"]')
       ?? Object.assign(document.createElement('meta'), { name: 'description' });
     meta.setAttribute('content',
-      'Innsikt på tvers av fire vertikaler — Produksjons-OS, Innholdsprodusent, Dansestudio og Talent Registry — for norske produksjonsteam, byråer og skapere.',
+      isLeadgrid
+        ? 'Produktnytt, metoder og praktiske råd for kartbasert CRM, feltsalg og lokal kundevekst fra Leadgrid.'
+        : 'Innsikt på tvers av fire vertikaler — Produksjons-OS, Innholdsprodusent, Dansestudio og Talent Registry — for norske produksjonsteam, byråer og skapere.',
     );
     if (!meta.parentNode) document.head.appendChild(meta);
     return () => { document.title = previousTitle; };
-  }, []);
+  }, [isLeadgrid]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    const endpoint = isLeadgrid ? '/api/public/leadgrid/blog' : '/api/public/blog';
     const url = activePillar
-      ? `/api/public/blog?pillar=${encodeURIComponent(activePillar)}`
-      : '/api/public/blog';
+      ? `${endpoint}?pillar=${encodeURIComponent(activePillar)}`
+      : endpoint;
     fetch(url)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -131,7 +154,7 @@ export default function BlogIndexPage() {
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [activePillar]);
+  }, [activePillar, isLeadgrid]);
 
   // Hent unike pillars fra artiklene for filter-knapper
   const pillarsInUse = Array.from(new Set(articles.map((a) => a.pillar).filter(Boolean) as string[]));
@@ -151,7 +174,7 @@ export default function BlogIndexPage() {
       >
         <Container maxWidth="md" sx={{ textAlign: 'center' }}>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.86rem', fontWeight: 700, letterSpacing: 1, mb: 1, textTransform: 'uppercase' }}>
-            Blog
+            {isLeadgrid ? 'Leadgrid-bloggen' : 'Blog'}
           </Typography>
           <Typography
             component="h1"
@@ -169,11 +192,13 @@ export default function BlogIndexPage() {
               WebkitTextFillColor: 'transparent',
               backgroundClip: 'text',
             }}>
-              norske casting-byråer
+              {isLeadgrid ? 'bedre feltsalg' : 'norske casting-byråer'}
             </Box>
           </Typography>
           <Typography sx={{ color: palette.textSecondary, fontSize: '1.08rem' }}>
-            Innsikt på tvers av de fire vertikalene i operativsystemet vårt — Produksjons-OS, Innholdsprodusent, Dansestudio og Talent Registry.
+            {isLeadgrid
+              ? 'Produktnytt, metoder og praktiske råd som gjør lokale muligheter om til kunder.'
+              : 'Innsikt på tvers av de fire vertikalene i operativsystemet vårt — Produksjons-OS, Innholdsprodusent, Dansestudio og Talent Registry.'}
           </Typography>
         </Container>
       </Box>
@@ -230,7 +255,7 @@ export default function BlogIndexPage() {
               Ingen artikler ennå
             </Typography>
             <Typography sx={{ color: palette.textMuted, fontSize: '0.9rem' }}>
-              Den første pillar-artikkelen kommer snart.
+              {isLeadgrid ? 'Den første Leadgrid-artikkelen kommer snart.' : 'Den første pillar-artikkelen kommer snart.'}
             </Typography>
           </Box>
         ) : (
@@ -242,7 +267,12 @@ export default function BlogIndexPage() {
             }}
           >
             {articles.map((a) => (
-              <ArticleCard key={a.slug} article={a} />
+              <ArticleCard
+                key={a.slug}
+                article={a}
+                basePath={blogBasePath}
+                surface={surface}
+              />
             ))}
           </Box>
         )}
@@ -259,13 +289,17 @@ export default function BlogIndexPage() {
           }}
         >
           <Typography sx={{ fontWeight: 800, fontSize: '1.2rem', mb: 1 }}>
-            Vil du se hele operativsystemet — fra idé til sett?
+            {isLeadgrid
+              ? 'Vil du gjøre kartet om til kunder?'
+              : 'Vil du se hele operativsystemet — fra idé til sett?'}
           </Typography>
           <Typography sx={{ color: palette.textSecondary, fontSize: '0.96rem', mb: 2 }}>
-            30-min demo skreddersydd for din vertikal — produksjonsteam, innholdsprodusent, dansestudio eller byrå.
+            {isLeadgrid
+              ? 'Se hvordan Leadgrid samler kart, lead-data, oppfølging og pipeline i én arbeidsflate.'
+              : '30-min demo skreddersydd for din vertikal — produksjonsteam, innholdsprodusent, dansestudio eller byrå.'}
           </Typography>
           <Button
-            href="/for-byraer#book-demo"
+            href={isLeadgrid ? '/#demo' : '/for-byraer#book-demo'}
             endIcon={<ArrowForwardIcon />}
             sx={{
               background: palette.accentGradient,
@@ -285,7 +319,15 @@ export default function BlogIndexPage() {
   );
 }
 
-function ArticleCard({ article }: { article: Article }) {
+function ArticleCard({
+  article,
+  basePath,
+  surface,
+}: {
+  article: Article;
+  basePath: string;
+  surface: BlogSurface;
+}) {
   const pillarColor = article.pillar
     ? PILLAR_COLORS[article.pillar] ?? palette.accentBright
     : palette.accentBright;
@@ -296,14 +338,14 @@ function ArticleCard({ article }: { article: Article }) {
     trackEvent('blog_article_click', {
       slug: article.public_slug,
       pillar: article.pillar ?? 'unknown',
-      surface: 'blog_index',
+      surface: surface === 'leadgrid' ? 'leadgrid_blog_index' : 'blog_index',
     });
   };
 
   return (
     <Box
       component="a"
-      href={`/blog/${article.public_slug}`}
+      href={`${basePath}/${article.public_slug}`}
       onClick={onClick}
       sx={{
         bgcolor: palette.bgCard,
@@ -388,7 +430,7 @@ function ArticleCard({ article }: { article: Article }) {
         ) : null}
         <Stack direction="row" justifyContent="space-between" sx={{ mt: 'auto' }}>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
-            {article.author ?? 'The Role Room'}
+            {article.author ?? (surface === 'leadgrid' ? 'Leadgrid' : 'The Role Room')}
           </Typography>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
             {article.reading_minutes} min
