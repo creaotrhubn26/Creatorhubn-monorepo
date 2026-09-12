@@ -8,6 +8,7 @@ describe('productionWorkspaceLens', () => {
     expect(isRoleRoomWorkspaceLens('cinematography')).toBe(true);
     expect(isRoleRoomWorkspaceLens('assistant-direction')).toBe(true);
     expect(isRoleRoomWorkspaceLens('production-management')).toBe(true);
+    expect(isRoleRoomWorkspaceLens('production-coordination')).toBe(true);
   });
 
   it('rejects unknown and non-string values', () => {

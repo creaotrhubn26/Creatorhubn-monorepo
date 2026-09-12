@@ -69,6 +69,10 @@ export const DEFAULT_TABS_BY_ROLE: Record<UserRoleType, SubTabValue[]> = {
     'roles', 'schedule', 'crew', 'approval',
     'candidates', 'shooting', 'shotlist', 'mannskap', 'planner',
   ],
+  production_coordinator: [
+    'schedule', 'crew', 'shooting', 'mannskap',
+    'roles', 'planner',
+  ],
   first_ad: [
     'shooting', 'schedule', 'crew', 'shotlist',
     'mannskap', 'roles', 'brief', 'planner',
@@ -111,6 +115,7 @@ export const ALL_USER_ROLES: UserRoleType[] = [
   'producer',
   'casting_director',
   'production_manager',
+  'production_coordinator',
   'first_ad',
   'second_ad',
   'camera_team',
@@ -127,6 +132,7 @@ export const USER_ROLE_LABELS: Record<UserRoleType, string> = {
   producer: 'Produsent',
   casting_director: 'Casting-ansvarlig',
   production_manager: 'Produksjonsleder',
+  production_coordinator: 'Produksjonskoordinator',
   first_ad: 'Innspillingsleder / 1st AD',
   second_ad: '2. regiassistent / 2nd AD',
   camera_team: 'Kameraavd.',

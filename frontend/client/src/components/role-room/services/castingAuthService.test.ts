@@ -44,3 +44,21 @@ describe('2nd AD role contract', () => {
     expect(USER_ROLE_LABELS.second_ad).toBe('2. regiassistent / 2nd AD');
   });
 });
+
+describe('production coordinator role contract', () => {
+  it('owns coordination without inheriting PM decisions or broad production writes', () => {
+    expect(castingAuthService.getDefaultPermissions('production_coordinator')).toMatchObject({
+      canViewAll: true,
+      canCoordinateProduction: true,
+      canEditProduction: false,
+      canManageCrew: false,
+      canManageLocations: false,
+      canApprove: false,
+      canViewEconomy: false,
+    });
+    expect(DEFAULT_TABS_BY_ROLE.production_coordinator).toEqual(expect.arrayContaining([
+      'schedule', 'crew', 'shooting', 'mannskap',
+    ]));
+    expect(USER_ROLE_LABELS.production_coordinator).toBe('Produksjonskoordinator');
+  });
+});

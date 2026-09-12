@@ -172,6 +172,10 @@ export const castingProductionDays = pgTable('casting_production_days', {
   managementVersion: integer('management_version').default(0).notNull(),
   managementUpdatedBy: varchar('management_updated_by', { length: 255 }),
   managementUpdatedAt: timestamp('management_updated_at', { withTimezone: true, mode: 'string' }),
+  /** Independent concurrency lane for production-coordination operations. */
+  coordinationVersion: integer('coordination_version').default(0).notNull(),
+  coordinationUpdatedBy: varchar('coordination_updated_by', { length: 255 }),
+  coordinationUpdatedAt: timestamp('coordination_updated_at', { withTimezone: true, mode: 'string' }),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
@@ -179,6 +183,9 @@ export const castingProductionDays = pgTable('casting_production_days', {
   index('idx_casting_production_days_management_updated')
     .using('btree', table.projectId, table.managementUpdatedAt.desc())
     .where(sql`${table.managementUpdatedAt} IS NOT NULL`),
+  index('idx_casting_production_days_coordination_updated')
+    .using('btree', table.projectId, table.coordinationUpdatedAt.desc())
+    .where(sql`${table.coordinationUpdatedAt} IS NOT NULL`),
 ]);
 
 export const castingShotLists = pgTable('casting_shot_lists', {

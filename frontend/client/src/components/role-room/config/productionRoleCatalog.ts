@@ -51,6 +51,7 @@ export type ProductionWorkspaceKind =
   | 'director'
   | 'cinematography'
   | 'production_management'
+  | 'production_coordination'
   | 'assistant_direction'
   | 'casting'
   | 'continuity'
@@ -87,10 +88,10 @@ export const PRODUCTION_ROLES = [
   { id: 'location_scout', label: 'Location scout', departmentId: 'locations', reportsTo: 'location_manager', workspace: 'department' },
   { id: 'location_security', label: 'Location security', departmentId: 'locations', reportsTo: 'location_manager', workspace: 'department' },
   { id: 'production_manager', label: 'Produksjonsleder', departmentId: 'production_management', reportsTo: 'line_producer', aliases: ['unit_production_manager', 'upm'], workspace: 'production_management' },
-  { id: 'production_coordinator', label: 'Produksjonskoordinator', departmentId: 'production_management', reportsTo: 'production_manager', workspace: 'production_management' },
-  { id: 'production_secretary', label: 'Produksjonssekretær', departmentId: 'production_management', reportsTo: 'production_coordinator', workspace: 'production_management' },
+  { id: 'production_coordinator', label: 'Produksjonskoordinator', departmentId: 'production_management', reportsTo: 'production_manager', workspace: 'production_coordination' },
+  { id: 'production_secretary', label: 'Produksjonssekretær', departmentId: 'production_management', reportsTo: 'production_coordinator', workspace: 'production_coordination' },
   { id: 'production_accountant', label: 'Produksjonsregnskapsfører', departmentId: 'production_management', reportsTo: 'production_manager', workspace: 'production_management' },
-  { id: 'office_production_assistant', label: 'Kontor-PA', departmentId: 'production_management', reportsTo: 'production_coordinator', aliases: ['office_pa', 'production_assistant'], workspace: 'production_management' },
+  { id: 'office_production_assistant', label: 'Kontor-PA', departmentId: 'production_management', reportsTo: 'production_coordinator', aliases: ['office_pa', 'production_assistant'], workspace: 'production_coordination' },
   { id: 'collaborator', label: 'Produksjonsmedarbeider', departmentId: 'production_management', reportsTo: 'production_coordinator', workspace: 'department' },
   { id: 'first_assistant_director', label: '1. regiassistent', departmentId: 'assistant_direction', reportsTo: 'director', aliases: ['1st_ad', 'first_ad'], workspace: 'assistant_direction' },
   { id: 'second_assistant_director', label: '2. regiassistent', departmentId: 'assistant_direction', reportsTo: 'first_assistant_director', aliases: ['2nd_ad', 'second_ad'], workspace: 'assistant_direction' },
@@ -287,6 +288,7 @@ export const PRODUCTION_WORKSPACE_DELIVERY_ORDER = [
   'cinematography',
   'producer',
   'production_management',
+  'production_coordination',
   'assistant_direction',
   'continuity',
   'casting',

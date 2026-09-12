@@ -56,6 +56,7 @@ interface Props {
   onOpenSchedule: () => void;
   onOpenCrew: () => void;
   onOpenFullWorkspace: () => void;
+  onOpenCoordination?: () => void;
   onSaved?: (day: ProductionDay) => void;
 }
 
@@ -136,6 +137,7 @@ export function ProductionManagementWorkspace({
   onOpenSchedule,
   onOpenCrew,
   onOpenFullWorkspace,
+  onOpenCoordination,
   onSaved,
 }: Props) {
   const productionDays = useMemo(
@@ -304,6 +306,7 @@ export function ProductionManagementWorkspace({
           <Stack direction={{ xs: 'column', sm: 'row' }} gap={1} alignItems={{ lg: 'center' }}>
             <Button variant="outlined" startIcon={<ScheduleIcon />} onClick={() => { if (confirmIfDirty()) onOpenSchedule(); }} sx={{ color: '#ccfbf1', borderColor: 'rgba(45,212,191,.35)' }}>Opptaksplan</Button>
             <Button variant="outlined" startIcon={<CrewIcon />} onClick={() => { if (confirmIfDirty()) onOpenCrew(); }} sx={{ color: '#ccfbf1', borderColor: 'rgba(45,212,191,.35)' }}>Team</Button>
+            {onOpenCoordination ? <Button variant="outlined" startIcon={<CrewIcon />} onClick={() => { if (confirmIfDirty()) onOpenCoordination(); }} sx={{ color: '#bae6fd', borderColor: 'rgba(56,189,248,.35)' }}>Koordinator</Button> : null}
             <Button variant="outlined" startIcon={<FullWorkspaceIcon />} onClick={() => { if (confirmIfDirty()) onOpenFullWorkspace(); }} sx={{ color: '#ccfbf1', borderColor: 'rgba(45,212,191,.35)' }}>Hele prosjektet</Button>
           </Stack>
         </Stack>
