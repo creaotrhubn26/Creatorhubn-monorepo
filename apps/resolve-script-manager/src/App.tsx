@@ -63,6 +63,7 @@ import type { AgentConfig } from "./agents/types";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { NewProjectModal } from "./components/NewProjectModal";
 import { GuidedWeddingWizard } from "./components/GuidedWeddingWizard";
+import { VideoRoomMarkerSyncBridge } from "./components/VideoRoomMarkerSyncBridge";
 import { QcSourceVideoModal } from "./components/QcSourceVideoModal";
 import { CommandPalette } from "./components/CommandPalette";
 import { LearningView } from "./components/LearningView";
@@ -782,6 +783,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <VideoRoomMarkerSyncBridge />
       <HeaderBar
         health={health}
         busy={busy}

@@ -677,6 +677,52 @@ export async function fetchMySeats(): Promise<{
   return invoke("role_room_my_seats");
 }
 
+export interface VideoRoomNleVersion {
+  id: string;
+  label: string;
+  number: number;
+  status: string;
+  createdAt?: string;
+}
+
+export interface VideoRoomNleProject {
+  id: string;
+  name: string;
+  projectType?: string | null;
+  canEdit: boolean;
+  versions: VideoRoomNleVersion[];
+}
+
+export interface VideoRoomNleMarker {
+  id: string;
+  timecodeSec: number;
+  title: string;
+  note?: string | null;
+  color?: string | null;
+  completed?: boolean;
+  mustFix?: boolean;
+  revision?: number;
+}
+
+export async function fetchVideoRoomNleProjects(): Promise<{ projects: VideoRoomNleProject[] }> {
+  return invoke("role_room_video_nle_projects");
+}
+
+export async function fetchVideoRoomResolveMarkers(
+  projectId: string,
+  versionId: string,
+): Promise<{ editor: "resolve"; versionId: string; revision: number; markers: VideoRoomNleMarker[] }> {
+  return invoke("role_room_video_resolve_markers", { projectId, versionId });
+}
+
+export async function pushVideoRoomResolveMarkers(
+  projectId: string,
+  versionId: string,
+  markers: VideoRoomNleMarker[],
+): Promise<{ imported: number; revision: number }> {
+  return invoke("role_room_push_video_resolve_markers", { projectId, versionId, markers });
+}
+
 // ─── Media probing (ffprobe) ─────────────────────────────────────────────
 
 export interface LogCurveGuess {

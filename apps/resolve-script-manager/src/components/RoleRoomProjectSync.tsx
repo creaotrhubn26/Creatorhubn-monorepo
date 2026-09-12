@@ -32,6 +32,7 @@ import {
 } from "../api";
 import type { MountedCard } from "../types";
 import { WeddingPipeline, isWeddingProjectType } from "./WeddingPipeline";
+import { VideoRoomResolveSyncSettings } from "./VideoRoomResolveSyncSettings";
 
 interface ProjectContext {
   scenes: RoleRoomScene[];
@@ -520,6 +521,8 @@ export function RoleRoomProjectSync() {
           </option>
         ))}
       </select>
+
+      <VideoRoomResolveSyncSettings preferredProjectId={selected || undefined} />
 
       {context && (
         <div style={{

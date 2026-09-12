@@ -55,6 +55,132 @@ export interface StreamUploadResult {
   duration?: number;
 }
 
+export interface StreamTusUploadTicket {
+  uid: string;
+  uploadUrl: string;
+  protocol: 'tus';
+  chunkSize: number;
+  expiresAt: string;
+}
+
+const streamUploadResult = (result: any, customerSubdomain?: string): StreamUploadResult => ({
+  uid: String(result.uid),
+  playbackUrl: result.playback?.hls ?? buildPlaybackUrl(String(result.uid), customerSubdomain),
+  thumbnailUrl: result.thumbnail ?? buildThumbnailUrl(String(result.uid), customerSubdomain),
+  ready: result.readyToStream === true,
+  duration: Number.isFinite(Number(result.duration)) ? Number(result.duration) : undefined,
+});
+
+const tusMetadata = (key: string, value?: string): string => value == null
+  ? key
+  : `${key} ${Buffer.from(value, 'utf8').toString('base64')}`;
+
+/**
+ * Provision a direct, one-time TUS endpoint. The browser uploads straight to
+ * Stream; our API token never leaves the backend and no video is buffered by
+ * Express. Cloudflare requires TUS for files above 200 MB and recommends it
+ * for unreliable connections.
+ */
+export async function createDirectStreamTusUpload(input: {
+  sizeBytes: number;
+  filename: string;
+  creatorId: string;
+  projectId?: string;
+  versionId?: string;
+  maxDurationSeconds?: number;
+}): Promise<StreamTusUploadTicket> {
+  const cfg = buildStreamConfig();
+  if (!cfg.enabled) throw new Error('cloudflare_stream_not_configured');
+  if (!Number.isSafeInteger(input.sizeBytes) || input.sizeBytes <= 0 || input.sizeBytes > 30 * 1024 ** 3) {
+    throw new Error('invalid_stream_upload_size');
+  }
+  const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const metadata = [
+    tusMetadata('name', input.filename.slice(0, 200)),
+    tusMetadata('requiresignedurls'),
+    tusMetadata('expiry', expiry),
+    tusMetadata('maxdurationseconds', String(Math.min(36_000, Math.max(1, input.maxDurationSeconds || 14_400)))),
+    ...(input.projectId ? [tusMetadata('projectId', input.projectId)] : []),
+    ...(input.versionId ? [tusMetadata('versionId', input.versionId)] : []),
+  ].join(',');
+  const response = await fetch(`${CF_API_BASE}/accounts/${cfg.accountId}/stream?direct_user=true`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${cfg.apiToken}`,
+      'Tus-Resumable': '1.0.0',
+      'Upload-Length': String(input.sizeBytes),
+      'Upload-Metadata': metadata,
+      'Upload-Creator': input.creatorId.slice(0, 64),
+    },
+  });
+  const uploadUrl = response.headers.get('location');
+  const uid = response.headers.get('stream-media-id');
+  if (response.status !== 201 || !uploadUrl || !uid) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`stream_tus_provision_failed: ${response.status} ${body}`);
+  }
+  return { uid, uploadUrl, protocol: 'tus', chunkSize: 50 * 1024 * 1024, expiresAt: expiry };
+}
+
+/** Import from a signed S3 URL. The source must support HEAD and Range GET. */
+export async function importStreamFromUrl(input: {
+  sourceUrl: string;
+  filename: string;
+  creatorId: string;
+  projectId: string;
+  versionId: string;
+}): Promise<StreamUploadResult> {
+  const cfg = buildStreamConfig();
+  if (!cfg.enabled) throw new Error('cloudflare_stream_not_configured');
+  const response = await fetch(`${CF_API_BASE}/accounts/${cfg.accountId}/stream/copy`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${cfg.apiToken}`,
+      'Content-Type': 'application/json',
+      'Upload-Creator': input.creatorId.slice(0, 64),
+    },
+    body: JSON.stringify({
+      input: input.sourceUrl,
+      name: input.filename.slice(0, 200),
+      creator: input.creatorId.slice(0, 64),
+      requireSignedURLs: true,
+      meta: { projectId: input.projectId, versionId: input.versionId, source: 'creatorhub-s3' },
+    }),
+  });
+  const data = await response.json().catch(() => null) as any;
+  if (!response.ok || !data?.success || !data.result?.uid) {
+    throw new Error(`stream_import_failed: ${response.status} ${JSON.stringify(data?.errors || null)}`);
+  }
+  return streamUploadResult(data.result, cfg.customerSubdomain);
+}
+
+export async function generateStreamCaptions(uid: string, language: string): Promise<{ status: string; label?: string }> {
+  const cfg = buildStreamConfig();
+  if (!cfg.enabled) throw new Error('cloudflare_stream_not_configured');
+  const response = await fetch(
+    `${CF_API_BASE}/accounts/${cfg.accountId}/stream/${encodeURIComponent(uid)}/captions/${encodeURIComponent(language)}/generate`,
+    { method: 'POST', headers: { Authorization: `Bearer ${cfg.apiToken}` } },
+  );
+  const data = await response.json().catch(() => null) as any;
+  if (!response.ok || !data?.success) throw new Error(`stream_caption_generation_failed: ${response.status}`);
+  return { status: String(data.result?.status || 'inprogress'), label: data.result?.label };
+}
+
+export async function getStreamCaption(uid: string, language: string): Promise<{ status: string; label?: string; vtt?: string } | null> {
+  const cfg = buildStreamConfig();
+  if (!cfg.enabled) return null;
+  const root = `${CF_API_BASE}/accounts/${cfg.accountId}/stream/${encodeURIComponent(uid)}/captions/${encodeURIComponent(language)}`;
+  const response = await fetch(root, { headers: { Authorization: `Bearer ${cfg.apiToken}` } });
+  const data = await response.json().catch(() => null) as any;
+  if (!response.ok || !data?.success) return null;
+  const result = { status: String(data.result?.status || 'inprogress'), label: data.result?.label } as { status: string; label?: string; vtt?: string };
+  if (result.status === 'ready') {
+    const vttResponse = await fetch(`${root}/vtt`, { headers: { Authorization: `Bearer ${cfg.apiToken}` } });
+    if (vttResponse.ok) result.vtt = await vttResponse.text();
+  }
+  return result;
+}
+
 /**
  * Last opp en video-buffer direkte til Cloudflare Stream via deres
  * direct-upload-endpoint (POST som multipart). For proxy-størrelse
@@ -172,6 +298,12 @@ export async function getStreamVideoStatus(uid: string): Promise<{
   playbackUrl: string;
   thumbnailUrl: string;
   duration?: number;
+  state?: string;
+  progressPercent?: number;
+  error?: string;
+  width?: number;
+  height?: number;
+  inputSizeBytes?: number;
 } | null> {
   const cfg = buildStreamConfig();
   if (!cfg.enabled) return null;
@@ -187,6 +319,9 @@ export async function getStreamVideoStatus(uid: string): Promise<{
       duration?: number;
       playback?: { hls?: string };
       thumbnail?: string;
+      input?: { width?: number; height?: number };
+      size?: number;
+      status?: { state?: string; pctComplete?: string; errorReasonCode?: string; errorReasonText?: string };
     };
   };
   if (!data.success || !data.result) return null;
@@ -195,6 +330,15 @@ export async function getStreamVideoStatus(uid: string): Promise<{
     playbackUrl: data.result.playback?.hls ?? buildPlaybackUrl(uid, cfg.customerSubdomain),
     thumbnailUrl: data.result.thumbnail ?? buildThumbnailUrl(uid, cfg.customerSubdomain),
     duration: data.result.duration,
+    state: data.result.status?.state,
+    progressPercent: Number.isFinite(Number(data.result.status?.pctComplete))
+      ? Number(data.result.status?.pctComplete) : undefined,
+    error: data.result.status?.state === 'error'
+      ? [data.result.status.errorReasonCode, data.result.status.errorReasonText].filter(Boolean).join(': ')
+      : undefined,
+    width: Number.isFinite(Number(data.result.input?.width)) ? Number(data.result.input?.width) : undefined,
+    height: Number.isFinite(Number(data.result.input?.height)) ? Number(data.result.input?.height) : undefined,
+    inputSizeBytes: Number.isFinite(Number(data.result.size)) ? Number(data.result.size) : undefined,
   };
 }
 

@@ -11,7 +11,7 @@ Output er kompakt nok til å pollse ofte uten merkbar load:
     timelineName: str | None,
     fps: float,
     timelineDurationFrames: int,
-    markers: [{frame, sec, name, color, note}],
+    markers: [{frame, sec, name, color, note, customData}],
     clipCount: int,
     sampledAt: float (unix ts)
   }
@@ -113,9 +113,10 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
                     markers.append({
                         "frame": frame,
                         "sec": round(sec, 3),
-                        "name": (info.get("name") or "")[:120],
+                        "name": (info.get("name") or "")[:500],
                         "color": info.get("color") or "Blue",
-                        "note": (info.get("note") or "")[:200],
+                        "note": (info.get("note") or "")[:4000],
+                        "customData": (info.get("customData") or "")[:500],
                     })
                 except (TypeError, ValueError):
                     continue

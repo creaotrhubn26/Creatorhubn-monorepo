@@ -45,6 +45,7 @@ import {
 } from '@/lib/audioLoudness';
 import { nextRecallStatus, recallPayloadFromComment } from '@/lib/soundRoomRecall';
 import SoundRoomOperatingPanel from '@/components/sound-room/SoundRoomOperatingPanel';
+import { uploadSoundRoomFile } from '@/lib/soundRoomUpload';
 
 /* ── Tema ──────────────────────────────────────────────────────────────── */
 const BG = '#0A0A0B', PANEL = '#131316', PANEL2 = '#0F0F11', BORDER = 'rgba(255,255,255,0.08)';
@@ -65,7 +66,7 @@ const relTime = (iso?: string) => {
 // the persisted CreatorHub OAuth token. Scope the token to our own protected
 // stream path so it can never be forwarded to third-party audio URLs.
 export const isProtectedCompanionAudio = (url: string): boolean =>
-  /^\/api\/protools\/bounces\/[0-9a-f-]+\/file(?:\?|$)/i.test(url.trim());
+  /^\/api\/(?:protools\/bounces\/[0-9a-f-]+\/file|audio-versions\/[0-9a-f-]+\/media)(?:\?|$)/i.test(url.trim());
 
 export const companionAudioFetchParams = (url: string): RequestInit => {
   if (!isProtectedCompanionAudio(url)) return { credentials: 'omit' };
@@ -273,7 +274,10 @@ export default function AudioShowcasePage() {
   const [currentLoudness, setCurrentLoudness] = React.useState<AudioLoudnessMetrics | null>(null);
   const [previousLoudness, setPreviousLoudness] = React.useState<AudioLoudnessMetrics | null>(null);
   const loopRef = React.useRef(loopOn); loopRef.current = loopOn;
-  const effectiveSrc = (abActive && prevVersion ? prevVersion.file_url : currentVersion?.file_url) || '';
+  const playableUrl = (version: any) => version?.preview_url && version?.storage_state === 'ready'
+    ? version.preview_url : version?.file_url;
+  const effectiveVersion = abActive && prevVersion ? prevVersion : currentVersion;
+  const effectiveSrc = playableUrl(effectiveVersion) || '';
   const fracRef = React.useRef(0);
   const matchPlan = React.useMemo(
     () => levelMatchPlan(currentLoudness, previousLoudness),
@@ -391,6 +395,9 @@ export default function AudioShowcasePage() {
         fetchParams: companionAudioFetchParams(effectiveSrc),
         waveColor: 'rgba(245,242,234,0.22)', progressColor: ACCENT, cursorColor: 'rgba(245,242,234,0.85)',
         cursorWidth: 2, barWidth: 2, barGap: 1, barRadius: 3, normalize: true,
+        ...(Array.isArray(effectiveVersion?.waveform_peaks) && effectiveVersion.waveform_peaks.length
+          ? { peaks: [effectiveVersion.waveform_peaks], duration: Number(effectiveVersion.duration) || undefined }
+          : {}),
       });
       bindPlayer(instance, false);
     })().catch((error) => {
@@ -409,7 +416,7 @@ export default function AudioShowcasePage() {
       if (ws) dispose(ws);
       wsRef.current = null;
     };
-  }, [effectiveSrc, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [effectiveSrc, loading, effectiveVersion?.waveform_peaks, effectiveVersion?.duration]); // eslint-disable-line react-hooks/exhaustive-deps
   React.useEffect(() => {
     wsRef.current?.setVolume(playbackVolume);
   }, [playbackVolume]);
@@ -529,19 +536,7 @@ export default function AudioShowcasePage() {
     if (!file) return;
     setBusy(true); setUploadPct(0);
     try {
-      // Ekte fil-opplasting → backend lagrer + serverer same-origin (waveform-vennlig).
-      const fd = new FormData(); fd.append('file', file);
-      const headers = await getAuthHeader(); delete (headers as any)['Content-Type'];
-      const url: string = await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', buildApiUrl('/api/upload/audio'));
-        Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v as string));
-        xhr.upload.onprogress = (e) => { if (e.lengthComputable) setUploadPct(Math.round((e.loaded / e.total) * 100)); };
-        xhr.onload = () => { try { const j = JSON.parse(xhr.responseText); j?.url ? resolve(j.url) : reject(new Error('no url')); } catch { reject(new Error('bad response')); } };
-        xhr.onerror = () => reject(new Error('upload failed'));
-        xhr.send(fd);
-      });
-      const v = await apiRequest('/api/audio-versions', { method: 'POST', body: { projectId, fileUrl: url, fileName: file.name } });
+      const v = await uploadSoundRoomFile({ projectId, file, onProgress: setUploadPct });
       audioShowcaseEvents.versionUploaded({ sizeBytes: file.size });
       await loadProject(); setCurrentVid(v.id);
     } catch { /* ignore */ } finally { setBusy(false); setUploadPct(null); }

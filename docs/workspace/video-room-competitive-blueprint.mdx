@@ -1,0 +1,78 @@
+# Video Room — konkurransebilde og produktretning
+
+Oppdatert 12. september 2026. Punktene under skiller mellom funksjoner som er implementert nå og anbefalt videre arbeid.
+
+## Videografens viktigste problemer
+
+1. Feedback er spredt i e-post, chat og møter og må tastes inn igjen i redigeringsverktøyet.
+2. Klient og editor kommenterer feil eksport, eller mister sammenhengen når en ny cut lastes opp.
+3. Vage noter mangler frame, markert område, fagkategori og prioritet.
+4. Diskusjonen finnes, men endelig beslutning, ansvar og godkjenner er uklare.
+5. Klienten trenger friksjonsfri tilgang; produsenten trenger passord, roller, utløp og kontroll på nedlasting.
+6. Review, oppgaver, revisjonsomfang, godkjenning og levering lever i separate systemer.
+
+## Hva markedet setter som forventning
+
+- [Mixup](https://mixup.media/en): versjoner, feedback, godkjenning, teamspaces, adgangsroller, passord, 4K-video, tapsfri/spatial lyd, AI-transkripsjon og desktop-/mobil-/DAW-integrasjon.
+- [Frame.io Comparison Viewer](https://help.frame.io/en/articles/9952618-comparison-viewer): synkron side-ved-side-avspilling og kommentarer på begge versjoner. [Review shares](https://updates.frame.io/sharing-version-stacks-for-review-83439) kan vise hele versjonsstakken under samme lenke.
+- [Vimeo Review](https://vimeo.com/features/video-collaboration): tidsstemplet feedback, løsing og filtrering, versjonshistorikk og sikre review-lenker som overlever at videoen erstattes.
+- [Filestage](https://filestage.io/video-review-software/): review-steg, frister, påminnelser og beslutninger. [Versjonssammenligning og review-rapport](https://help.filestage.io/en/articles/7872784-chapter-3-managing-versions) gir et revisjonsvennlig godkjenningsspor.
+- [Blackmagic Cloud Presentations](https://help.cloud.blackmagicdesign.com/presentations/): review tett koblet til DaVinci Resolve. [Markører og tegneverktøy](https://help.cloud.blackmagicdesign.com/presentations/adding-markers/) kan opprettes, redigeres, slettes, fullføres og filtreres.
+- [Dropbox Replay](https://www.dropbox.com/replay): live review, markup, transkripsjon, versjoner, due dates, vannmerking og NLE-integrasjoner. [Compare](https://help.dropbox.com/view-edit/dropbox-replay-compare-video-versions) spiller cuts synkront og beholder kommentarer per versjon.
+- [Ziflow](https://help.ziflow.com/hc/en-us/articles/30725270836372-Compare-proof-versions): side-ved-side og overlay, synkron navigasjon, versjonsspesifikke kommentarer og godkjenning i compare-visningen.
+
+## Implementert i CreatorHub
+
+Video Room bruker nå `project_video_versions`, `project_video_comments` og `project_video_decisions` som én sannhet for team og klient:
+
+- versjonsspesifikk video, kapitler, kommentarer og beslutningslogg;
+- klientlenker med view/comment/approve, passord, versjonshistorikk, nedlasting og tilbakekalling;
+- privat HLS/Cloudflare Stream med direkte TUS-opplasting, import via lenke,
+  synlig behandlingsstatus og fallback for eldre fil-URL-er;
+- tråder, svar, redigering, sletting, status, kategori, prioritet og musikkreferanser;
+- frihåndsmarkering direkte på videoframen;
+- beslutningskommentarer, «be om endringer» og godkjenning;
+- kapitteleditor og versjonsstyring;
+- synkron side-ved-side-sammenligning;
+- review-rapport og eksport til tekst, DaVinci-markør-CSV, EDL og FCPXML;
+- gjenopptak av AI-videojobber, faktisk filnedlasting og riktig retur etter kredittkjøp;
+- prosjektets `canEdit`-tilgang på lagrings-, AI- og beslutningshandlinger.
+- «må fikses»-kommentarer som tildelte editoroppgaver med frist og synkron
+  åpen/løst-status;
+- toveis, revisjonsnummerert markør-round-trip via CreatorHub-API, native
+  bakgrunnssynk i den installerte Resolve-appen og import/eksport for Premiere
+  og Final Cut Pro/FCPXML;
+- sekvensielle approval-steg med flere navngitte godkjennere, terskel for
+  godkjenning og egne, tokenbaserte beslutningslenker;
+- live review med delt versjon, playhead, avspillingsstatus og tegning;
+- Cloudflare-generert eller manuelt opplastet WebVTT, søkbar transkripsjon og
+  klikkbar tekstnavigasjon;
+- restart-sikker fullfil-QC via jobbkø, ffprobe og FFmpeg: dekode-/kildekontroll,
+  svartbilder, frosset bilde, stillhet, EBU R128/LUFS, true peak, oppløsning og
+  caption timing/overlapp/lesehastighet;
+- avtalte revisjonsrunder som stenger nye kommentarer når runden er lukket;
+- mottakerspesifikke review-lenker med synlig vannmerke og deaktivert
+  originalnedlasting.
+
+## Produksjonshardening som gjenstår
+
+1. Bygg Premiere-panelet på Adobes offisielle
+   [UXP Markers API](https://developer.adobe.com/premiere-pro/uxp/ppro-reference/classes/markers/)
+   (marker-actions krever Premiere 25.6+) og en signert macOS-workflow rundt
+   Apples [FCPXML-format](https://developer.apple.com/documentation/professional-video-applications/fcpxml).
+   Resolve kjører nå kontinuerlig i desktop-appen; FCPXML er foreløpig trygg,
+   eksplisitt interchange og skal ikke beskrives som en live Final Cut-API.
+2. Utvid live review med deltakerliste, vertsoverføring, WebSocket-kanal og
+   eksplisitt beslutningsreferat. Dagens optimistiske revisjonskontroll og korte
+   polling er et robust første lag, men ikke en full møteplattform.
+3. Utvid QC videre med safe-zone/gamut-validering, flimmer, blokk-/drop-frame-
+   analyse og profilspesifikke kanaloppsett. Dagens analyse følger FFmpegs
+   dokumenterte [blackdetect, freezedetect, silencedetect og ebur128-filtre](https://ffmpeg.org/ffmpeg-filters.html).
+4. Bytt synlig nettleservannmerke med servergenerert eller Stream-transformert
+   forensic/burn-in-vannmerke når mottakeren også skal få en eksportfil.
+5. Legg til e-post-/in-app-varsler, forfallsregler, påminnelser og full
+   nedlastings-/visningsaudit per mottaker.
+6. Mål tid til første feedback, feedback til ny cut, antall runder, åpne
+   must-fix og hvem som venter på hvem.
+
+CreatorHubs sterkeste differensiering er å knytte brief, team, review, oppgaver, økonomisk scope og masterleveranse sammen i samme prosjekt—uten å gjøre klientreview komplisert.
