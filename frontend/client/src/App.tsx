@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient, QueryClientProvider } from '@tan
 import { useAuth } from "@/hooks/useAuth";
 import { useElementEdits, detectDesignWorkspace } from "@/components/workspace/elementEdits";
 import WorkspaceDesignOverlay from "@/components/workspace/WorkspaceDesignOverlay";
+import { creatorHubLoginPath } from '@/lib/creatorHubPrivateRoute';
 // Type definition for the current user response from /api/auth/current-user
 interface CurrentUser {
   id: string;
@@ -454,40 +455,79 @@ const StoryArcStudioRouteWrapper = () => (
 // ProjectCommentsPanel m.fl.). Uten disse providerne kaster useRealTime og hele
 // /workspace-ruten krasjer. Komponentene har egen mørk ThemeProvider, så vi
 // legger IKKE på AppThemeProvider her (unngår å overstyre workspace-temaet).
+const AuthenticatedCreatorHubRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user, isLoading, isAuthenticated } = useAuth();
+
+  if (isLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#0a0b0f' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!isAuthenticated || !user?.id) {
+    const returnPath = typeof window === 'undefined'
+      ? '/workspace'
+      : `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    return <Redirect to={creatorHubLoginPath(returnPath)} />;
+  }
+
+  return <>{children}</>;
+};
+
 const WorkspaceHomeRouteWrapper = () => (
-  <SettingsProvider>
-    <RealTimeProvider>
-      <ErrorBoundary componentName="workspace-home-route">
-        <React.Suspense
-          fallback={
-            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#0a0b0f' }}>
-              <CircularProgress />
-            </Box>
-          }
-        >
-          <WorkspaceHome />
-        </React.Suspense>
-      </ErrorBoundary>
-    </RealTimeProvider>
-  </SettingsProvider>
+  <AuthenticatedCreatorHubRoute>
+    <SettingsProvider>
+      <RealTimeProvider>
+        <ErrorBoundary componentName="workspace-home-route">
+          <React.Suspense
+            fallback={
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#0a0b0f' }}>
+                <CircularProgress />
+              </Box>
+            }
+          >
+            <WorkspaceHome />
+          </React.Suspense>
+        </ErrorBoundary>
+      </RealTimeProvider>
+    </SettingsProvider>
+  </AuthenticatedCreatorHubRoute>
 );
 
 const TeamWorkspaceRouteWrapper = () => (
-  <SettingsProvider>
-    <RealTimeProvider>
-      <ErrorBoundary componentName="team-workspace-route">
-        <React.Suspense
-          fallback={
-            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#0a0b0f' }}>
-              <CircularProgress />
-            </Box>
-          }
-        >
-          <TeamWorkspacePage />
-        </React.Suspense>
-      </ErrorBoundary>
-    </RealTimeProvider>
-  </SettingsProvider>
+  <AuthenticatedCreatorHubRoute>
+    <SettingsProvider>
+      <RealTimeProvider>
+        <ErrorBoundary componentName="team-workspace-route">
+          <React.Suspense
+            fallback={
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#0a0b0f' }}>
+                <CircularProgress />
+              </Box>
+            }
+          >
+            <TeamWorkspacePage />
+          </React.Suspense>
+        </ErrorBoundary>
+      </RealTimeProvider>
+    </SettingsProvider>
+  </AuthenticatedCreatorHubRoute>
+);
+
+const AudioShowcaseRouteWrapper = () => (
+  <AuthenticatedCreatorHubRoute>
+    <React.Suspense
+      fallback={
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#0a0b0f' }}>
+          <CircularProgress />
+        </Box>
+      }
+    >
+      <AudioShowcasePage />
+    </React.Suspense>
+  </AuthenticatedCreatorHubRoute>
 );
 
 // Community Landing Page Wrapper - gets userId and profession from hooks
@@ -970,8 +1010,8 @@ function App() {
                   <Route path="/guide/oppvarming" component={WarmupGuidePage as React.ComponentType<any>} />
                   <Route path="/guide/chat" component={ChatGuidePage as React.ComponentType<any>} />
                   <Route path="/guide/actions" component={ChatActionsGuidePage as React.ComponentType<any>} />
-                  <Route path="/audio-review/:projectId" component={AudioShowcasePage as React.ComponentType<any>} />
-                  <Route path="/audio-review" component={AudioShowcasePage as React.ComponentType<any>} />
+                  <Route path="/audio-review/:projectId" component={AudioShowcaseRouteWrapper} />
+                  <Route path="/audio-review" component={AudioShowcaseRouteWrapper} />
                   <Route
                     path="/equipment-rental"
                     component={() => <SmartDashboardRoute profession="photographer" />}
