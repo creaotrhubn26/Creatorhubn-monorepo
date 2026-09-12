@@ -1,7 +1,7 @@
 import { findProjectRowById, type QueryablePool } from "./project-repository";
 import { broadcastUserEvent } from "./realtime-user-events";
 
-export type SoundRoomUpdateReason = "version" | "comment" | "approval";
+export type SoundRoomUpdateReason = "version" | "comment" | "approval" | "task";
 
 export interface SoundRoomBroadcastResult {
   projectId: string;
