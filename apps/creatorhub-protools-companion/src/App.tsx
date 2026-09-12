@@ -347,7 +347,7 @@ export default function App() {
             </Box>
           )}
           {(feedback?.decisions?.length || feedback?.signoffs?.length) ? (
-            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1.5 }}>
+            <Stack direction="row" spacing={1} useFlexGap sx={{ mt: 1.5, flexWrap: "wrap" }}>
               {feedback.decisions.map((decision) => <Chip key={decision.id} size="small" label={`${decision.status === "open" ? "Avstemning åpen" : "Avstemning lukket"} · ${decision.vote_count || 0} stemmer`} sx={{ color: decision.status === "open" ? ORANGE : "#5fb88a" }} />)}
               {feedback.signoffs.map((signoff) => <Chip key={signoff.id} size="small" label={`${signoff.member_name || "Reviewer"}: ${signoff.stage} ${signoff.status}`} sx={{ color: signoff.status === "approved" ? "#5fb88a" : "text.secondary" }} />)}
             </Stack>
