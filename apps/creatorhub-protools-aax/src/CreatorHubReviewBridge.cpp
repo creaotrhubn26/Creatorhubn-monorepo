@@ -53,6 +53,18 @@ void ConfigureTimeouts(Socket socket) {
     constexpr timeval timeout{5, 0};
     setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
     setsockopt(socket, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+#if defined(SO_NOSIGPIPE)
+    constexpr int noSigPipe = 1;
+    setsockopt(socket, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, sizeof(noSigPipe));
+#endif
+#endif
+}
+
+int SendFlags() {
+#if defined(MSG_NOSIGNAL)
+    return MSG_NOSIGNAL;
+#else
+    return 0;
 #endif
 }
 
@@ -105,7 +117,11 @@ std::string CreatorHubReviewBridge::Send(
         + "\",\"payload\":" + payloadJson + "}\n";
     std::size_t sent = 0;
     while (sent < request.size()) {
-        const auto written = send(socketHandle, request.data() + sent, static_cast<int>(request.size() - sent), 0);
+        const auto written = send(
+            socketHandle,
+            request.data() + sent,
+            static_cast<int>(request.size() - sent),
+            SendFlags());
         if (written <= 0) { CleanupSocket(socketHandle); throw std::runtime_error("IPC write failed"); }
         sent += static_cast<std::size_t>(written);
     }
