@@ -15086,6 +15086,8 @@ type RoleRoomProjectWorkspaceState = {
               <Suspense fallback={<Box sx={{ display: 'grid', placeItems: 'center', minHeight: 320 }}><CircularProgress /></Box>}>
                 <CallSheetGenerator
                   projectId={currentProject.id}
+                  project={currentProject}
+                  canonicalDataReady={canonicalProductionDataProjectId === currentProject.id}
                   productionDay={currentProject.productionDays?.find((day) => day.id === canonicalCallSheetDayId)}
                   productionDayId={canonicalCallSheetDayId}
                   scenes={currentProject.sceneBreakdowns || []}

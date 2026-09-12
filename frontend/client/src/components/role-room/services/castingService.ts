@@ -63,8 +63,12 @@ let cachedProjects: CastingProject[] = [];
 let cachedSharedTemplateProjects: CastingProject[] = [];
 let projectStorageMutationVersion = 0;
 const PROJECT_FETCH_CACHE_TTL_MS = 2000;
+const PROJECT_LIST_FETCH_CACHE_TTL_MS = 2_000;
 const inFlightProjectRequests = new Map<string, Promise<CastingProject | null>>();
 const projectFetchCache = new Map<string, { project: CastingProject | null; cachedAt: number }>();
+let projectsFetchGeneration = 0;
+let inFlightProjectsRequest: { generation: number; promise: Promise<CastingProject[]> } | null = null;
+let projectsFetchCache: { projects: CastingProject[]; cachedAt: number } | null = null;
 const CROSS_PROJECT_AUDIT_STORAGE_KEY = 'role-room-cross-project-attempts';
 const PROJECT_VALIDATION_ERROR_NAME = 'RoleRoomProjectValidationError';
 
@@ -131,6 +135,11 @@ const invalidateProjectFetchCache = (projectId?: string): void => {
 
   projectFetchCache.clear();
   inFlightProjectRequests.clear();
+};
+
+const invalidateProjectsListFetchCache = (): void => {
+  projectsFetchGeneration += 1;
+  projectsFetchCache = null;
 };
 
 const hydrateProjects = async (): Promise<void> => {
@@ -1709,6 +1718,7 @@ async function saveProjectToDb(project: CastingProject, options?: ProjectMutatio
   assertProjectNestedPayloadScope(project, 'saveProject');
 
   invalidateProjectFetchCache(project.id);
+  invalidateProjectsListFetchCache();
 
   // Always save to storage first
   const projects = getProjectsFromStorage();
@@ -1762,6 +1772,7 @@ async function deleteProjectFromDb(id: string, options?: ProjectMutationOptions)
   assertDemoProjectCanMutate(id, 'delete', options);
 
   invalidateProjectFetchCache(id);
+  invalidateProjectsListFetchCache();
 
   // Remove from storage first
   let projects = getProjectsFromStorage();
@@ -1828,14 +1839,39 @@ export const castingService = {
    * Get all projects from database or storage
    */
   async getProjects(): Promise<CastingProject[]> {
-    try {
-      invalidateProjectFetchCache();
-      return await getProjectsFromDb();
-    } catch (error) {
-      console.error('Database fetch failed, falling back to storage:', error);
-      // Return projects from local storage even if database is unavailable
-      return getProjectsFromStorage();
+    const cached = projectsFetchCache;
+    if (cached && Date.now() - cached.cachedAt < PROJECT_LIST_FETCH_CACHE_TTL_MS) {
+      return cached.projects;
     }
+    if (inFlightProjectsRequest?.generation === projectsFetchGeneration) {
+      return inFlightProjectsRequest.promise;
+    }
+
+    const generation = projectsFetchGeneration;
+    const request = (async (): Promise<CastingProject[]> => {
+      try {
+        const projects = await getProjectsFromDb();
+        if (generation === projectsFetchGeneration) {
+          projectsFetchCache = { projects, cachedAt: Date.now() };
+        }
+        return projects;
+      } catch (error) {
+        console.error('Database fetch failed, falling back to storage:', error);
+        // Return projects from local storage even if database is unavailable
+        const projects = getProjectsFromStorage();
+        if (generation === projectsFetchGeneration) {
+          projectsFetchCache = { projects, cachedAt: Date.now() };
+        }
+        return projects;
+      } finally {
+        if (inFlightProjectsRequest?.generation === generation) {
+          inFlightProjectsRequest = null;
+        }
+      }
+    })();
+
+    inFlightProjectsRequest = { generation, promise: request };
+    return request;
   },
 
   /**
