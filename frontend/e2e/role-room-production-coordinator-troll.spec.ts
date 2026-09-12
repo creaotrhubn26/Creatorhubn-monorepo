@@ -27,6 +27,7 @@ async function installAuthenticatedProductionCoordinatorApi(page: Page) {
   let productionDay: any = structuredClone(initialDay);
   const authenticatedRequests: string[] = [];
   const savedVersions: number[] = [];
+  let projectListGetCount = 0;
 
   await page.route('**/api/casting/**', async (route) => {
     const request = route.request();
@@ -41,6 +42,7 @@ async function installAuthenticatedProductionCoordinatorApi(page: Page) {
       return;
     }
     if (path === '/api/casting/projects' && request.method() === 'GET') {
+      projectListGetCount += 1;
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(storedProject ? [storedProject] : []) });
       return;
     }
@@ -94,7 +96,11 @@ async function installAuthenticatedProductionCoordinatorApi(page: Page) {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
   });
 
-  return { authenticatedRequests, savedVersions };
+  return {
+    authenticatedRequests,
+    savedVersions,
+    get projectListGetCount() { return projectListGetCount; },
+  };
 }
 
 test.describe('Autentisert Troll-flyt · produksjonskoordinator', () => {
@@ -138,6 +144,7 @@ test.describe('Autentisert Troll-flyt · produksjonskoordinator', () => {
     expect(api.savedVersions).toEqual([1]);
     expect(api.authenticatedRequests.length).toBeGreaterThan(0);
     expect(api.authenticatedRequests.every((header) => header === 'Bearer dev-admin-local-session')).toBe(true);
+    expect(api.projectListGetCount).toBe(1);
     expect(runtimeErrors).toEqual([]);
     expect(targetedApiFailures).toEqual([]);
   });

@@ -145,6 +145,49 @@ describe('CallSheetGenerator recipient confirmation', () => {
     expect(screen.getByText('Bil 4 · Liv')).toBeInTheDocument();
   });
 
+  it('uses canonical project data without refetching the same call-sheet sources', async () => {
+    const productionDay = (await getProductionDays())?.[0];
+    const secondDay = { ...productionDay, id: 'day-2', date: '2026-09-13' };
+    const project = {
+      id: 'project-1',
+      name: 'Troll',
+      productionDays: [productionDay, secondDay],
+      sceneBreakdowns: await getSceneBreakdowns(),
+      candidates: await getCandidates(),
+      roles: await getRoles(),
+      crew: await getCrew(),
+      locations: await getLocations(),
+    };
+    getProject.mockClear();
+    getCandidates.mockClear();
+    getRoles.mockClear();
+    getCrew.mockClear();
+    getLocations.mockClear();
+    getProductionDays.mockClear();
+    getSceneBreakdowns.mockClear();
+
+    render(
+      <CallSheetGenerator
+        projectId="project-1"
+        project={project}
+        canonicalDataReady
+        productionDay={productionDay}
+        productionDayId="day-1"
+      />,
+    );
+
+    expect(await screen.findByText('Ada Skuespiller')).toBeInTheDocument();
+    expect(screen.getByText('1 / 2')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Kontroller mottakere' })).toBeEnabled();
+    expect(getProject).not.toHaveBeenCalled();
+    expect(getCandidates).not.toHaveBeenCalled();
+    expect(getRoles).not.toHaveBeenCalled();
+    expect(getCrew).not.toHaveBeenCalled();
+    expect(getLocations).not.toHaveBeenCalled();
+    expect(getProductionDays).not.toHaveBeenCalled();
+    expect(getSceneBreakdowns).not.toHaveBeenCalled();
+  });
+
   it('keeps the call sheet visible but disables distribution for the default director role', async () => {
     getMyTabs.mockResolvedValue({ tabAccess: null, source: 'default', role: 'director', tabValues: null });
 

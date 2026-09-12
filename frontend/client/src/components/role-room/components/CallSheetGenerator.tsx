@@ -66,7 +66,7 @@ import {
   Info as InfoIcon,
 } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
-import type { ProductionDay, CrewMember, Location, SceneBreakdown, Candidate, Role } from '../models/casting';
+import type { CastingProject, ProductionDay, CrewMember, Location, SceneBreakdown, Candidate, Role } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { roleRoomAgentDefaultHeaders } from '../services/roleRoomAgentService';
 import { roleRoomProjectTabConfigService } from '../services/roleRoomProjectTabConfigService';
@@ -160,6 +160,8 @@ interface EmergencyContact {
 
 interface CallSheetGeneratorProps {
   projectId: string;
+  project?: CastingProject;
+  canonicalDataReady?: boolean;
   productionDay?: ProductionDay;
   productionDayId?: string;
   scenes?: SceneBreakdown[];
@@ -516,8 +518,20 @@ export function buildDayCallSheetFields(
   locList: Location[],
   roleList: Role[] = [],
   candidateList: Candidate[] = [],
+  productionDayList: ProductionDay[] = [],
 ): Partial<CallSheetData> {
   const fields: Partial<CallSheetData> = {};
+  const activeDays = productionDayList
+    .filter((day) => day.status !== 'cancelled')
+    .sort((left, right) => {
+      const dateComparison = String(left.date || '').localeCompare(String(right.date || ''));
+      return dateComparison !== 0 ? dateComparison : left.id.localeCompare(right.id);
+    });
+  const activeDayIndex = activeDays.findIndex((day) => day.id === productionDay.id);
+  if (activeDayIndex >= 0) {
+    fields.dayNumber = activeDayIndex + 1;
+    fields.totalDays = activeDays.length;
+  }
   if (productionDay.date) fields.date = productionDay.date;
   if (productionDay.callTime) fields.callTime = productionDay.callTime;
   if (productionDay.wrapTime) fields.estimatedWrap = productionDay.wrapTime;
@@ -679,6 +693,8 @@ function createEmptyCallSheet(productionDay?: ProductionDay): CallSheetData {
 
 export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
   projectId,
+  project,
+  canonicalDataReady = false,
   productionDay,
   productionDayId,
   scenes = EMPTY_SCENES,
@@ -854,23 +870,29 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
   useEffect(() => {
     setCallSheet(createEmptyCallSheet(productionDay));
     setActiveProductionDay(productionDay);
+    setCastingCandidates([]);
+    setCastingRoles([]);
+    setCastingCrew([]);
+    setCastingLocations([]);
     setIsSynced(false);
-  }, [projectId]);
+  }, [projectId, productionDay]);
 
   useEffect(() => {
     if (!productionDay) return;
+    const hasCanonicalProject = canonicalDataReady && Boolean(project);
     const dayFields = buildDayCallSheetFields(
       productionDay,
       scenes,
-      crew.length ? crew : castingCrew,
-      locations.length ? locations : castingLocations,
-      castingRoles,
-      castingCandidates,
+      hasCanonicalProject ? (crew.length ? crew : project?.crew ?? []) : (crew.length ? crew : castingCrew),
+      hasCanonicalProject ? (locations.length ? locations : project?.locations ?? []) : (locations.length ? locations : castingLocations),
+      hasCanonicalProject ? (project?.roles ?? []) : castingRoles,
+      hasCanonicalProject ? (project?.candidates ?? []) : castingCandidates,
+      hasCanonicalProject ? (project?.productionDays ?? []) : [],
     );
     setActiveProductionDay(productionDay);
     setCallSheet((current) => ({ ...current, ...dayFields }));
-    setIsSynced(true);
-  }, [productionDay, scenes, crew, locations, castingCrew, castingLocations, castingRoles, castingCandidates]);
+    setIsSynced(canonicalDataReady || !project);
+  }, [productionDay, scenes, crew, locations, castingCrew, castingLocations, castingRoles, castingCandidates, canonicalDataReady, project]);
 
   // Load data from casting service (background, non-blocking)
   useEffect(() => {
@@ -878,7 +900,48 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
       // Ikke blokker UI mens registrerte prosjektdata lastes.
       try {
         setIsSynced(false);
-        const [project, candidates, roles, crewMembers, locs, productionDays, loadedScenes] = await Promise.all([
+        if (canonicalDataReady && project) {
+          const projectDays = project.productionDays ?? [];
+          const projectScenes = scenes.length ? scenes : (project.sceneBreakdowns ?? []);
+          const projectCrew = crew.length ? crew : (project.crew ?? []);
+          const projectLocations = locations.length ? locations : (project.locations ?? []);
+          const projectRoles = project.roles ?? [];
+          const projectCandidates = project.candidates ?? [];
+          const resolvedDay = productionDay
+            ?? (productionDayId ? projectDays.find((day) => day.id === productionDayId) : undefined)
+            ?? selectSecondAdProductionDay(projectDays)
+            ?? undefined;
+          const dayFields = resolvedDay
+            ? buildDayCallSheetFields(
+                resolvedDay,
+                projectScenes,
+                projectCrew,
+                projectLocations,
+                projectRoles,
+                projectCandidates,
+                projectDays,
+              )
+            : {};
+          const director = projectCrew.find((member) => member.role?.toLowerCase().includes('regissør') || member.role?.toLowerCase().includes('director'));
+          const producer = projectCrew.find((member) => member.role?.toLowerCase().includes('produsent') || member.role?.toLowerCase().includes('producer'));
+
+          setCastingCandidates(projectCandidates);
+          setCastingRoles(projectRoles);
+          setCastingCrew(projectCrew);
+          setCastingLocations(projectLocations);
+          setActiveProductionDay(resolvedDay);
+          setCallSheet({
+            ...createEmptyCallSheet(resolvedDay),
+            ...dayFields,
+            projectName: project.name || '',
+            director: director?.name || '',
+            producer: producer?.name || '',
+          });
+          setIsSynced(true);
+          return;
+        }
+
+        const [loadedProject, candidates, roles, crewMembers, locs, productionDays, loadedScenes] = await Promise.all([
           castingService.getProject(projectId).catch(() => null),
           castingService.getCandidates(projectId).catch(() => []),
           castingService.getRoles(projectId).catch(() => []),
@@ -904,7 +967,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
         const resolvedCrew = crew && crew.length ? crew : (crewMembers || []);
         const resolvedLocs = locations && locations.length ? locations : (locs || []);
         const dayFields = resolvedDay
-          ? buildDayCallSheetFields(resolvedDay, resolvedScenes, resolvedCrew, resolvedLocs, roles || [], candidates || [])
+          ? buildDayCallSheetFields(resolvedDay, resolvedScenes, resolvedCrew, resolvedLocs, roles || [], candidates || [], productionDays)
           : {};
         if (dayFields.cast) {
           dayFields.cast = dayFields.cast.map((castMember) => {
@@ -921,11 +984,11 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
         const producer = resolvedCrew.find(c =>
           c.role?.toLowerCase().includes('produsent') || c.role?.toLowerCase().includes('producer'));
 
-        if (project || resolvedDay) {
+        if (loadedProject || resolvedDay) {
           setCallSheet({
             ...createEmptyCallSheet(resolvedDay),
             ...dayFields,
-            projectName: project?.name || '',
+            projectName: loadedProject?.name || '',
             director: director?.name || '',
             producer: producer?.name || '',
           });
@@ -945,7 +1008,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
       // Background load - don't await
       loadCastingData();
     }
-  }, [projectId, productionDay?.id, productionDayId]);
+  }, [projectId, productionDay, productionDayId, canonicalDataReady, project, scenes, crew, locations]);
 
   const openRecipientPreview = () => {
     if (sendPermission !== 'manage') {
@@ -1669,13 +1732,13 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
         <Grid container spacing={responsive.spacing} sx={{ mb: responsive.spacing * 2 }}>
           {[
             { label: 'DATO', key: 'date', value: new Date(callSheet.date).toLocaleDateString('nb-NO', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }), editValue: callSheet.date, type: 'date' },
-            { label: 'DAG', key: 'dayNumber', value: `${callSheet.dayNumber} / ${callSheet.totalDays}`, editValue: callSheet.dayNumber, type: 'number' },
-            { label: 'CREW CALL', key: 'callTime', value: callSheet.callTime, editValue: callSheet.callTime, type: 'time' },
-            { label: 'SHOOTING CALL', key: 'shootingCallTime', value: callSheet.shootingCallTime, editValue: callSheet.shootingCallTime, type: 'time' },
-            { label: 'LUNSJ', key: 'lunchTime', value: callSheet.lunchTime, editValue: callSheet.lunchTime, type: 'time' },
-            { label: 'EST. WRAP', key: 'estimatedWrap', value: callSheet.estimatedWrap, editValue: callSheet.estimatedWrap, type: 'time' },
-            { label: 'REGISSØR', key: 'director', value: callSheet.director, editValue: callSheet.director, type: 'text' },
-            { label: 'PRODUSENT', key: 'producer', value: callSheet.producer, editValue: callSheet.producer, type: 'text' },
+            { label: 'DAG', key: 'dayNumber', value: callSheet.totalDays > 0 ? `${callSheet.dayNumber} / ${callSheet.totalDays}` : 'Ikke satt', editValue: callSheet.dayNumber, type: 'number' },
+            { label: 'CREW CALL', key: 'callTime', value: callSheet.callTime || 'Ikke satt', editValue: callSheet.callTime, type: 'time' },
+            { label: 'SHOOTING CALL', key: 'shootingCallTime', value: callSheet.shootingCallTime || 'Ikke satt', editValue: callSheet.shootingCallTime, type: 'time' },
+            { label: 'LUNSJ', key: 'lunchTime', value: callSheet.lunchTime || 'Ikke satt', editValue: callSheet.lunchTime, type: 'time' },
+            { label: 'EST. WRAP', key: 'estimatedWrap', value: callSheet.estimatedWrap || 'Ikke satt', editValue: callSheet.estimatedWrap, type: 'time' },
+            { label: 'REGISSØR', key: 'director', value: callSheet.director || 'Ikke satt', editValue: callSheet.director, type: 'text' },
+            { label: 'PRODUSENT', key: 'producer', value: callSheet.producer || 'Ikke satt', editValue: callSheet.producer, type: 'text' },
           ].map((item, i) => (
             <Grid key={i} size={{ xs: responsive.gridColumns.meta }}>
               <Paper 
@@ -2109,7 +2172,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                         Call
                       </Typography>
                       <Typography sx={{ fontSize: responsive.fontSize.caption, color: COLORS.textPrimary, fontWeight: 700 }}>
-                        {member.callTime}
+                        {member.callTime || 'Ikke satt'}
                       </Typography>
                     </Grid>
                     {member.makeupTime && (
@@ -2246,7 +2309,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                       mt: 0.25,
                     }}
                   >
-                    Call: {member.callTime}
+                    Call: {member.callTime || 'Ikke satt'}
                   </Typography>
                   {(() => {
                     const conflict = member.email

@@ -69,6 +69,15 @@ describe('buildDayCallSheetFields (auto-fyll call-sheet fra produksjonsdag)', ()
     expect(f.weatherForecast).toMatchObject({ temperature: 19, conditions: 'Lettskyet' });
   });
 
+  it('beregner dagsnummer fra aktive produksjonsdager og utelater avlyste dager', () => {
+    const previousDay: ProductionDay = { ...day, id: 'd0', date: '2026-06-30' };
+    const cancelledDay: ProductionDay = { ...day, id: 'cancelled', date: '2026-06-29', status: 'cancelled' };
+    const fields = buildDayCallSheetFields(day, scenes, crew, locations, [], [], [day, cancelledDay, previousDay]);
+
+    expect(fields.dayNumber).toBe(2);
+    expect(fields.totalDays).toBe(2);
+  });
+
   it('resolves canonical role IDs to role, actor, email and all individual times', () => {
     const roles: Role[] = [{ id: 'role-nora', name: 'NORA', assignedCandidateId: 'candidate-nora' }];
     const candidates: Candidate[] = [{
