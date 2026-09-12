@@ -38,6 +38,40 @@ pub const STOR_MODEL: &str = "claude-sonnet-5";
 /// en feilmelding for det.
 const TIMEOUT: Duration = Duration::from_secs(120);
 
+/// Avsnitt per kall. Målt mot ekte `claude`-kommandolinje 13. september 2026
+/// (`måling_av_pakkestørrelse` nedenfor kjører målingen på nytt):
+///
+/// ```text
+///   1 avsnitt   16,3 / 77,7 s      40 avsnitt   35,0 / 28,2 s
+///   5 avsnitt   18,7 / 16,3 s      80 avsnitt   22,3 / 24,6 / 22,5 / 44,7 / 26,0 s
+///  20 avsnitt   12,7 / 20,3 s     120 avsnitt   32,7 / 45,6 / 19,2 s
+/// ```
+///
+/// Tallene sier to ting. Oppstarten er hele kostnaden — ett avsnitt tok 16 og
+/// 78 sekunder, altså ikke mindre enn åtti — og spredningen mellom kall er
+/// større enn forskjellen mellom pakkestørrelsene. Da er færre kall bedre enn
+/// mindre pakker, og tokenbudsjettet alene ville valgt for smått.
+///
+/// Åtti, ikke hundre og tjue: det halverer antall kall mot førti, verste
+/// målte kall er 45 sekunder mot [`TIMEOUT`] på 120, og en pakke som feiler
+/// eller forlates koster ikke mer enn det. Tre hundre avsnitt blir fire kall.
+///
+/// Grensen er antall, ikke bare tokener, fordi svaret må ha én linje per
+/// avsnitt: telling er en annen begrensning enn kontekstvinduet.
+pub const AVSNITT_PER_PAKKE: usize = 80;
+
+/// Tokenbudsjett per kall. Ingen hard grense hos mottakeren — den finnes for
+/// at ett notat med ti svært lange avsnitt ikke skal bli ett kjempekall.
+/// Estimatet er indekserens, tre tegn per token, og det skal overdrive:
+/// en for stor pakke blir avvist, en for liten koster ett kall ekstra.
+pub const TOKENER_PER_PAKKE: usize = 12_000;
+
+/// Pakkene ett sett avsnitt deles i. Formen er indekserens — samme oppdeling
+/// etter både antall og anslått tokenbudsjett, med andre grenser.
+pub fn pakker(tekster: &[String]) -> Vec<std::ops::Range<usize>> {
+    creatorhub_notes_indexer::embed::batches_med(tekster, AVSNITT_PER_PAKKE, TOKENER_PER_PAKKE)
+}
+
 /// Taksonomien, ordrett fra `klassifiseringstest/README.md`, pluss kortformen
 /// som er det eneste nye. Regelen om tvil står sist fordi den er den som skal
 /// vinne når resten er uklart.
@@ -142,6 +176,10 @@ pub struct Understanding {
     pub reread: Vec<String>,
     /// Det hun har tenkt om det samme før. Tom til svarene kommer.
     pub earlier: Vec<crate::minne::Tidligere>,
+    /// Løpenummeret for denne lesningen. Panelet får delresultater underveis
+    /// som hendelser, og bruker nummeret til å se hvilken lesning de hører
+    /// til — en som er forlatt skal ikke skrive over den som gjelder.
+    pub lesning: u64,
 }
 
 impl Understanding {
@@ -151,11 +189,24 @@ impl Understanding {
             paragraphs: Vec::new(),
             reread: Vec::new(),
             earlier: Vec::new(),
+            lesning: 0,
         }
     }
     pub fn on(paragraphs: Vec<Paragraph>, reread: Vec<String>) -> Self {
-        Understanding { on: true, paragraphs, reread, earlier: Vec::new() }
+        Understanding { on: true, paragraphs, reread, earlier: Vec::new(), lesning: 0 }
     }
+}
+
+/// Én pakke er ferdig: dette er avsnittene som fikk et merke, og hvor langt
+/// lesningen er kommet. Sendes til panelet som hendelsen `forstår`, slik at
+/// en lang kilde fyller panelet ut underveis i stedet for på slutten.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Framdrift {
+    pub lesning: u64,
+    pub lest: usize,
+    pub totalt: usize,
+    pub paragraphs: Vec<Paragraph>,
 }
 
 /// Klassifiseringen av ett avsnitt.
@@ -324,13 +375,74 @@ fn del_avhengighet(s: &str) -> (String, Option<String>) {
     (s.to_string(), None)
 }
 
-/// Leser notatet. Bare avsnitt hukommelsen ikke kjenner sendes, og de sendes
-/// i én forespørsel — skriver brukeren videre på siste avsnitt, er det bare
-/// det ene som koster noe.
+/// Kalles etter hver pakke, med avsnittene som fikk et merke akkurat nå og
+/// hvor langt lesningen er kommet (`lest` av `totalt` ukjente avsnitt).
+///
+/// Returner `false` for å forlate resten. Det er ingen tilbakerulling: det
+/// mottakeren allerede har skrevet, står, og neste lesning tar bare det som
+/// mangler — hukommelsen sørger for det selv.
+pub type EtterPakke<'a> = &'a mut dyn FnMut(&[Paragraph], usize, usize) -> bool;
+
+/// [`understand`] uten framdrift og uten noe synlig først, for testene i
+/// denne og nabomodulene. Appen selv går alltid veien om pakkene.
+#[cfg(test)]
+pub fn les(
+    doc: &str,
+    classifier: &dyn Classifier,
+    memo: &mut Memo,
+) -> Result<Vec<Paragraph>, String> {
+    understand(doc, classifier, memo, None, &mut |_, _, _| true)
+}
+
+fn avsnittet(chunk: &Chunk, label: &Label) -> Paragraph {
+    Paragraph {
+        id: 0,
+        start: chunk.start,
+        end: chunk.end,
+        hash: nøkkel(&chunk.text),
+        summary: label.summary.clone(),
+        kind: label.kind.clone(),
+        action: label.action.clone(),
+        dependency: label.dependency.clone(),
+        text: chunk.text.clone(),
+        correction: None,
+    }
+}
+
+/// Avsnittene som har fått et merke siden forrige gang. Duplikater kommer med:
+/// står den samme teksten tre steder, er det tre linjer i panelet, men bare én
+/// klassifisering.
+fn nye(chunks: &[Chunk], keys: &[u64], memo: &Memo, sendt: &mut [bool]) -> Vec<Paragraph> {
+    let mut ut = Vec::new();
+    for i in 0..chunks.len() {
+        if sendt[i] {
+            continue;
+        }
+        if let Some(label) = memo.get(&keys[i]) {
+            sendt[i] = true;
+            ut.push(avsnittet(&chunks[i], label));
+        }
+    }
+    ut
+}
+
+/// Leser notatet, pakke for pakke. Bare avsnitt hukommelsen ikke kjenner
+/// sendes — skriver brukeren videre på siste avsnitt, er det bare det ene som
+/// koster noe.
+///
+/// Hele kilden går aldri i ett kall. Et importert møtereferat med tre hundre
+/// innlegg blir til en håndfull kall, og `etter_pakke` får resultatet etter
+/// hvert av dem, slik at det er skrevet før neste kall kan feile.
+///
+/// `synlig` er området brukeren ser på skjermen, i UTF-16-enheter som
+/// [`Chunk`]. Er det oppgitt, klassifiseres det først. Det trenger ikke være
+/// presist; det avgjør bare rekkefølgen.
 pub fn understand(
     doc: &str,
     classifier: &dyn Classifier,
     memo: &mut Memo,
+    synlig: Option<(usize, usize)>,
+    etter_pakke: EtterPakke<'_>,
 ) -> Result<Vec<Paragraph>, String> {
     let chunks = split(doc);
     let keys: Vec<u64> = chunks.iter().map(|c| hash(&c.text)).collect();
@@ -338,43 +450,53 @@ pub fn understand(
     // Ett avsnitt per ukjent tekst. To like avsnitt er én klassifisering, ikke
     // to — hukommelsen slår opp på teksten, ikke på plasseringen.
     let mut seen = std::collections::HashSet::new();
-    let missing: Vec<usize> = (0..chunks.len())
+    let mut ukjente: Vec<usize> = (0..chunks.len())
         .filter(|i| !memo.contains_key(&keys[*i]) && seen.insert(keys[*i]))
         .collect();
 
-    if !missing.is_empty() {
-        let texts: Vec<String> = missing.iter().map(|i| chunks[*i].text.clone()).collect();
-        let labels = parse(&classifier.ask(&texts)?, texts.len());
+    // Synlig først. Sorteringen er stabil, så innenfor hver av de to gruppene
+    // står avsnittene i den rekkefølgen de har i notatet — panelet fylles ut
+    // ovenfra og nedover, ikke i hopp.
+    if let Some((fra, til)) = synlig {
+        ukjente.sort_by_key(|i| !(chunks[*i].start < til && chunks[*i].end > fra));
+    }
+
+    let totalt = ukjente.len();
+    if totalt > 0 {
         // ponytail: tømmes helt når den blir stor. En LRU er riktig svar først
         // om noen faktisk har titusenvis av avsnitt åpne i én økt.
         if memo.len() > 4000 {
             memo.clear();
         }
-        for (slot, label) in missing.iter().zip(labels) {
-            if let Some(label) = label {
-                memo.insert(keys[*slot], label);
+        let tekster: Vec<String> = ukjente.iter().map(|i| chunks[*i].text.clone()).collect();
+        let mut sendt = vec![false; chunks.len()];
+        let mut lest = 0usize;
+        for pakke in pakker(&tekster) {
+            let svar = match classifier.ask(&tekster[pakke.clone()]) {
+                Ok(svar) => svar,
+                // Feiler den første pakken, har ingenting kommet fram, og
+                // panelet skal si «av» — som før. Feiler en senere, står det
+                // som er gjort: resten mangler bare i hukommelsen, og tas ved
+                // neste lesning.
+                Err(e) if lest == 0 => return Err(e),
+                Err(_) => break,
+            };
+            for (n, label) in parse(&svar, pakke.len()).into_iter().enumerate() {
+                if let Some(label) = label {
+                    memo.insert(keys[ukjente[pakke.start + n]], label);
+                }
+            }
+            lest += pakke.len();
+            if !etter_pakke(&nye(&chunks, &keys, memo, &mut sendt), lest, totalt) {
+                break;
             }
         }
     }
 
     Ok(chunks
-        .into_iter()
+        .iter()
         .zip(&keys)
-        .filter_map(|(chunk, key)| {
-            let label = memo.get(key)?;
-            Some(Paragraph {
-                id: 0,
-                start: chunk.start,
-                end: chunk.end,
-                hash: nøkkel(&chunk.text),
-                summary: label.summary.clone(),
-                kind: label.kind.clone(),
-                action: label.action.clone(),
-                dependency: label.dependency.clone(),
-                text: chunk.text,
-                correction: None,
-            })
-        })
+        .filter_map(|(chunk, key)| Some(avsnittet(chunk, memo.get(key)?)))
         .collect())
 }
 
@@ -551,21 +673,37 @@ mod tests {
     struct Fake {
         calls: AtomicUsize,
         texts: Mutex<Vec<Vec<String>>>,
+        /// Kallnummeret som skal feile, 1-basert. Slik en pakke midt i kan
+        /// gå galt uten at de foregående gjør det.
+        feiler_på: Option<usize>,
     }
 
     impl Fake {
         fn new() -> Self {
-            Fake { calls: AtomicUsize::new(0), texts: Mutex::new(Vec::new()) }
+            Fake { calls: AtomicUsize::new(0), texts: Mutex::new(Vec::new()), feiler_på: None }
+        }
+        fn feiler_på(n: usize) -> Self {
+            Fake { feiler_på: Some(n), ..Fake::new() }
         }
         fn last(&self) -> Vec<String> {
             self.texts.lock().unwrap().last().cloned().unwrap_or_default()
+        }
+        /// Alt som er sendt, i den rekkefølgen det ble sendt.
+        fn alt(&self) -> Vec<String> {
+            self.texts.lock().unwrap().iter().flatten().cloned().collect()
+        }
+        fn antall(&self) -> usize {
+            self.calls.load(Ordering::Relaxed)
         }
     }
 
     impl Classifier for Fake {
         fn ask(&self, texts: &[String]) -> Result<String, String> {
-            self.calls.fetch_add(1, Ordering::Relaxed);
+            let n = self.calls.fetch_add(1, Ordering::Relaxed) + 1;
             self.texts.lock().unwrap().push(texts.to_vec());
+            if self.feiler_på == Some(n) {
+                return Err(format!("pakke {n} feilet"));
+            }
             Ok(texts
                 .iter()
                 .enumerate()
@@ -628,11 +766,11 @@ mod tests {
         let fake = Fake::new();
         let mut memo = Memo::new();
 
-        let første = understand(doc, &fake, &mut memo).unwrap();
+        let første = les(doc, &fake, &mut memo).unwrap();
         assert_eq!(første.len(), 2, "overskrift og toppfelt skal ikke klassifiseres");
         assert_eq!(fake.calls.load(Ordering::Relaxed), 1, "alle avsnitt i én forespørsel");
 
-        let igjen = understand(doc, &fake, &mut memo).unwrap();
+        let igjen = les(doc, &fake, &mut memo).unwrap();
         assert_eq!(fake.calls.load(Ordering::Relaxed), 1, "ingenting er endret");
         assert_eq!(igjen.len(), 2);
     }
@@ -642,10 +780,10 @@ mod tests {
         let doc = "# Tittel\n\nFørste tanke her.\n\nAndre tanke her.\n";
         let fake = Fake::new();
         let mut memo = Memo::new();
-        understand(doc, &fake, &mut memo).unwrap();
+        les(doc, &fake, &mut memo).unwrap();
 
         let endret = "# Tittel\n\nFørste tanke her.\n\nAndre tanke her, og litt til.\n";
-        understand(endret, &fake, &mut memo).unwrap();
+        les(endret, &fake, &mut memo).unwrap();
 
         assert_eq!(fake.calls.load(Ordering::Relaxed), 2);
         assert_eq!(
@@ -667,7 +805,7 @@ mod tests {
             }
         }
         let mut memo = Memo::new();
-        assert!(understand("En tanke her.", &Nekter, &mut memo).is_err());
+        assert!(les("En tanke her.", &Nekter, &mut memo).is_err());
         assert!(memo.is_empty(), "et mislykket kall skal ikke etterlate seg noe");
 
         let av = Understanding::off();
@@ -726,7 +864,7 @@ mod tests {
         // om hukommelsen gjenbruker det samme merket for alle tre.
         let fake = Fake::new();
         let mut memo = Memo::new();
-        let ut = understand(doc, &fake, &mut memo).unwrap();
+        let ut = les(doc, &fake, &mut memo).unwrap();
         assert_eq!(ut.len(), 4);
         assert_eq!(fake.last().len(), 2, "like avsnitt sendes bare én gang");
         let starter: std::collections::HashSet<usize> = ut.iter().map(|p| p.start).collect();
@@ -793,7 +931,7 @@ mod tests {
         let doc = "Første tanke her.\n\nAndre tanke her.\n";
         let fake = Fake::new();
         let mut memo = Memo::new();
-        let ut = understand(doc, &fake, &mut memo).unwrap();
+        let ut = les(doc, &fake, &mut memo).unwrap();
         assert_eq!(ut[0].text, "Første tanke her.");
         assert_eq!(ut[0].hash, nøkkel("Første tanke her."));
         assert_ne!(ut[0].hash, ut[1].hash);
@@ -810,5 +948,222 @@ mod tests {
         let biter = split(doc);
         assert_eq!(biter.len(), 1);
         assert_eq!(biter[0].text, "En ekte tanke.");
+    }
+
+    // ---- pakkevis klassifisering ---------------------------------------
+
+    /// Et notat med `n` avsnitt, hvert av dem sitt eget.
+    fn kilde(n: usize) -> String {
+        (1..=n)
+            .map(|i| format!("Innlegg nummer {i} sier noe helt eget om saken."))
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    }
+
+    /// Hovedsaken: en importert samtale skal leses ferdig, og den skal aldri
+    /// gå i ett kall. Grensa på hundre og tjue sekunder er hele grunnen.
+    #[test]
+    fn tre_hundre_avsnitt_klassifiseres_uten_ett_eneste_kjempekall() {
+        let doc = kilde(300);
+        let fake = Fake::new();
+        let mut memo = Memo::new();
+        let ut = les(&doc, &fake, &mut memo).unwrap();
+
+        assert_eq!(ut.len(), 300, "alle avsnitt skal ha fått et merke");
+        assert!(fake.antall() >= 300 / AVSNITT_PER_PAKKE, "kilden skal deles i pakker");
+        let sendt = fake.texts.lock().unwrap();
+        assert!(
+            sendt.iter().all(|p| p.len() <= AVSNITT_PER_PAKKE),
+            "ingen pakke skal være større enn grensa"
+        );
+    }
+
+    /// Delresultat er gyldig. Feiler pakke tre, står pakke én og to — både i
+    /// det som returneres og i det som er sendt ut underveis.
+    #[test]
+    fn en_feil_i_tredje_pakke_beholder_de_to_første() {
+        let doc = kilde(AVSNITT_PER_PAKKE * 4);
+        let fake = Fake::feiler_på(3);
+        let mut memo = Memo::new();
+
+        let mut skrevet: Vec<String> = Vec::new();
+        let ut = understand(&doc, &fake, &mut memo, None, &mut |nye, _, _| {
+            skrevet.extend(nye.iter().map(|p| p.text.clone()));
+            true
+        })
+        .expect("de to første pakkene skal komme fram");
+
+        assert_eq!(ut.len(), AVSNITT_PER_PAKKE * 2, "to pakker lest, resten ikke");
+        assert_eq!(skrevet.len(), AVSNITT_PER_PAKKE * 2, "og de to er skrevet underveis");
+        assert_eq!(fake.antall(), 3, "det stanser ved feilen, det prøver ikke videre");
+    }
+
+    /// Og neste kjøring tar bare det som mangler — cachen sørger for det, uten
+    /// at noe måtte rulles tilbake.
+    #[test]
+    fn andre_kjøring_etter_en_delvis_feilet_tar_bare_resten() {
+        let doc = kilde(AVSNITT_PER_PAKKE * 3);
+        let mut memo = Memo::new();
+        les(&doc, &Fake::feiler_på(2), &mut memo).unwrap();
+        assert_eq!(memo.len(), AVSNITT_PER_PAKKE, "bare første pakke ble lest");
+
+        let igjen = Fake::new();
+        let ut = les(&doc, &igjen, &mut memo).unwrap();
+        assert_eq!(ut.len(), AVSNITT_PER_PAKKE * 3, "nå er alt lest");
+        assert_eq!(
+            igjen.alt().len(),
+            AVSNITT_PER_PAKKE * 2,
+            "det som alt var klassifisert skal ikke sendes på nytt"
+        );
+    }
+
+    /// Feiler den *første* pakken, har ingenting kommet fram, og panelet skal
+    /// si «av» — som før pakkene fantes.
+    #[test]
+    fn en_feil_i_første_pakke_er_fortsatt_av() {
+        let mut memo = Memo::new();
+        assert!(les(&kilde(100), &Fake::feiler_på(1), &mut memo).is_err());
+        assert!(memo.is_empty());
+    }
+
+    #[test]
+    fn pakkedelingen_respekterer_både_antall_og_tokenbudsjett() {
+        let korte: Vec<String> = (0..AVSNITT_PER_PAKKE * 2 + 3).map(|_| "kort".into()).collect();
+        let etter_antall = pakker(&korte);
+        assert_eq!(etter_antall.len(), 3);
+        assert_eq!(etter_antall[0].len(), AVSNITT_PER_PAKKE);
+        assert_eq!(etter_antall[2].len(), 3);
+
+        // Fire avsnitt på et halvt budsjett hver: to får plass, de to andre
+        // må vente på neste pakke selv om antallet holdt godt innenfor.
+        // (Estimatet er tre tegn per token, som i indekseren.)
+        let halvt = "x".repeat((TOKENER_PER_PAKKE / 2 - 1) * 3); // tre tegn per token
+        let lange: Vec<String> = (0..4).map(|_| halvt.clone()).collect();
+        assert_eq!(pakker(&lange), vec![0..2, 2..4], "tokenbudsjettet skal dele før antallet");
+    }
+
+    /// Et enkelt avsnitt større enn hele budsjettet skal sendes for seg, ikke
+    /// blokkere alt bak seg. Det kan bli avvist — men det er ett avsnitt som
+    /// mangler, ikke hele kilden.
+    #[test]
+    fn et_avsnitt_større_enn_budsjettet_havner_alene() {
+        let tekster = vec![
+            "kort".to_string(),
+            "y".repeat(TOKENER_PER_PAKKE * 10),
+            "kort igjen".to_string(),
+        ];
+        let ut = pakker(&tekster);
+        assert_eq!(ut, vec![0..1, 1..2, 2..3]);
+    }
+
+    /// Bytter brukeren notat midt i en lang lesning, skal den forlates — og
+    /// det som alt er skrevet står.
+    #[test]
+    fn avbrudd_midtveis_lar_det_som_er_lest_stå() {
+        let doc = kilde(AVSNITT_PER_PAKKE * 5);
+        let fake = Fake::new();
+        let mut memo = Memo::new();
+
+        let mut pakker_kjørt = 0;
+        let ut = understand(&doc, &fake, &mut memo, None, &mut |_, _, _| {
+            pakker_kjørt += 1;
+            pakker_kjørt < 2 // etter andre pakke har brukeren gått videre
+        })
+        .unwrap();
+
+        assert_eq!(pakker_kjørt, 2);
+        assert_eq!(fake.antall(), 2, "ingen flere kall etter at den ble forlatt");
+        assert_eq!(ut.len(), AVSNITT_PER_PAKKE * 2, "det som er lest står");
+        assert_eq!(memo.len(), AVSNITT_PER_PAKKE * 2);
+    }
+
+    /// Synlig først: hun skal ikke vente på innlegg 280 for å se innlegg 3.
+    #[test]
+    fn det_synlige_klassifiseres_først() {
+        let doc = kilde(AVSNITT_PER_PAKKE * 4);
+        let biter = split(&doc);
+        // Et vindu langt nede i kilden.
+        let mål = &biter[AVSNITT_PER_PAKKE * 3 + 5];
+        let vindu = Some((mål.start, mål.end));
+
+        let fake = Fake::new();
+        let mut memo = Memo::new();
+        let mut første: Vec<String> = Vec::new();
+        understand(&doc, &fake, &mut memo, vindu, &mut |nye, _, _| {
+            if første.is_empty() {
+                første = nye.iter().map(|p| p.text.clone()).collect();
+            }
+            true
+        })
+        .unwrap();
+
+        assert!(
+            første.contains(&mål.text),
+            "avsnittet på skjermen skal være med i første pakke, ikke i den siste"
+        );
+        // Og resten står fortsatt i sin egen rekkefølge, ovenfra og nedover.
+        let sendt = fake.texts.lock().unwrap();
+        assert_eq!(sendt[0][0], mål.text, "det synlige er først i første pakke");
+        assert_eq!(sendt[0][1], biter[0].text, "så kommer notatet ovenfra");
+    }
+
+    /// Framdriften skal telle sant: `lest` av `totalt` ukjente avsnitt, og
+    /// den skal ende på totalen.
+    #[test]
+    fn framdriften_teller_de_ukjente_avsnittene() {
+        let doc = kilde(AVSNITT_PER_PAKKE * 2 + 7);
+        let fake = Fake::new();
+        let mut memo = Memo::new();
+        let mut steg: Vec<(usize, usize)> = Vec::new();
+        understand(&doc, &fake, &mut memo, None, &mut |_, lest, totalt| {
+            steg.push((lest, totalt));
+            true
+        })
+        .unwrap();
+
+        assert_eq!(steg.len(), 3);
+        assert!(steg.iter().all(|(_, t)| *t == AVSNITT_PER_PAKKE * 2 + 7));
+        assert_eq!(steg.last().unwrap().0, AVSNITT_PER_PAKKE * 2 + 7);
+        assert!(steg.windows(2).all(|w| w[0].0 < w[1].0), "den skal bare gå framover");
+    }
+
+    /// Måling av pakkestørrelse mot ekte kommandolinje. Ikke en test — den
+    /// påstår ingenting, den skriver tall. Kjøres for hånd når modellen eller
+    /// kommandolinja er byttet ut:
+    ///
+    ///     cargo test -- --ignored --nocapture måling_av_pakkestørrelse
+    ///
+    /// `PAKKER=80,80,80` måler den samme størrelsen flere ganger. Det er verdt
+    /// å gjøre: spredningen mellom kall er stor, og ett tall er ikke nok.
+    #[test]
+    #[ignore = "kaller claude-kommandolinja, tar minutter"]
+    fn måling_av_pakkestørrelse() {
+        let størrelser: Vec<usize> = match std::env::var("PAKKER") {
+            Ok(s) if !s.is_empty() => s.split(',').filter_map(|n| n.trim().parse().ok()).collect(),
+            _ => vec![1, 5, 10, 20, 40, 80, 120],
+        };
+        let cli = Cli::new(Vec::new());
+        for n in størrelser {
+            let tekster: Vec<String> = (1..=n)
+                .map(|i| {
+                    format!(
+                        "Innlegg {i}: vi bør avklare om depositum er nødvendig \
+                         før vi bygger utlånsflyten ferdig."
+                    )
+                })
+                .collect();
+            let start = std::time::Instant::now();
+            let svar = cli.ask(&tekster);
+            let brukt = start.elapsed().as_secs_f64();
+            let lest = svar
+                .as_ref()
+                .map(|s| parse(s, n).iter().filter(|l| l.is_some()).count())
+                .unwrap_or(0);
+            eprintln!(
+                "{n:>4} avsnitt  {brukt:>7.1} s  {:>6.2} s/avsnitt  {lest}/{n} lest{}",
+                brukt / n as f64,
+                if svar.is_err() { "  FEILET" } else { "" }
+            );
+        }
     }
 }

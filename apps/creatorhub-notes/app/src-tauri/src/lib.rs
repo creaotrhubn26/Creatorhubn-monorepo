@@ -11,6 +11,7 @@ mod understand;
 
 use creatorhub_notes_indexer::{db, index, search, sti};
 use serde::Serialize;
+use tauri::Emitter;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
@@ -18,6 +19,11 @@ use std::sync::Mutex;
 /// Én indeksering av gangen. Tauri kjører kommandoer på en trådpool, og to
 /// samtidige kjøringer ville kjempe om den samme skrivetransaksjonen.
 static REINDEX: Mutex<()> = Mutex::new(());
+
+/// Løpenummer for lesninger. En ny lesning — eller [`avbryt_lesning`] — gjør
+/// de eldre uinteressante: de stanser ved neste pakkeslutt, i stedet for å
+/// bruke minutter på et notat brukeren har gått bort fra.
+static LESNING: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -338,8 +344,25 @@ fn search_notes(query: String) -> Result<Vec<SearchHit>, String> {
 /// Hukommelsen holdes låst gjennom kallet. Det serialiserer to lagringer som
 /// kommer tett — som er det man vil: den andre finner arbeidet den første
 /// gjorde, i stedet for å betale for det på nytt.
+///
+/// Lange kilder leses pakke for pakke, og hver pakke skrives før neste kall
+/// gjøres. Panelet får delresultatet som hendelsen `forstår` underveis, og
+/// det som er skrevet står selv om en senere pakke feiler eller lesningen
+/// forlates. `synlig` er `[fra, til]` i UTF-16-enheter — området brukeren ser
+/// på skjermen, som klassifiseres først.
 #[tauri::command]
-fn understand_note(content: String, path: String) -> Result<understand::Understanding, String> {
+fn understand_note(
+    app: tauri::AppHandle,
+    content: String,
+    path: String,
+    synlig: Option<[usize; 2]>,
+) -> Result<understand::Understanding, String> {
+    // Løpenummeret tas før låsen. Står en lang lesning og kjører, er det
+    // nettopp dette som forteller den at brukeren har gått videre — hadde vi
+    // ventet på låsen først, ville beskjeden kommet etter at den var ferdig.
+    let min = LESNING.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    let gjelder_fortsatt = || LESNING.load(std::sync::atomic::Ordering::SeqCst) == min;
+
     let mut base = base().ok();
     let biter = understand::split(&content);
 
@@ -373,7 +396,39 @@ fn understand_note(content: String, path: String) -> Result<understand::Understa
     }
 
     let cli = understand::Cli::new(eksempler);
-    let Ok(mut avsnitt) = understand::understand(&content, &cli, &mut memo) else {
+    let tittel = derive_title(&path, &content);
+
+    // Etter hver pakke: skriv, si ifra, og se om lesningen fortsatt gjelder.
+    // Det er dette som gjør delresultatet gyldig — feiler pakke fire, står
+    // pakke én til tre allerede i basen.
+    let lest = {
+        let base = &base;
+        let biter = &biter;
+        let ider = ider.as_deref().unwrap_or(&[]);
+        let tittel = &tittel;
+        let app = &app;
+        let mut etter_pakke = |ferske: &[understand::Paragraph], lest, totalt| {
+            let mut ferske = ferske.to_vec();
+            understand::sett_ider(&mut ferske, biter, ider);
+            if let Some(conn) = base {
+                let _ = minne::lagre(conn, tittel, &ferske);
+            }
+            let _ = app.emit(
+                "forstår",
+                understand::Framdrift { lesning: min, lest, totalt, paragraphs: ferske },
+            );
+            gjelder_fortsatt()
+        };
+        understand::understand(
+            &content,
+            &cli,
+            &mut memo,
+            synlig.map(|s| (s[0], s[1])),
+            &mut etter_pakke,
+        )
+    };
+
+    let Ok(mut avsnitt) = lest else {
         return Ok(understand::Understanding::off());
     };
     understand::sett_ider(&mut avsnitt, &biter, ider.as_deref().unwrap_or(&[]));
@@ -387,9 +442,12 @@ fn understand_note(content: String, path: String) -> Result<understand::Understa
     let mut lest_på_nytt = Vec::new();
     let mut tidligere = Vec::new();
     if let Some(conn) = &base {
-        let tittel = derive_title(&path, &content);
         let _ = minne::lagre(conn, &tittel, &avsnitt);
-        tidligere = minne::tidligere(conn, &avsnitt, &cli).unwrap_or_default();
+        // Kryssnotat-minnet koster egne modellkall. Er lesningen forlatt, er
+        // det arbeid for et notat brukeren har gått bort fra.
+        if gjelder_fortsatt() {
+            tidligere = minne::tidligere(conn, &avsnitt, &cli).unwrap_or_default();
+        }
 
         // Avsnittene i teksten, ikke linjene i panelet: en linje kan mangle
         // fordi klassifiseringen ikke fikk lest den, og da er rettelsen
@@ -409,7 +467,16 @@ fn understand_note(content: String, path: String) -> Result<understand::Understa
 
     let mut ut = understand::Understanding::on(avsnitt, lest_på_nytt);
     ut.earlier = tidligere;
+    ut.lesning = min;
     Ok(ut)
+}
+
+/// Brukeren har gått videre. Lesningen som kjører forlates ved neste
+/// pakkeslutt; det den rakk å skrive står. Panelet kaller dette når det er i
+/// ferd med å be om en ny lesning mens en gammel fortsatt går.
+#[tauri::command]
+fn avbryt_lesning() {
+    LESNING.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 }
 
 /// Svarer på et spørsmål om det som er forstått, når søket er ett. Er det et
@@ -476,6 +543,7 @@ pub fn run() {
             search_notes,
             reindex,
             understand_note,
+            avbryt_lesning,
             rett_avsnitt,
             spor_notater,
             finn_avsnitt
@@ -688,5 +756,96 @@ mod tests {
         assert_eq!(hits.len(), 1, "notatet skulle vært søkbart uten commit");
         assert_eq!(hits[0].path, name);
         assert!(hits[0].text.contains("ratatoskr"));
+    }
+
+    /// Delresultat er gyldig, hele veien ned i basen. Dette er nøyaktig det
+    /// `understand_note` gjør mellom pakkene — skriver, og lar det stå.
+    /// Feiler pakke tre, står pakke én og to i `forstatt` etterpå.
+    #[test]
+    fn en_feil_i_tredje_pakke_lar_de_to_første_stå_i_basen() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        /// Klassifiserer to pakker og feiler på den tredje.
+        struct Toav3(AtomicUsize);
+        impl understand::Classifier for Toav3 {
+            fn ask(&self, texts: &[String]) -> Result<String, String> {
+                if self.0.fetch_add(1, Ordering::Relaxed) >= 2 {
+                    return Err("pakke tre feilet".into());
+                }
+                Ok(svar(texts))
+            }
+        }
+
+        /// Teller hvor mange avsnitt som faktisk ble sendt.
+        struct Teller<'a>(&'a AtomicUsize);
+        impl understand::Classifier for Teller<'_> {
+            fn ask(&self, texts: &[String]) -> Result<String, String> {
+                self.0.fetch_add(texts.len(), Ordering::Relaxed);
+                Ok(svar(texts))
+            }
+        }
+
+        fn svar(texts: &[String]) -> String {
+            texts
+                .iter()
+                .enumerate()
+                .map(|(i, t)| format!("{}|beslutning|bygg|{}", i + 1, t.trim()))
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+
+        let per_pakke = understand::AVSNITT_PER_PAKKE;
+        let doc = (1..=per_pakke * 4)
+            .map(|i| format!("Innlegg {i} slår fast noe eget."))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        let tmp = tempfile::tempdir().unwrap();
+        let mut conn = base_i(&tmp.path().join("notater.db"));
+        let biter = understand::split(&doc);
+        let tekster: Vec<String> = biter.iter().map(|c| c.text.clone()).collect();
+        let ider = minne::synk(&mut conn, "samtale.md", &tekster).unwrap();
+
+        let mut memo = understand::Memo::new();
+        understand::understand(
+            &doc,
+            &Toav3(AtomicUsize::new(0)),
+            &mut memo,
+            None,
+            &mut |nye, _, _| {
+                let mut nye = nye.to_vec();
+                understand::sett_ider(&mut nye, &biter, &ider);
+                minne::lagre(&conn, "Samtale", &nye).unwrap();
+                true
+            },
+        )
+        .expect("to pakker kom fram");
+
+        let i_basen: i64 = conn
+            .query_row("select count(*) from forstatt", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(
+            i_basen as usize,
+            per_pakke * 2,
+            "de to pakkene som lyktes skal stå igjen, ingenting rullet tilbake"
+        );
+
+        // Og andre kjøring tar bare det som mangler.
+        let resten = AtomicUsize::new(0);
+        understand::les(&doc, &Teller(&resten), &mut memo).unwrap();
+        assert_eq!(
+            resten.load(Ordering::Relaxed),
+            per_pakke * 2,
+            "bare avsnittene som manglet skal sendes andre gang"
+        );
+    }
+
+    /// Basen slik `base()` bygger den, men på en fil testen eier.
+    fn base_i(fil: &Path) -> rusqlite::Connection {
+        let mut conn = db::open(fil).unwrap();
+        migrering::kjør(&mut conn, Some(fil)).unwrap();
+        rettelser::sørg_for_tabell(&conn).unwrap();
+        minne::sørg_for_tabeller(&conn).unwrap();
+        conn
     }
 }

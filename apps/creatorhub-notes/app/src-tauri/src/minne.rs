@@ -993,7 +993,7 @@ mod tests {
         let fake = Fake::new();
 
         let mut memo = Memo::new();
-        let avsnitt = understand::understand(doc, &fake, &mut memo).unwrap();
+        let avsnitt = understand::les(doc, &fake, &mut memo).unwrap();
         assert_eq!(fake.kall.load(Ordering::Relaxed), 1);
         let avsnitt = med_ider(&mut conn, "notat.md", avsnitt);
         lagre(&conn, "Notat", &avsnitt).unwrap();
@@ -1002,7 +1002,7 @@ mod tests {
         let mut etter = Memo::new();
         let hasher: Vec<String> = avsnitt.iter().map(|a| a.hash.clone()).collect();
         etter.extend(kjente(&conn, &hasher).unwrap());
-        let igjen = understand::understand(doc, &fake, &mut etter).unwrap();
+        let igjen = understand::les(doc, &fake, &mut etter).unwrap();
 
         assert_eq!(fake.kall.load(Ordering::Relaxed), 1, "ingen ny runde for et gammelt notat");
         assert_eq!(igjen.len(), 2);
@@ -1016,11 +1016,11 @@ mod tests {
         let fake = Fake::new();
         let mut memo = Memo::new();
 
-        let før = understand::understand("Depositum blir for dyrt.\n", &fake, &mut memo).unwrap();
+        let før = understand::les("Depositum blir for dyrt.\n", &fake, &mut memo).unwrap();
         let før = med_ider(&mut conn, "notat.md", før);
         lagre(&conn, "Notat", &før).unwrap();
         let etter =
-            understand::understand("Depositum tar vi likevel.\n", &fake, &mut memo).unwrap();
+            understand::les("Depositum tar vi likevel.\n", &fake, &mut memo).unwrap();
         let etter = med_ider(&mut conn, "notat.md", etter);
         lagre(&conn, "Notat", &etter).unwrap();
 
