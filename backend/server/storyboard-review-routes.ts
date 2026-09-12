@@ -700,10 +700,12 @@ export function registerStoryboardReviewRoutes(
         );
         await client.query(
           `UPDATE storyboard_review_rounds
-              SET status = $2, approved_by = CASE WHEN $2 = 'approved' THEN $3 ELSE NULL END,
-                  approved_at = CASE WHEN $2 = 'approved' THEN now() ELSE NULL END
+              SET status = $2, approved_by = $3,
+                  approved_at = CASE WHEN $4 THEN now() ELSE NULL END
             WHERE id = $1`,
-          [share.id, parsed.data.decision, reviewer.display_name],
+          [share.id, parsed.data.decision,
+            parsed.data.decision === 'approved' ? reviewer.display_name : null,
+            parsed.data.decision === 'approved'],
         );
         await client.query('COMMIT');
         return inserted.rows[0];

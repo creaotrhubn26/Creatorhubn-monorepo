@@ -239,6 +239,10 @@ describe('storyboard review share security', () => {
     expect(approved.statusCode).toBe(201);
     expect(inserts).toBe(1);
     expect(status).toBe('approved');
+    const statusUpdate = client.query.mock.calls.find(([sql]) =>
+      String(sql).includes('UPDATE storyboard_review_rounds'));
+    expect(statusUpdate?.[1]).toEqual(['round-1', 'approved', 'Kari Klient', true]);
+    expect(String(statusUpdate?.[0])).not.toContain("$2 = 'approved'");
 
     const retry = response();
     await handler({ params: { token: 'raw-share-token' }, body: {
