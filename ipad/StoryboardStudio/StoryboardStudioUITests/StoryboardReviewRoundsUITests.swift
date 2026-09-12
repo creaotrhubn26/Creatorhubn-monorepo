@@ -13,6 +13,7 @@ final class StoryboardReviewRoundsUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["v3 · Regissørens sign-off"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["2 storyboardendringer · manus endret"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.otherElements["storyboard.review.resolutionQueue"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["storyboard.review.comment.markup.comment-demo"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["storyboard.review.comment.resolve.comment-demo"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["storyboard.review.share"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["storyboard.review.restore"].exists)

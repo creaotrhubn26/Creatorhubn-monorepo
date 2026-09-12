@@ -1,4 +1,36 @@
 import SwiftUI
+import UIKit
+
+struct StoryboardReviewAnnotationPointDTO: Decodable, Sendable {
+    let x: Double
+    let y: Double
+}
+
+struct StoryboardReviewAnnotationDTO: Decodable, Identifiable, Sendable {
+    let id: String
+    let tool: String
+    let color: String
+    let strokeWidth: Double
+    let points: [StoryboardReviewAnnotationPointDTO]
+}
+
+struct StoryboardReviewSnapshotFrameDTO: Decodable, Identifiable, Sendable {
+    let id: String
+    let shotNumber: String?
+    let description: String?
+    let imageUrl: String?
+    let thumbnailUrl: String?
+}
+
+struct StoryboardReviewSnapshotSceneDTO: Decodable, Identifiable, Sendable {
+    let id: String
+    let heading: String
+    let storyboardFrames: [StoryboardReviewSnapshotFrameDTO]
+}
+
+struct StoryboardReviewSnapshotDTO: Decodable, Sendable {
+    let scenes: [StoryboardReviewSnapshotSceneDTO]
+}
 
 struct StoryboardReviewRoundDTO: Decodable, Identifiable, Sendable {
     let id: String
@@ -13,6 +45,7 @@ struct StoryboardReviewRoundDTO: Decodable, Identifiable, Sendable {
     let frameCount: Int
     let totalDurationSeconds: Double
     let createdAt: String
+    var snapshot: StoryboardReviewSnapshotDTO? = nil
     var comments: [StoryboardReviewCommentDTO]? = nil
     var carriedCommentCount: Int? = nil
 }
@@ -23,6 +56,9 @@ struct StoryboardReviewCommentDTO: Decodable, Identifiable, Sendable {
     let frameId: String?
     let authorDisplayName: String
     let body: String
+    var anchorX: Double? = nil
+    var anchorY: Double? = nil
+    var annotations: [StoryboardReviewAnnotationDTO]? = nil
     let status: String
     let assignedTo: String?
     let dueAt: String?
@@ -102,6 +138,7 @@ struct StoryboardReviewRoundsView: View {
     @State private var inbox: [StoryboardReviewInboxItemDTO] = []
     @State private var selectedID: String?
     @State private var diff: StoryboardReviewDiffDTO?
+    @State private var selectedDetail: StoryboardReviewRoundDTO?
     @State private var comments: [StoryboardReviewCommentDTO] = []
     @State private var showOpenCommentsOnly = true
     @State private var label = "Storyboard review"
@@ -127,6 +164,14 @@ struct StoryboardReviewRoundsView: View {
                 if $0.status != $1.status { return $0.status == "open" }
                 return ($0.dueAt ?? "9999") < ($1.dueAt ?? "9999")
             }
+    }
+
+    private func frame(for comment: StoryboardReviewCommentDTO) -> StoryboardReviewSnapshotFrameDTO? {
+        guard let frameID = comment.frameId else { return nil }
+        return selectedDetail?.snapshot?.scenes
+            .lazy
+            .flatMap(\.storyboardFrames)
+            .first { $0.id == frameID }
     }
 
     var body: some View {
@@ -273,7 +318,8 @@ struct StoryboardReviewRoundsView: View {
                                 } else {
                                     ForEach(visibleComments) { comment in
                                         StoryboardReviewResolutionRow(
-                                            comment: comment, rounds: rounds, busy: busy,
+                                            comment: comment, frame: frame(for: comment),
+                                            rounds: rounds, busy: busy,
                                             onUpdate: { changes in updateComment(comment, changes: changes) })
                                         .id(comment.updatedAt ?? comment.id)
                                     }
@@ -345,8 +391,17 @@ struct StoryboardReviewRoundsView: View {
                     snapshotHash: String(repeating: "a", count: 64),
                     scriptFingerprint: String(repeating: "b", count: 64),
                     status: "in_review", frameCount: 24, totalDurationSeconds: 62.5,
-                    createdAt: "2026-09-12T12:00:00Z")
+                    createdAt: "2026-09-12T12:00:00Z",
+                    snapshot: StoryboardReviewSnapshotDTO(scenes: [
+                        StoryboardReviewSnapshotSceneDTO(
+                            id: "scene-demo", heading: "INT. TOG — NATT",
+                            storyboardFrames: [StoryboardReviewSnapshotFrameDTO(
+                                id: "frame-3", shotNumber: "3A",
+                                description: "Trollet utenfor togvinduet",
+                                imageUrl: nil, thumbnailUrl: nil)])
+                    ]))
                 rounds = [demo]
+                selectedDetail = demo
                 inbox = [
                     StoryboardReviewInboxItemDTO(
                         id: "notification-comment", eventType: "storyboard_review_comment_added",
@@ -366,6 +421,13 @@ struct StoryboardReviewRoundsView: View {
                     StoryboardReviewCommentDTO(
                         id: "comment-demo", reviewRoundId: demo.id, frameId: "frame-3",
                         authorDisplayName: "Kari", body: "Hold totalbildet litt lenger.",
+                        anchorX: 0.72, anchorY: 0.38,
+                        annotations: [StoryboardReviewAnnotationDTO(
+                            id: "mark-demo", tool: "arrow", color: "#fbbf24", strokeWidth: 3,
+                            points: [
+                                StoryboardReviewAnnotationPointDTO(x: 0.24, y: 0.68),
+                                StoryboardReviewAnnotationPointDTO(x: 0.72, y: 0.38)
+                            ])],
                         status: "open", assignedTo: "Mina", dueAt: nil, resolutionNote: nil,
                         resolvedBy: nil, resolvedAt: nil, resolvedInRoundId: nil,
                         carriedFromCommentId: nil, createdAt: "2026-09-12T12:03:00Z",
@@ -383,7 +445,7 @@ struct StoryboardReviewRoundsView: View {
         }
         .task(id: selectedID) {
             if ProcessInfo.processInfo.environment["SB_REVIEW_ROUNDS_DEMO"] == "1" { return }
-            guard let selectedID else { diff = nil; comments = []; return }
+            guard let selectedID else { diff = nil; selectedDetail = nil; comments = []; return }
             async let nextDiff = RoleRoomAPIClient.shared.fetchStoryboardReviewDiff(
                 projectId: projectId, manuscriptId: manuscriptId, roundId: selectedID)
             async let nextDetail = RoleRoomAPIClient.shared.fetchStoryboardReviewRound(
@@ -391,6 +453,7 @@ struct StoryboardReviewRoundsView: View {
             do {
                 let loaded = try await (nextDiff, nextDetail)
                 diff = loaded.0
+                selectedDetail = loaded.1
                 comments = loaded.1.comments ?? []
             } catch {
                 errorMessage = error.localizedDescription
@@ -440,8 +503,10 @@ struct StoryboardReviewRoundsView: View {
             if let selectedID {
                 let detail = try await RoleRoomAPIClient.shared.fetchStoryboardReviewRound(
                     projectId: projectId, manuscriptId: manuscriptId, roundId: selectedID)
+                selectedDetail = detail
                 comments = detail.comments ?? []
             } else {
+                selectedDetail = nil
                 comments = []
             }
         } catch {
@@ -558,6 +623,7 @@ struct StoryboardReviewRoundsView: View {
 
 private struct StoryboardReviewResolutionRow: View {
     let comment: StoryboardReviewCommentDTO
+    let frame: StoryboardReviewSnapshotFrameDTO?
     let rounds: [StoryboardReviewRoundDTO]
     let busy: Bool
     let onUpdate: (StoryboardReviewCommentChanges) -> Void
@@ -570,11 +636,13 @@ private struct StoryboardReviewResolutionRow: View {
 
     init(
         comment: StoryboardReviewCommentDTO,
+        frame: StoryboardReviewSnapshotFrameDTO?,
         rounds: [StoryboardReviewRoundDTO],
         busy: Bool,
         onUpdate: @escaping (StoryboardReviewCommentChanges) -> Void
     ) {
         self.comment = comment
+        self.frame = frame
         self.rounds = rounds
         self.busy = busy
         self.onUpdate = onUpdate
@@ -602,6 +670,11 @@ private struct StoryboardReviewResolutionRow: View {
                 Text(comment.authorDisplayName).font(.caption).foregroundStyle(.secondary)
             }
             Text(comment.body).font(.subheadline)
+            if let frame,
+               comment.anchorX != nil || comment.anchorY != nil || !(comment.annotations ?? []).isEmpty {
+                StoryboardReviewAnnotationPreview(frame: frame, comment: comment)
+                    .frame(maxWidth: 420)
+            }
             Divider()
             TextField("Ansvarlig", text: $assignedTo)
                 .textFieldStyle(.roundedBorder)
@@ -665,5 +738,128 @@ private struct StoryboardReviewResolutionRow: View {
     private static func parseDate(_ value: String) -> Date? {
         let formatter = ISO8601DateFormatter()
         return formatter.date(from: value)
+    }
+}
+
+private struct StoryboardReviewAnnotationPreview: View {
+    let frame: StoryboardReviewSnapshotFrameDTO
+    let comment: StoryboardReviewCommentDTO
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(Color.black.opacity(0.72))
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                VStack(spacing: 6) {
+                    Image(systemName: "photo.on.rectangle.angled")
+                    Text(frame.shotNumber ?? "Visuell markering")
+                        .font(.caption)
+                }
+                .foregroundStyle(.secondary)
+            }
+            Canvas { context, size in
+                for annotation in comment.annotations ?? [] {
+                    draw(annotation, in: &context, size: size)
+                }
+            }
+            if let anchorX = comment.anchorX, let anchorY = comment.anchorY {
+                GeometryReader { proxy in
+                    ZStack {
+                        Circle().fill(comment.status == "resolved" ? Color.green : Color.yellow)
+                        Circle().stroke(Color.black.opacity(0.85), lineWidth: 2)
+                        Image(systemName: "pin.fill")
+                            .font(.caption2.bold())
+                            .foregroundStyle(.black)
+                    }
+                    .frame(width: 30, height: 30)
+                    .position(
+                        x: min(max(anchorX, 0), 1) * proxy.size.width,
+                        y: min(max(anchorY, 0), 1) * proxy.size.height)
+                }
+            }
+        }
+        .aspectRatio(16 / 9, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.16)))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Visuell markering for \(frame.shotNumber ?? "shot")")
+        .accessibilityIdentifier("storyboard.review.comment.markup.\(comment.id)")
+        .task(id: imagePath) { await loadImage() }
+    }
+
+    private var imagePath: String? { frame.thumbnailUrl ?? frame.imageUrl }
+
+    private func draw(
+        _ annotation: StoryboardReviewAnnotationDTO,
+        in context: inout GraphicsContext,
+        size: CGSize
+    ) {
+        let points = annotation.points.map {
+            CGPoint(x: min(max($0.x, 0), 1) * size.width,
+                    y: min(max($0.y, 0), 1) * size.height)
+        }
+        guard let first = points.first else { return }
+        var path = Path()
+        let strokeColor = Color(hex: annotation.color) ?? .yellow
+        let strokeStyle = StrokeStyle(
+            lineWidth: max(1, min(annotation.strokeWidth, 8)),
+            lineCap: .round,
+            lineJoin: .round)
+
+        switch annotation.tool {
+        case "freehand":
+            path.move(to: first)
+            for point in points.dropFirst() { path.addLine(to: point) }
+        case "rectangle":
+            guard let last = points.last else { return }
+            path.addRect(CGRect(
+                x: min(first.x, last.x), y: min(first.y, last.y),
+                width: abs(last.x - first.x), height: abs(last.y - first.y)))
+        case "arrow":
+            guard let last = points.last else { return }
+            path.move(to: first)
+            path.addLine(to: last)
+            let angle = atan2(last.y - first.y, last.x - first.x)
+            let head: CGFloat = 18
+            let left = CGPoint(
+                x: last.x - cos(angle - .pi / 6) * head,
+                y: last.y - sin(angle - .pi / 6) * head)
+            let right = CGPoint(
+                x: last.x - cos(angle + .pi / 6) * head,
+                y: last.y - sin(angle + .pi / 6) * head)
+            path.move(to: left)
+            path.addLine(to: last)
+            path.addLine(to: right)
+        default:
+            return
+        }
+        context.stroke(path, with: .color(strokeColor), style: strokeStyle)
+    }
+
+    @MainActor
+    private func loadImage() async {
+        guard let imagePath else { image = nil; return }
+        if let cached = FrameImageCache.image(for: imagePath) {
+            image = cached
+            return
+        }
+        let data: Data?
+        if let remoteURL = URL(string: imagePath), remoteURL.scheme == "https" {
+            if let (downloaded, response) = try? await URLSession.shared.data(from: remoteURL),
+               (response as? HTTPURLResponse)?.statusCode == 200 {
+                data = downloaded
+            } else {
+                data = nil
+            }
+        } else {
+            data = await RoleRoomAPIClient.shared.fetchRemoteImageData(path: imagePath)
+        }
+        guard let data, let downloaded = UIImage(data: data) else { return }
+        FrameImageCache.images[imagePath] = downloaded
+        image = downloaded
     }
 }

@@ -5,6 +5,22 @@ export type StoryboardReviewStatus =
   | 'superseded';
 export type StoryboardReviewAccessMode = 'view' | 'comment' | 'approve';
 
+export type StoryboardReviewAnnotationTool = 'freehand' | 'arrow' | 'rectangle';
+export type StoryboardReviewAnnotationColor = '#fbbf24' | '#f87171' | '#60a5fa' | '#34d399';
+
+export interface StoryboardReviewAnnotationPoint {
+  x: number;
+  y: number;
+}
+
+export interface StoryboardReviewAnnotation {
+  id: string;
+  tool: StoryboardReviewAnnotationTool;
+  color: StoryboardReviewAnnotationColor;
+  strokeWidth: number;
+  points: StoryboardReviewAnnotationPoint[];
+}
+
 export interface StoryboardReviewSnapshotFrame {
   id: string;
   shotNumber?: string;
@@ -85,6 +101,7 @@ export interface StoryboardReviewComment {
   visibility: 'client' | 'team';
   anchorX?: number | null;
   anchorY?: number | null;
+  annotations: StoryboardReviewAnnotation[];
   status: 'open' | 'resolved';
   assignedTo?: string | null;
   dueAt?: string | null;
