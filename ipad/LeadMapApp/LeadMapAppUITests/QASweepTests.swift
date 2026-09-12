@@ -1448,13 +1448,15 @@ final class QASweepTests: XCTestCase {
                 NSPredicate(format: "label CONTAINS[c] %@", "lagret offline")
             ).firstMatch.waitForExistence(timeout: 8)
         )
-        XCTAssertTrue(app.staticTexts["offline-queue-pending-count"].waitForExistence(timeout: 5))
+        let syncStatus = app.buttons["global-sync-status"]
+        XCTAssertTrue(syncStatus.waitForExistence(timeout: 5))
+        XCTAssertTrue(syncStatus.label.localizedCaseInsensitiveContains("lagret lokalt"))
 
         app.buttons["qa-network-online"].tap()
         let pendingGone = NSPredicate(format: "exists == false")
         let drainExpectation = expectation(
             for: pendingGone,
-            evaluatedWith: app.staticTexts["offline-queue-pending-count"]
+            evaluatedWith: syncStatus
         )
         await fulfillment(of: [drainExpectation], timeout: 20)
 
@@ -1580,12 +1582,15 @@ final class QASweepTests: XCTestCase {
             ).firstMatch.exists
         )
         app.buttons["pondus-outcome-meeting_booked"].tap()
+        let syncStatus = app.buttons["global-sync-status"]
+        XCTAssertTrue(syncStatus.waitForExistence(timeout: 5))
+        XCTAssertTrue(syncStatus.label.localizedCaseInsensitiveContains("lagret lokalt"))
         app.buttons["qa-network-online"].tap()
 
         let pendingGone = NSPredicate(format: "exists == false")
         let drained = expectation(
             for: pendingGone,
-            evaluatedWith: app.staticTexts["offline-queue-pending-count"]
+            evaluatedWith: syncStatus
         )
         await fulfillment(of: [drained], timeout: 20)
 
