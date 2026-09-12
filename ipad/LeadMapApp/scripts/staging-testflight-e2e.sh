@@ -12,6 +12,8 @@ brreg_org_number="${LEADGRID_STAGING_BRREG_ORG_NUMBER:-937518684}"
 run_simulator_e2e="${LEADGRID_RUN_SIMULATOR_E2E:-0}"
 run_role_room_e2e="${LEADGRID_RUN_ROLE_ROOM_E2E:-0}"
 run_role_room_campaign_e2e="${LEADGRID_RUN_ROLE_ROOM_CAMPAIGN_E2E:-0}"
+run_tidum_e2e="${LEADGRID_RUN_TIDUM_E2E:-0}"
+run_tidum_campaign_e2e="${LEADGRID_RUN_TIDUM_CAMPAIGN_E2E:-0}"
 simulator_destination="${LEADGRID_STAGING_SIMULATOR_DESTINATION:-platform=iOS Simulator,name=iPad Pro 13-inch (M5),OS=26.5}"
 
 if [[ -z "$staging_url" || ( -z "$staging_bearer_token" && ( -z "$staging_email" || -z "$staging_password" ) ) ]]; then
@@ -24,6 +26,10 @@ if [[ "$staging_url" != https://* || "$staging_url" == "$production_url" ]]; the
 fi
 if [[ "$run_role_room_campaign_e2e" == "1" && "$run_role_room_e2e" != "1" ]]; then
   echo "LEADGRID_RUN_ROLE_ROOM_CAMPAIGN_E2E krever LEADGRID_RUN_ROLE_ROOM_E2E=1." >&2
+  exit 2
+fi
+if [[ "$run_tidum_campaign_e2e" == "1" && "$run_tidum_e2e" != "1" ]]; then
+  echo "LEADGRID_RUN_TIDUM_CAMPAIGN_E2E krever LEADGRID_RUN_TIDUM_E2E=1." >&2
   exit 2
 fi
 staging_url="${staging_url%/}"
@@ -207,9 +213,174 @@ if [[ "$run_role_room_e2e" == "1" ]]; then
   fi
 fi
 
-lead_project_id="${role_room_project_id:-$requested_project_id}"
+tidum_project_id=""
+tidum_campaign_id=""
+if [[ "$run_tidum_e2e" == "1" ]]; then
+  tidum_preview_payload="$(jq -n --arg organization_id "$org_id" '{organization_id: $organization_id, website_url: "tidum.no"}')"
+  tidum_preview="$(curl --fail-with-body --silent --show-error \
+    -H "Authorization: Bearer $token" \
+    -H "X-Organization-Id: $org_id" \
+    -H "X-Leadgrid-Organization-Id: $org_id" \
+    -H "Content-Type: application/json" \
+    --data-binary "$tidum_preview_payload" \
+    "$staging_url/api/leadgrid/project-onboarding/preview")"
+  jq -e '
+    .preview.website_domain == "tidum.no" and
+    .preview.project_name == "Tidum" and
+    .preview.category == "Arbeidstid, omsorg og miljøarbeid" and
+    .preview.category_confidence == "high" and
+    (.preview.recommended_profiles | length) == 4 and
+    ([.preview.recommended_profiles[].template_key] | sort) ==
+      (["tidum.child_welfare", "tidum.residential_care", "tidum.bpa_field_services", "tidum.municipal_services"] | sort) and
+    ([.preview.recommended_profiles[].brief.country_code] | unique) == ["NO"] and
+    ([.preview.recommended_profiles[].brief.city] | all(. == null)) and
+    (.preview.recommended_profiles[] | select(.template_key == "tidum.child_welfare") |
+      .brief.organization_forms == ["AS", "IKS", "STI"] and
+      .brief.employee_count.minimum == 5) and
+    (.preview.recommended_profiles[] | select(.template_key == "tidum.municipal_services") |
+      .brief.organization_name_queries == ["kommune"] and
+      .brief.organization_forms == ["KOMM"])
+  ' <<<"$tidum_preview" >/dev/null
+  echo "STAGING_E2E_STAGE=tidum_preview_verified"
+
+  tidum_commit_payload="$(jq -n \
+    --arg organization_id "$org_id" \
+    --arg preview_id "$(jq -er '.preview.id' <<<"$tidum_preview")" \
+    --arg administrator_email "$staging_email" \
+    --arg project_name "$(jq -er '.preview.project_name' <<<"$tidum_preview")" \
+    --arg project_description "$(jq -er '.preview.project_description' <<<"$tidum_preview")" \
+    --arg category "$(jq -er '.preview.category' <<<"$tidum_preview")" \
+    --arg target_audience "$(jq -er '.preview.brand_profile.targetAudience' <<<"$tidum_preview")" \
+    --argjson profiles "$(jq '.preview.recommended_profiles' <<<"$tidum_preview")" \
+    '{
+      organization_id: $organization_id,
+      preview_id: $preview_id,
+      profiles: $profiles,
+      brand_overrides: {
+        project_name: $project_name,
+        project_description: $project_description,
+        category: $category,
+        target_audience: $target_audience
+      },
+      access_setup: {
+        organization: {mode: "current"},
+        administrator_email: $administrator_email,
+        team: {mode: "none"},
+        invitations: []
+      }
+    }')"
+  tidum_commit="$(curl --fail-with-body --silent --show-error \
+    -H "Authorization: Bearer $token" \
+    -H "X-Organization-Id: $org_id" \
+    -H "X-Leadgrid-Organization-Id: $org_id" \
+    -H "Content-Type: application/json" \
+    --data-binary "$tidum_commit_payload" \
+    "$staging_url/api/leadgrid/project-onboarding/commit")"
+  tidum_project_id="$(jq -er '.project.id' <<<"$tidum_commit")"
+  jq -e --arg project_id "$tidum_project_id" '
+    .project.id == $project_id and
+    .project.name == "Tidum" and
+    (.profiles | length) >= 4 and
+    ([.profiles[] | select((.template_key // "") | startswith("tidum.")) | .template_key] | length) == 4 and
+    ([.profiles[] | select((.template_key // "") | startswith("tidum.")) | .template_key] | unique | length) == 4 and
+    .access.discovery_access_verified == true
+  ' <<<"$tidum_commit" >/dev/null
+  echo "STAGING_E2E_STAGE=tidum_project_committed"
+
+  tidum_profiles="$(curl --fail-with-body --silent --show-error \
+    -H "Authorization: Bearer $token" \
+    -H "X-Organization-Id: $org_id" \
+    -H "X-Leadgrid-Organization-Id: $org_id" \
+    "$staging_url/api/leadgrid/projects/$tidum_project_id/discovery/profiles")"
+  jq -e '
+    (.profiles | length) >= 4 and
+    ([.profiles[] | select((.template_key // "") | startswith("tidum.")) | .template_key] | length) == 4 and
+    ([.profiles[] | select((.template_key // "") | startswith("tidum.")) | .template_key] | unique | length) == 4 and
+    (.profiles[] | select(.template_key == "tidum.child_welfare") |
+      .brief.country_code == "NO" and .brief.employee_count.minimum == 5) and
+    (.profiles[] | select(.template_key == "tidum.municipal_services") |
+      .brief.organization_forms == ["KOMM"])
+  ' <<<"$tidum_profiles" >/dev/null
+  echo "STAGING_E2E_STAGE=tidum_profiles_verified"
+
+  tidum_replay_preview="$(curl --fail-with-body --silent --show-error \
+    -H "Authorization: Bearer $token" \
+    -H "X-Organization-Id: $org_id" \
+    -H "X-Leadgrid-Organization-Id: $org_id" \
+    -H "Content-Type: application/json" \
+    --data-binary "$tidum_preview_payload" \
+    "$staging_url/api/leadgrid/project-onboarding/preview")"
+  tidum_replay_payload="$(jq -n \
+    --arg organization_id "$org_id" \
+    --arg preview_id "$(jq -er '.preview.id' <<<"$tidum_replay_preview")" \
+    '{organization_id: $organization_id, preview_id: $preview_id}')"
+  tidum_replay="$(curl --fail-with-body --silent --show-error \
+    -H "Authorization: Bearer $token" \
+    -H "X-Organization-Id: $org_id" \
+    -H "X-Leadgrid-Organization-Id: $org_id" \
+    -H "Content-Type: application/json" \
+    --data-binary "$tidum_replay_payload" \
+    "$staging_url/api/leadgrid/project-onboarding/commit")"
+  jq -e --arg project_id "$tidum_project_id" '
+    .project.id == $project_id and
+    .reused_project == true and
+    (.profiles | length) >= 4 and
+    ([.profiles[] | select((.template_key // "") | startswith("tidum.")) | .template_key] | length) == 4 and
+    ([.profiles[] | select((.template_key // "") | startswith("tidum.")) | .template_key] | unique | length) == 4
+  ' <<<"$tidum_replay" >/dev/null
+  echo "STAGING_E2E_STAGE=tidum_reuse_without_duplicates_verified"
+
+  if [[ "$run_tidum_campaign_e2e" == "1" ]]; then
+    tidum_campaign_payload="$(jq -n \
+      --arg name "[E2E] Tidum alle profiler $timestamp" \
+      --argjson profiles "$(jq '[.profiles[] | select(.status == "active" and ((.template_key // "") | startswith("tidum."))) | {profile_id: .id, expected_version: .version}]' <<<"$tidum_profiles")" \
+      '{name: $name, profiles: $profiles}')"
+    tidum_campaign="$(curl --fail-with-body --silent --show-error \
+      -H "Authorization: Bearer $token" \
+      -H "X-Organization-Id: $org_id" \
+      -H "X-Leadgrid-Organization-Id: $org_id" \
+      -H "Idempotency-Key: tidum-staging-e2e-$timestamp" \
+      -H "Content-Type: application/json" \
+      --data-binary "$tidum_campaign_payload" \
+      "$staging_url/api/leadgrid/projects/$tidum_project_id/discovery/campaign-runs")"
+    tidum_campaign_id="$(jq -er '.campaign.id' <<<"$tidum_campaign")"
+    jq -e '.campaign.total_profiles == 4' <<<"$tidum_campaign" >/dev/null
+
+    tidum_campaign_complete=false
+    for _attempt in {1..120}; do
+      tidum_campaign="$(curl --fail-with-body --silent --show-error \
+        -H "Authorization: Bearer $token" \
+        -H "X-Organization-Id: $org_id" \
+        -H "X-Leadgrid-Organization-Id: $org_id" \
+        "$staging_url/api/leadgrid/projects/$tidum_project_id/discovery/campaign-runs/$tidum_campaign_id")"
+      tidum_campaign_status="$(jq -er '.status' <<<"$tidum_campaign")"
+      if [[ "$tidum_campaign_status" =~ ^(completed|partial|failed|cancelled)$ ]]; then
+        tidum_campaign_complete=true
+        break
+      fi
+      sleep 5
+    done
+    if [[ "$tidum_campaign_complete" != "true" ]]; then
+      echo "Tidum-kampanjen fullførte ikke innen 10 minutter." >&2
+      exit 10
+    fi
+    jq -e '
+      (.status == "completed" or .status == "partial") and
+      .total_profiles == 4 and
+      (.completed_profiles + .partial_profiles) == 4 and
+      .failed_profiles == 0 and
+      (.items | length) == 4 and
+      ([.items[].status] | all(. == "completed" or . == "partial")) and
+      ([.items[].profile_id] | unique | length) == 4 and
+      ([.items[].candidate_count] | add) > 0
+    ' <<<"$tidum_campaign" >/dev/null
+    echo "STAGING_E2E_STAGE=tidum_campaign_verified"
+  fi
+fi
+
+lead_project_id="${tidum_project_id:-${role_room_project_id:-$requested_project_id}}"
 if [[ -z "$lead_project_id" ]]; then
-  echo "Mangler LEADGRID_STAGING_PROJECT_ID når Role Room-E2E ikke kjøres." >&2
+  echo "Mangler LEADGRID_STAGING_PROJECT_ID når domene-E2E ikke kjøres." >&2
   exit 2
 fi
 creation_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
@@ -309,6 +480,11 @@ if [[ "$run_simulator_e2e" == "1" ]]; then
       "-only-testing:LeadMapAppUITests/QASweepTests/testStagingRoleRoomProjectOpensAllDiscoveryProfiles"
     )
   fi
+  if [[ "$run_tidum_e2e" == "1" ]]; then
+    simulator_tests+=(
+      "-only-testing:LeadMapAppUITests/QASweepTests/testStagingTidumProjectOpensAllDiscoveryProfiles"
+    )
+  fi
   (
     cd "$app_dir"
     xcodegen generate
@@ -333,7 +509,8 @@ if [[ "$run_simulator_e2e" == "1" ]]; then
         LEADGRID_STAGING_BEARER_TOKEN \
         LEADGRID_STAGING_ORG_ID \
         LEADGRID_STAGING_PROJECT_ID \
-        LEADGRID_STAGING_ROLE_ROOM_PROJECT_ID
+        LEADGRID_STAGING_ROLE_ROOM_PROJECT_ID \
+        LEADGRID_STAGING_TIDUM_PROJECT_ID
       do
         plutil -remove "LeadMapAppUITests.EnvironmentVariables.$key" "$test_xctestrun" >/dev/null 2>&1 || true
       done
@@ -345,6 +522,7 @@ if [[ "$run_simulator_e2e" == "1" ]]; then
     plutil -insert "LeadMapAppUITests.EnvironmentVariables.LEADGRID_STAGING_ORG_ID" -string "$org_id" "$test_xctestrun"
     plutil -insert "LeadMapAppUITests.EnvironmentVariables.LEADGRID_STAGING_PROJECT_ID" -string "$lead_project_id" "$test_xctestrun"
     plutil -insert "LeadMapAppUITests.EnvironmentVariables.LEADGRID_STAGING_ROLE_ROOM_PROJECT_ID" -string "$role_room_project_id" "$test_xctestrun"
+    plutil -insert "LeadMapAppUITests.EnvironmentVariables.LEADGRID_STAGING_TIDUM_PROJECT_ID" -string "$tidum_project_id" "$test_xctestrun"
 
     mkdir -p "$(dirname "$result_bundle")"
     if [[ -e "$result_bundle" ]]; then
@@ -393,6 +571,16 @@ if [[ "$run_role_room_campaign_e2e" == "1" ]]; then
   echo "ROLE_ROOM_CAMPAIGN_ALL_PROFILES_RESULTS=PASS"
   echo "ROLE_ROOM_CAMPAIGN_STATUS=$(jq -er '.status' <<<"$role_room_campaign")"
   echo "ROLE_ROOM_CAMPAIGN_ID=$role_room_campaign_id"
+fi
+if [[ "$run_tidum_e2e" == "1" ]]; then
+  echo "TIDUM_ONBOARDING_PROFILES_NATIVE=PASS"
+  echo "TIDUM_REUSE_WITHOUT_DUPLICATES=PASS"
+  echo "TIDUM_PROJECT_ID=$tidum_project_id"
+fi
+if [[ "$run_tidum_campaign_e2e" == "1" ]]; then
+  echo "TIDUM_CAMPAIGN_ALL_PROFILES_RESULTS=PASS"
+  echo "TIDUM_CAMPAIGN_STATUS=$(jq -er '.status' <<<"$tidum_campaign")"
+  echo "TIDUM_CAMPAIGN_ID=$tidum_campaign_id"
 fi
 echo "PAIR_CODE=$pair_code"
 echo "PAIR_CODE_EXPIRES_SECONDS=300"
